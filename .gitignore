@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 dist/
 *.log
 .DS_Store
@@ -9,4 +9,7 @@ viewer-service/package-lock.json
 viewer-service/modern-viewer/mod-assets/
 viewer-service/modern-viewer/*.js
 viewer-service/modern-viewer/*.wasm
+
+# 派生资源的本地备份（改了 bundle/桥接前先备份，但不入库）
+viewer-service/modern-viewer/*.bak-*
 
