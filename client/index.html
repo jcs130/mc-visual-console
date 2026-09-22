@@ -11,20 +11,23 @@
     <span class="brand">mc-visual-console</span>
     <span id="banner">连接中…</span>
     <span class="spacer"></span>
-    <span id="holder" class="dim">—</span>
+    <span id="holder" class="dim">持有：无</span>
     <span id="counts" class="dim">0 实体 · 0 方块</span>
-    <button id="claim" title="接管（快捷键 C）">接管</button>
-    <button id="release" title="释放（快捷键 R）">释放</button>
     <span id="zoom" class="dim">100%</span>
+    <button id="recenter" title="相机回到 bot（F）">回中</button>
+    <button id="claim" title="接管（C）">接管</button>
+    <button id="release" title="释放（R）">释放</button>
   </header>
 
   <main>
     <canvas id="scene"></canvas>
     <aside id="side">
+      <h3>在场实体</h3>
+      <ul id="people" class="people"></ul>
       <h3>事件</h3>
       <pre id="log"></pre>
       <p class="hint">
-        悬停看对象 · 点地面走过去 · 右键/长按出动作菜单 · 滚轮缩放 · Shift+拖动 平移
+        悬停看对象 · 点地面走过去 · 右键/长按出动作菜单 · 滚轮缩放 · Shift+拖动 平移 · F 回中
       </p>
     </aside>
   </main>

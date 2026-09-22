@@ -131,3 +131,10 @@ main {
   border-radius: 5px;
 }
 #menu button:hover { background: #22303f; }
+
+.people { list-style: none; margin: 0 0 6px; padding: 0; max-height: 150px; overflow: auto; }
+.people li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 6px; border-radius: 5px; font-size: 12px; }
+.people li.me { background: #1d2a1f; color: #dff5e1; }
+.people li span { color: var(--dim); font-variant-numeric: tabular-nums; }
+.people li.empty { color: var(--dim); justify-content: flex-start; }
+

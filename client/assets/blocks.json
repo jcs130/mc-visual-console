@@ -1,0 +1,249 @@
+{
+  "grass_block": {
+    "faces": {
+      "top": "grass_block_top.png",
+      "bottom": "dirt.png",
+      "side": "grass_block_side.png"
+    },
+    "tint_top": "#79c05a"
+  },
+  "dirt": {
+    "faces": {
+      "all": "dirt.png"
+    }
+  },
+  "coarse_dirt": {
+    "faces": {
+      "all": "coarse_dirt.png"
+    }
+  },
+  "podzol": {
+    "faces": {
+      "top": "podzol_top.png",
+      "bottom": "dirt.png",
+      "side": "podzol_side.png"
+    },
+    "tint_top": "#7a5b3a"
+  },
+  "stone": {
+    "faces": {
+      "all": "stone.png"
+    }
+  },
+  "cobblestone": {
+    "faces": {
+      "all": "cobblestone.png"
+    }
+  },
+  "mossy_cobblestone": {
+    "faces": {
+      "all": "mossy_cobblestone.png"
+    }
+  },
+  "stone_bricks": {
+    "faces": {
+      "all": "stone_bricks.png"
+    }
+  },
+  "granite": {
+    "faces": {
+      "all": "granite.png"
+    }
+  },
+  "diorite": {
+    "faces": {
+      "all": "diorite.png"
+    }
+  },
+  "andesite": {
+    "faces": {
+      "all": "andesite.png"
+    }
+  },
+  "deepslate": {
+    "faces": {
+      "top": "deepslate.png",
+      "bottom": "deepslate.png",
+      "side": "deepslate.png"
+    }
+  },
+  "cobbled_deepslate": {
+    "faces": {
+      "all": "cobbled_deepslate.png"
+    }
+  },
+  "sand": {
+    "faces": {
+      "all": "sand.png"
+    }
+  },
+  "sandstone": {
+    "faces": {
+      "top": "sandstone_top.png",
+      "bottom": "sandstone_bottom.png",
+      "side": "sandstone.png"
+    }
+  },
+  "red_sand": {
+    "faces": {
+      "all": "red_sand.png"
+    }
+  },
+  "gravel": {
+    "faces": {
+      "all": "gravel.png"
+    }
+  },
+  "clay": {
+    "faces": {
+      "all": "clay.png"
+    }
+  },
+  "oak_log": {
+    "faces": {
+      "top": "oak_log.png",
+      "bottom": "oak_log.png",
+      "side": "oak_log.png"
+    },
+    "axis": "y"
+  },
+  "oak_planks": {
+    "faces": {
+      "all": "oak_planks.png"
+    }
+  },
+  "oak_leaves": {
+    "faces": {
+      "all": "oak_leaves.png"
+    },
+    "tint_all": "#5aa03c"
+  },
+  "birch_log": {
+    "faces": {
+      "top": "birch_log.png",
+      "bottom": "birch_log.png",
+      "side": "birch_log.png"
+    },
+    "axis": "y"
+  },
+  "birch_planks": {
+    "faces": {
+      "all": "birch_planks.png"
+    }
+  },
+  "birch_leaves": {
+    "faces": {
+      "all": "birch_leaves.png"
+    },
+    "tint_all": "#6bb04a"
+  },
+  "spruce_log": {
+    "faces": {
+      "top": "spruce_log.png",
+      "bottom": "spruce_log.png",
+      "side": "spruce_log.png"
+    },
+    "axis": "y"
+  },
+  "spruce_planks": {
+    "faces": {
+      "all": "spruce_planks.png"
+    }
+  },
+  "spruce_leaves": {
+    "faces": {
+      "all": "spruce_leaves.png"
+    },
+    "tint_all": "#3f7a2e"
+  },
+  "coal_ore": {
+    "faces": {
+      "all": "coal_ore.png"
+    }
+  },
+  "iron_ore": {
+    "faces": {
+      "all": "iron_ore.png"
+    }
+  },
+  "copper_ore": {
+    "faces": {
+      "all": "copper_ore.png"
+    }
+  },
+  "gold_ore": {
+    "faces": {
+      "all": "gold_ore.png"
+    }
+  },
+  "diamond_ore": {
+    "faces": {
+      "all": "diamond_ore.png"
+    }
+  },
+  "oak_slab": {
+    "faces": {
+      "top": "oak_planks.png",
+      "bottom": "oak_planks.png",
+      "side": "oak_planks.png"
+    }
+  },
+  "cobblestone_slab": {
+    "faces": {
+      "top": "cobblestone.png",
+      "bottom": "cobblestone.png",
+      "side": "cobblestone.png"
+    }
+  },
+  "glass": {
+    "faces": {
+      "all": "glass.png"
+    },
+    "transparent": true
+  },
+  "snow_block": {
+    "faces": {
+      "all": "snow.png"
+    }
+  },
+  "ice": {
+    "faces": {
+      "all": "ice.png"
+    },
+    "transparent": true
+  },
+  "bricks": {
+    "faces": {
+      "all": "bricks.png"
+    }
+  },
+  "bookshelf": {
+    "faces": {
+      "top": "bookshelf.png",
+      "bottom": "bookshelf.png",
+      "side": "bookshelf.png"
+    }
+  },
+  "furnace": {
+    "faces": {
+      "top": "furnace_top.png",
+      "bottom": "furnace_side.png",
+      "side": "furnace_side.png"
+    }
+  },
+  "white_wool": {
+    "faces": {
+      "all": "white_wool.png"
+    }
+  },
+  "red_wool": {
+    "faces": {
+      "all": "red_wool.png"
+    }
+  },
+  "blue_wool": {
+    "faces": {
+      "all": "blue_wool.png"
+    }
+  }
+}

@@ -404,7 +404,7 @@ export function attach(bot: ViewerBot, options: ViewerOptions = {}): Viewer {
     if (url.startsWith('/assets/')) {
       const rel = url.slice('/assets/'.length)
       if (rel.includes('..')) { res.writeHead(400); res.end('bad path'); return true }
-      const file = path.join(CLIENT_DIR, rel)
+      let file = path.join(CLIENT_DIR, rel); if (!existsSync(file)) file = path.join(CLIENT_DIR, 'assets', rel)
       if (!existsSync(file)) { res.writeHead(404); res.end('not found'); return true }
       res.writeHead(200, { 'content-type': CLIENT_MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream' })
       res.end(readFileSync(file))
