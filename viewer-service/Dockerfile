@@ -20,9 +20,9 @@ COPY . .
 ENV VIEWER_PORT=7800 \
     PROTOCOL_PORT=7801 \
     MC_HOST=host.docker.internal \
-    MC_PORT=25565 \
-    MC_USERNAME=viewer-bot \
-    MC_VERSION=1.21.11 \
+    MC_PORT=25702 \
+    MC_USERNAME=ag_xiaozhi \
+    MC_VERSION=1.21.1 \
     VIEW_DISTANCE=6 \
     FIRST_PERSON=0
 

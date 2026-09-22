@@ -21,9 +21,9 @@ import { WebSocketServer } from 'ws'
 const require = createRequire(import.meta.url)
 
 const MC_HOST = process.env.MC_HOST ?? '127.0.0.1'
-const MC_PORT = Number(process.env.MC_PORT ?? 25565)
-const MC_USERNAME = process.env.MC_USERNAME ?? 'viewer-bot'
-const MC_VERSION = process.env.MC_VERSION ?? '1.21.11'
+const MC_PORT = Number(process.env.MC_PORT ?? 25702)   // 只连统一外门 25702（25565/25567 是真人 NeoForge 口，裸连会读到错乱世界）
+const MC_USERNAME = process.env.MC_USERNAME ?? 'ag_xiaozhi'   // 必须 ag_ 开头；名字=UUID=身份，定死别改
+const MC_VERSION = process.env.MC_VERSION ?? '1.21.1'   // 门是 1.21.1 + offline；1.21.1 在 prismarine-viewer 支持列表内，无需别名补丁
 const VIEWER_PORT = Number(process.env.VIEWER_PORT ?? 7800)
 const VIEW_DISTANCE = Number(process.env.VIEW_DISTANCE ?? 6)
 const FIRST_PERSON = process.env.FIRST_PERSON === '1'

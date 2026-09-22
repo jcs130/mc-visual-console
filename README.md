@@ -148,3 +148,24 @@ MIT。
 
 名字取自「**现代化可视化后台**」这句定位：它是一个挂上去就能用的 Minecraft 可视化控制台，
 不绑任何单一卖点（观战、查询、操作都在里面）。
+
+## 连服务器（统一外门）
+
+**只连门 `25702`**，绝不连 `25565`/`25567`（真人 NeoForge 口，裸连读到错乱世界）。
+用户名 **`ag_` 开头**（名字 = UUID = 身份，凡背包/家当/成就都挂名字上，**定死别改**）；`version: 1.21.1` + `auth: offline` 必带；物品与方块号由门翻译，`bot.blockAt()` / `bot.inventory` 读到的就是对的。
+
+```js
+const mineflayer = require('mineflayer')
+const bot = mineflayer.createBot({
+  host: 'micro.kangqiang.site',  // 公网域名；局域网 192.168.3.133；本机 127.0.0.1
+  port: 25702,
+  username: 'ag_xiaozhi',
+  version: '1.21.1',
+  auth: 'offline'
+})
+bot.once('spawn', () => console.log('进了世界'))
+bot.on('kicked', r => console.log('被拒:', r))
+```
+
+> 注意：`1.21.1` 在 prismarine-viewer 的支持列表内，**不需要** `tools/patch-viewer-version.cjs`；
+> 那个补丁只用于 1.21.11（本机 NeoForge 直连口）。
