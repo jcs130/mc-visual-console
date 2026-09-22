@@ -1,0 +1,30 @@
+# mc-visual-console 的 Linux 侧服务：画面（prismarine-viewer）+ 协议（本仓库）
+#
+#   docker compose up -d --build
+#
+# 为什么在容器里：prismarine-viewer 的服务端要原生 node-canvas，
+# 而它在 Windows 上需要 Visual Studio 工具链；Linux 下一次装好（配方见 viewer-service/Dockerfile）。
+#
+# 加入世界是"对外状态变更"：默认只起服务，MC_HOST 指向哪里由你决定；
+# 指向真实服务器会让一个名为 viewer-bot 的玩家进服。
+
+services:
+  viewer:
+    build: ./viewer-service
+    image: mc-visual-console-viewer:dev
+    container_name: mc-visual-console-viewer
+    ports:
+      - "7800:7800"   # prismarine-viewer 的画面（浏览器打开它）
+      - "7801:7801"   # 本仓库的协议（/health /state + WS）
+    environment:
+      MC_HOST: ${MC_HOST:-host.docker.internal}
+      MC_PORT: ${MC_PORT:-25565}
+      MC_USERNAME: ${MC_USERNAME:-viewer-bot}
+      MC_VERSION: ${MC_VERSION:-1.21.11}
+      VIEWER_PORT: "7800"
+      PROTOCOL_PORT: "7801"
+      VIEW_DISTANCE: ${VIEW_DISTANCE:-6}
+      FIRST_PERSON: ${FIRST_PERSON:-0}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

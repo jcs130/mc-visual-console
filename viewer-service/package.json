@@ -1,0 +1,20 @@
+{
+  "name": "mc-visual-console-viewer",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Linux-side viewer service for mc-visual-console: prismarine-viewer + mineflayer + this repo's takeover protocol. Runs in Docker because node-canvas needs a Linux toolchain (cairo/pango/rsvg).",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "express": "^4.19.2",
+    "mineflayer": "^4.37.1",
+    "mineflayer-pathfinder": "^2.4.5",
+    "prismarine-viewer": "^1.33.0",
+    "socket.io": "^4.8.3",
+    "ws": "^8.18.0"
+  }
+}
