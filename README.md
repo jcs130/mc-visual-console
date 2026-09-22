@@ -1,11 +1,67 @@
-# mc-viewer
+# mc-viewer（**仓库名待定**，见文末候选）
 
-**一个 Mineflayer 驱动的 Minecraft 观战 + 接管组件。写一次，两个宿主共用。**
+**Mineflayer 驱动的 Minecraft 观战 + 接管组件。在一张画面里看见世界，同时把身体接过来。**
+
+一句话说清它与众不同的地方：**它不是"看板"，是"座舱"** —— 看得见（画面）与动得了（接管）
+是同一件事的两半，中间由一份写死的协议连着。
 
 - **数据源**：Mineflayer（不是游戏 mod 的 live dump）
 - **宿主①**：Cortico —— 包成外部 World 扩展，走 `console().stream()` / `invoke()` / `links[]`
 - **宿主②**：dsh —— 包成插件，挂在 dsh web 的 webServer 路由上
-- **状态**：施工中（M0 未完成）
+- **状态**：施工中（M0 骨架已跑通，测试 5/5）
+
+## 特点（都从源码里数出来的，不是形容词）
+
+### 1. 接管是一等公民，不是附属功能
+
+同一个身体，同一时刻只有一个持有者；`claim` / `release` / 抢占 / 超时释放全在协议里；
+**非持有者的操作命令一律 `not_holder` 拒绝，而"看"不需要持有权**（观战是默认权利）。
+—— 这条比"能不能点"重要：它让"两个人同时看、只有一个人能操作"成为协议的默认行为。
+
+### 2. 点地移动：从画面直接到动作
+
+画面上的"点地面"不是前端小把戏，而是协议里的 `moveTo {x, z, y?}`：
+y 缺省由实现解析地表，"走到哪算到"由 `range` 说话。上游只有 `goto()` 就够，没有就诚实回 `not_supported`。
+
+### 3. 一切都有预算（看得见的画面，看不见的闸门）
+
+照千灯纪 `mc-modern-viewer` 的实测值定档（源码 28–34 行）：
+
+| 维度 | 值 | 出处 |
+|---|---|---|
+| 同时观战会话 | 2 | `MAX_VIEWER_SESSIONS` |
+| 视距 | 3 区块 | `VIEW_DISTANCE_CHUNKS` |
+| 化身状态节拍 | 100 ms | `AVATAR_STATE_INTERVAL_MS` |
+| 背包槽位 | 46 | `MAX_VIEWER_INVENTORY_SLOTS` |
+| 特效距离／每秒事件／粒子 | 96 ／ 80 ／ 24 | `MAX_VIEWER_EFFECT_*` |
+
+本组件的对应项是 `maxSessions` / `viewDistance` / `stateHz` / `maxEntities` / `maxBlocksPerChunk`，
+并且**超预算时丢增量、不丢连接**（连接一断，接管权也会跟着掉，那才是灾难）。
+
+### 4. 上游只要"像 bot 的对象"，不要 mineflayer
+
+组件**不 import mineflayer**，只认 `ViewerBot` 那几样能力（世界、实体、玩家、自身状态、look/goto/attack）。
+因此：运行时依赖只有 `ws` 一个；测试用脚本化假 bot 就能跑完整条协议，**不必连任何服务器**。
+
+### 5. 两条通道分开：世界是一条，实体是另一条
+
+千灯纪那份保留的"双 Socket.IO 命名空间数据桥"值得抄：**区块流与实体流各自独立背压**，
+一方堵住不拖另一方。（本组件用单 WS + 分帧承载同一思路，见 `docs/PROTOCOL.md` §三。）
+
+### 6. 不碰业务语义
+
+谁能接管、走到哪里算危险、看到什么该报告 —— 全是**宿主**的事（Cortico 的 World / dsh 的插件）。
+组件只做视图与操作通道。它自己的设计准则就一句话：**Minimal priors**。
+
+## 两个宿主
+
+| 宿主 | 接法 |
+|---|---|
+| **Cortico** | 包成外部 World 扩展：`console().stream()` 转发状态、`invoke()` 接命令、`links[]` 挂整页 |
+| **dsh** | 包成插件：挂在 dsh web 的 webServer 路由 + WS 上 |
+
+同一个组件、同一份协议，两端各自薄薄一层壳。这也是它值得单独存在的理由 ——
+现状里这套能力**只长在千灯纪的 mod 侧**，且靠对 `prismarine-viewer` 产物做字符串手术维持。
 
 ---
 
@@ -59,7 +115,7 @@ WS 收  claim/release 接管 · moveTo 点地移动 · lookAt 转头 · action �
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| **M0** | 假 bot + 单页 demo：看得到地形与实体、能接管、点地能走过去（**不连真实服务器**） | 未开始 |
+| **M0** | 假 bot + 单页 demo：看得到地形与实体、能接管、点地能走过去（**不连真实服务器**） | 骨架已跑通（测试 5/5） |
 | **M1** | 接 Cortico：外部 World 扩展，`stream`/`invoke`/`links` | 未开始 |
 | **M2** | 接 dsh：插件 + webServer 路由 + WS | 未开始 |
 | **M3** | 客户端性能预算落地（workers / 视距 / FPS），对照千灯纪 modern-viewer 的预算表 | 未开始 |
@@ -80,10 +136,21 @@ test/              vitest
 
 ```bash
 corepack pnpm install
-corepack pnpm test          # 假 bot，不连服务器
-corepack pnpm dev:demo      # 单页 demo（M0 完成后可用）
+corepack pnpm test          # 假 bot，不连服务器（当前 5/5 通过）
+corepack pnpm dev:demo      # 单页 demo（M0 骨架版；正式客户端待做）
 ```
 
 ## 许可
 
 MIT。
+
+---
+
+## 仓库名候选（待定）
+
+| 候选 | 寓意 | 说明 |
+|---|---|---|
+| **`mc-cockpit`** | 座舱：世界在窗外、预算是仪表、接管是握杆 | **我的首选** —— 一个词把"看 + 操 + 可控"说完 |
+| `see-and-steer` | 看得见才能掌舵 | 英文圈最好懂，但不太像包名 |
+| `mc-takeover-view` | 把卖点写进名字 | 直白、利于搜索，气质平一点 |
+| `mc-helmsman` | 舵手 | 意象好，但偏"人"不偏"组件" |
