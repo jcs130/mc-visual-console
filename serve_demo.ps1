@@ -4,7 +4,7 @@
 param([switch]$Check)
 
 $ErrorActionPreference = 'SilentlyContinue'
-$root  = 'D:\mc-viewer'
+$root  = 'D:\mc-visual-console'
 $watch = Join-Path $root 'demo.log'
 $out   = Join-Path $root 'demo.out.log'
 $err   = Join-Path $root 'demo.err.log'
