@@ -91,8 +91,8 @@ export type ErrorCode =
 
 /** 客户端 → 服务端 */
 export type ClientCommand =
-  | { type: 'claim'; id?: string; as: string; force?: boolean }
-  | { type: 'release'; id?: string; as: string }
+  | { type: 'claim'; id?: string; /** 备注用；身份由服务端按连接分配 */ as?: string; force?: boolean }
+  | { type: 'release'; id?: string; as?: string }
   | { type: 'moveTo'; id?: string; x: number; z: number; y?: number; range?: number }
   | { type: 'lookAt'; id?: string; x: number; y: number; z: number }
   | { type: 'action'; id?: string; on: string | number; how: ActionHow }

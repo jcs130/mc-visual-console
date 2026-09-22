@@ -104,8 +104,8 @@ export interface StateSnapshot {
 
 | type | 载荷 | 语义 |
 |---|---|---|
-| `claim` | `{ as: string }` | 请求接管；同一时刻只有一个持有者，抢占需要在 `claim` 里带 `force: true` |
-| `release` | `{ as: string }` | 释放接管 |
+| `claim` | `{ force?: boolean }` | 请求接管；**身份由服务端按连接分配**（客户端自报可伪造，故 `as` 仅供备注）；同一时刻只有一个持有者，抢占需带 `force: true` |
+| `release` | `{}` | 释放接管（只释放自己那份）|
 | `moveTo` | `{ x: number, z: number, y?: number, range?: number }` | **点地移动**：走到该处（y 缺省由实现解析地表） |
 | `lookAt` | `{ x, y, z }` | 转头看某点 |
 | `action` | `{ on: string \| number, how: 'detail' \| 'approach' \| 'attack' \| 'use' }` | 右键/长按菜单的四个动作 |

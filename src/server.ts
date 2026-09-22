@@ -7,6 +7,9 @@
  */
 
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { WebSocketServer, type WebSocket } from 'ws'
 
 import { toEntityLike, toTuple, type ViewerBot } from './adapter.ts'
@@ -15,6 +18,17 @@ import {
   type BlockEntry, type BotState, type Budget, type ClientCommand, type EntityLike,
   type ErrorCode, type ServerMessage, type StateSnapshot,
 } from './protocol.ts'
+
+/** 客户端目录：与仓库根同级（src/ 的上一级） */
+const CLIENT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'client')
+const CLIENT_MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.json': 'application/json; charset=utf-8',
+}
 
 export interface ViewerOptions {
   /** 监听地址；缺省 127.0.0.1（宿主想对外再自己包一层） */
@@ -97,7 +111,7 @@ export function attach(bot: ViewerBot, options: ViewerOptions = {}): Viewer {
   const viewDistance = options.viewDistance ?? 6
   const holderTimeoutMs = options.holderTimeoutMs ?? 10 * 60 * 1000
   const log = options.log ?? (() => {})
-  const page = options.page ?? MINIMAL_PAGE
+  const page = options.page ?? readFileSync(path.join(CLIENT_DIR, 'index.html'), 'utf8')
 
   const sessions = new Map<WebSocket, Session>()
   let seq = 0
@@ -132,10 +146,10 @@ export function attach(bot: ViewerBot, options: ViewerOptions = {}): Viewer {
     // 正式实现按区块增量取（见 docs/PROTOCOL.md §三 的 budget.maxBlocksPerChunk）。
     const out: BlockEntry[] = []
     const { x, y, z } = bot.entity.position
-    const r = Math.min(viewDistance, 3)
+    const r = Math.min(viewDistance, 12)
     for (let dx = -r; dx <= r; dx++) {
       for (let dz = -r; dz <= r; dz++) {
-        for (let dy = -1; dy <= 1; dy++) {
+        for (let dy = -2; dy <= 1; dy++) {
           const pos = { x: Math.round(x) + dx, y: Math.round(y) + dy, z: Math.round(z) + dz }
           const b = bot.world.getBlock(pos)
           if (b) out.push({ pos: toTuple(pos), name: b.name })
@@ -384,6 +398,16 @@ export function attach(bot: ViewerBot, options: ViewerOptions = {}): Viewer {
     if (url === '/' || url === '/index.html') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
       res.end(page)
+      return true
+    }
+    // 静态资产：/assets/* → client/ 目录（app.js 由 esbuild 打包产出）
+    if (url.startsWith('/assets/')) {
+      const rel = url.slice('/assets/'.length)
+      if (rel.includes('..')) { res.writeHead(400); res.end('bad path'); return true }
+      const file = path.join(CLIENT_DIR, rel)
+      if (!existsSync(file)) { res.writeHead(404); res.end('not found'); return true }
+      res.writeHead(200, { 'content-type': CLIENT_MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream' })
+      res.end(readFileSync(file))
       return true
     }
     return false
