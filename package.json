@@ -1,0 +1,49 @@
+{
+  "name": "mc-viewer",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Mineflayer-driven Minecraft viewer with player takeover: one component, two hosts (a Cortico World extension and a dsh plugin).",
+  "keywords": ["minecraft", "mineflayer", "viewer", "takeover", "dsh-plugin", "cortico-world"],
+  "license": "MIT",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:demo": "tsx src/demo.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "mineflayer": ">=4.37.0"
+  },
+  "peerDependenciesMeta": {
+    "mineflayer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
