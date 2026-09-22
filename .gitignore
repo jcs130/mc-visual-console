@@ -4,3 +4,6 @@ dist/
 .DS_Store
 .vitest/
 client/app.js
+viewer-service/node_modules/
+viewer-service/package-lock.json
+
