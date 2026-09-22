@@ -6,4 +6,7 @@ dist/
 client/app.js
 viewer-service/node_modules/
 viewer-service/package-lock.json
+viewer-service/modern-viewer/mod-assets/
+viewer-service/modern-viewer/*.js
+viewer-service/modern-viewer/*.wasm
 

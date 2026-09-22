@@ -11,6 +11,7 @@
   "dependencies": {
     "canvas": "^3.2.3",
     "express": "^4.19.2",
+    "minecraft-data": "^3.117.0",
     "mineflayer": "^4.37.1",
     "mineflayer-pathfinder": "^2.4.5",
     "prismarine-viewer": "^1.33.0",
