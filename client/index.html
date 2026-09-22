@@ -14,20 +14,31 @@
     <span id="holder" class="dim">持有：无</span>
     <span id="counts" class="dim">0 实体 · 0 方块</span>
     <span id="zoom" class="dim">100%</span>
+    <select id="view" title="切换视角" onchange="document.getElementById('viewer').src='http://127.0.0.1:7800'+this.value">
+      <option value="/dungeon/">2.5D 地牢</option>
+      <option value="/third/">第三人称环绕</option>
+      <option value="/">第一人称</option>
+    </select>
     <button id="recenter" title="相机回到 bot（F）">回中</button>
     <button id="claim" title="接管（C）">接管</button>
     <button id="release" title="释放（R）">释放</button>
   </header>
 
   <main>
-    <canvas id="scene"></canvas>
+    <!-- 画面：复用 modern-viewer（萌悦/千灯纪那套）。它只允许白名单 origin 内嵌 ⇒ 必须从这里 iframe。 -->
+    <iframe id="viewer" src="http://127.0.0.1:7800/dungeon/" title="现代画面"></iframe>
+
+    <!-- 兜底：没有 modern-viewer 时回到自绘等距画布（默认隐藏） -->
+    <canvas id="scene" hidden></canvas>
+
     <aside id="side">
       <h3>在场实体</h3>
       <ul id="people" class="people"></ul>
       <h3>事件</h3>
       <pre id="log"></pre>
       <p class="hint">
-        悬停看对象 · 点地面走过去 · 右键/长按出动作菜单 · 滚轮缩放 · Shift+拖动 平移 · F 回中
+        上方是复用来的现代画面（2.5D / 环绕 / 第一人称可切）· 接管后在画面里操作 ·
+        本控制台只负责协议（claim/release/moveTo/lookAt/action/camera）
       </p>
     </aside>
   </main>

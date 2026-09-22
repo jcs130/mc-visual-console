@@ -15,6 +15,7 @@
  */
 
 import { createRequire } from 'node:module'
+import { startModernViewer } from './modern-viewer/mc-modern-viewer.mts'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 
@@ -45,25 +46,21 @@ const bot = mineflayer.createBot({
 })
 
 let viewerReady = false
+let viewerHandle = null
 let pathfinderReady = false
 let Movements = null
 let goals = null
 
 bot.once('spawn', () => {
   console.log(`[viewer-service] 已进入世界，位置 ${JSON.stringify(bot.entity.position)}`)
-  // ① 画面：prismarine-viewer 自己起 express + socket.io（它的成熟实现）
+  // ① 画面：换成「现代画面」（萌悦/千灯纪 modern-viewer 的桥接）
+  //    它自带的铁律：过门时必须 MC_GATE_TRANSLATED=1，否则拒绝启动（防画错世界）
   try {
-    const viewer = require('prismarine-viewer')
-    viewer.mineflayer(bot, {
-      viewDistance: VIEW_DISTANCE,
-      firstPerson: FIRST_PERSON,
-      port: VIEWER_PORT,
-      prefix: '',
-    })
+    viewerHandle = startModernViewer(() => bot, { port: VIEWER_PORT })
     viewerReady = true
-    console.log(`[viewer-service] 画面已挂在 :${VIEWER_PORT}/`)
+    console.log(`[viewer-service] 现代画面已启动（modern-viewer，端口 :${VIEWER_PORT}）`)
   } catch (err) {
-    console.error('[viewer-service] viewer 挂载失败：', err?.message ?? err)
+    console.error('[viewer-service] 现代画面启动失败：', err?.message ?? err)
   }
   // ② 走位：mineflayer-pathfinder（和 A 仓同一套）
   try {
@@ -175,7 +172,7 @@ async function handle(ws, session, cmd) {
         return reply({ type: 'notice', level: 'info', text: `action ${cmd.how} 由界面层处理` })
       }
       case 'camera':
-        return reply({ type: 'notice', level: 'info', text: `camera ${cmd.mode} 属于画面层（prismarine-viewer 的视角）` })
+        return reply({ type: 'notice', level: 'info', text: `camera ${cmd.mode} 属于画面层（modern-viewer 的视角）` })
       case 'set':
         return undefined
       default:
