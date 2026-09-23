@@ -591,6 +591,9 @@ function viewerHtml(firstPersonFov, dashboardOrigin) {
     <meta name="lantern-dashboard-origin" content="${dashboardOrigin}">
     <title>我的异世界 · 现代画面</title>
     <link rel="stylesheet" href="/viewer.css">
+    <!-- 点地走 + 寻路轨迹：同源小脚本，读 globalThis.world.camera 算射线，
+         交 /mc-control 求交与寻路，再把路径投影回屏幕画在覆盖层上。不改画面产物。 -->
+    <script src="/mc-control.js"></script>
     <script>
       // TEMP 渲染桥排障（2026-08-29 画面冻结）：页面级错误上报——worker 崩溃常以主线程
       // unhandledrejection 形态露出（如 mcData transfer timeout）。抓到就回传，服务端日志留痕。
@@ -971,6 +974,69 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   let worldResetTimer = null
   let lastDimension = currentDimension()
 
+  // ---- 「点地走 + 寻路轨迹」的服务端一半（由注入的 /mc-control.js 调用）----
+  const Vec3 = (() => {
+    try { return require('vec3') } catch { return null }
+  })()
+
+  function readBody(req, limit = 64 * 1024) {
+    return new Promise((resolve) => {
+      let size = 0
+      const chunks = []
+      req.on('data', (c) => {
+        size += c.length
+        if (size > limit) { req.destroy(); return }
+        chunks.push(c)
+      })
+      req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+      req.on('error', () => resolve(''))
+    })
+  }
+
+  /** 沿相机射线步进，找第一个「脚下是实心 + 本格是空」的位置（＝能站的地方）。
+   *  返回 { hit, sampled, lastBlock }：找不到时把扫过的信息带回去，便于判断是射线歪了还是真没地面。 */
+  function rayHitBlock(origin, dir) {
+    if (!Vec3 || !bot?.entity) return { hit: null, sampled: 0, lastBlock: 'no-bot-or-vec3' }
+    const step = 0.2
+    const maxDist = 96
+    let lastKey = ''
+    let sampled = 0
+    let lastBlock = 'none'
+    for (let d = 0; d <= maxDist; d += step) {
+      const x = Math.floor(origin[0] + dir[0] * d)
+      const y = Math.floor(origin[1] + dir[1] * d)
+      const z = Math.floor(origin[2] + dir[2] * d)
+      const key = `${x},${y},${z}`
+      if (key === lastKey) continue
+      lastKey = key
+      sampled += 1
+      const here = bot.blockAt(new Vec3(x, y, z))
+      const below = bot.blockAt(new Vec3(x, y - 1, z))
+      const solidBelow = below && below.boundingBox && below.boundingBox !== 'empty'
+      const freeHere = !here || !here.boundingBox || here.boundingBox === 'empty'
+      lastBlock = `${here ? here.name : 'null'}@${x},${y},${z}`
+      if (solidBelow && freeHere) return { hit: { x, y, z }, sampled, lastBlock }
+    }
+    return { hit: null, sampled, lastBlock }
+  }
+
+  /** 先要路径（为了画轨迹），再执行；拿不到轨迹也照走。返回 [[x,y,z], …]。 */
+  async function walkTo(x, y, z) {
+    const { Movements, goals } = require('mineflayer-pathfinder')
+    const movements = new Movements(bot)
+    const goal = new goals.GoalNear(x, y, z, 1)
+    let path = []
+    try {
+      const result = await bot.pathfinder.getPathTo(movements, goal, 4000)
+      if (result && Array.isArray(result.path)) path = result.path.map((p) => [p.x, p.y, p.z])
+    } catch {
+      /* 拿不到轨迹不影响走路 */
+    }
+    bot.pathfinder.setMovements(movements)
+    bot.pathfinder.setGoal(goal)
+    return path
+  }
+
   const server = createServer(async (req, res) => {
     try {
       if (!viewerRequestAllowed(req.headers, publicOrigin)) {
@@ -994,7 +1060,9 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
       res.setHeader('X-Content-Type-Options', 'nosniff')
       res.setHeader('Referrer-Policy', 'no-referrer')
 
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
+      // 控制口要收 POST（/mc-control）；其余一律只读。
+      const isControlPost = req.method === 'POST' && (req.url ?? '').startsWith('/mc-control')
+      if (req.method !== 'GET' && req.method !== 'HEAD' && !isControlPost) {
         res.writeHead(405, { 'Content-Type': 'text/plain' }); res.end('Method Not Allowed'); return
       }
       const url = new URL(req.url, 'http://x')
@@ -1010,6 +1078,72 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
       if (p === '/worker-probe') {
         console.log('[worker-probe]', req.url)
         send(204, 'text/plain', ''); return
+      }
+      // 控制口：GET 探活；POST 收相机射线 → 求交 → 寻路（返回轨迹给页面画）。
+      if (rel === '/mc-control.js') {
+        const file = safeJoin(ASSET_ROOT, 'mc-control.js')
+        const meta = file ? await stat(file).catch(() => null) : null
+        if (meta?.isFile()) {
+          await serveViewerStatic(req, res, file, 'application/javascript; charset=utf-8'); return
+        }
+        send(404, 'text/plain', 'Not Found'); return
+      }
+      if (rel === '/mc-control') {
+        if (req.method === 'GET') {
+          send(200, 'application/json; charset=utf-8', JSON.stringify({ ready: Boolean(bot?.entity) })); return
+        }
+        const body = await readBody(req)
+        try {
+          const msg = JSON.parse(body || '{}')
+          const dir = msg.dir
+          // 相机在画面的局部帧里。偏移量用锚点对账算出来：客户端给实体的局部坐标 + id，
+          // 我们拿自己的世界坐标（bot.entities[id]）相减 ⇒ 局部帧 → 世界的平移量。
+          let shift = null
+          if (Array.isArray(msg.anchors) && bot?.entities) {
+            const deltas = []
+            for (const a of msg.anchors.slice(0, 12)) {
+              const world = bot.entities[String(a.id)]
+              if (!world?.position || !Array.isArray(a.p)) continue
+              deltas.push([
+                world.position.x - a.p[0],
+                world.position.y - a.p[1],
+                world.position.z - a.p[2],
+              ])
+            }
+            if (deltas.length > 0) {
+              // 取中位数，抗个别脏数据
+              const pick = (i) => deltas.map((d) => d[i]).sort((x, y) => x - y)[Math.floor(deltas.length / 2)]
+              shift = [pick(0), pick(1), pick(2)]
+            }
+          }
+          const origin = shift && Array.isArray(msg.camOrigin) && msg.camOrigin.length === 3
+            ? [msg.camOrigin[0] + shift[0], msg.camOrigin[1] + shift[1], msg.camOrigin[2] + shift[2]]
+            : (Array.isArray(msg.relOrigin) && msg.relOrigin.length === 3 && bot?.entity
+              ? [
+                bot.entity.position.x + msg.relOrigin[0],
+                bot.entity.position.y + msg.relOrigin[1],
+                bot.entity.position.z + msg.relOrigin[2],
+              ]
+              : msg.origin)
+          if (!Array.isArray(origin) || !Array.isArray(dir) || origin.length !== 3 || dir.length !== 3) {
+            send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: false, error: '射线参数不对' })); return
+          }
+          const probe = rayHitBlock(origin, dir)
+          if (!probe.hit) {
+            send(200, 'application/json; charset=utf-8', JSON.stringify({
+              ok: false,
+              error: `射线没打到可站立的位置（扫了 ${probe.sampled} 格，最后一格 ${probe.lastBlock}）`,
+            })); return
+          }
+          const path = await walkTo(probe.hit.x, probe.hit.y, probe.hit.z)
+          send(200, 'application/json; charset=utf-8', JSON.stringify({
+            ok: true, target: [probe.hit.x, probe.hit.y, probe.hit.z], path, sampled: probe.sampled,
+          }))
+        } catch (err) {
+          send(200, 'application/json; charset=utf-8',
+            JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }))
+        }
+        return
       }
       // 页面
       if (rel === '/' || rel === '') {
