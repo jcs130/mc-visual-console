@@ -14,10 +14,11 @@
     <span id="holder" class="dim">持有：无</span>
     <span id="counts" class="dim">0 实体 · 0 方块</span>
     <span id="zoom" class="dim">100%</span>
-    <select id="view" title="切换视角" onchange="document.getElementById('viewer').src='http://127.0.0.1:7800'+this.value">
+    <select id="view" title="切换视角" onchange="var v=this.value, f=document.getElementById('viewer'), c=document.getElementById('scene'); if (v==='play') { f.hidden=true; c.hidden=false; window.dispatchEvent(new Event('resize')); } else { f.hidden=false; c.hidden=true; f.src='http://127.0.0.1:7800'+v; }">
       <option value="/dungeon/">2.5D 地牢</option>
       <option value="/third/">第三人称环绕</option>
       <option value="/">第一人称</option>
+      <option value="play">可操作（自绘 · 点地走）</option>
     </select>
     <button id="recenter" title="相机回到 bot（F）">回中</button>
     <button id="claim" title="接管（C）">接管</button>

@@ -18,6 +18,49 @@ import { createRequire } from 'node:module'
 import { startModernViewer } from './modern-viewer/mc-modern-viewer.mts'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join, normalize } from 'node:path'
+
+// 客户端页面与资产：接缝协议第一节写的是「GET / 客户端页面（单页）、GET /assets/* 静态资产」。
+// 组件自己的 src/server.ts 会服务它；我们这套宿主侧实现原先只重实现了协议、漏了这一段 ⇒
+// 真 bot 只有只读的现代画面、没有可操作页。2026-09-23 补上。
+const CLIENT_DIR = normalize(join(dirname(fileURLToPath(import.meta.url)), '..', 'client'))
+const CLIENT_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+}
+
+/** 只服务 client/ 下的文件，且不许路径上跳。命中返回 true。 */
+function serveClientFile(res, relPath) {
+  if (relPath.includes('..')) {
+    res.writeHead(403, { 'content-type': 'text/plain' })
+    res.end('forbidden')
+    return true
+  }
+  // 页面里写的是 /assets/app.js 这类路径，而文件在 client/app.js；
+  // client/assets/ 下另有构建期资源，两处都试一下。
+  for (const candidate of [relPath, join('assets', relPath)]) {
+    const file = normalize(join(CLIENT_DIR, candidate))
+    if (!file.startsWith(CLIENT_DIR)) continue
+    let body
+    try {
+      body = readFileSync(file)
+    } catch {
+      continue
+    }
+    const dot = file.lastIndexOf('.')
+    const type = CLIENT_TYPES[file.slice(dot)] ?? 'application/octet-stream'
+    res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' })
+    res.end(body)
+    return true
+  }
+  return false
+}
 
 const require = createRequire(import.meta.url)
 
@@ -194,6 +237,15 @@ async function handle(ws, session, cmd) {
 
 const http = createServer((req, res) => {
   const url = (req.url ?? '/').split('?')[0]
+
+  // ① 客户端页面与资产（可操作的控制台页）—— 这是「真 bot 上能玩」的入口。
+  if (url === '/' || url === '/index.html') {
+    if (serveClientFile(res, 'index.html')) return
+  }
+  if (url.startsWith('/assets/')) {
+    if (serveClientFile(res, url.slice('/assets/'.length))) return
+  }
+
   if (url === '/health' || url === '/state') {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify(url === '/health' ? opus() : snapshot()))
