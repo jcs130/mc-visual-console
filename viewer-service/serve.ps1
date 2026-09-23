@@ -31,13 +31,19 @@ if ($Check) {
 if ($up) { exit 0 }
 if ($procs) { Write-Log ('skip: already running pid=' + (($procs | ForEach-Object { $_.ProcessId }) -join ',')); exit 0 }
 
-# 现代画面的开关与「过门」铁律（它不给 MC_GATE_TRANSLATED 会拒绝启动）
+# Modern-viewer switch and the "through the gate" rule (it refuses to start without MC_GATE_TRANSLATED)
 $env:MC_MODERN_VIEWER = '1'
 $env:MC_GATE_TRANSLATED = '1'
 $env:MC_MODERN_VIEWER_PORT = '7800'
 $env:MC_VIEWER_PUBLIC_ORIGIN = 'http://127.0.0.1:7800'
-$env:MC_PANEL_ORIGIN = 'http://127.0.0.1:7799'
-$env:MC_CONSOLE_ORIGIN = 'http://127.0.0.1:7799'
+# The modern viewer sends CSP `frame-ancestors 'self' <panel> <console>`
+# (mc-modern-viewer.mts:992): only these origins may embed it. The real console is
+# served by this service on 7801 (GET / + /assets/*), so both point there;
+# pointing elsewhere makes the console's iframe a blank CSP block.
+# Keep this file ASCII-only (see header): PowerShell 5.1 mis-decodes UTF-8 comments
+# without BOM and can swallow the following line.
+$env:MC_PANEL_ORIGIN = 'http://127.0.0.1:7801'
+$env:MC_CONSOLE_ORIGIN = 'http://127.0.0.1:7801'
 
 if (-not (Test-Path (Join-Path $root 'node_modules'))) { Write-Log 'ERROR: run npm install in viewer-service first'; exit 1 }
 if (-not (Test-Path (Join-Path $root 'server.mjs'))) { Write-Log 'ERROR: server.mjs missing'; exit 1 }
