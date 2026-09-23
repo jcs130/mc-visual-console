@@ -15,10 +15,10 @@
     <span id="counts" class="dim">0 实体 · 0 方块</span>
     <span id="zoom" class="dim">100%</span>
     <select id="view" title="切换视角" onchange="var v=this.value, f=document.getElementById('viewer'), c=document.getElementById('scene'); if (v==='play') { f.hidden=true; c.hidden=false; window.dispatchEvent(new Event('resize')); } else { f.hidden=false; c.hidden=true; f.src='http://127.0.0.1:7800'+v; }">
-      <option value="/dungeon/">2.5D 地牢（现代画面 · 只观察）</option>
+      <option value="/dungeon/" selected>2.5D 地牢（现代画面 · 只观察）</option>
       <option value="/third/">第三人称环绕（只观察）</option>
       <option value="/">第一人称（只观察）</option>
-      <option value="play" selected>可操作（自绘 · 点地走）</option>
+      <option value="play">可操作（自绘 · 点地走）</option>
     </select>
     <button id="recenter" title="相机回到 bot（F）">回中</button>
     <button id="claim" title="接管（C）">接管</button>
@@ -26,11 +26,11 @@
   </header>
 
   <main>
-    <!-- 画面：复用 modern-viewer（萌悦/千灯纪那套）——只观察，不控制角色。默认隐藏，切到前三项时显示。 -->
-    <iframe id="viewer" src="http://127.0.0.1:7800/dungeon/" title="现代画面" hidden></iframe>
+    <!-- 画面：复用 modern-viewer（萌悦/千灯纪那套）——项目的门面，默认显示。 -->
+    <iframe id="viewer" src="http://127.0.0.1:7800/dungeon/" title="现代画面"></iframe>
 
-    <!-- 自绘等距画布：可操作（接管后点地走、点实体出菜单）。默认显示。 -->
-    <canvas id="scene"></canvas>
+    <!-- 自绘等距画布：可操作（接管后点地走、点实体出菜单）。下拉切到第 4 项时显示。 -->
+    <canvas id="scene" hidden></canvas>
 
     <aside id="side">
       <h3>在场实体</h3>
@@ -38,8 +38,8 @@
       <h3>事件</h3>
       <pre id="log"></pre>
       <p class="hint">
-        上方是复用来的现代画面（2.5D / 环绕 / 第一人称可切）· 接管后在画面里操作 ·
-        本控制台只负责协议（claim/release/moveTo/lookAt/action/camera）
+        上方是复用来的现代画面（2.5D / 环绕 / 第一人称可切）—— 它只观察，不控制角色。<br>
+        想自己驱动角色：下拉切到「可操作」，点「接管」，再左键点地面走过去；点/长按实体出四动作菜单。
       </p>
     </aside>
   </main>
