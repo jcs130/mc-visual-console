@@ -1,0 +1,24 @@
+{
+  "name": "mc-modern-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minecraft 高级 3D 网页可视化（现代画面）的独立形态：引擎 + 1.21.1 资产 + 宿主桥接 + 点地走/轨迹注入。默认视图即高级 3D。",
+  "license": "SEE LICENSE IN README.md",
+  "keywords": [
+    "minecraft",
+    "mineflayer",
+    "webgl",
+    "viewer",
+    "3d"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "import-assets": "node ../viewer-service/tools/import-modern-viewer.mjs",
+    "patch-avatar": "python ../viewer-service/tools/patch_official_avatar.py",
+    "serve": "powershell -NoProfile -ExecutionPolicy Bypass -File ../viewer-service/serve.ps1"
+  },
+  "comment": "现阶段它是独立化的『目标形态 + 差异清单』：脚本仍指向 viewer-service（那是在跑的那份）。迁移成真正的包需要一次停机切换，见 README 的迁移步骤。"
+}
