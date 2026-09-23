@@ -15,10 +15,21 @@
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "mc-modern-viewer": "./bin/mc-modern-viewer.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "tools",
+    "README.md",
+    "DIFF.md"
+  ],
   "scripts": {
+    "start": "node ./bin/mc-modern-viewer.mjs",
     "import-assets": "node ./tools/import-modern-viewer.mjs",
     "patch-avatar": "python ./tools/patch_official_avatar.py",
     "serve": "powershell -NoProfile -ExecutionPolicy Bypass -File ../viewer-service/serve.ps1"
   },
-  "comment": "这个包就是『在跑的那份』：viewer-service/server.mjs 直接从这里加载桥接，资产在本包 assets/（派生资源不入库，用 import-assets 自备）。仅剩发布一步待用户确认，见 README 的迁移状态。"
+  "comment": "这个包就是『在跑的那份』：viewer-service/server.mjs 从这里加载桥接，assets/ 放派生资源（不入库，用 import-assets 自备）。bin/ 的启动器让它能脱离那个宿主单独起。发布前需用户确认资产随包分发，见 docs/PUBLISHING.md。"
 }
