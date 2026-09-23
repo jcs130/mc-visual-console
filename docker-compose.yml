@@ -10,7 +10,11 @@
 
 services:
   viewer:
-    build: ./viewer-service
+    # 上下文必须是仓库根：server.mjs 要 import ../packages/modern-viewer/、控制台页要 ../client/
+    # （见 viewer-service/Dockerfile 顶部说明）。构建前先在宿主机跑 `corepack pnpm build:client`。
+    build:
+      context: .
+      dockerfile: viewer-service/Dockerfile
     image: mc-visual-console-viewer:dev
     container_name: mc-visual-console-viewer
     ports:

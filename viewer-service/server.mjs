@@ -292,6 +292,45 @@ const http = createServer((req, res) => {
     if (serveClientFile(res, url.slice('/assets/'.length))) return
   }
 
+  // ③ 协议文档里写的兜底命令通道（无 WS 时用；Cortico 的 World 扩展就走这里）。
+  // 与 WS 完全同一套 handle()，因此 HOLDER_ONLY 的接管权校验也在 ⇒ HTTP 调用者要先 claim。
+  // HTTP 没有会话语义：按来源地址给一个稳定伪 session（同一来源 = 同一持有者）。
+  if (url === '/command' && req.method === 'POST') {
+    let body = ''
+    req.on('data', (chunk) => {
+      body += chunk
+      if (body.length > 64 * 1024) req.destroy()
+    })
+    req.on('end', () => {
+      let cmd
+      try {
+        cmd = JSON.parse(body)
+      } catch {
+        res.writeHead(400, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ code: 'bad_request', message: '不是合法 JSON' }))
+        return
+      }
+      if (!cmd || typeof cmd.type !== 'string') {
+        res.writeHead(400, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ code: 'bad_request', message: '命令缺少 type' }))
+        return
+      }
+      const frames = []
+      const pseudoWs = { readyState: 1, OPEN: 1, send: (text) => frames.push(text) }
+      const pseudoSession = { id: `http:${req.socket?.remoteAddress ?? 'local'}` }
+      Promise.resolve(handle(pseudoWs, pseudoSession, cmd))
+        .then(() => {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({ ok: true, frames: frames.map((f) => { try { return JSON.parse(f) } catch { return f } }) }))
+        })
+        .catch((err) => {
+          res.writeHead(500, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, code: 'internal', message: err?.message ?? String(err) }))
+        })
+    })
+    return
+  }
+
   if (url === '/health' || url === '/state') {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify(url === '/health' ? opus() : snapshot()))

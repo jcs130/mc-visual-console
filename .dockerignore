@@ -1,0 +1,15 @@
+# 构建上下文 = 仓库根（见 viewer-service/Dockerfile 顶部说明）。
+# 该进镜像的：client/（组件页与它的构建产物）、packages/modern-viewer/（源码 + 派生资产）、viewer-service/（宿主）。
+# 不该进的：依赖、日志、本地备份、以及别的宿主。
+
+**/node_modules
+**/*.log
+**/*.bak-*
+.git
+.vitest
+dist
+hosts/
+docs/
+fixtures/
+test/
+tools/
