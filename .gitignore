@@ -6,15 +6,14 @@ dist/
 client/app.js
 viewer-service/node_modules/
 viewer-service/package-lock.json
-viewer-service/modern-viewer/mod-assets/
-viewer-service/modern-viewer/character-assets/
-viewer-service/modern-viewer/npc-portraits/
-viewer-service/modern-viewer/*.js
-viewer-service/modern-viewer/*.wasm
+packages/modern-viewer/assets/mod-assets/
+packages/modern-viewer/assets/character-assets/
+packages/modern-viewer/assets/npc-portraits/
+packages/modern-viewer/assets/*.js
+packages/modern-viewer/assets/*.wasm
 
-# 例外：modern-viewer/ 下的 *.js 一律是派生资源，唯独这两份是我们自己写的源码。
-!viewer-service/modern-viewer/mc-control.js
+# 例外：assets/ 下的 *.js 一律是派生资源（引擎 / mesher / worker），唯独这份是我们自己写的注入脚本。
+!packages/modern-viewer/assets/mc-control.js
 
-# 派生资源的本地备份（改了 bundle/桥接前先备份，但不入库）
-viewer-service/modern-viewer/*.bak-*
-
+# 派生资源的本地备份（改 bundle/桥接前先备份，但不入库）
+packages/modern-viewer/assets/*.bak-*

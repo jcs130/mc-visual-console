@@ -2,7 +2,7 @@
 """把现代画面（萌悦/千灯纪 modern-viewer）的默认角色从「灯守系列」改成「我的世界官方角色」。
 
 背景（2026-09-23 读源码定谳，见 docs/OFFICIAL-AVATAR.md）：
-  · 画面角色由**两套各自独立的档案表**决定，都在 `viewer-service/modern-viewer/modern-viewer.js`
+  · 画面角色由**两套各自独立的档案表**决定，都在 `packages/modern-viewer/assets/modern-viewer.js`
     （该文件是派生资源，被 .gitignore 忽略；本脚本负责在解压后把它改对）：
       模型表 r4 → TP   默认 `var a4="ember-wayfarer"`（星火旅人 · 日系 VROID 人形）
       皮肤表 EP → IP   默认 `var e4="lantern-warden"`（灯守正装；四档 texture 都是内嵌 base64）
@@ -36,7 +36,7 @@ import sys
 
 DEFAULT_BUNDLE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    'modern-viewer', 'modern-viewer.js',
+    'assets', 'modern-viewer.js',
 )
 TEX = '/textures/1.21.1/entity/player/'
 BACKUP_SUFFIX = '.bak-official-avatar'

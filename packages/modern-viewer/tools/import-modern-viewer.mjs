@@ -2,18 +2,18 @@
 /**
  * 一键导入「现代画面」的派生资源（不入库的那部分）。
  *
- * 为什么需要这个脚本：viewer-service/modern-viewer/ 里入库的只有**我们自己写的**桥接与注入脚本；
+ * 为什么需要这个脚本：packages/modern-viewer/src/ 里入库的只有**我们自己写的**桥接与注入脚本；
  * 真正渲染世界的那套引擎（modern-viewer.js ~11MB、mesher/worker/wasm、minecraft-renderer.js）
  * 与资产包（mod-assets/ ~12MB）来自**千灯纪那套现代画面**（萌悦/千灯纪自有项目），
  * 属于派生资源 —— 不入库是刻意的，也意味着克隆下来跑不了画面，必须由持有者自备。
  *
  * 用法：
- *   node viewer-service/tools/import-modern-viewer.mjs <千灯纪源码目录>
- *   例：node viewer-service/tools/import-modern-viewer.mjs D:\\Projects\\QiandengJi\\vendor\\modern-viewer
+ *   node packages/modern-viewer/tools/import-modern-viewer.mjs <千灯纪源码目录>
+ *   例：node packages/modern-viewer/tools/import-modern-viewer.mjs D:\\Projects\\QiandengJi\\vendor\\modern-viewer
  *
  * 导入之后：
  *   1) node viewer-service/tools/... ✗ 不需要；接着跑皮肤补丁（可选）：
- *      python viewer-service/tools/patch_official_avatar.py
+ *      python packages/modern-viewer/tools/patch_official_avatar.py
  *   2) 起服务：powershell -File viewer-service/serve.ps1   （Windows）
  *      或 docker compose up（viewer-service/Dockerfile，Linux 侧 canvas 工具链）
  */
@@ -22,7 +22,7 @@ import { dirname, join, resolve, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const target = resolve(here, '..', 'modern-viewer')
+const target = resolve(here, '..', 'assets')
 
 /** 引擎与静态资源：缺一个，画面就起不来或只剩天空。 */
 const FILES = [
@@ -69,8 +69,8 @@ function copyDir(from, to, depth = 0) {
 function main() {
   const src = process.argv[2]
   if (!src) {
-    console.error('用法：node viewer-service/tools/import-modern-viewer.mjs <千灯纪 modern-viewer 源码目录>')
-    console.error('例：  node viewer-service/tools/import-modern-viewer.mjs D:\\Projects\\QiandengJi\\vendor\\modern-viewer')
+    console.error('用法：node packages/modern-viewer/tools/import-modern-viewer.mjs <千灯纪 modern-viewer 源码目录>')
+    console.error('例：  node packages/modern-viewer/tools/import-modern-viewer.mjs D:\\Projects\\QiandengJi\\vendor\\modern-viewer')
     process.exit(2)
   }
   const from = resolve(src)
@@ -113,7 +113,7 @@ function main() {
     console.log('')
   }
   console.log('导入完成（' + ok + ' 项）。接着：')
-  console.log('  1) 可选：python viewer-service/tools/patch_official_avatar.py   # 默认角色换成原版方块人/史蒂夫')
+  console.log('  1) 可选：python packages/modern-viewer/tools/patch_official_avatar.py   # 默认角色换成原版方块人/史蒂夫')
   console.log('  2) 起服务：powershell -File viewer-service/serve.ps1            # 或 docker compose up')
   console.log('  3) 检查：curl http://127.0.0.1:7800/dungeon/  → 200；curl http://127.0.0.1:7801/health → {"ok":true,…}')
 }

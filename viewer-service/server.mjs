@@ -15,7 +15,7 @@
  */
 
 import { createRequire } from 'node:module'
-import { startModernViewer } from './modern-viewer/mc-modern-viewer.mts'
+import { startModernViewer } from '../packages/modern-viewer/src/mc-modern-viewer.mts'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import { readFileSync } from 'node:fs'

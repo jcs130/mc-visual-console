@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
-const require = createRequire(import.meta.url)
+// 同 mc-modern-viewer.mts：依赖装在宿主 viewer-service/ 里，require 锚到那儿。
+const require = createRequire(new URL('../../../viewer-service/deps-anchor.js', import.meta.url))
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 const safeId = value => Number.isInteger(value) && value >= 0 && value <= 1_000_000
 const FALLBACKS = [['trapdoor','oak_trapdoor'],['fence_gate','oak_fence_gate'],['door','oak_door'],['stair','oak_stairs'],['slab','oak_slab'],['fence','oak_fence'],['wall','cobblestone_wall'],['lamp','glowstone'],['lantern','glowstone'],['torch','glowstone'],['glass','glass'],['window','glass_pane'],['shelf','bookshelf'],['log','oak_log'],['plank','oak_planks']]

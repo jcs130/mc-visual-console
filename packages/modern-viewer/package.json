@@ -16,9 +16,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "import-assets": "node ../viewer-service/tools/import-modern-viewer.mjs",
-    "patch-avatar": "python ../viewer-service/tools/patch_official_avatar.py",
+    "import-assets": "node ./tools/import-modern-viewer.mjs",
+    "patch-avatar": "python ./tools/patch_official_avatar.py",
     "serve": "powershell -NoProfile -ExecutionPolicy Bypass -File ../viewer-service/serve.ps1"
   },
-  "comment": "现阶段它是独立化的『目标形态 + 差异清单』：脚本仍指向 viewer-service（那是在跑的那份）。迁移成真正的包需要一次停机切换，见 README 的迁移步骤。"
+  "comment": "这个包就是『在跑的那份』：viewer-service/server.mjs 直接从这里加载桥接，资产在本包 assets/（派生资源不入库，用 import-assets 自备）。仅剩发布一步待用户确认，见 README 的迁移状态。"
 }

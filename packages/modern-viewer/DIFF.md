@@ -15,7 +15,7 @@
 |---|---|
 | `mc-modern-viewer.mts` 主体 | 双 Socket.IO 命名空间数据桥 · WorldView 区块流 · 实体/化身状态/特效序列化 · stateId 归一化 |
 | `viewer-stream.mts` · `viewer-state-map.mts` · `observer-inventory.mts` | 同上，均未改 |
-| 引擎与资产 | 由 `viewer-service/tools/import-modern-viewer.mjs` 从千灯纪源码目录导入（**派生资源，刻意不入库**） |
+| 引擎与资产 | 由 `packages/modern-viewer/tools/import-modern-viewer.mjs` 从千灯纪源码目录导入（**派生资源，刻意不入库**） |
 
 ## 二、千灯纪**自己**裁掉的部分（他们的取舍，不是我们改的）
 

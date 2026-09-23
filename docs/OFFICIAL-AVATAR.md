@@ -3,7 +3,7 @@
 > 落定 2026-09-23。起因：用户要求「默认角色贴图不要灯守，换成我的世界官方角色」。
 > 这份文档记录**读源码得到的真实机制**与**可复现的改法**，避免下次重新踩坑。
 
-## 一、机制（全部来自 `viewer-service/modern-viewer/modern-viewer.js` 源码，非推测）
+## 一、机制（全部来自 `packages/modern-viewer/assets/modern-viewer.js` 源码，非推测）
 
 画面里的"自己"由**两套各自独立的档案表**决定，都在上面那份派生 bundle 里：
 
@@ -34,8 +34,8 @@
 bundle 是派生资源、不入库，所以**改法以脚本形式入库**：
 
 ```bash
-python viewer-service/tools/patch_official_avatar.py --check   # 先看现状
-python viewer-service/tools/patch_official_avatar.py           # 打补丁（幂等，自动备份）
+python packages/modern-viewer/tools/patch_official_avatar.py --check   # 先看现状
+python packages/modern-viewer/tools/patch_official_avatar.py           # 打补丁（幂等，自动备份）
 ```
 
 它做两件事：

@@ -13,9 +13,12 @@ import { fileURLToPath } from 'node:url'
 import { observerEquipmentSlot, observerItemIdentity } from './observer-inventory.mts'
 import { createViewerChunkStream, createViewerEntityStream } from './viewer-stream.mts'
 import { loadViewerBlockMapping, identityViewerBlockMapping } from './viewer-state-map.mts'
-import { createViewerStaticResponder } from '../admin/viewer-static.mjs'
+import { createViewerStaticResponder } from './viewer-static.mjs'
 
-const require = createRequire(import.meta.url)
+// 依赖解析锚点：本包 src/ 下没有 node_modules（socket.io / prismarine-viewer / minecraft-data / vec3
+// 都装在宿主 viewer-service/ 里）。所以 require 锚在宿主的目录上，而不是 import.meta.url
+// —— 后者在本包位置下找不到那些包（2026-09-23 迁移后实测：blockAt 用的 vec3 解析失败）。
+const require = createRequire(new URL('../../../viewer-service/deps-anchor.js', import.meta.url))
 let SocketIoServer, minecraftData
 function loadViewerDependencies() {
   SocketIoServer ??= require('socket.io').Server
@@ -23,7 +26,7 @@ function loadViewerDependencies() {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ASSET_ROOT = path.resolve(__dirname, '../modern-viewer') // /app/modern-viewer（Dockerfile COPY）
+const ASSET_ROOT = path.resolve(__dirname, '../assets') // 包内 assets/：引擎、mod-assets、viewer.css、mc-control.js（派生资源不入库）
 
 const MAX_VIEWER_SESSIONS = 2
 const VIEW_DISTANCE_CHUNKS = 3

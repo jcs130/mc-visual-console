@@ -20,26 +20,38 @@
 ## 现在怎么跑（= 在跑的那份 `viewer-service`）
 
 ```bash
-node viewer-service/tools/import-modern-viewer.mjs <千灯纪/vendor/modern-viewer 目录>   # 导入 ①②
-python viewer-service/tools/patch_official_avatar.py                                   # 可选：官方角色
+node packages/modern-viewer/tools/import-modern-viewer.mjs <千灯纪/vendor/modern-viewer 目录>   # 导入 ①②
+python packages/modern-viewer/tools/patch_official_avatar.py                                   # 可选：官方角色
 powershell -File viewer-service/serve.ps1                                              # 起服务
 ```
 
 两个口：**7800** 画面（`/` 第一人称 · `/third/` 环绕 · **`/dungeon/` 2.5D**）· **7801** 协议与控制台页（自绘可操作台）。
 独立页可选：`?diagnostic` 会让状态行带诊断信息。
 
-## 迁移步骤（把这个骨架变成真的独立包）
+## 迁移状态：**已完成**（2026-09-23，停机切换一次）
 
-现在的 `viewer-service/` 是**在跑的那份**（它同时兼任"接入千灯纪"和"我们的协议/控制台"两件事）。
-要变成真正独立的 `mc-modern-viewer` 包，按下面做（**需要一次停机切换**，单独安排）：
+**这个包现在就是"在跑的那份"** —— `viewer-service/server.mjs` 直接从 `packages/modern-viewer/src/` 加载桥接，
+运行时资产在本包 `assets/`（`ASSET_ROOT = ../assets`）。切换后实测：
 
-1. 把 `viewer-service/modern-viewer/` 的**入库文件**（4 个 `.mts` + `mc-control.js` + `viewer.css` + `.meta.json`）搬到本包的 `src/`；
-2. 把 `viewer-service/server.mjs` 里**与现代画面有关的那半**（`startModernViewer` 调用、`/mc-control` 之外的部分）
-   收进本包的启动器；`server.mjs` 的协议/控制台那半留在原处（那是另一个包的事）；
-3. `import-modern-viewer.mjs` 与 `patch_official_avatar.py` 移进本包 `tools/`；
-4. 起停脚本 `serve.ps1` 移进本包，计划任务改指向它；
-5. 本包 `private: true` 改为 `false` 并补 `files` —— **发布前需用户确认**：
-   ①②是千灯纪自有项目的派生资源，随包分发要他自己拍板（见 `DIFF.md` 第三节）。
+```
+http://127.0.0.1:7800/dungeon/        → 200  13077 B      （画面）
+http://127.0.0.1:7800/mc-control?v=1  → 200  {"ready":true}（控制口）
+http://127.0.0.1:7800/mc-control.js   → 200  10517 B      （★注入脚本从 assets/ 读到 ⇒ ASSET_ROOT 正确）
+http://127.0.0.1:7801/health          → 200                （协议）
+http://127.0.0.1:7801/                → 200  2369 B        （控制台页）
+service.err.log 只有 punycode 警告，无路径错
+```
+
+- ✅ **入库文件**已搬进 `src/`（4 个 `.mts` + `viewer-static.mjs`）；运行时资产进 `assets/`
+  （含我们写的 `mc-control.js`，`.gitignore` 里为它留了 `!` 例外）
+- ✅ **入口已改**：`server.mjs` 从本包加载。**未拆进程**——它仍同时宿主"画面"与"协议/控制台"两半，
+  拆成两个进程/两个包留待以后（那样协议那半可以独立发布）
+- ✅ 两个工具进 `tools/`；起停脚本仍在 `viewer-service/serve.ps1`（它只设环境变量再起 `server.mjs`）
+- ☐ **仅剩发布一步**：`private: true` → `false` 并补 `files` —— **发布前需用户确认**
+  （①引擎②资产是千灯纪自有项目的派生资源，随包分发要他自己拍板，见 `DIFF.md`）
+
+
+（切换前的 5 步计划已全部执行完，描述见上。）
 
 ## 与千灯纪原版的差异
 

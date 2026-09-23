@@ -31,8 +31,8 @@ corepack pnpm dev:demo          # 假 bot 演示 → http://127.0.0.1:7799/
 它们是**千灯纪那套现代画面**的派生资源（自有项目，非本仓 IP，见 `.gitignore` 的两条 `*.js` / `mod-assets/`）。
 
 ```bash
-node viewer-service/tools/import-modern-viewer.mjs <千灯纪/vendor/modern-viewer 目录>
-python viewer-service/tools/patch_official_avatar.py     # 可选：默认角色换成原版方块人/史蒂夫
+node packages/modern-viewer/tools/import-modern-viewer.mjs <千灯纪/vendor/modern-viewer 目录>
+python packages/modern-viewer/tools/patch_official_avatar.py     # 可选：默认角色换成原版方块人/史蒂夫
 powershell -File viewer-service/serve.ps1                # Windows；Linux 走 docker compose
 ```
 
@@ -44,8 +44,8 @@ powershell -File viewer-service/serve.ps1                # Windows；Linux 走 d
 
 | | |
 |---|---|
-| **有** | 接缝协议与实现（`src/`）· 自绘 2.5D 操作台（`client/`）· 假 bot 与测试（`fixtures/` `test/`）· 现代画面的桥接与注入脚本（`viewer-service/modern-viewer/*.mts`、`mc-control.js`）· Cortico World 扩展（`hosts/cortico/`）· 文档（`docs/`） |
-| **没有** | 画面引擎与资产包（`viewer-service/modern-viewer/*.js`、`mod-assets/`，**派生资源**，用上面的导入脚本自备）· 构建产物 `client/app.js`（`pnpm build:client` 生成） |
+| **有** | 接缝协议与实现（`src/`）· 自绘 2.5D 操作台（`client/`）· 假 bot 与测试（`fixtures/` `test/`）· 现代画面的桥接与注入脚本（`packages/modern-viewer/src/*.mts`、`mc-control.js`）· Cortico World 扩展（`hosts/cortico/`）· 文档（`docs/`） |
+| **没有** | 画面引擎与资产包（`packages/modern-viewer/assets/*.js`、`mod-assets/`，**派生资源**，用上面的导入脚本自备）· 构建产物 `client/app.js`（`pnpm build:client` 生成） |
 
 ## 发布形态
 
