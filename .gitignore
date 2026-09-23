@@ -10,6 +10,9 @@ viewer-service/modern-viewer/mod-assets/
 viewer-service/modern-viewer/*.js
 viewer-service/modern-viewer/*.wasm
 
+# 例外：modern-viewer/ 下的 *.js 一律是派生资源，唯独这两份是我们自己写的源码。
+!viewer-service/modern-viewer/mc-control.js
+
 # 派生资源的本地备份（改了 bundle/桥接前先备份，但不入库）
 viewer-service/modern-viewer/*.bak-*
 
