@@ -29,7 +29,24 @@ schtasks /create /tn mc-webplay /tr "powershell -NoProfile -ExecutionPolicy Bypa
 schtasks /run /tn mc-webplay
 ```
 
+## 资源包：什么时候必须、什么时候不用
+
+**贴图是必需的** —— 但绝大多数情况下**不需要你提供**：
+
+| 情形 | 要不要自备资源包 | 你会看到什么 |
+|---|---|---|
+| **原版 / Paper / Spigot** 等标准服 | **不用** —— 包内自带一份 `public/textures/`、`public/blocksStates/`，并会按你选的版本去 CDN（`cdn.jsdelivr.net/npm/…`）拉 `minecraft-assets` | 正常渲染 |
+| **断网 / CDN 取不到** | 不用，但拿不到贴图 | 方块显示成**紫黑格或纯色块** |
+| **改装服（带 mod 方块）** | **必须自备** —— mod 的模型与贴图不在原版资产里 | 同上：mod 方块是紫黑/占位 |
+
+**自判口诀**：方块**有形状但贴图不对**（紫黑格/纯色）⇒ 资源问题；**整屏空、连不上** ⇒ 连接或版本问题，与资源包无关。
+
+> 给改装服配资源包：`prismarine-web-client` 本身不开放"自定义资产目录"的开关。
+> 要给 mod 服做资源包，用仓库里的 `viewer-service/`（它带 `mod-assets/`，同名覆盖即可）或 `docs/EXTENSIONS.md`
+> 里定义的 `packs/<包>/` 形态 —— 那是我们自己的渲染层，能改。
+
 ## 两个必须知道的坑
+
 
 1. **`npm install` 会报 `patchPackages.js` 缺模块** —— 那是上游 postinstall 的打包缺陷（它只为 webpack
    开发构建准备补丁，而发布包**已带** `public/index.js` 约 30 MB 的构建产物）。本目录 `.npmrc` 设了
