@@ -118,7 +118,16 @@ function snapshot() {
 
 function broadcast(msg) {
   const text = JSON.stringify(msg)
-  for (const ws of sessions) if (ws.readyState === ws.OPEN) ws.send(text)
+  // sessions 是 Map<ws, session>：必须遍历 keys，否则遍历出来的是 [ws, session] 条目，
+  // 条目的 readyState/OPEN 都是 undefined（判断恒真），撞上 .send 抛 TypeError，
+  // 未捕获直接结束进程（2026-09-23 实测定案：任何一条 :7801 连接接上就炸）。
+  for (const ws of sessions.keys()) {
+    try {
+      if (ws.readyState === 1) ws.send(text)
+    } catch {
+      sessions.delete(ws) // 单个连接坏掉只摘掉它，不牵连整条服务
+    }
+  }
 }
 
 function setHolder(next, reason) {
