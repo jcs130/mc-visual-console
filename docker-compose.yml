@@ -14,8 +14,11 @@ services:
     image: mc-visual-console-viewer:dev
     container_name: mc-visual-console-viewer
     ports:
-      - "7800:7800"   # prismarine-viewer 的画面（浏览器打开它）
-      - "7801:7801"   # 本仓库的协议（/health /state + WS）
+      # 默认只绑回环：这两个口都能驱动玩家（7801 允许 claim 后直接下令，7800 的画面可点地走），
+      # 对 0.0.0.0 发布等于把控制权交给整个局域网（2026-09-23 审查指出）。
+      # 确实要远程看，请显式改成 "7800:7800" 并自行加鉴权/反代。
+      - "127.0.0.1:7800:7800"   # prismarine-viewer 的画面（浏览器打开它）
+      - "127.0.0.1:7801:7801"   # 本仓库的协议（/health /state + WS）
     environment:
       MC_HOST: ${MC_HOST:-host.docker.internal}
       MC_PORT: ${MC_PORT:-25702}

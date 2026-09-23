@@ -389,6 +389,14 @@ export function attach(bot: ViewerBot, options: ViewerOptions = {}): Viewer {
           res.end(JSON.stringify({ code: 'bad_request', message: '不是合法 JSON' }))
           return
         }
+        // 形状校验必须在读任何字段之前：body 为 `null` / `[]` / `{}` 时 JSON.parse 会成功，
+        // 而 handle() 里的 `HOLDER_ONLY.has(cmd.type)` 在它自己的 try 之外 —— 不拦就抛未捕获异常，
+        // 直接结束进程（2026-09-23 审查复现：POST /command 发 null → 进程以 1 退出）。
+        if (!cmd || typeof (cmd as { type?: unknown }).type !== 'string') {
+          res.writeHead(400, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({ code: 'bad_request', message: '命令缺少 type' }))
+          return
+        }
         // HTTP 通道没有会话语义，占位一个伪 session 以便复用同一套校验
         const fake: Session = { socket: { readyState: 1, send: (s: string) => res.write(s) } as unknown as WebSocket, id: 'http' }
         void handle(fake, cmd).finally(() => res.end())

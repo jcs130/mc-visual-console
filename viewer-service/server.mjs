@@ -324,6 +324,8 @@ wss.on('connection', (ws) => {
   ws.on('error', () => {})
 })
 
-http.listen(PROTOCOL_PORT, '0.0.0.0', () => {
+// 协议口默认只绑回环：它允许 claim 后直接驱动玩家，对外发布等于把控制权交出去。
+// 要暴露请显式设 PROTOCOL_HOST（2026-09-23 审查指出端口暴露问题）。
+http.listen(PROTOCOL_PORT, process.env.PROTOCOL_HOST ?? '127.0.0.1', () => {
   console.log(`[viewer-service] 协议已挂在 :${PROTOCOL_PORT}/（/health /state + WS）`)
 })

@@ -1095,6 +1095,21 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
         if (req.method === 'GET') {
           send(200, 'application/json; charset=utf-8', JSON.stringify({ ready: Boolean(bot?.entity) })); return
         }
+        // 权限闸：这个口会直接驱动 bot（求交 + 寻路）⇒ 必须与协议侧的接管权一致，
+        // 否则任何人点到画面都会让角色走，等于绕过接管（2026-09-23 审查指出）。
+        // 直接问同进程的另一半（协议侧 /state）现在有没有持有者；异常时**拒绝**（fail-closed）。
+        try {
+          const protocolPort = Number(process.env.PROTOCOL_PORT ?? 7801)
+          const res = await fetch(`http://127.0.0.1:${protocolPort}/state`, { signal: AbortSignal.timeout(1500) })
+          const snap = await res.json()
+          if (!snap?.holder) {
+            send(403, 'application/json; charset=utf-8',
+              JSON.stringify({ ok: false, error: '未接管：先在控制台（:7801）申请接管，再在画面里点地走' })); return
+          }
+        } catch {
+          send(503, 'application/json; charset=utf-8',
+            JSON.stringify({ ok: false, error: '接管状态未知（协议侧不可达）⇒ 已拒绝操作' })); return
+        }
         const body = await readBody(req)
         try {
           const msg = JSON.parse(body || '{}')
@@ -1592,7 +1607,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   }
   return new Promise((resolve, reject) => {
     server.once('error', reject)
-    server.listen(port, '0.0.0.0', () => {
+    server.listen(port, process.env.MC_VIEWER_HOST ?? '127.0.0.1', () => {
       console.log(`[modern-viewer] 现代画面服务 on :${port}（/ 第一人称 · /third/ 环绕 · /dungeon/ 2.5D）`)
       resolve({ close, health })
     })
