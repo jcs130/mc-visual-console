@@ -1,0 +1,14 @@
+{
+  "name": "mc-webplay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One-command entry: play any standard Minecraft server in a web page. Thin wrapper around prismarine-web-client (MIT, PrismarineJS) — no code copied, no derived assets.",
+  "license": "MIT",
+  "scripts": {
+    "start": "node node_modules/prismarine-web-client/server.js 8080",
+    "postinstall": "node -e \"console.log('如果安装报 patchPackages 缺模块：用 npm install --ignore-scripts（.npmrc 已默认开启）')\""
+  },
+  "dependencies": {
+    "prismarine-web-client": "^1.6.0"
+  }
+}
