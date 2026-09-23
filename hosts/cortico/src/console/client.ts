@@ -32,7 +32,7 @@ interface Frame {
   snapshot?: Snapshot;
   holder?: string | null;
   reason?: string;
-  delta?: { bot?: Snapshot['bot']; entities?: Snapshot['entities']; blocks?: Snapshot['blocks'] };
+  delta?: { bot?: Snapshot['bot']; entities?: Snapshot['entities']; blocks?: Snapshot['blocks']; removed?: Array<string | number>; removedBlocks?: string[] };
   seq?: number;
   level?: string;
   text?: string;
@@ -55,8 +55,33 @@ function reduceFrame(state: SceneState, frame: Frame): SceneState {
     case 'delta': {
       const merged: Snapshot = { ...(state.snapshot ?? {}) };
       if (frame.delta?.bot) merged.bot = { ...(merged.bot ?? {}), ...frame.delta.bot };
-      if (frame.delta?.entities) merged.entities = frame.delta.entities;
-      if (frame.delta?.blocks) merged.blocks = frame.delta.blocks;
+      // 增量语义：delta.entities 是「变化项」⇒ 按 id 合并（整表替换会让画面只剩变化的那几个实体）
+      if (frame.delta?.entities) {
+        const list = [...(merged.entities ?? [])];
+        for (const e of frame.delta.entities) {
+          const i = list.findIndex((k) => String(k.id) === String(e.id));
+          if (i >= 0) list[i] = e; else list.push(e);
+        }
+        merged.entities = list;
+      }
+      // 同上：按坐标 upsert；name 为 air 表示该格没了
+      if (frame.delta?.blocks) {
+        const list = [...(merged.blocks ?? [])];
+        for (const b of frame.delta.blocks) {
+          const i = list.findIndex((k) => k.pos[0] === b.pos[0] && k.pos[1] === b.pos[1] && k.pos[2] === b.pos[2]);
+          if (b.name === 'air') { if (i >= 0) list.splice(i, 1); continue }
+          if (i >= 0) list[i] = b; else list.push(b);
+        }
+        merged.blocks = list;
+      }
+      // 删除项：服务端明确列了没了的东西，客户端要真的删掉
+      for (const id of frame.delta?.removed ?? []) {
+        merged.entities = (merged.entities ?? []).filter((k) => String(k.id) !== String(id));
+      }
+      for (const key of frame.delta?.removedBlocks ?? []) {
+        const parts = key.split(",").map(Number);
+        merged.blocks = (merged.blocks ?? []).filter((k) => !(k.pos[0] === parts[0] && k.pos[1] === parts[1] && k.pos[2] === parts[2]));
+      }
       return { ...state, snapshot: merged, connected: true, note: '', seq: frame.seq ?? state.seq, lastAt: Date.now() };
     }
     case 'holder':
