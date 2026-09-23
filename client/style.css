@@ -69,10 +69,13 @@ main {
 
 #scene { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
-/* 画面与自绘画布共用同一个格子（同时只显示一个，另一个是 hidden），侧栏固定在右列。
+/* 画面与自绘画布共用同一个格子（同时只显示一个），侧栏固定在右列。
    原先三个子元素没有显式定位，网格自动排布把 canvas 塞进了 300px 的侧栏列并把它撑高
-   （实测 965×1488），世界被画到可视区下面 ⇒「接管之后点地没反应」（2026-09-23 定案）。 */
+   （实测 965×1488），世界被画到可视区下面 ⇒「接管之后点地没反应」（2026-09-23 定案）。
+   注意：#scene 的 display:block 会压过 [hidden] 的 UA 规则（[hidden]{display:none}），
+   所以必须显式写 [hidden]，否则"隐藏"的画布照样显示并盖住现代画面（同一天的第二个坑）。 */
 #viewer, #scene { grid-column: 1; grid-row: 1; }
+#viewer[hidden], #scene[hidden] { display: none; }
 #side { grid-column: 2; grid-row: 1; }
 
 #side {
