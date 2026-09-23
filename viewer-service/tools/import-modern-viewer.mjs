@@ -37,8 +37,8 @@ const FILES = [
   'viewer.css',
 ]
 
-/** 目录：mod-assets 是资产包（12MB），character-assets 是可选的角色模型。 */
-const DIRS = ['mod-assets', 'character-assets']
+/** 目录：mod-assets 是资产包（12MB）；character-assets 是角色模型；npc-portraits 是 NPC 立绘（都可选）。 */
+const DIRS = ['mod-assets', 'character-assets', 'npc-portraits']
 
 function human(bytes) {
   return bytes > 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : (bytes / 1024).toFixed(1) + ' KB'

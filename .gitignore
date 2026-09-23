@@ -7,6 +7,8 @@ client/app.js
 viewer-service/node_modules/
 viewer-service/package-lock.json
 viewer-service/modern-viewer/mod-assets/
+viewer-service/modern-viewer/character-assets/
+viewer-service/modern-viewer/npc-portraits/
 viewer-service/modern-viewer/*.js
 viewer-service/modern-viewer/*.wasm
 
