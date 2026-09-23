@@ -15,10 +15,10 @@
     <span id="counts" class="dim">0 实体 · 0 方块</span>
     <span id="zoom" class="dim">100%</span>
     <select id="view" title="切换视角" onchange="var v=this.value, f=document.getElementById('viewer'), c=document.getElementById('scene'); if (v==='play') { f.hidden=true; c.hidden=false; window.dispatchEvent(new Event('resize')); } else { f.hidden=false; c.hidden=true; f.src='http://127.0.0.1:7800'+v; }">
-      <option value="/dungeon/">2.5D 地牢</option>
-      <option value="/third/">第三人称环绕</option>
-      <option value="/">第一人称</option>
-      <option value="play">可操作（自绘 · 点地走）</option>
+      <option value="/dungeon/">2.5D 地牢（现代画面 · 只观察）</option>
+      <option value="/third/">第三人称环绕（只观察）</option>
+      <option value="/">第一人称（只观察）</option>
+      <option value="play" selected>可操作（自绘 · 点地走）</option>
     </select>
     <button id="recenter" title="相机回到 bot（F）">回中</button>
     <button id="claim" title="接管（C）">接管</button>
@@ -26,11 +26,11 @@
   </header>
 
   <main>
-    <!-- 画面：复用 modern-viewer（萌悦/千灯纪那套）。它只允许白名单 origin 内嵌 ⇒ 必须从这里 iframe。 -->
-    <iframe id="viewer" src="http://127.0.0.1:7800/dungeon/" title="现代画面"></iframe>
+    <!-- 画面：复用 modern-viewer（萌悦/千灯纪那套）——只观察，不控制角色。默认隐藏，切到前三项时显示。 -->
+    <iframe id="viewer" src="http://127.0.0.1:7800/dungeon/" title="现代画面" hidden></iframe>
 
-    <!-- 兜底：没有 modern-viewer 时回到自绘等距画布（默认隐藏） -->
-    <canvas id="scene" hidden></canvas>
+    <!-- 自绘等距画布：可操作（接管后点地走、点实体出菜单）。默认显示。 -->
+    <canvas id="scene"></canvas>
 
     <aside id="side">
       <h3>在场实体</h3>

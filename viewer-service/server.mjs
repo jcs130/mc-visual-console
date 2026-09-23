@@ -129,6 +129,44 @@ let holderTimer = null
 let dirty = true
 const sessions = new Map()
 
+// 自绘画布（控制台第四视角）的「点地走」需要方块：客户端 resolvePick 靠 blocks 找落点，
+// 没有方块就只能悬停实体、点不动地面。协议原先 blocks 恒为空（画面交给 prismarine-viewer 出），
+// 于是「接管之后点地无反应」（2026-09-23 用户反馈定位）。这里补一份可视范围内的地面块：
+// 每个菱形柱取从脚上 2 格往下最先遇到的非空气块（＝看到的是顶面）。
+const Vec3 = (() => {
+  try {
+    return require('vec3')
+  } catch {
+    return null
+  }
+})()
+const SURFACE_ABOVE = 2
+const SURFACE_BELOW = 6
+let surfaceCache = { key: '', blocks: [] }
+let lastSentSurfaceKey = ''
+
+function surfaceBlocks() {
+  const c = bot.entity?.position
+  if (!c || !Vec3) return []
+  const cx = Math.floor(c.x), cy = Math.floor(c.y), cz = Math.floor(c.z)
+  const key = `${cx},${cy},${cz},${VIEW_DISTANCE}`
+  if (key === surfaceCache.key) return surfaceCache.blocks
+  const out = []
+  for (let dx = -VIEW_DISTANCE; dx <= VIEW_DISTANCE; dx++) {
+    for (let dz = -VIEW_DISTANCE; dz <= VIEW_DISTANCE; dz++) {
+      if (Math.abs(dx) + Math.abs(dz) > VIEW_DISTANCE) continue
+      for (let dy = SURFACE_ABOVE; dy >= -SURFACE_BELOW; dy--) {
+        const b = bot.blockAt(new Vec3(cx + dx, cy + dy, cz + dz))
+        if (!b || b.name === 'air' || b.boundingBox === 'empty') continue
+        out.push({ pos: [cx + dx, cy + dy, cz + dz], name: b.name })
+        break
+      }
+    }
+  }
+  surfaceCache = { key, blocks: out }
+  return out
+}
+
 const opus = () => ({
   ok: true,
   bot: MC_USERNAME,
@@ -154,7 +192,8 @@ function snapshot() {
     holder,
     viewDistance: VIEW_DISTANCE,
     entities,
-    blocks: [],   // 画面由 prismarine-viewer 出；协议里不再重复传方块
+    // 自绘画布的「点地走」要靠方块落点（见 surfaceBlocks 注释）。
+    blocks: surfaceBlocks(),
     budget: DEFAULT_BUDGET,
   }
 }
@@ -185,7 +224,14 @@ setInterval(() => {
   if (!dirty) return
   dirty = false
   seq += 1
-  broadcast({ type: 'delta', seq, bot: snapshot().bot })
+  const msg = { type: 'delta', seq, bot: snapshot().bot }
+  // 脚下的地面块变了（走动了）才带一份；没变不重复发，省带宽。
+  const surface = surfaceBlocks()
+  if (surfaceCache.key !== lastSentSurfaceKey) {
+    lastSentSurfaceKey = surfaceCache.key
+    msg.blocks = surface
+  }
+  broadcast(msg)
 }, Math.round(1000 / DEFAULT_BUDGET.stateHz))
 
 for (const ev of ['move', 'physicsTick', 'entityMoved', 'entitySpawned', 'entityGone', 'health', 'death', 'blockUpdate']) {
