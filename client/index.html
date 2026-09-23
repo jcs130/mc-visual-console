@@ -14,7 +14,7 @@
     <span id="holder" class="dim">持有：无</span>
     <span id="counts" class="dim">0 实体 · 0 方块</span>
     <span id="zoom" class="dim">100%</span>
-    <select id="view" title="切换视角" onchange="var v=this.value, f=document.getElementById('viewer'), c=document.getElementById('scene'); if (v==='play') { f.hidden=true; c.hidden=false; window.dispatchEvent(new Event('resize')); } else { f.hidden=false; c.hidden=true; f.src='http://127.0.0.1:7800'+v; }">
+    <select id="view" title="切换视角" onchange="var v=this.value, f=document.getElementById('viewer'), c=document.getElementById('scene'); if (v==='play') { f.hidden=true; c.hidden=false; window.dispatchEvent(new Event('resize')); } else { f.hidden=false; c.hidden=true; f.src='http://'+location.hostname+':7800'+v; }">
       <option value="/dungeon/" selected>2.5D 地牢（现代画面 · 只观察）</option>
       <option value="/third/">第三人称环绕（只观察）</option>
       <option value="/">第一人称（只观察）</option>
@@ -27,7 +27,7 @@
 
   <main>
     <!-- 画面：复用 modern-viewer（萌悦/千灯纪那套）——项目的门面，默认显示。 -->
-    <iframe id="viewer" src="http://127.0.0.1:7800/dungeon/" title="现代画面"></iframe>
+    <iframe id="viewer" src="http://localhost:7800/dungeon/" title="现代画面"></iframe>
 
     <!-- 自绘等距画布：可操作（接管后点地走、点实体出菜单）。下拉切到第 4 项时显示。 -->
     <canvas id="scene" hidden></canvas>
