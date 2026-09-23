@@ -7,7 +7,17 @@
 - **数据源**：Mineflayer（不是游戏 mod 的 live dump）
 - **宿主①**：Cortico —— 包成外部 World 扩展，走 `console().stream()` / `invoke()` / `links[]`
 - **宿主②**：dsh —— 包成插件，挂在 dsh web 的 webServer 路由上
-- **状态**：施工中（M0 骨架已跑通，测试 5/5）
+- **状态**：施工中（M0 骨架已跑通，测试 20/20）
+
+## ⚠️ 适用范围（先读这段再决定怎么用）
+
+这是**本地演示 / 测试版**，**不是**"装完即用、可连任意服务器"的开源正式版 ✗。三条已实测的限制：
+
+| 限制 | 事实 |
+|---|---|
+| **素材版权** ✗ | 根包跟踪着 **46 张 `client/assets/blocks/*.png`**，它们是**从 Minecraft 游戏文件提取的方块贴图**（Mojang 资产）。随仓/随包分发**不合适** —— 正式发布前必须换成 ①使用者本地提取，或 ②有明确再分发许可的素材。**注意：仓库已公开，历史提交里也带着这些文件。** |
+| **webplay 不是自研** ✗ | `hosts/webplay` 是 **PrismarineJS `prismarine-web-client`（MIT）的薄启动封装** ✓，不是本项目的客户端。其内置协议栈**最高只到 1.20.x** —— 实测连 1.21.1 直接报 `unsupported protocol version: 1.21.1`，页面还会停在 "Logging in…"。**不要把它宣传成"兼容 1.21.1 的完整网页客户端"。** |
+| **控制口是回环级信任** ✗ | 画面（7800）与协议（7801）默认只绑 `127.0.0.1` ✓；`/mc-control` 目前只校验"有人接管"，**未校验请求者就是持有者** ✗。跨机部署前必须补鉴权。 |
 
 ## 独立运行（克隆下来就能跑）
 
@@ -17,7 +27,7 @@
 git clone https://github.com/jcs130/mc-visual-console.git && cd mc-visual-console
 corepack pnpm install
 corepack pnpm build:client      # 打包 client/app.js（未入库的构建产物）
-corepack pnpm test              # 5/5
+corepack pnpm test              # 20/20
 corepack pnpm dev:demo          # 假 bot 演示 → http://127.0.0.1:7799/
 ```
 
@@ -159,7 +169,7 @@ WS 收  claim/release 操作权 · moveTo 点地移动 · lookAt 转头 · actio
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| **M0** | 假 bot + 单页 demo：看得到地形与实体、能查、能点地走过去（**不连真实服务器**） | 骨架已跑通（测试 5/5） |
+| **M0** | 假 bot + 单页 demo：看得到地形与实体、能查、能点地走过去（**不连真实服务器**） | 骨架已跑通（测试 20/20） |
 | **M1** | 接 Cortico：外部 World 扩展，`stream`/`invoke`/`links` | 未开始 |
 | **M2** | 接 dsh：插件 + webServer 路由 + WS | 未开始 |
 | **M3** | 客户端性能预算落地（workers / 视距 / FPS），对照千灯纪 modern-viewer 的预算表 | 未开始 |
@@ -180,7 +190,7 @@ test/              vitest
 
 ```bash
 corepack pnpm install
-corepack pnpm test          # 假 bot，不连服务器（当前 5/5 通过）
+corepack pnpm test          # 假 bot，不连服务器（当前 20/20 通过）
 corepack pnpm dev:demo      # 单页 demo（M0 骨架版；正式客户端待做）
 ```
 

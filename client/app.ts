@@ -129,6 +129,14 @@ function onMessage(ev: MessageEvent): void {
   switch (m.type) {
     case 'hello':
         sessionId = (m as { sessionId?: string }).sessionId ?? null
+        // 把 sessionId 透传给「现代画面」的 iframe：它的控制口要拿它确认请求者就是持有者
+        if (sessionId) {
+          const vf = document.getElementById('viewer') as HTMLIFrameElement | null
+          const src0 = vf?.getAttribute('src') ?? ''
+          if (vf && src0.includes('/dungeon/') && !src0.includes('sid=')) {
+            vf.src = src0.split('?')[0] + '?sid=' + encodeURIComponent(sessionId)
+          }
+        }
         logLine(`hello protocol=${m.protocol} session=${sessionId ?? '?'}`)
         applySnapshot(m.snapshot)
         refreshBanner()

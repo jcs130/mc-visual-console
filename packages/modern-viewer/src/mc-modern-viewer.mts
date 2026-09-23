@@ -1101,8 +1101,22 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
         try {
           const protocolPort = Number(process.env.PROTOCOL_PORT ?? 7801)
           const res = await fetch(`http://127.0.0.1:${protocolPort}/state`, { signal: AbortSignal.timeout(1500) })
-          const snap = await res.json()
-          if (!snap?.holder) {
+const snap = await res.json()          
+// 只校验「有人接管」不够：同机任何请求都能越过（2026-09-23 审查第 2 条）。
+
+// 必须确认请求者就是持有者 —— 用服务端分配、只发给该连接的 sessionId（画面页经 ?sid= 透传）。
+
+const sid = new URL(req.url ?? '/', 'http://x').searchParams.get('sid')
+
+if (!sid || sid !== snap.holder) {
+
+  send(403, 'application/json; charset=utf-8',
+
+    JSON.stringify({ ok: false, error: '非持有者：先在控制台申请接管，再从控制台里使用画面' })); return
+
+}
+
+if (!snap?.holder) {
             send(403, 'application/json; charset=utf-8',
               JSON.stringify({ ok: false, error: '未接管：先在控制台（:7801）申请接管，再在画面里点地走' })); return
           }

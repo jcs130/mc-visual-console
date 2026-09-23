@@ -4,7 +4,7 @@
 
 | 块 | 是什么 | 能否发布 | 说明 |
 |---|---|---|---|
-| **组件**（本仓根包 `mc-visual-console`） | 接缝协议与实现（`src/`）+ 自绘 2.5D 操作台（`client/`，含那个客户端页）+ 假 bot 与测试 | **可以** ✓ | **零派生资源、零 IP 牵连** —— 最干净的那一块。发布前需 `pnpm build:client` 并把构建产物 `client/app.js` 纳入 `files` |
+| **组件**（本仓根包 `mc-visual-console`） | 接缝协议与实现（`src/`）+ 自绘 2.5D 操作台（`client/`，含那个客户端页）+ 假 bot 与测试 | **可以**（但有素材版权问题，见上） ✓ | 组件代码本身不 import mineflayer；**注意 `client/assets/blocks/` 那 46 张贴图来自游戏文件** —— 最干净的那一块。发布前需 `pnpm build:client` 并把构建产物 `client/app.js` 纳入 `files` |
 | **画面层**（`packages/modern-viewer`） | 引擎 + 1.21.1 资产 + 桥接 + 点地走/轨迹注入 | **待拍板** ⏳ | 引擎与资产是**千灯纪自有项目**的派生资源（`D:\Projects\QiandengJi\vendor\modern-viewer`）⇒ 随包分发要项目所有者决定。`private: true` 现在是**故意的**，防误发 |
 | **webplay**（`hosts/webplay`） | `prismarine-web-client` 的薄封装 | 不涉及 ✓ | 上游 MIT，引用即可；我们只提供"怎么装、怎么起"，不重发上游代码 |
 
@@ -14,7 +14,7 @@
 
 ```bash
 corepack pnpm install && corepack pnpm build:client
-corepack pnpm test          # 5/5
+corepack pnpm test          # 20/20
 corepack pnpm dev:demo      # 自检：假 bot 演示
 ```
 
@@ -51,5 +51,5 @@ cd <repo>/packages/modern-viewer && npm publish --access public
 
 ```bash
 npm pack --dry-run        # 看会打进包里什么（画面层要看 assets/ 有没有被带进去）
-corepack pnpm test        # 组件：5/5
+corepack pnpm test        # 组件：20/20
 ```

@@ -16,6 +16,9 @@
   'use strict'
 
   var ENDPOINT = '/mc-control'
+  // 控制台的 sessionId 由画面页的 URL 透传进来（?sid=…）——服务端据此确认请求者就是持有者
+  var SID = ''
+  try { SID = new URLSearchParams(location.search).get('sid') || '' } catch (e) { /* ignore */ }
   var path = []
   var target = null
   var status = '启动中'
@@ -258,7 +261,7 @@
       }
     } catch (e) { /* ignore */ }
     report()
-    fetch(ENDPOINT, {
+    fetch(ENDPOINT + (SID ? '?sid=' + encodeURIComponent(SID) : ''), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
