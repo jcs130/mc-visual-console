@@ -9,6 +9,52 @@
 - **宿主②**：dsh —— 包成插件，挂在 dsh web 的 webServer 路由上
 - **状态**：施工中（M0 骨架已跑通，测试 5/5）
 
+## 独立运行（克隆下来就能跑）
+
+### 路 ①：组件 + 假 bot 演示 —— **完全自包含**
+
+```bash
+git clone https://github.com/jcs130/mc-visual-console.git && cd mc-visual-console
+corepack pnpm install
+corepack pnpm build:client      # 打包 client/app.js（未入库的构建产物）
+corepack pnpm test              # 5/5
+corepack pnpm dev:demo          # 假 bot 演示 → http://127.0.0.1:7799/
+```
+
+接自己的 bot：`import { attach } from './src/index.ts'` 然后 `attach(bot, { port })`。
+它只要求一个"像 mineflayer bot 的对象"（`ViewerBot`，见 [docs/PROTOCOL.md](docs/PROTOCOL.md) 第一节），
+不 import mineflayer —— 所以测试用脚本化假 bot 就能跑，不必连服务器。
+
+### 路 ②：接真服务器 + 那套现代画面 —— **需自备派生资源**
+
+`viewer-service/` 负责连"门"（`MC_PORT`）并跑现代画面。画面**引擎**与**资产包**不入库：
+它们是**千灯纪那套现代画面**的派生资源（自有项目，非本仓 IP，见 `.gitignore` 的两条 `*.js` / `mod-assets/`）。
+
+```bash
+node viewer-service/tools/import-modern-viewer.mjs <千灯纪/vendor/modern-viewer 目录>
+python viewer-service/tools/patch_official_avatar.py     # 可选：默认角色换成原版方块人/史蒂夫
+powershell -File viewer-service/serve.ps1                # Windows；Linux 走 docker compose
+```
+
+两个口：**7800** 画面（`/` 第一人称 · `/third/` 环绕 · `/dungeon/` 2.5D）· **7801** 协议与控制台页（`GET /`
+—— 自绘可操作台，接管后点地走）。画面里点地走 + 寻路轨迹由 `modern-viewer/mc-control.js` 注入实现
+（读 `globalThis.world.camera`、锚点对账出世界坐标；见该文件头注释）。
+
+### 包里有什么 / 没什么
+
+| | |
+|---|---|
+| **有** | 接缝协议与实现（`src/`）· 自绘 2.5D 操作台（`client/`）· 假 bot 与测试（`fixtures/` `test/`）· 现代画面的桥接与注入脚本（`viewer-service/modern-viewer/*.mts`、`mc-control.js`）· Cortico World 扩展（`hosts/cortico/`）· 文档（`docs/`） |
+| **没有** | 画面引擎与资产包（`viewer-service/modern-viewer/*.js`、`mod-assets/`，**派生资源**，用上面的导入脚本自备）· 构建产物 `client/app.js`（`pnpm build:client` 生成） |
+
+## 发布形态
+
+- **Cortico 扩展**（`hosts/cortico/` = 包名 `cortico-world-mcvisual`，`cortico.kind=world, api=5`）：**可发 npm** ——
+  发上去就能在 Cortico 控制台的「扩展」页直接装（`pnpm check:extension` 已通过）。
+- **组件**（根包 `mc-visual-console`）：**可发 npm** —— 发布前需 `pnpm build:client`，并把 `client/app.js`
+  与 `files` / `exports` 一并纳入。
+- **画面引擎与资产**：**不能**由本仓发布 —— 派生资源不属于本仓，请自备或向源头项目取得。
+
 ## 特点（都从源码里数出来的，不是形容词）
 
 ### 1. 一张画面看世界，而且一切都有预算
