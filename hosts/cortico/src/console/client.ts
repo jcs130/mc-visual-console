@@ -104,14 +104,14 @@ const panels: ConsoleClientBundle['panels'] = {
         const snap = state.snapshot;
         const holder = snap?.holder ?? null;
         facts.replaceChildren(
-          ...ctx.ui
+          ...Array.from(ctx.ui
             .kv([
               { k: '接缝', v: state.connected ? ctx.ui.pill('已连接', 'on') : ctx.ui.pill('未连接', 'off') },
               { k: '身份', v: snap?.bot?.username ?? '—' },
               { k: '接管', v: holder ? ctx.ui.pill(holder, 'on') : ctx.ui.pill('只读观战', 'plain') },
               { k: '序号', v: state.seq || '—' },
             ])
-            .querySelectorAll('tr'),
+            .querySelectorAll('tr'),)
         );
         note.textContent = state.note;
         note.classList.toggle('bad', state.note.startsWith('命令被拒'));

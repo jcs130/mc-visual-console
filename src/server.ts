@@ -245,10 +245,17 @@ export function attach(bot: ViewerBot, options: ViewerOptions = {}): Viewer {
       nextB.set(id, k)
       if (lastBlocks.get(id) !== k) changedB.push(b)
     }
+    // 消失的也要发：实体/方块从世界里没了，只发"变化项"是删不掉的（2026-09-23 审查第 4 条）。
+    const removedE = [...lastEntities.keys()].filter((id) => !nextE.has(id))
+    const removedB = [...lastBlocks.keys()].filter((id) => !nextB.has(id))
     lastEntities = nextE
     lastBlocks = nextB
 
-    broadcast({ type: 'delta', seq, bot: botState(), entities: changedE, blocks: changedB })
+    broadcast({
+      type: 'delta', seq, bot: botState(),
+      entities: changedE, blocks: changedB,
+      removed: removedE, removedBlocks: removedB,
+    })
   }
 
   const noSupport = (ws: WebSocket, cmd: ClientCommand, feature: string): void => {
@@ -338,7 +345,7 @@ export function attach(bot: ViewerBot, options: ViewerOptions = {}): Viewer {
     }
     const session: Session = { socket, id: `s${sessions.size + 1}-${Date.now().toString(36)}` }
     sessions.set(socket, session)
-    send(socket, { type: 'hello', protocol: PROTOCOL_VERSION, snapshot: snapshot() })
+    send(socket, { type: 'hello', protocol: PROTOCOL_VERSION, snapshot: snapshot(), sessionId: session.id })
     send(socket, { type: 'holder', holder })
 
     socket.on('message', (data) => {

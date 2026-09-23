@@ -91,8 +91,8 @@ export interface StateSnapshot {
 
 | type | 载荷 | 时机 |
 |---|---|---|
-| `hello` | `{ protocol: 0, snapshot: StateSnapshot }` | 连接建立即发，代替单独的 /state 请求 |
-| `delta` | `{ seq, entities?, blocks?, bot? }` | 状态变化；**约 100ms 合并一次**发（`stateHz`），不逐事件抖 |
+| `hello` | `{ protocol: 0, snapshot: StateSnapshot, sessionId?: string }` | 连接建立即发，代替单独的 /state 请求 |
+| `delta` | `{ seq, entities?, blocks?, bot?, removed?: (string\|number)[], removedBlocks?: string[] }` | 状态变化；**约 100ms 合并一次**发（`stateHz`），不逐事件抖 |
 | `holder` | `{ holder: string \| null, reason?: string }` | 接管权变更（含被抢占、超时释放） |
 | `notice` | `{ level: 'info' \| 'warn', text }` | 给人看的提示（例如"你的操作已过期"） |
 | `error` | `{ id?, code, message }` | 命令失败；`id` 对应客户端的 `id` |

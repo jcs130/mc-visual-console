@@ -144,6 +144,9 @@ const SURFACE_ABOVE = 2
 const SURFACE_BELOW = 6
 let surfaceCache = { key: '', blocks: [] }
 let lastSentSurfaceKey = ''
+// 实体增量：上一轮发出去的状态指纹。变化项与**消失项**都靠它算出来
+// （2026-09-23 审查第 4 条：只发变化项时，实体消失后客户端会一直留着旧记录）。
+let lastEntityKeys = new Map()
 
 function surfaceBlocks() {
   const c = bot.entity?.position
@@ -224,7 +227,22 @@ setInterval(() => {
   if (!dirty) return
   dirty = false
   seq += 1
-  const msg = { type: 'delta', seq, bot: snapshot().bot }
+  const snap = snapshot()
+  const msg = { type: 'delta', seq, bot: snap.bot }
+
+  // 实体：变化项 + 消失项（只发变化项删不掉旧实体）
+  const nextKeys = new Map()
+  const changedEntities = []
+  for (const e of snap.entities) {
+    const k = JSON.stringify([e.name, e.username, e.position, e.yaw, e.pitch])
+    nextKeys.set(String(e.id), k)
+    if (lastEntityKeys.get(String(e.id)) !== k) changedEntities.push(e)
+  }
+  const removedEntities = [...lastEntityKeys.keys()].filter((id) => !nextKeys.has(id))
+  lastEntityKeys = nextKeys
+  if (changedEntities.length) msg.entities = changedEntities
+  if (removedEntities.length) msg.removed = removedEntities
+
   // 脚下的地面块变了（走动了）才带一份；没变不重复发，省带宽。
   const surface = surfaceBlocks()
   if (surfaceCache.key !== lastSentSurfaceKey) {
@@ -349,7 +367,7 @@ wss.on('connection', (ws) => {
   }
   const session = { id: `s${sessions.size + 1}-${Date.now().toString(36)}` }
   sessions.set(ws, session)
-  ws.send(JSON.stringify({ type: 'hello', protocol: PROTOCOL_VERSION, snapshot: snapshot() }))
+  ws.send(JSON.stringify({ type: 'hello', protocol: PROTOCOL_VERSION, snapshot: snapshot(), sessionId: session.id }))
   ws.send(JSON.stringify({ type: 'holder', holder }))
   ws.on('message', (data) => {
     let cmd

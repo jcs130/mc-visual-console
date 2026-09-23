@@ -95,14 +95,18 @@ describe('Minecraft 画面 World', () => {
     const world = MCVISUAL.create(ctx);
     ctx.persist({ allowTakeover: false });
 
-    const decl = world.console();
+    const decl = world.console?.();
+    // console() 可能 undefined：先收窄 decl（invoke 本身仍可选，故调用处保留 !）
+    if (!decl) throw new Error('console() 没给声明');
     await expect(decl.invoke!('scene', 'command', [{ type: 'claim' }])).rejects.toThrow('关掉了接管');
     await expect(decl.invoke!('scene', 'health', [])).resolves.toBeTruthy();
   });
 
   it('控制台声明了面板、独立画面页与只读方法集', () => {
     const ctx = fakeWorldContext(MCVISUAL, { scratchDir });
-    const decl = MCVISUAL.create(ctx).console();
+    const decl = MCVISUAL.create(ctx).console?.();
+    // console() 可能 undefined：先收窄 decl（invoke 本身仍可选，故调用处保留 !）
+    if (!decl) throw new Error('console() 没给声明');
 
     expect(decl.panels?.map((p) => p.id)).toEqual(['scene', 'control']);
     expect(decl.panels?.[0].getMethods).toEqual(['state', 'health']);

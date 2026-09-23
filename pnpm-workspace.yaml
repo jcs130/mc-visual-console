@@ -1,8 +1,10 @@
 packages:
   - '.'
+# pnpm 11 的新家：显式批准这两个包跑构建脚本（canvas 要编译原生件、esbuild 要装二进制）
 allowBuilds:
-  canvas: set this to true or false
-  esbuild: set this to true or false
+  canvas: true
+  esbuild: true
+# 兼容 pnpm 10 及更早的旧名（pnpm 11 仍认，但以 allowBuilds 为准）
 onlyBuiltDependencies:
   - canvas
   - esbuild

@@ -83,7 +83,6 @@ function applySnapshot(s: StateSnapshot): void {
   entities = s.entities
   holder = s.holder
   me = s.bot.username
-  if (s.holder) sessionId = s.holder
   targets.clear()
   drawn.clear()
   for (const e of entities) {
@@ -108,6 +107,19 @@ function applyDelta(m: Extract<ServerMessage, { type: 'delta' }>): void {
     targets.set(String(e.id), e.position)
     if (!drawn.has(String(e.id))) drawn.set(String(e.id), e.position)
   }
+  // 消失项：服务端把没了的东西列出来，客户端必须真的删掉 —— 只靠"变化项"是删不掉的
+  // （2026-09-23 审查第 4 条）。
+  for (const id of m.removed ?? []) {
+    const i = entities.findIndex((k) => String(k.id) === String(id))
+    if (i >= 0) entities.splice(i, 1)
+    targets.delete(String(id))
+    drawn.delete(String(id))
+  }
+  for (const key of m.removedBlocks ?? []) {
+    const [x, y, z] = key.split(',').map(Number)
+    const i = blocks.findIndex((k) => k.pos[0] === x && k.pos[1] === y && k.pos[2] === z)
+    if (i >= 0) blocks.splice(i, 1)
+  }
   renderPeople()
 }
 
@@ -115,11 +127,15 @@ function onMessage(ev: MessageEvent): void {
   let m: ServerMessage
   try { m = JSON.parse(String(ev.data)) as ServerMessage } catch { return }
   switch (m.type) {
-    case 'hello': logLine(`hello protocol=${m.protocol}`); applySnapshot(m.snapshot); break
+    case 'hello':
+        sessionId = (m as { sessionId?: string }).sessionId ?? null
+        logLine(`hello protocol=${m.protocol} session=${sessionId ?? '?'}`)
+        applySnapshot(m.snapshot)
+        refreshBanner()
+        break
     case 'delta': applyDelta(m); break
     case 'holder':
       holder = m.holder
-      if (m.holder) sessionId = m.holder
       refreshBanner(); logLine(`持有 → ${m.holder ?? '无'}`); break
     case 'notice': logLine(`[${m.level}] ${m.text}`); break
     case 'error':

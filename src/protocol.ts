@@ -76,8 +76,8 @@ export interface StateSnapshot {
 
 /** 服务端 → 客户端 */
 export type ServerMessage =
-  | { type: 'hello'; protocol: typeof PROTOCOL_VERSION; snapshot: StateSnapshot }
-  | { type: 'delta'; seq: number; bot?: Partial<BotState>; entities?: EntityLike[]; blocks?: BlockEntry[] }
+  | { type: 'hello'; protocol: typeof PROTOCOL_VERSION; snapshot: StateSnapshot; sessionId?: string }
+  | { type: 'delta'; seq: number; bot?: Partial<BotState>; entities?: EntityLike[]; blocks?: BlockEntry[]; removed?: Array<string | number>; removedBlocks?: string[] }
   | { type: 'holder'; holder: string | null; reason?: string }
   | { type: 'notice'; level: 'info' | 'warn'; text: string }
   | { type: 'error'; id?: string; code: ErrorCode; message: string }
