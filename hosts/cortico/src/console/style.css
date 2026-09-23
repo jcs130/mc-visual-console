@@ -1,0 +1,22 @@
+/* Minecraft 画面面板的少量样式；其余交给控制台自己的样式表。 */
+
+.mcvisual-mapwrap {
+  margin-top: 0.6rem;
+}
+
+.mcvisual-minimap {
+  display: block;
+  width: 320px;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  image-rendering: pixelated;
+}
+
+.mcvisual-caption {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+}

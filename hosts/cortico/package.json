@@ -1,0 +1,43 @@
+{
+  "name": "cortico-world-mcvisual",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cortico World: Minecraft 现代画面观战与接管（面板 + 独立画面页 + 结构化观测）",
+  "license": "MIT",
+  "keywords": [
+    "cortico-world",
+    "cortico",
+    "minecraft",
+    "mineflayer",
+    "viewer"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.5.0",
+  "main": "./src/index.ts",
+  "cortico": {
+    "kind": "world",
+    "api": 5,
+    "consoleClient": "dist/console.js",
+    "consoleStyle": "dist/console.css"
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/console/client.ts --bundle --format=esm --target=es2022 --outfile=dist/console.js && node -e \"require('node:fs').copyFileSync('src/console/style.css','dist/console.css')\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "cortico": "^0.1.2",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
