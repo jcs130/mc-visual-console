@@ -21,6 +21,14 @@
 
 ## 独立运行（克隆下来就能跑）
 
+### Cortico 的 1.20.6 只读直播画面
+
+`packages/modern-viewer/renderer-src/` 保存现代渲染器浏览器源码。Cortico 的
+1.20.6 viewer 适配从本地原版客户端 JAR 导出资源，并用该源码生成第一人称、第三人称和
+地下城 2.5D 画面。构建与校验命令见
+[`renderer-src/README.md`](packages/modern-viewer/renderer-src/README.md)。
+这个路径不包含游戏贴图、角色模型或生成的浏览器 bundle。
+
 ### 路 ①：组件 + 假 bot 演示 —— **完全自包含**
 
 ```bash
@@ -37,8 +45,9 @@ corepack pnpm dev:demo          # 假 bot 演示 → http://127.0.0.1:7799/
 
 ### 路 ②：接真服务器 + 那套现代画面 —— **需自备派生资源**
 
-`viewer-service/` 负责连"门"（`MC_PORT`）并跑现代画面。画面**引擎**与**资产包**不入库：
-它们是**千灯纪那套现代画面**的派生资源（自有项目，非本仓 IP，见 `.gitignore` 的两条 `*.js` / `mod-assets/`）。
+`viewer-service/` 负责连"门"（`MC_PORT`）并跑现代画面。1.21.1 运行时的引擎 bundle
+与资产包不入库；1.20.6 浏览器渲染器的源码在 `packages/modern-viewer/renderer-src/`。
+生成文件仍需在本机准备（见 `.gitignore` 的 `*.js` / `mod-assets/` 规则）。
 
 ```bash
 node packages/modern-viewer/tools/import-modern-viewer.mjs <千灯纪/vendor/modern-viewer 目录>
@@ -54,8 +63,8 @@ powershell -File viewer-service/serve.ps1                # Windows；Linux 走 d
 
 | | |
 |---|---|
-| **有** | 接缝协议与实现（`src/`）· 自绘 2.5D 操作台（`client/`）· 假 bot 与测试（`fixtures/` `test/`）· 现代画面的桥接与注入脚本（`packages/modern-viewer/src/*.mts`、`mc-control.js`）· Cortico World 扩展（`hosts/cortico/`）· 文档（`docs/`） |
-| **没有** | 画面引擎与资产包（`packages/modern-viewer/assets/*.js`、`mod-assets/`，**派生资源**，用上面的导入脚本自备）· 构建产物 `client/app.js`（`pnpm build:client` 生成） |
+| **有** | 接缝协议与实现（`src/`）· 自绘 2.5D 操作台（`client/`）· 假 bot 与测试（`fixtures/` `test/`）· 现代画面的桥接与注入脚本（`packages/modern-viewer/src/*.mts`、`mc-control.js`）· 1.20.6 浏览器渲染器源码（`renderer-src/`）· Cortico World 扩展（`hosts/cortico/`）· 文档（`docs/`） |
+| **没有** | 生成后的画面引擎与资产包（`packages/modern-viewer/assets/*.js`、`mod-assets/`，使用时本地生成或导入）· 构建产物 `client/app.js`（`pnpm build:client` 生成） |
 
 ## 发布形态
 
@@ -63,7 +72,8 @@ powershell -File viewer-service/serve.ps1                # Windows；Linux 走 d
   发上去就能在 Cortico 控制台的「扩展」页直接装（`pnpm check:extension` 已通过）。
 - **组件**（根包 `mc-visual-console`）：**可发 npm** —— 发布前需 `pnpm build:client`，并把 `client/app.js`
   与 `files` / `exports` 一并纳入。
-- **画面引擎与资产**：**不能**由本仓发布 —— 派生资源不属于本仓，请自备或向源头项目取得。
+- **1.20.6 渲染器源码**：保存在 `renderer-src/`；生成的浏览器 bundle 与 Minecraft 资产
+  由使用者在本机创建，不纳入本仓包发布。
 
 ## 特点（都从源码里数出来的，不是形容词）
 
