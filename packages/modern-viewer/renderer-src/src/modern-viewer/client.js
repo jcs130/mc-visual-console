@@ -8,8 +8,10 @@ import {
   Box3,
   BoxGeometry,
   CanvasTexture,
+  Color,
   DirectionalLight,
   DoubleSide,
+  Fog,
   Group,
   HemisphereLight,
   Mesh,
@@ -47,6 +49,8 @@ import {
   resolveNpcPortraitSpec,
 } from "./npc-portraits.js";
 import { normalizeMotionFrame } from "./avatar-motion.js";
+import { rendererEntityEquipment } from "./renderer-equipment.js";
+import { villagerIdentityConceptColors, NPC_NAMED_ROLE_LABELS, NPC_NAMED_DIALOGUE_LINES, NPC_NAMED_QUEST_TEMPLATES } from "./presets/qiandengji/npc-copy.js";
 import { AvatarRigRegistry } from "./avatar-rig-registry.js";
 import { resolveCharacterVisualProfile } from "./character-visual-profiles.js";
 import { TrustedAvatarAssetPipeline } from "./trusted-avatar-assets.js";
@@ -280,12 +284,6 @@ const viewerPerformanceCounters = {
   cutawayActivations: 0,
   cutawayRestores: 0,
 };
-const villagerIdentityConceptColors = new Map([
-  ["墨先生", "#263c78"],
-  ["书商·墨白", "#263c78"],
-  ["神官·静水", "#3198a5"],
-  ["守夜人·烛九", "#873d28"],
-]);
 let pendingBlockEntities = null;
 let pendingPlayerEntity = null;
 let firstPersonEntityPublished = false;
@@ -459,15 +457,10 @@ const NPC_ARCHETYPE_LABELS = Object.freeze({
   swordsman: "双剑士",
 });
 
-const NPC_NAMED_ROLE_LABELS = Object.freeze({
-  鸣人: "木叶忍者 · 漩涡鸣人",
-  桐人: "艾恩葛朗特黑衣剑士 · 桐谷和人",
-});
-
 const NPC_DIALOGUE_LINES = Object.freeze({
   scholar: ["有些答案不在最后一页，而在你翻页时停顿的地方。", "把见闻写下来吧，记忆会遗漏，纸页不会。"],
   smith: ["真正合手的工具，先要经得起失败的火。", "听锤声就能知道铁在撒谎，旅人也一样。"],
-  priest: ["祷词不是命令；先听清世界，再向灯火开口。", "千灯各照一处黑暗，你也会找到该守的那一盏。"],
+  priest: ["祷词不是命令；先听清世界，再向灯火开口。", "每盏灯都能照亮一处黑暗，你也会找到自己的路。"],
   merchant: ["价钱只是表面，真正交换的是两个人的承诺。", "带着故事回来，或许比金币更值钱。"],
   watchman: ["白昼教人看远，夜晚教人看清脚下。", "若听见不属于风的声音，就先退到灯下。"],
   bard: ["同一段旅程，被不同的人记住，就会长出不同的歌。", "等你再走远一点，我就有新曲子可写了。"],
@@ -482,15 +475,10 @@ const NPC_DIALOGUE_LINES = Object.freeze({
   swordsman: ["剑路越快，越要清楚下一步为何出手。", "双剑不是两次攻击，而是一份不能迟疑的决心。"],
 });
 
-const NPC_NAMED_DIALOGUE_LINES = Object.freeze({
-  鸣人: ["我可是要成为火影的男人，说到做到就是我的忍道！", "同伴不是可以丢下的人；先把大家平安带回去。"],
-  桐人: ["这里不是单纯的游戏；活着抵达终点，才算真正通关。", "二刀流不是炫技，是为了保护身后不能失去的人。"],
-});
-
 const NPC_QUEST_TEMPLATES = Object.freeze({
   scholar: ["散页寻踪", "在探索地图上标记一处可能藏有书架或旧纸页的建筑。"],
   smith: ["重燃旧炉", "记录一处煤炭或铁矿资源点，为网页支线保留锻炉材料线索。"],
-  priest: ["千灯微光", "夜幕降临后，在地图上记下一处仍被灯火照亮的安全位置。"],
+  priest: ["夜灯微光", "夜幕降临后，在地图上记下一处仍被灯火照亮的安全位置。"],
   merchant: ["集市风声", "从近期世界消息里整理一条与村庄交易有关的可靠见闻。"],
   watchman: ["守夜巡灯", "在村庄边缘记录一处尚未照亮、但可安全抵达的位置。"],
   bard: ["风中的新曲", "抵达一个从未记录过的地标，让这段旅程成为新曲的开头。"],
@@ -503,11 +491,6 @@ const NPC_QUEST_TEMPLATES = Object.freeze({
   villager: ["村庄见闻", "与三位不同角色会面，并把他们的故事记入网页旅志。"],
   ninja: ["风影寻迹", "在村庄外缘标记一条视野开阔、便于快速往返的安全路线。"],
   swordsman: ["双刃试炼", "找到一处无平民靠近的安全训练场，并记录返回村庄的路线。"],
-});
-
-const NPC_NAMED_QUEST_TEMPLATES = Object.freeze({
-  鸣人: ["忍道巡行", "巡视村庄外缘，标记一处需要影分身协助守护的危险路口。"],
-  桐人: ["黑衣剑士的侦察", "寻找一条通往高处的安全路线，并记录沿途可能出现的敌人与补给点。"],
 });
 
 // Install the trusted parent-message bridge before renderer startup so the
@@ -671,7 +654,7 @@ async function initializeRenderer(version) {
       {
         config: {
           fpsLimit: 60,
-          sceneBackground: "#8fc5ea",
+          sceneBackground: isDungeonView ? "#253548" : "#8fc5ea",
           statsVisible: 0,
           timeoutRendering: false,
         },
@@ -683,7 +666,7 @@ async function initializeRenderer(version) {
           shadingTheme: "vanilla",
           dayCycle: true,
           starfield: true,
-          defaultSkybox: true,
+          defaultSkybox: !isDungeonView,
           renderEntities: true,
           extraBlockRenderers: true,
           showHand: true,
@@ -706,6 +689,10 @@ async function initializeRenderer(version) {
       setBlockStateId: () => {},
     };
     await viewer.startWorld(emptyWorld, renderDistance, viewer.playerState.reactive, initial);
+    if (isDungeonView && globalThis.world?.scene) {
+      globalThis.world.scene.background = new Color("#253548");
+      globalThis.world.scene.fog = new Fog(new Color("#253548"), 30, 68);
+    }
     worldView = viewer.worldView;
     // startWorld attaches the renderer listeners but intentionally does not
     // initialize WorldView. Our chunks arrive over Socket.IO rather than from
@@ -766,7 +753,7 @@ function flushPendingWorld() {
   applyServerWeather();
   for (const entity of entityCache.values()) {
     if (!isRenderableEntity(entity)) continue;
-    worldView.emit("entity", entity);
+    worldView.emit("entity", rendererEntityEquipment(entity, globalThis.mcData?.itemsByName));
     maybeApplyPlayerSkin(entity);
     maybeApplySelectedPlayerModel(entity);
     schedulePlayerHeadIntegrityCheck(entity, false);
@@ -787,7 +774,7 @@ function flushPendingWorld() {
 function publishFirstPersonEntity(force = false) {
   if (!isFirstPersonView || !rendererReady || !worldView || !pendingPlayerEntity) return false;
   if (firstPersonEntityPublished && !force) return false;
-  worldView.emit("playerEntity", pendingPlayerEntity);
+  worldView.emit("playerEntity", rendererEntityEquipment(pendingPlayerEntity, globalThis.mcData?.itemsByName));
   firstPersonEntityPublished = true;
   maybeApplyPlayerSkin(pendingPlayerEntity, true);
   applySelectedPlayerModelToSelf();
@@ -2806,7 +2793,8 @@ function handleEntity(update, movementOnly) {
     return;
   }
   const isMove = movementOnly || (!update.name && !update.metadata && !update.equipment && !update.skinUrl);
-  worldView.emit(isMove ? "entityMoved" : "entity", normalized);
+  worldView.emit(isMove ? "entityMoved" : "entity",
+    isMove ? normalized : rendererEntityEquipment(normalized, globalThis.mcData?.itemsByName));
   if (motionFrame) ensureAvatarRig(id, motionFrame);
   maybeApplyPlayerSkin(normalized);
   maybeApplySelectedPlayerModel(normalized);
