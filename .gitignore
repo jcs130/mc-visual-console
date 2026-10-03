@@ -1,5 +1,9 @@
 node_modules/
 dist/
+__pycache__/
+*.pyc
+# 本地导出的 Minecraft 资源与浏览器产物，源码发布不包含这些文件。
+packages/modern-viewer/renderer-src/output/
 *.log
 .DS_Store
 .vitest/

@@ -32,7 +32,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "vitest run && node --test packages/modern-viewer/renderer-src/test/renderer-equipment.test.mjs packages/modern-viewer/renderer-src/test/fishing-visuals.test.mjs && tsx --test packages/modern-viewer/test/fishing-owner.test.mjs",
+    "test": "vitest run && node --test packages/modern-viewer/renderer-src/test/renderer-equipment.test.mjs packages/modern-viewer/renderer-src/test/fishing-visuals.test.mjs packages/modern-viewer/renderer-src/test/viewer-page.test.mjs && tsx --test packages/modern-viewer/test/fishing-owner.test.mjs && npm run --prefix packages/modern-viewer/renderer-src test:tools",
     "test:watch": "vitest",
     "dev:demo": "esbuild client/app.ts --bundle --format=esm --target=es2022 --outfile=client/app.js && tsx src/demo.ts",
     "build:client": "esbuild client/app.ts --bundle --format=esm --target=es2022 --outfile=client/app.js",

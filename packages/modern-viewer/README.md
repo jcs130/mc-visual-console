@@ -1,4 +1,17 @@
-# mc-modern-viewer —— Minecraft 高级 3D 网页可视化（独立形态）
+# mc-modern-viewer
+
+## 当前可复用入口：1.20.6 现代渲染器
+
+最新页面、HUD、装备与动作动画、钓鱼、交互面板、技能呈现和离线构建工具位于
+[`renderer-src/`](renderer-src/README.md)。依赖锁文件、页面样式和资源导出工具已随源码提供，
+可以独立构建；Mineflayer 项目接入见 [Socket.IO 合约](renderer-src/SOCKET_PROTOCOL.md)。
+千灯纪的画面预设可选，服务端机制保留在独立 World 中。
+
+## 历史记录：1.21.1 独立宿主实验
+
+以下内容记录 2026-09-23 的旧部署。`src/mc-modern-viewer.mts`、`viewer-service/` 和
+`import-modern-viewer.mjs` 属于这个实验；它们的资源版本与数据桥接尚未覆盖当前 1.20.6
+渲染器的全部合约。复用最新直播画面请从上面的 `renderer-src` 入口开始。
 
 这是把**千灯纪那套"现代画面"**从它原来那个项目里**独立出来**的目标形态：
 一个包，自带引擎与 1.21.1 资产，起一个网页，**默认就是高级 3D 可视化**，并且**能操作**（点地走 + 寻路轨迹）。

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Browser renderer source used by the Minecraft 1.20.6 Cortico viewer build",
+  "description": "Portable browser renderer and offline Minecraft 1.20.6 asset build tools for Mineflayer viewers",
   "dependencies": {
     "@pixiv/three-vrm": "3.5.5",
     "mc-assets": "0.2.83",
@@ -18,6 +18,14 @@
   },
   "devDependencies": {
     "esbuild": "0.28.2",
-    "esbuild-plugin-polyfill-node": "0.3.0"
+    "esbuild-plugin-polyfill-node": "0.3.0",
+    "prismarine-block": "1.23.0"
+  },
+  "scripts": {
+    "export:assets": "python tools/export-minecraft-viewer-assets.py",
+    "build:client": "node tools/build-minecraft-viewer-client.mjs .",
+    "verify:assets": "node tools/verify-minecraft-viewer-assets.mjs",
+    "export:sounds": "node tools/export-minecraft-viewer-sounds.mjs",
+    "test:tools": "node --test tools/test/*.test.mjs"
   }
 }

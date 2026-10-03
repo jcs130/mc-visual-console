@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Minecraft 画面</title><link rel="stylesheet" href="/viewer.css"></head><body data-view-mode="__VIEW_MODE__">
+<div class="boot" aria-live="polite">正在载入世界画面…</div>
+<nav class="corti-view-switch" aria-label="切换观察视角"><a href="/" data-view="first">第一人称</a><a href="/third/" data-view="third">第三人称</a><a href="/dungeon/" data-view="dungeon">地下城 2.5D</a></nav>
+<div class="viewer-hud"><div class="viewer-help"></div><div class="viewer-motion"></div><div class="viewer-held"></div><div class="viewer-hotbar"></div></div>
+<div class="corti-crosshair" aria-hidden="true"></div>
+<div class="corti-status-vignette" id="corti-status-vignette" aria-hidden="true"></div>
+<div class="corti-survival" id="corti-survival" aria-label="Minecraft 生存状态">
+  <div class="corti-armor" data-corti-armor></div>
+  <div class="corti-vitals"><div data-corti-hearts></div><div class="corti-mana-vital" data-corti-mana-vital><span data-corti-mana-label>✦ 魔力 --/--</span><span class="corti-mana-vital-track"><span data-corti-mana-fill></span></span></div><div class="corti-air" data-corti-air></div><div data-corti-food></div></div>
+  <div class="corti-level" data-corti-level></div>
+  <div class="corti-xp"><div class="corti-xp-fill" data-corti-xp></div></div>
+  <div class="corti-hotbar"><div class="corti-offhand corti-slot" data-corti-offhand title="副手"></div><div class="corti-hotbar-selection" data-corti-selection></div><div class="corti-hotbar-slots" data-corti-slots></div></div>
+</div>
+<div class="camera-follow-status" id="camera-follow-status" hidden><span>镜头跟随 <strong id="camera-follow-name"></strong></span><button type="button" id="camera-follow-return">返回</button></div>
+<div class="ground-click-ping" id="ground-click-ping" hidden></div>
+<section class="corti-cast" id="corti-cast" aria-label="施法提示" aria-live="polite" hidden><div class="corti-cast-sigil" aria-hidden="true">✦</div><div class="corti-cast-copy"><small data-cast-phase></small><strong data-cast-name></strong><span data-cast-detail></span></div><div class="corti-cast-line" aria-hidden="true"></div></section>
+<div class="skill-cue" id="skill-cue" hidden><small data-skill-cue-source></small><strong data-skill-cue-title></strong><span data-skill-cue-evidence></span></div>
+<div class="corti-event-feed" id="corti-event-feed" aria-label="游戏消息" aria-live="polite"></div>
+<div class="corti-combat-floats" id="corti-combat-floats" aria-hidden="true"></div>
+<canvas class="corti-tactical-canvas" id="corti-tactical-canvas" aria-hidden="true"></canvas><div class="corti-tactical-legend" id="corti-tactical-legend" aria-label="当前行动" hidden></div>
+<div class="corti-presentation-toasts" id="corti-presentation-toasts" aria-live="polite"></div>
+<aside class="corti-effects" id="corti-effects" aria-label="状态效果"></aside>
+<aside class="corti-scoreboard" id="corti-scoreboard" aria-label="计分板" hidden></aside>
+<div class="corti-boss-bars" id="corti-boss-bars" aria-label="Boss 血条"></div>
+<div class="corti-game-title" id="corti-game-title" aria-live="assertive" hidden><strong data-game-title></strong><span data-game-subtitle></span></div>
+<div class="corti-actionbar" id="corti-actionbar" aria-live="polite" hidden></div>
+<iframe class="corti-speech-bubble" id="corti-speech-bubble" title="主播语音气泡" aria-label="主播语音气泡" hidden></iframe>
+<aside class="corti-minimap" id="corti-minimap" aria-label="附近地形"><canvas width="200" height="200"></canvas><div class="corti-map-caption" data-map-caption></div></aside>
+<aside class="corti-skills" id="corti-skills" aria-label="技能状态"><header><strong>技能</strong><span data-mana></span></header><div class="corti-mana-bar"><span data-mana-fill></span></div><div data-skill-list></div><div data-ability-list></div><small data-skill-status></small></aside>
+<button type="button" class="corti-sound-toggle" id="corti-sound-toggle" aria-label="切换游戏音效">音效 待激活</button>
+<button type="button" class="corti-night-vision-toggle" id="corti-night-vision-toggle" aria-label="切换夜视模式">夜视 自动</button>
+<button type="button" class="corti-inventory-toggle" id="corti-inventory-toggle" aria-label="打开背包">背包 <kbd>E</kbd></button>
+<section class="corti-menu" id="corti-menu" aria-label="物品界面" hidden><header><strong data-menu-title></strong><span data-menu-source></span><button type="button" data-menu-close aria-label="关闭物品界面">×</button></header><div data-menu-body></div></section>
+<div class="dungeon-hover-card" id="dungeon-hover-card" hidden><span id="dungeon-hover-icon"></span><strong id="dungeon-hover-title"></strong><small id="dungeon-hover-subtitle"></small><em id="dungeon-hover-action"></em></div>
+<div class="entity-context-menu" id="entity-context-menu" hidden><header><strong data-context-title></strong><small data-context-subtitle></small></header><div data-context-summary></div><div data-context-actions></div></div>
+<aside class="entity-detail-card" id="entity-detail-card" hidden><button type="button" data-detail-close>关闭</button><h2 id="entity-detail-title" data-detail-title></h2><p data-detail-subtitle></p><div data-detail-rows></div></aside>
+<script type="module" src="/index.js"></script></body></html>
