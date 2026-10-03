@@ -4,6 +4,7 @@ import {
   createGraphicsBackendSingleThread,
 } from "minecraft-renderer/dist/minecraft-renderer.js";
 import { io } from "socket.io-client";
+import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import {
   Box3,
   BoxGeometry,
@@ -181,6 +182,64 @@ const NPC_WEB_ACTION_SCHEMA = createNpcActionSchema([{
 }]);
 
 const pendingChunks = new Map();
+const chunkLoadingGuards = new Map();
+const chunkGuardGeometry = new BoxGeometry(16, 1, 16);
+const chunkGuardMaterial = new MeshBasicMaterial({
+  color: isDungeonView ? 0x253548 : 0x7592a8, side: DoubleSide, toneMapped: false,
+});
+let chunkGuardRoot = null;
+let chunkGuardTimer = null;
+
+function installChunkLoadingGuards() {
+  const origin = globalThis.world?.sceneOrigin;
+  if (!origin || chunkGuardRoot) return;
+  chunkGuardRoot = new Group();
+  chunkGuardRoot.name = "__viewer_pending_chunks";
+  origin.addAndTrack(chunkGuardRoot);
+  chunkGuardRoot.position.set(0, 0, 0);
+  chunkGuardTimer = setInterval(refreshChunkLoadingGuards, 150);
+  window.addEventListener("pagehide", disposeChunkLoadingGuards, { once: true });
+  refreshChunkLoadingGuards();
+}
+
+function refreshChunkLoadingGuards() {
+  const world = globalThis.world;
+  if (!chunkGuardRoot || !world || !latestPosition) return;
+  const bounds = world.worldSizeParams;
+  const minY = Number.isFinite(bounds?.minY) ? bounds.minY : -64;
+  const height = Number.isFinite(bounds?.worldHeight) ? bounds.worldHeight : 384;
+  const wanted = new Set();
+  for (const { x, z } of pendingChunkOrigins(latestPosition.pos, renderDistance, world.finishedChunks)) {
+    const key = `${x},${z}`;
+    wanted.add(key);
+    let mesh = chunkLoadingGuards.get(key);
+    if (!mesh) {
+      mesh = new Mesh(chunkGuardGeometry, chunkGuardMaterial);
+      mesh.name = `pending_chunk:${key}`;
+      mesh.raycast = () => {};
+      mesh.frustumCulled = true;
+      chunkGuardRoot.add(mesh);
+      chunkLoadingGuards.set(key, mesh);
+    }
+    mesh.position.set(x + 8, minY + height / 2, z + 8);
+    mesh.scale.y = height;
+  }
+  for (const [key, mesh] of chunkLoadingGuards) {
+    if (wanted.has(key)) continue;
+    mesh.removeFromParent();
+    chunkLoadingGuards.delete(key);
+  }
+}
+
+function disposeChunkLoadingGuards() {
+  if (chunkGuardTimer !== null) clearInterval(chunkGuardTimer);
+  chunkGuardTimer = null;
+  if (chunkGuardRoot) globalThis.world?.sceneOrigin?.removeAndUntrack(chunkGuardRoot);
+  chunkGuardRoot = null;
+  chunkLoadingGuards.clear();
+  chunkGuardGeometry.dispose();
+  chunkGuardMaterial.dispose();
+}
 const pendingBlockUpdates = [];
 const pendingViewerEffects = [];
 const entityCache = new Map();
@@ -580,6 +639,7 @@ socket.on("loadChunk", (data) => {
   const normalized = normalizeChunk(data);
   if (rendererReady) {
     worldView.emit("loadChunk", normalized);
+    refreshChunkLoadingGuards();
     scheduleDungeonOcclusionCheck();
   }
   else pendingChunks.set(key, { type: "load", data: normalized });
@@ -590,6 +650,7 @@ socket.on("unloadChunk", (data) => {
   const key = `${data.x},${data.z}`;
   if (rendererReady) {
     worldView.emit("unloadChunk", data);
+    refreshChunkLoadingGuards();
     scheduleDungeonOcclusionCheck();
   }
   else pendingChunks.set(key, { type: "unload", data });
@@ -661,6 +722,7 @@ async function initializeRenderer(version) {
         rendererConfig: {
           wasmMesher: useWasmMesher,
           mesherWorkers: workers,
+          addChunksBatchWaitTime: 25,
           enableLighting: true,
           smoothLighting: true,
           shadingTheme: "vanilla",
@@ -699,6 +761,7 @@ async function initializeRenderer(version) {
     // emptyWorld, so a full worldView.init() would wait forever. Publish the
     // render distance before replaying those chunks so they can be meshed.
     worldView.updateViewDistance(renderDistance);
+    installChunkLoadingGuards();
     rendererReady = true;
     viewerEffectSystem = new ViewerEffectSystem({
       getWorld: () => globalThis.world,
@@ -747,6 +810,7 @@ function flushPendingWorld() {
   if (!rendererReady || !worldView) return;
   for (const event of pendingChunks.values()) worldView.emit(event.type === "load" ? "loadChunk" : "unloadChunk", event.data);
   pendingChunks.clear();
+  refreshChunkLoadingGuards();
   if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);
   for (const update of pendingBlockUpdates.splice(0)) worldView.emit("blockUpdate", update);
   applyServerTime();
@@ -855,6 +919,7 @@ function applyPosition(instant = false) {
     );
   }
   worldView.emit("chunkPosUpdate", { pos });
+  refreshChunkLoadingGuards();
   if (isFirstPersonView && pendingPlayerEntity) {
     pendingPlayerEntity = { ...pendingPlayerEntity, pos, position: pos, yaw, pitch };
     publishFirstPersonEntity();
@@ -5509,6 +5574,15 @@ function publishDiagnostics(version) {
     },
     get chunks() {
       return viewer?.nonReactiveState?.world?.chunksLoadedCount || 0;
+    },
+    get chunkLoading() {
+      const world = globalThis.world;
+      return {
+        received: Object.keys(world?.loadedChunks || {}).length,
+        meshed: Object.keys(world?.finishedChunks || {}).length,
+        masked: chunkLoadingGuards.size,
+        pendingSections: world?.sectionsWaiting?.size ?? 0,
+      };
     },
     get playerEntityVisible() {
       if (isFirstPersonView) return globalThis.world?.entities?.playerEntity?.visible ?? null;
