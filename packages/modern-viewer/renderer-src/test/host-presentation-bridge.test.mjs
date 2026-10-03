@@ -40,6 +40,7 @@ describe('portable host sound bridge', () => {
 
 function fishing() {
   let time = 1000;
+  let clockReads = 0;
   const protocol = Object.assign(new EventEmitter(), { write() {} });
   const bot = Object.assign(new EventEmitter(), {
     _client: protocol, entity: { id: 7, position: { x: 0, y: 64, z: 0 } }, entities: {},
@@ -50,11 +51,79 @@ function fishing() {
   });
   const events = [], originalWrite = protocol.write;
   const serialize = item => item?.name && Number.isInteger(item.type) ? { ...item, metadata: 0 } : null;
-  const dispose = observeViewerFishingCatch(bot, value => events.push(value), serialize, () => time);
-  return { bot, protocol, events, dispose, originalWrite, increment: () => { time += 50; } };
+  const dispose = observeViewerFishingCatch(bot, value => events.push(value), serialize,
+    () => { clockReads++; return time; });
+  return { bot, protocol, events, dispose, originalWrite, serialize, clockReads: () => clockReads,
+    increment: () => { time += 50; } };
+}
+
+function catchOnce(s) {
+  const item = { name: 'cod', type: 776, count: 1 };
+  s.bot.entities[100] = { id: 100, name: 'fishing_bobber', position: { x: 5, y: 63, z: 0 } };
+  s.protocol.emit('spawn_entity', { entityId: 100, type: 129, objectData: 7, x: 5, y: 63, z: 0 });
+  s.protocol.emit('world_particles', { particle: { type: 'fishing' }, amount: 6, x: 5, y: 63, z: 0 });
+  s.increment(); s.protocol.write('use_item', { hand: 0 });
+  s.increment(); s.bot.entities[101] = { id: 101, name: 'item', getDroppedItem: () => item };
+  s.protocol.emit('spawn_entity', { entityId: 101, type: 58, x: 5, y: 63, z: 0,
+    velocity: { x: -4000, y: 2000, z: 0 } });
+  s.protocol.emit('collect', { collectedEntityId: 101, collectorEntityId: 7, pickupItemCount: 1 });
+  s.bot.inventory.slots[9] = item; s.bot.inventory.emit('updateSlot', 9);
 }
 
 describe('portable fishing catch bridge', () => {
+  it('restores the original writer when viewers disconnect in registration order', () => {
+    const s = fishing(), secondEvents = [];
+    const secondDispose = observeViewerFishingCatch(s.bot, event => secondEvents.push(event), s.serialize, () => 1000);
+    const sharedWrite = s.protocol.write;
+    s.dispose();
+    assert.equal(s.protocol.write, sharedWrite);
+    catchOnce(s);
+    assert.deepEqual(s.events, []);
+    assert.equal(secondEvents.length, 1);
+    secondDispose();
+    assert.equal(s.protocol.write, s.originalWrite);
+    assert.deepEqual(s.protocol.eventNames(), []);
+    assert.deepEqual(s.bot.eventNames(), []);
+    assert.deepEqual(s.bot.inventory.eventNames(), []);
+  });
+
+  it('shares one outgoing wrapper and restores it when newer viewers disconnect first', () => {
+    const s = fishing(), sharedWrite = s.protocol.write;
+    const secondDispose = observeViewerFishingCatch(s.bot, () => {}, s.serialize);
+    assert.equal(s.protocol.write, sharedWrite);
+    secondDispose();
+    assert.equal(s.protocol.write, sharedWrite);
+    catchOnce(s);
+    assert.equal(s.events.length, 1);
+    s.dispose();
+    assert.equal(s.protocol.write, s.originalWrite);
+  });
+
+  it('preserves later foreign wrappers while disposed fishing callbacks remain inactive', () => {
+    const s = fishing(), sharedWrite = s.protocol.write, sent = [];
+    const foreignWrite = function (name, params) {
+      sent.push({ name, params, receiver: this });
+      sharedWrite.call(this, name, params);
+    };
+    s.protocol.write = foreignWrite;
+    s.dispose();
+    assert.equal(s.protocol.write, foreignWrite);
+    const reads = s.clockReads(), params = { hand: 0 };
+    s.protocol.write('use_item', params);
+    assert.equal(s.clockReads(), reads);
+    assert.deepEqual(sent, [{ name: 'use_item', params, receiver: s.protocol }]);
+    const secondEvents = [];
+    const secondDispose = observeViewerFishingCatch(s.bot, event => secondEvents.push(event), s.serialize, () => 1000);
+    s.dispose();
+    catchOnce(s);
+    assert.equal(secondEvents.length, 1);
+    secondDispose();
+    assert.equal(s.protocol.write, foreignWrite);
+    s.protocol.write('use_item', params);
+    assert.equal(s.clockReads(), reads);
+    assert.equal(sent.length, 3);
+  });
+
   it('reports named enchanted treasure only after inventory confirms the collection', () => {
     const s = fishing();
     const treasure = { name: 'enchanted_book', type: 912, count: 1,

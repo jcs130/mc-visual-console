@@ -1,3 +1,34 @@
+const writeDispatchers = new WeakMap();
+function observeWrite(protocol, onWrite) {
+    let dispatch = writeDispatchers.get(protocol);
+    if (!dispatch) {
+        const originalWrite = protocol.write;
+        const observers = new Set();
+        const viewerWrite = (name, params) => {
+            for (const observer of observers)
+                observer(name, params);
+            return originalWrite.call(protocol, name, params);
+        };
+        dispatch = { originalWrite, viewerWrite, observers };
+        writeDispatchers.set(protocol, dispatch);
+        protocol.write = viewerWrite;
+    }
+    const shared = dispatch;
+    shared.observers.add(onWrite);
+    let disposed = false;
+    return () => {
+        if (disposed)
+            return;
+        disposed = true;
+        shared.observers.delete(onWrite);
+        if (shared.observers.size)
+            return;
+        // Later external wrappers keep their delegate, whose observer set is empty.
+        if (protocol.write === shared.viewerWrite)
+            protocol.write = shared.originalWrite;
+        writeDispatchers.delete(protocol);
+    };
+}
 const pos = (value) => {
     const p = value;
     return p && [p.x, p.y, p.z].every(part => typeof part === 'number' && Number.isFinite(part))
@@ -168,8 +199,7 @@ export function observeViewerFishingCatch(bot, publish, serializeItem, now = Dat
         trim();
     };
     const reset = () => { hooks.clear(); loot.clear(); };
-    const originalWrite = protocol.write;
-    const viewerWrite = (kind, params) => {
+    const disposeWrite = observeWrite(protocol, (kind, params) => {
         if (kind === 'use_item') {
             const item = params?.hand === 1 ? bot.inventory.slots[45] : bot.heldItem;
             if (item?.name?.replace(/^minecraft:/, '') === 'fishing_rod') {
@@ -181,9 +211,7 @@ export function observeViewerFishingCatch(bot, publish, serializeItem, now = Dat
                     }
             }
         }
-        originalWrite.call(protocol, kind, params);
-    };
-    protocol.write = viewerWrite;
+    });
     protocol.on('spawn_entity', onSpawn);
     protocol.on('world_particles', onParticle);
     protocol.on('collect', onCollect);
@@ -195,8 +223,7 @@ export function observeViewerFishingCatch(bot, publish, serializeItem, now = Dat
     bot.on('respawn', reset);
     bot.on('end', reset);
     return () => {
-        if (protocol.write === viewerWrite)
-            protocol.write = originalWrite;
+        disposeWrite();
         protocol.off('spawn_entity', onSpawn);
         protocol.off('world_particles', onParticle);
         protocol.off('collect', onCollect);

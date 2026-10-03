@@ -34,7 +34,7 @@ Hosts can include original registry facts in other presentation messages: block 
 
 Catch attribution requires the local player's bobber, bite, actual rod reel, newly spawned loot close to the hook, velocity toward its owner, collection by that player and a matching inventory increase. Ordinary pickups, other players' catches, cancelled casts and full-inventory loot produce no catch receipt. Vanilla fish, junk and treasure use the same path. Pending evidence expires after 8 seconds and resets on Mineflayer `respawn` or `end`.
 
-Dispose outgoing-packet observers in the reverse order they were attached. This restores wrapped `bot._client.write` methods without retaining disconnected observers.
+Catch observers share one outgoing-packet dispatcher per protocol connection. Viewers can close in any order: each disposal removes its callback, and the last observer restores the original `bot._client.write` when the dispatcher still owns it. Other plugins' wrappers are preserved.
 
 `viewerPageHtml(assetRoot, mode, fallbackHtml)` selects `public/index.html`, `public/third/index.html` or `public/dungeon/index.html`. A root generated page can also serve another camera mode. `viewerPageCss(assetRoot, fallbackCss)` prefers `public/viewer.css`; missing generated files use the host's fallback. Optional speech frame, external script and stylesheet arguments preserve host overlays without changing the portable generated page.
 
