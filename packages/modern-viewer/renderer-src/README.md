@@ -114,7 +114,32 @@ app.use(['/textures', '/third/textures', '/dungeon/textures'],
 `skillsState`；任何服务端都可以提供这个规范化状态，前端无需依赖千灯纪的消息频道。
 施法反馈同样使用可选的结构化事件；没有这些状态的普通服务器可以只接通用画面。
 
-## 检查源码
+## 1.21.1 模组画面的原生资源准备
+
+My Agent World 要求贴图和建模与相同模组包的 Java 客户端一致。该实验路径禁止原版替代块、代理 state ID、裁切贴图和凭名称生成简化模型；尚不提供已经完成的 1.21.1 模组浏览器渲染器。上文的 1.20.6 构建入口保持其原有版本范围。
+
+`tools/native_viewer_assets.py` 从对应客户端、已锁定的模组 JAR、平台 JAR及可选资源包导出原始 `assets/<namespace>/...` 字节，逐文件核对 SHA-256；保留父模型、UV、旋转、动画元数据和嵌套库。输入必须包含实际模组包的注册表，不能用原版属性顺序推导模组 state ID。不同资源来源的同名文件全部保存在 `asset-variants/`，报告覆盖关系；特别是 atlas 定义需要按原生资源栈合并，不能仅使用最后一个 JSON 文件。未证明的 FML/资源包优先级明确标为未验收。
+
+```powershell
+python tools/native_viewer_assets.py --client-jar "<1.21.1-client.jar>" `
+  --modpack-lock "<society-lab-1.21.1.lock.json>" --mods-dir "<locked-mods-dir>" `
+  --platform-jar "<neoforge-21.1.248-universal.jar>" `
+  --registry-dir "<native-registry-export-dir>" --output "<new-output-dir>"
+python tools/native_viewer_assets.py --verify "<output-dir>"
+python tools/native_viewer_assets.py --verify "<output-dir>" --require-render-parity
+```
+
+注册表包含 `blocks.tsv`、`items.tsv`、`components.tsv`、`block-states.jsonl` 和 `entities.tsv`。逐状态 JSONL 保存真实网络号、注册 ID、属性、`renderShape` 与 `hasBlockEntity`；由隔离 NeoForge 实例读取导出。生成目录必须全新，工具不删除或覆盖之前的导出。
+
+`native-assets.json` 分别记录资源完整性、注册表来源、静态模型依赖、原生 loader/方块实体渲染需求与画面验收状态。静态模型依赖完整也只记为 `json_model_sources_verified`，不代表客户端效果已一致。普通校验确认原始资源字节；严格校验在动态渲染、资源优先级、实际场景对照尚未通过时拒绝宣称完整画面，不能回退到原版近似模型。
+
+Create 的轴/曲柄原生旋转、女仆骨骼动画、Domum 材质组合等需要相应模组的渲染逻辑和运行状态。原生 NeoForge 客户端应作为画面对照；若网页实现不能完整复现这些逻辑，完整画面须采用原生客户端渲染后传输到浏览器的路径。仅复制贴图不会执行 Java 的 [BlockEntityRenderer](https://docs.neoforged.net/docs/1.21.1/blockentities/ber/) 或 [自定义模型加载器](https://docs.neoforged.net/docs/1.21.1/resources/client/models/modelloaders/)。这个显示后端的选择不改变 Mineflayer 作为 Agent 操作连接的用途。
+
+```powershell
+python -m unittest discover -s tools/test -p "test_native_viewer_assets.py" -v
+```
+
+## 检查 1.20.6 源码
 
 ```powershell
 # 本目录：离线工具与预设隔离测试
