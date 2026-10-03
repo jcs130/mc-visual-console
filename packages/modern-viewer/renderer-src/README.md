@@ -133,7 +133,22 @@ python tools/native_viewer_assets.py --verify "<output-dir>" --require-render-pa
 
 `native-assets.json` 分别记录资源完整性、注册表来源、静态模型依赖、原生 loader/方块实体渲染需求与画面验收状态。静态模型依赖完整也只记为 `json_model_sources_verified`，不代表客户端效果已一致。普通校验确认原始资源字节；严格校验在动态渲染、资源优先级、实际场景对照尚未通过时拒绝宣称完整画面，不能回退到原版近似模型。
 
-Create 的轴/曲柄原生旋转、女仆骨骼动画、Domum 材质组合等需要相应模组的渲染逻辑和运行状态。原生 NeoForge 客户端应作为画面对照；若网页实现不能完整复现这些逻辑，完整画面须采用原生客户端渲染后传输到浏览器的路径。仅复制贴图不会执行 Java 的 [BlockEntityRenderer](https://docs.neoforged.net/docs/1.21.1/blockentities/ber/) 或 [自定义模型加载器](https://docs.neoforged.net/docs/1.21.1/resources/client/models/modelloaders/)。这个显示后端的选择不改变 Mineflayer 作为 Agent 操作连接的用途。
+Create 的轴/曲柄原生旋转、女仆骨骼动画、Domum 材质组合等需要相应模组的渲染逻辑和运行状态。**优先在 Three.js 中移植原生逻辑**：Java 代码定义动画，不等于只能用 Java 画面串流。机械可按真实转速更新原始模型矩阵，骨骼动画可接原始动画与姿态混合，粒子与动态材质分别实现对应发射和着色规则。原生 NeoForge 客户端用于画面对照。仅复制贴图不会自动执行 [BlockEntityRenderer](https://docs.neoforged.net/docs/1.21.1/blockentities/ber/) 或 [自定义模型加载器](https://docs.neoforged.net/docs/1.21.1/resources/client/models/modelloaders/)；是否需要另一种显示后端，应基于实测限制判断。
+
+### 原生 Create 动画的网页验收入口
+
+`src/native-viewer/model-loader.js` 在读取每份模型/贴图时核对导出索引的 SHA-256，解析父模型、子级纹理、原始面 UV、方块变体和元素旋转；使用原始 PNG，不生成替代几何。资源覆盖未决、缺失模型/贴图、自定义 loader、未适配 tint/UV lock/加权变体/动画贴图均明确拒绝，不能据此宣称通用模型加载器已经覆盖整个模组包。
+
+`create-kinetics.js` 当前只验收锁定的 Create 6.0.10 JAR（SHA-256 `ef87fe5709f1ba1f5b8bb20a2925b5afb4669e178fd6d8bf10c167759eefe37a`）。传动轴依据原生 RPM、轴向、坐标相位偏移旋转；曲柄加载原始 `hand_crank/block` 和完整 `hand_crank/handle` 模型，保留握柄的 45° 部件，按原生每 tick 四分之一速度追踪与 partial tick 插值处理正反转和停机惯性。规则核对安装 JAR 的字节码及 [Create 对应提交源码](https://github.com/Creators-of-Create/Create/tree/ac0c444d9828da3453ae8cc65338e8de063286fb)。更新 Create 版本须重新核对，不能悄悄套用旧适配。
+
+```powershell
+node tools/serve-native-create-preview.mjs "<native-assets-dir>" "<private-create-capture.json>" 28982
+node --test tools/test/native-create.test.mjs
+```
+
+入口只监听 `127.0.0.1`，检查 Host/Origin，并按资源清单限制文件来源；本机另有同名端口时会报错。它是只读模型验收台，不登录新观察账号、不发游戏动作、不改变现有 1.20.6 画面、不开放公网入口。页面播放来自执行动作账号原生包的真实记录，显式标记“联机记录回放”。输入为 `kind=native_create_capture`、`schemaVersion=1`、`mode=recorded_same_player_connection`，含注册表哈希、`nodes[].position/state/initialSpeed`、`updates[].atMs/key/speed`、`durationMs` 及空的 `errors`。`state` 必须来自同版本的真实注册表；`key` 是绝对坐标 `x,y,z`。不能从兼容代理的 `stone` 推测机器身份。
+
+隔离实测通过正转 `32`、反转 `-32`、停机 `0` RPM；浏览器实际显示 35 个原始模型面。6 项几何/资源/动画回归通过，真实 WebGL 正转、反转、停止按钮和布局均验证。首次页面出现画布增高反馈，已将画布移出布局流并重新加载验收；修复后视口持续保持 400 px，没有沿用失败截图。完整世界、光照、所有方向/资源包、动画实体和其他模组仍待对照，`renderParityVerified` 与严格验收门槛保持关闭。Create 转速指示粒子已在网关原生流解码，但此模型预览尚未渲染这些粒子。
 
 ```powershell
 python -m unittest discover -s tools/test -p "test_native_viewer_assets.py" -v
