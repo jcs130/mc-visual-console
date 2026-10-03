@@ -156,8 +156,10 @@ socket.emit('avatarState', {
   horizontalSpeed: 0.12, verticalSpeed: 0,
   velocity: { x: 0.12, y: 0, z: 0 }, // Mineflayer 速度，方块/游戏 tick
   onGround: true, inWater: false, inLava: false,
+  surfaceBlock: { name: 'grass_block', stateId: 9 }, // 实际脚下已加载方块，未知用 null
   sprinting: false, sneaking: false, burning: false,
   shieldRaised: false, usingHeldItem: false,
+  heldItemEdible: false, // 原版 food 数据或真实物品 food component，不能只看名称猜测
   health: 20, maxHealth: 20, absorption: 0,
   food: 20, armor: 10, oxygen: 20,
   experienceLevel: 9, experienceProgress: 0.4,
@@ -190,7 +192,10 @@ socket.emit('avatarState', {
 | `gameTitleClear` | 无数据；清空标题 |
 | `bossBars` | 完整数组 `[{ title, progress, color }]`，progress 0–1；最多 8 条，color 为 pink / blue / red / green / yellow / purple / white；删除时也要发送，全部消失发 `[]` |
 | `scoreboardState` | `{ title, rows: [{ name, value }] }`；完整侧栏快照，移除时发空 title 和空 rows |
-| `worldSound` | `{ name, position, volume, pitch }`；name 为原版声音事件名，position 为绝对坐标或 null；需要另行导出并提供声音资源 |
+| `worldSound` | `{ name, position, volume, pitch, category?, entityId?, seed?, fixedRange? }`；name 为原版声音事件名，position 为绝对坐标或 null。宿主从原始 sound_effect / named_sound_effect / entity_sound_effect 包统一转发，不能再重复转发 Mineflayer 的 soundEffectHeard。category 为原版混音类别；entityId 让空间声音跟随实体，seed 用于变体选择；需要另行导出并提供声音资源 |
+| `worldSoundStop` | `{ name?, category? }`；转发原始 stop_sound。仅 name 停止该声音，仅 category 停止该类别，空对象停止全部；不要把参数缺失当作忽略这个事件 |
+| `musicContext` | 可选 `{ name }`，宿主指定实际场景的原版音乐事件；通常省略，前端按 biome / dimension 选曲并保留播放间隔 |
+| `fishingCatch` | `{ seq, atMs, item, count, position? }`；实际确认的钓获入包事件，item 为上面的统一物品格式，count 为本次获得数量，atMs 为 Unix 毫秒。不能把任意背包增量当作钓获 |
 | `presentationEvent` | 原版 `particle` / `explosion` / `world_event` / `pickup` / `effect` / `cooldown` 或自定义提示事件 |
 | `tacticalRoute` | `{ points: [{x,y,z}], goal: {x,y,z} 或 null, status }`，最多 64 点；任务结束发空 points 和 null goal |
 | `tacticalAttack` | `{ id, name, position }`，表示真实发出的攻击指令 |
@@ -206,6 +211,21 @@ socket.emit('presentationEvent', {
 // 收到移除状态包时立即清除，不等计时器猜测。
 socket.emit('presentationEvent', { kind: 'effect', id: effectId, active: false });
 ```
+
+钓获与声音有独立的通用 Mineflayer 桥接示例，见 [host/README.md](host/README.md)。钓获来源同时核对本人的鱼漂、上钩、真实收竿、向施法者飞来的掉落实体、本人的 collect 包和对应背包增量。宝藏、杂物和自定义物品使用同一逻辑，不维护鱼种白名单；新浏览器连接不重放过去的钓获。
+
+原版也在客户端生成部分声音。`presentationEvent` 的 pickup 应带 `self`、`entityId`、`collectorId` 和 `entityName`，自捡物品或经验才能播放本地拾取音。脚步使用 avatarState 的实际位置、onGround 与 surfaceBlock；digProgress 可以带真实 blockName。前端读取从本机 1.20.6 客户端导出的 block-sounds.json，区分草地、木头、雪等声音。没有已加载的方块或对应资源时保持安静，不猜材质、不声称操作成功。客户端声音会与近期同名服务端声音去重。
+
+`inWater` 的真实变化与位移驱动入水、游泳音，首次水中快照不误报入水；`burning` 驱动着火声，熄火清掉正在播或等待中的声音。按钮/菜单仅对可信用户点击播放原版 UI 点击音；展示数据不会制造伤害、死亡或成功施法声音。
+
+网页声音须由浏览器中的首次点击或按键解锁。音效与背景音乐可以独立开关，并有总音量、音效和音乐三个音量控制；设置仅保存在本机浏览器。长音乐以流方式播放，声音包不会进入聊天或模型上下文。
+
+音乐在已知世界就绪后等待 10–30 秒，歌曲结束后等待 5–10 分钟，群系变化稳定 15 秒后才切换，
+避免在水边抖动或无间歇重复。服务端直接指定的音乐与唱片优先于自动背景音乐。
+`worldSoundStop` 同时取消尚在下载/解码的声音；viewerReset、断线与页面离开清理全部声音，
+迟到的异步音频不会在新世界重放。声音状态可由 `window.cortiWorldAudio.state()` 或窗口
+`mc-viewer-audio-state` 事件检查；`setVolume(category, 0..1)` 支持原版全部类别。
+完整 sounds.json 导出保留所有变体、权重、音量、音高与事件引用，不只抽取部分文件。
 
 ## 6. 可选服务器技能扩展
 

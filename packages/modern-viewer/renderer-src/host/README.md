@@ -1,0 +1,41 @@
+# `observeViewerSounds`, `observeViewerFishingCatch`, `viewerPageHtml` and `serveViewerAsset`
+
+These ESM observers attach to an existing Mineflayer bot. They do not create a bot, choose actions, send chat or request a model. The socket protocol is in `../SOCKET_PROTOCOL.md`.
+
+```js
+import { observeViewerSounds } from './viewer-sound-packets.mjs'
+import { observeViewerFishingCatch } from './viewer-fishing.mjs'
+
+const stopSounds = observeViewerSounds(
+  bot._client,
+  bot.registry,
+  id => id === bot.entity?.id ? bot.entity.position : bot.entities[id]?.position,
+  event => io.emit('worldSound', event),
+  event => io.emit('worldSoundStop', event)
+)
+const stopFishing = observeViewerFishingCatch(
+  bot,
+  event => io.emit('fishingCatch', event),
+  serializeInventoryItem
+)
+
+function dispose() {
+  io.emit('worldSoundStop', {})
+  stopFishing()
+  stopSounds()
+}
+```
+
+`serializeInventoryItem(item)` returns the same bounded item payload used for the inventory and hotbar, or `null`. It must preserve `name`, numeric `type`, positive integer `count` and `metadata`; optional fields include `displayName`, `customName`, `headTextureHash`, `enchanted`, `components` and `nbt`. Java 1.20.6 custom names, textures and enchantments belong to item components. Preserve those fields so a caught treasure has the same identity in its entity and inventory forms. Do not key a stack only by its generic item name.
+
+Raw `sound_effect`, `named_sound_effect` and `entity_sound_effect` are the audio source. Adding Mineflayer's derivative `soundEffectHeard` to the same socket would play duplicate sounds. Registry holders and inline resource names are supported; coordinates use the protocol's 1/8 block units. `stop_sound` forwards the specified category, resource name or both; empty `worldSoundStop` stops all active sounds. New viewer connections do not replay sound packets.
+
+Hosts can include original registry facts in other presentation messages: block break world event `2001` carries `blockName` from `registry.blocksByStateId[data]`; jukebox event `1010` carries `itemName` from `registry.items[data]`. Event `1011` stops the jukebox. Biome and weather snapshots can include known `hasPrecipitation`, `temperature` and `precipitation` fields. Leave unknown climate fields absent; the world's raining flag alone does not imply rain falls in the current biome.
+
+Catch attribution requires the local player's bobber, bite, actual rod reel, newly spawned loot close to the hook, velocity toward its owner, collection by that player and a matching inventory increase. Ordinary pickups, other players' catches, cancelled casts and full-inventory loot produce no catch receipt. Vanilla fish, junk and treasure use the same path. Pending evidence expires after 8 seconds and resets on Mineflayer `respawn` or `end`.
+
+Dispose outgoing-packet observers in the reverse order they were attached. This restores wrapped `bot._client.write` methods without retaining disconnected observers.
+
+`viewerPageHtml(assetRoot, mode, fallbackHtml)` selects `public/index.html`, `public/third/index.html` or `public/dungeon/index.html`. A root generated page can also serve another camera mode. `viewerPageCss(assetRoot, fallbackCss)` prefers `public/viewer.css`; missing generated files use the host's fallback. Optional speech frame, external script and stylesheet arguments preserve host overlays without changing the portable generated page.
+
+`serveViewerAsset(response, root, relativePath, cacheControl?, range?)` restricts files to the supplied asset root, recognized asset formats and 32 MiB. Pass the incoming `Range` header for OGG streaming: full requests return `200`; supported single ranges return `206` with `Content-Range`; invalid or unsatisfiable ranges return `416`. The host must enforce its request method, Host, origin and content security policy before calling these helpers.

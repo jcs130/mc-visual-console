@@ -29,7 +29,10 @@
 <iframe class="corti-speech-bubble" id="corti-speech-bubble" title="主播语音气泡" aria-label="主播语音气泡" hidden></iframe>
 <aside class="corti-minimap" id="corti-minimap" aria-label="附近地形"><canvas width="200" height="200"></canvas><div class="corti-map-caption" data-map-caption></div></aside>
 <aside class="corti-skills" id="corti-skills" aria-label="技能状态"><header><strong>技能</strong><span data-mana></span></header><div class="corti-mana-bar"><span data-mana-fill></span></div><div data-skill-list></div><div data-ability-list></div><small data-skill-status></small></aside>
+<section id="viewer-fishing-catch" class="viewer-fishing-catch" hidden aria-live="polite" aria-label="钓获物品"></section>
 <button type="button" class="corti-sound-toggle" id="corti-sound-toggle" aria-label="切换游戏音效">音效 待激活</button>
+<button type="button" class="corti-music-toggle" id="corti-music-toggle" aria-label="切换背景音乐">音乐 待激活</button>
+<details class="viewer-audio-controls"><summary>声音设置</summary><div class="viewer-audio-settings"><label>总音量<input type="range" min="0" max="1" step="0.05" value="0.65" data-corti-audio-volume="master"></label><label>游戏音效<input type="range" min="0" max="1" step="0.05" value="1" data-corti-audio-volume="effects"></label><label>背景音乐<input type="range" min="0" max="1" step="0.05" value="0.35" data-corti-audio-volume="music"></label><output data-corti-audio-status aria-live="polite">点击音效或音乐，启用网页声音</output></div></details>
 <button type="button" class="corti-night-vision-toggle" id="corti-night-vision-toggle" aria-label="切换夜视模式">夜视 自动</button>
 <button type="button" class="corti-inventory-toggle" id="corti-inventory-toggle" aria-label="打开背包">背包 <kbd>E</kbd></button>
 <section class="corti-menu" id="corti-menu" aria-label="物品界面" hidden><header><strong data-menu-title></strong><span data-menu-source></span><button type="button" data-menu-close aria-label="关闭物品界面">×</button></header><div data-menu-body></div></section>

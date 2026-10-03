@@ -11,6 +11,7 @@
 | `src/page-template.html`、`src/viewer.css` | 页面结构、生存 HUD、物品界面、小地图与技能栏布局 |
 | `src/viewer-page.mjs` | 输出第一人称、第三人称、地下城 2.5D 页面 |
 | `tools/` | HUD、物品图标、动作、盾牌、粒子、音效、遮挡处理以及离线构建/校验 |
+| [host/](host/README.md) | 通用 Mineflayer 钓获与声音观察器，无 Cortico 或千灯纪运行依赖 |
 | `src/modern-viewer/presets/qiandengji/`、`tools/presets/` | 可选的千灯纪 NPC 美术、身份与技能视觉映射 |
 | [SOCKET_PROTOCOL.md](SOCKET_PROTOCOL.md) | 宿主项目的数据接入合约 |
 
@@ -49,7 +50,7 @@ bundle 不在 Git 中分发；源码与工具使用仓库 MIT 许可，第三方
 [`tools/CORTICO_LICENSE`](tools/CORTICO_LICENSE)；方块实体几何的许可保留于
 [`tools/minecraft-viewer-block-entity-geometry.LICENSE`](tools/minecraft-viewer-block-entity-geometry.LICENSE)。
 
-### 可选：游戏音效
+### 可选：游戏音效与背景音乐
 
 音频来自启动器的本地 `assets` 索引和对象缓存。以下工具校验版本索引与文件哈希，
 不会联网下载资源；缺少本地资源时先用启动器安装相应版本：
@@ -58,7 +59,27 @@ bundle 不在 Git 中分发；源码与工具使用仓库 MIT 许可，第三方
 node tools/export-minecraft-viewer-sounds.mjs "<versions/1.20.6/1.20.6.json>" "<launcher-assets-dir>" "<output-dir>"
 ```
 
-浏览器按音效按钮或与页面交互后才能播放音频。宿主还需要转发相应的音效事件。
+导出完整 sounds.json，包括所有变体、声音事件引用、音乐和唱片；音乐流式播放，不把长曲全部解码到内存。
+宿主用 [通用观察器](host/README.md) 转发原始位置、实体及停止声音包，避免与 Mineflayer 派生事件重复播放。
+浏览器点击音效/音乐按钮或与页面交互后才能播放音频。两个开关独立，声音设置中分别控制总音量、音效和音乐。
+背景音乐根据已知维度/群系选择，曲目之间保留原版式间隔，不连续循环。
+
+脚步与挖掘等声音在原版客户端本地生成。需要准确区分地面材质时，可另外从自己安装的客户端导出完整方块声音类型：
+
+```powershell
+# 额外需要 Java 21；最后一个参数可省略，默认使用 PATH 中的 java
+node tools/export-minecraft-viewer-block-sounds.mjs "<versions/1.20.6/1.20.6.json>" "<launcher-libraries-dir>" "<output-dir>" "<java-21-executable>"
+```
+
+工具离线校验客户端与已安装依赖哈希，从固定的原版 1.20.6 注册表读取 1060 种方块的 step / hit / break 等声音。
+不下载或分发 JAR，不启动游戏窗口、不连接服务器。缺少这个可选映射时，网页仍能播放服务器声音和音乐，
+脚步与挖掘不猜材质。宿主须提供实际已加载的 surfaceBlock、动作状态及原版拾取事件，详见 Socket.IO 合约。
+
+### 钓获展示
+
+通用观察器核对本人鱼漂、上钩、收竿、战利品飞行、实际拾取和入包，才发送 `fishingCatch`。
+三个视角都显示短暂钓获卡片，包含物品图标、实际数量、自定义名称及附魔装饰；宝藏与杂物无需单独名单。
+普通拾取不会冒充钓获，旧事件不会在重连后重播，也不会向聊天或模型上下文塞入展示数据。
 
 ## 产物与接入
 
