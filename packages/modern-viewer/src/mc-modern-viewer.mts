@@ -14,6 +14,7 @@ import { observerEquipmentSlot, observerItemIdentity } from './observer-inventor
 import { createViewerChunkStream, createViewerEntityStream } from './viewer-stream.mts'
 import { loadViewerBlockMapping, identityViewerBlockMapping } from './viewer-state-map.mts'
 import { createViewerStaticResponder } from './viewer-static.mjs'
+import { ViewerSessionSlots } from './viewer-session-slots.mjs'
 
 // 依赖解析锚点：本包 src/ 下没有 node_modules（socket.io / prismarine-viewer / minecraft-data / vec3
 // 都装在宿主 viewer-service/ 里）。所以 require 锚在宿主的目录上，而不是 import.meta.url
@@ -29,6 +30,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ASSET_ROOT = path.resolve(__dirname, '../assets') // 包内 assets/：引擎、mod-assets、viewer.css、mc-control.js（派生资源不入库）
 
 const MAX_VIEWER_SESSIONS = 2
+const MAX_CAPTURE_SESSIONS = 1
+const CAPTURE_SESSION_MS = 60000
 const VIEW_DISTANCE_CHUNKS = 3
 const AVATAR_STATE_INTERVAL_MS = 100
 const MAX_VIEWER_INVENTORY_SLOTS = 46
@@ -1030,6 +1033,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   }
   const prismarinePublicRoot = path.join(path.dirname(require.resolve('prismarine-viewer/package.json')), 'public')
   const sessions = new Set()
+  const sessionSlots = new ViewerSessionSlots(MAX_VIEWER_SESSIONS, MAX_CAPTURE_SESSIONS)
   const fishingOwners = createFishingBobberOwnerTracker(bot, entity => {
     for (const session of sessions) session.entityStream.queue(entity, true)
   })
@@ -1398,8 +1402,10 @@ if (!snap?.holder) {
 
   function acceptViewer(socket, viewMode) {
     if (!bot.entity || !blockStateMapping.ready) { socket.emit('viewerUnavailable', { code: 'viewer_state_map_unavailable' }); socket.disconnect(true); return }
-    if (sessions.size >= MAX_VIEWER_SESSIONS) {
-      socket.emit('viewerBusy', { maximum: MAX_VIEWER_SESSIONS })
+    const capture = socket.handshake?.headers?.['x-mc-viewer-capture'] === '1'
+    const releaseSlot = sessionSlots.reserve(capture)
+    if (!releaseSlot) {
+      socket.emit('viewerBusy', { maximum: capture ? MAX_CAPTURE_SESSIONS : MAX_VIEWER_SESSIONS })
       socket.disconnect(true); return
     }
     const mode = socket.handshake?.query?.renderer === 'compat' ? 'compat' : 'modern'
@@ -1573,12 +1579,17 @@ if (!snap?.holder) {
     settleTimer.unref()
     const session = {
       socket, worldView, entityStream, mode, viewMode, avatarTimer, locomotionKeepalive, settleTimer, movementAnimations,
+      releaseSlot, captureTimer: null,
       botPosition, botTime, botWeather, botAvatarState, botEntitySpawn, botEntityMoved, botEntityRefresh,
       botEntitySwingArm, botEntityHurt, botParticle, botSoundEffect, botHardcodedSoundEffect, botEntityDead,
       botEntityCrouch, botEntityUncrouch,
       botHeldItemChanged, botInventoryUpdate, inventoryEmitter,
     }
     sessions.add(session)
+    if (capture) {
+      session.captureTimer = setTimeout(() => closeSession(session), CAPTURE_SESSION_MS)
+      session.captureTimer.unref()
+    }
     socket.once('disconnect', () => closeSession(session))
 
     socket.emit('version', bot.version)
@@ -1624,6 +1635,8 @@ if (!snap?.holder) {
 
   function closeSession(session) {
     if (!sessions.delete(session)) return
+    clearTimeout(session.captureTimer)
+    session.releaseSlot()
     clearInterval(session.avatarTimer)
     session.entityStream.close()
     bot.off('entityGone', session.entityStream.remove)
@@ -1664,8 +1677,9 @@ if (!snap?.holder) {
     return { ok: server.listening && online && !!bot.world && blockStateMapping.ready, service: 'qiandengji-viewer', schema: 1,
       port: server.address()?.port ?? port,
       observerOnline: online, observer: bot.username, worldAvailable: !!bot.world, dimension: currentDimension(),
-      sessions: sessions.size, readySessions: [...sessions].filter(s => s.worldView.stats().loadedColumns > 0).length,
-      viewDistanceChunks: VIEW_DISTANCE_CHUNKS, maxSessions: MAX_VIEWER_SESSIONS,
+      sessions: sessions.size, ...sessionSlots.status(), version: bot.version,
+      readySessions: [...sessions].filter(s => s.worldView.stats().loadedColumns > 0).length,
+      viewDistanceChunks: VIEW_DISTANCE_CHUNKS,
       blockStates: blockStateMapping.health,
       streams: [...sessions].map(s => ({ mode: s.mode, chunks: s.worldView.stats(), entities: s.entityStream.stats() })),
       generation: worldGeneration, scope: 'Observer and chunk stream readiness; browser rendering is verified separately' }
