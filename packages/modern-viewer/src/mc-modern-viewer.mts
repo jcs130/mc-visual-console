@@ -338,7 +338,60 @@ function isGenericEntityType(value) {
   if (typeof value !== 'string') return true
   return /^(?:mob|hostile|passive|animal|object|other|player)$/iu.test(value.trim())
 }
-function serializeViewerEntity(bot, entity, includeFull = true) {
+function positiveEntityId(value) {
+  if (typeof value !== 'number' && typeof value !== 'string') return undefined
+  const id = Number(value)
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined
+}
+function sourceEntityId(value) {
+  if (!value || typeof value !== 'object') return positiveEntityId(value)
+  return positiveEntityId(value.ownerEntityId) ?? positiveEntityId(value.ownerId)
+    ?? positiveEntityId(value.entityId) ?? positiveEntityId(value.id)
+    ?? positiveEntityId(value.entity?.id)
+}
+function fishingBobberOwnerEntityId(entity, protocolOwnerEntityId) {
+  return sourceEntityId(entity.ownerEntityId) ?? positiveEntityId(protocolOwnerEntityId)
+    ?? sourceEntityId(entity.ownerId) ?? sourceEntityId(entity.owner)
+    ?? sourceEntityId(entity.source) ?? positiveEntityId(entity.objectData)
+}
+export function createFishingBobberOwnerTracker(bot, onOwner = () => {}) {
+  const owners = new Map()
+  const bobberRegistryEntries = [
+    ...(bot.registry?.entitiesArray ?? []).filter(entry => canonicalEntityName(entry?.name) === 'fishing_bobber'),
+    bot.registry?.entitiesByName?.fishing_bobber,
+    bot.registry?.entitiesByName?.['minecraft:fishing_bobber'],
+  ]
+  const bobberSpawnTypes = new Set(bobberRegistryEntries
+    .map(entry => positiveEntityId(entry?.internalId)).filter(id => id !== undefined))
+  const spawned = packet => {
+    const id = positiveEntityId(packet?.entityId)
+    if (id === undefined) return
+    owners.delete(id) // The server may reuse an entity ID after a bobber disappears.
+    const entity = bot.entities?.[String(id)]
+    if (canonicalEntityName(entity?.name) !== 'fishing_bobber' && !bobberSpawnTypes.has(positiveEntityId(packet.type))) return
+    const ownerEntityId = sourceEntityId(packet.objectData) ?? sourceEntityId(packet.source)
+    if (ownerEntityId === undefined) return
+    owners.set(id, ownerEntityId)
+    if (entity) onOwner(entity)
+  }
+  const gone = entity => { const id = positiveEntityId(entity?.id); if (id !== undefined) owners.delete(id) }
+  const reset = () => owners.clear()
+  bot._client.on('spawn_entity', spawned)
+  bot._client.on('login', reset)
+  bot.on('entityGone', gone)
+  bot.on('respawn', reset)
+  return {
+    ownerFor: entity => owners.get(positiveEntityId(entity?.id)),
+    close() {
+      bot._client.off('spawn_entity', spawned)
+      bot._client.off('login', reset)
+      bot.off('entityGone', gone)
+      bot.off('respawn', reset)
+      owners.clear()
+    },
+  }
+}
+export function serializeViewerEntity(bot, entity, protocolOwnerEntityId) {
   const record = entity
   const registryEntity = resolveRegistryEntity(bot, record.entityType)
   const rawName = canonicalEntityName(record.name)
@@ -359,6 +412,10 @@ function serializeViewerEntity(bot, entity, includeFull = true) {
     'username', 'uuid', 'displayName', 'customName', 'onGround', 'entityType', 'type', 'objectData',
     'baby', 'isBaby', 'tamed', 'isTamed', 'ownerUuid', 'ownerUUID', 'ownerId', 'ownerName',
   ])
+  if (name === 'fishing_bobber') {
+    const ownerEntityId = fishingBobberOwnerEntityId(record, protocolOwnerEntityId)
+    if (ownerEntityId !== undefined) serialized.ownerEntityId = ownerEntityId
+  }
   const velocity = viewerVector(record.velocity)
   if (velocity) serialized.velocity = velocity
   const metadata = sanitizeViewerValue(record.metadata, 0, new WeakSet())
@@ -973,6 +1030,9 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   }
   const prismarinePublicRoot = path.join(path.dirname(require.resolve('prismarine-viewer/package.json')), 'public')
   const sessions = new Set()
+  const fishingOwners = createFishingBobberOwnerTracker(bot, entity => {
+    for (const session of sessions) session.entityStream.queue(entity, true)
+  })
   let worldGeneration = 0
   let worldResetTimer = null
   let lastDimension = currentDimension()
@@ -1347,7 +1407,8 @@ if (!snap?.holder) {
     const worldEmitter = createViewerWorldEmitter(socket, normalizeStateId)
     const worldView = createViewerChunkStream({ bot, socket, viewDistance: VIEW_DISTANCE_CHUNKS,
       emit: (event, value) => worldEmitter.emit(event, value), onError: () => closeSession(session) })
-    const entityStream = createViewerEntityStream({ bot, socket, serialize: entity => serializeViewerEntity(bot, entity),
+    const entityStream = createViewerEntityStream({ bot, socket,
+      serialize: entity => serializeViewerEntity(bot, entity, fishingOwners.ownerFor(entity)),
       isHidden: isSettleGhost, distance: VIEW_DISTANCE_CHUNKS * 16 })
     let initialized = false
     let avatarSequence = 0
@@ -1614,6 +1675,7 @@ if (!snap?.holder) {
     if (worldResetTimer) clearTimeout(worldResetTimer)
     bot.off('respawn', scheduleWorldReset)
     bot.off('game', dimensionChanged)
+    fishingOwners.close()
     for (const session of [...sessions]) closeSession(session)
     server.closeAllConnections()
     closing = Promise.all([firstIo, thirdIo].map(io => new Promise(resolve => io.close(() => resolve())))).then(() => {})

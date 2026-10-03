@@ -20,7 +20,6 @@ import {
   NearestFilter,
   NoColorSpace,
   PCFSoftShadowMap,
-  Plane,
   PlaneGeometry,
   Raycaster,
   RepeatWrapping,
@@ -107,6 +106,7 @@ import {
   ViewerEffectSystem,
   normalizeViewerEffectEvent,
 } from "./viewer-effects.js";
+import { FishingVisuals, withSelfFishingActor } from "./fishing-visuals.js";
 import {
   buildNpcProfile,
   createNpcAction,
@@ -138,6 +138,7 @@ const firstPersonFov = clampQueryNumber(queryValue("fov"), 30, 140, 120);
 const dungeonFov = clampQueryNumber(queryValue("dungeonFov"), 38, 62, 48);
 const renderDistance = clampQueryNumber(queryValue("distance"), 2, 12, 4);
 const qualityPreference = normalizeQualityPreference(queryValue("quality"));
+const showChunkDiagnostics = queryValue("debugChunks") === "1";
 // Mineflayer only has chunks around the bot. Stay inside that loaded radius so
 // zooming out reveals the world instead of the empty sky beyond streamed data.
 const maximumOrbitDistance = Math.max(32, renderDistance * 16 - 8);
@@ -183,6 +184,9 @@ const NPC_WEB_ACTION_SCHEMA = createNpcActionSchema([{
 
 const pendingChunks = new Map();
 const chunkLoadingGuards = new Map();
+let latestChunkStreamState = null;
+let chunkDiagnosticsElement = null;
+let chunkDiagnosticsTimer = null;
 const chunkGuardGeometry = new BoxGeometry(16, 1, 16);
 const chunkGuardMaterial = new MeshBasicMaterial({
   color: isDungeonView ? 0x253548 : 0x7592a8, side: DoubleSide, toneMapped: false,
@@ -239,6 +243,45 @@ function disposeChunkLoadingGuards() {
   chunkLoadingGuards.clear();
   chunkGuardGeometry.dispose();
   chunkGuardMaterial.dispose();
+}
+
+function installChunkDiagnostics() {
+  if (!showChunkDiagnostics || chunkDiagnosticsElement) return;
+  chunkDiagnosticsElement = document.createElement("pre");
+  chunkDiagnosticsElement.id = "viewer-chunk-diagnostics";
+  Object.assign(chunkDiagnosticsElement.style, {
+    position: "fixed", left: "12px", bottom: "12px", zIndex: "30", margin: "0",
+    maxWidth: "min(620px, calc(100vw - 24px))", maxHeight: "28vh", overflow: "hidden",
+    padding: "8px 10px", border: "1px solid #8db6ff", borderRadius: "6px",
+    background: "#07111ddd", color: "#d9ebff", font: "12px/1.4 ui-monospace, Consolas, monospace",
+    whiteSpace: "pre-wrap", pointerEvents: "none",
+  });
+  document.body.append(chunkDiagnosticsElement);
+  const update = () => {
+    const world = globalThis.world;
+    const received = Object.keys(world?.loadedChunks ?? {}).length;
+    const meshed = Object.keys(world?.finishedChunks ?? {}).length;
+    const pending = latestPosition
+      ? pendingChunkOrigins(latestPosition.pos, renderDistance, world?.finishedChunks)
+      : [];
+    const shown = pending.slice(0, 5).map(({ x, z }) => `${x},${z}`).join("  ") || "none";
+    const stream = latestChunkStreamState;
+    chunkDiagnosticsElement.textContent = [
+      `chunk render · ${viewMode} · center ${latestPosition ? `${Math.floor(latestPosition.pos.x / 16)},${Math.floor(latestPosition.pos.z / 16)}` : "waiting"}`,
+      `server stream ${stream ? `${stream.streamed}/${stream.expected} · retry ${stream.retried} · ${Math.max(0, Date.now() - stream.at)}ms ago` : "waiting"}`,
+      `client chunks received ${received} · meshed ${meshed} · guarded ${chunkLoadingGuards.size} · pending sections ${world?.sectionsWaiting?.size ?? 0}`,
+      `pending near view ${pending.length}${pending.length ? ` · ${shown}` : ""}`,
+      `smart cull ${world?.isSmartCullEnabled?.() === false ? "off" : "on"} · cutaway ${dungeonOcclusionDiagnostics.applied ? "active" : "clear"} (${dungeonOcclusionDiagnostics.lastReason || "not checked"})`,
+    ].join("\n");
+  };
+  chunkDiagnosticsTimer = setInterval(update, 500);
+  update();
+  window.addEventListener("pagehide", () => {
+    if (chunkDiagnosticsTimer !== null) clearInterval(chunkDiagnosticsTimer);
+    chunkDiagnosticsTimer = null;
+    chunkDiagnosticsElement?.remove();
+    chunkDiagnosticsElement = null;
+  }, { once: true });
 }
 const pendingBlockUpdates = [];
 const pendingViewerEffects = [];
@@ -310,7 +353,6 @@ const dungeonHoverAnchorBox = new Box3();
 const dungeonHoverAnchor = new Vector3();
 const dungeonOcclusionCameraScene = new Vector3();
 const dungeonOcclusionTargetScene = new Vector3();
-const dungeonOcclusionPlane = new Plane(new Vector3(0, -1, 0), 0);
 const dungeonCutawayMaterials = new Map();
 const dungeonPointerProjectionInput = {
   origin: { x: 0, y: 0, z: 0 },
@@ -354,6 +396,7 @@ let normalizedAvatarMotion = null;
 let viewer = null;
 let worldView = null;
 let viewerEffectSystem = null;
+let fishingVisuals = null;
 let rendererReady = false;
 let initializing = false;
 let selectedPlayerSkin = resolvePlayerSkin(DEFAULT_PLAYER_SKIN_ID);
@@ -463,7 +506,6 @@ let dungeonOcclusionCheckTimer = null;
 let dungeonOcclusionLastCheckAt = 0;
 let dungeonOcclusionState = { active: false, clearSamples: 0 };
 let dungeonCutawayApplied = false;
-let dungeonCutawayPreviousLocalClipping = null;
 let dungeonCutawayMaterialScanCursor = 0;
 let dungeonOcclusionDiagnostics = {
   supported: null,
@@ -566,7 +608,15 @@ const socket = io({
   transports: ["websocket", "polling"],
 });
 
+let socketEverConnected = false;
 socket.on("connect", () => {
+  if (socketEverConnected && rendererReady) {
+    // A fresh socket gets a fresh world snapshot. Reload so stale entity IDs,
+    // fishing lines and chunks from the previous stream cannot survive it.
+    window.location.reload();
+    return;
+  }
+  socketEverConnected = true;
   reconnectAfterServerDisconnect = true;
   setStatus(rendererReady ? "实时画面已重新连接" : "正在同步世界数据…", false, rendererReady);
 });
@@ -583,6 +633,16 @@ socket.on("disconnect", (reason) => {
   }, 350);
 });
 socket.on("connect_error", () => setStatus("无法连接本地画面服务，正在重试…", true));
+socket.on("viewerReset", () => setTimeout(() => window.location.reload(), 250));
+socket.on("chunkStreamState", (state) => {
+  if (!state || !Number.isFinite(state.streamed) || !Number.isFinite(state.expected)) return;
+  latestChunkStreamState = {
+    streamed: Math.max(0, Math.floor(state.streamed)),
+    expected: Math.max(0, Math.floor(state.expected)),
+    retried: Math.max(0, Math.floor(Number(state.retried) || 0)),
+    at: Date.now(),
+  };
+});
 
 socket.on("version", (version) => {
   if (rendererReady || initializing) return;
@@ -624,6 +684,7 @@ socket.on("avatarState", (state) => {
   applyAvatarState();
   renderInventoryHud();
   renderMotionHud();
+  fishingVisuals?.sync();
 });
 
 socket.on("entityAnimation", (event) => applyEntityAnimation(event));
@@ -635,14 +696,13 @@ socket.on("viewerEffect", (event) => {
 
 socket.on("loadChunk", (data) => {
   if (!data || !Number.isFinite(data.x) || !Number.isFinite(data.z)) return;
-  const key = `${data.x},${data.z}`;
   const normalized = normalizeChunk(data);
   if (rendererReady) {
     worldView.emit("loadChunk", normalized);
     refreshChunkLoadingGuards();
     scheduleDungeonOcclusionCheck();
   }
-  else pendingChunks.set(key, { type: "load", data: normalized });
+  else pendingChunks.set(`${data.x},${data.z}`, { type: "load", data: normalized });
 });
 
 socket.on("unloadChunk", (data) => {
@@ -768,6 +828,15 @@ async function initializeRenderer(version) {
       getEntity: (id) => globalThis.world?.entities?.entities?.[String(id)] ?? null,
       cueElement: document.getElementById("skill-cue"),
     });
+    fishingVisuals = new FishingVisuals({
+      getWorld: () => globalThis.world,
+      getCamera: () => globalThis.world?.camera,
+      getActors: fishingActors,
+      getSelfId: () => pendingAvatarState?.entity?.id,
+      firstPerson: isFirstPersonView,
+      onAction: playFishingAction,
+    });
+    for (const entity of entityCache.values()) fishingVisuals.updateEntity(entity, { historical: true });
     for (const effect of pendingViewerEffects.splice(0)) deliverViewerEffect(effect);
     viewerEffectSystem.ingestChat(npcWorldContext.chat);
     enhanceRendererQuality();
@@ -789,6 +858,7 @@ async function initializeRenderer(version) {
     installInventoryHud();
     installVisibilityHandling();
     publishDiagnostics(version);
+    installChunkDiagnostics();
     setStatus(
       isFreeOrbitView
         ? `Three.js r184 · WebGL2 · ${mesherLabel}｜拖拽环绕视角`
@@ -817,6 +887,7 @@ function flushPendingWorld() {
   applyServerWeather();
   for (const entity of entityCache.values()) {
     if (!isRenderableEntity(entity)) continue;
+    if (canonicalEntityName(entity.name) === "fishing_bobber") continue;
     worldView.emit("entity", rendererEntityEquipment(entity, globalThis.mcData?.itemsByName));
     maybeApplyPlayerSkin(entity);
     maybeApplySelectedPlayerModel(entity);
@@ -2081,6 +2152,7 @@ function runDungeonOcclusionCheck() {
       targetWorld: avatar,
       cameraWorld,
       cameraScene: dungeonOcclusionCameraScene,
+      obstruction: trace.hit,
       cutoffWorldY: avatar.y + DUNGEON_OCCLUSION_CUT_HEIGHT,
     });
   } else {
@@ -2155,14 +2227,14 @@ function registerDungeonCutawayMaterial(material) {
   const record = {
     material,
     mode: "unsupported",
-    previousClippingPlanes: material.clippingPlanes ?? null,
-    previousClipIntersection: material.clipIntersection === true,
   };
   if (material.isShaderMaterial === true) {
     record.mode = patchDungeonCutawayShader(material) ? "uniform" : "unsupported";
-  } else if ("clippingPlanes" in material) {
-    record.mode = "plane";
   }
+  // A scene-wide clipping plane is not a safe fallback for the local
+  // camera-to-player corridor: it clips every block above the target height
+  // across the whole world, creating large visible holes. Only materials
+  // whose shader supports the bounded corridor may participate.
   dungeonCutawayMaterials.set(material, record);
   dungeonOcclusionDiagnostics.materials = dungeonCutawayMaterials.size;
   if (record.mode === "uniform") dungeonOcclusionDiagnostics.patchedShaderMaterials += 1;
@@ -2178,6 +2250,8 @@ function patchDungeonCutawayShader(material) {
     material.uniforms.u_lanternCutawayCamera ||= { value: new Vector3() };
     material.uniforms.u_lanternCutawayTarget ||= { value: new Vector3() };
     material.uniforms.u_lanternCutawayRadius ||= { value: DUNGEON_OCCLUSION_CORRIDOR_RADIUS };
+    material.uniforms.u_lanternCutawayHitAlong ||= { value: 1 };
+    material.uniforms.u_lanternCutawayHalfSpan ||= { value: 0.1 };
     return true;
   }
   const vertex = String(material.vertexShader || "");
@@ -2193,7 +2267,7 @@ function patchDungeonCutawayShader(material) {
     .replace(relativePosition, "$1\n    v_lanternCutawayPosition = relativePos;");
   material.fragmentShader = fragment.replace(
     "void main() {",
-    "uniform float u_lanternCutawayY;\nuniform float u_lanternCutawayEnabled;\nuniform vec3 u_lanternCutawayCamera;\nuniform vec3 u_lanternCutawayTarget;\nuniform float u_lanternCutawayRadius;\nin vec3 v_lanternCutawayPosition;\n\nvoid main() {\n    vec2 lanternSegment = u_lanternCutawayTarget.xz - u_lanternCutawayCamera.xz;\n    float lanternLengthSq = max(dot(lanternSegment, lanternSegment), 0.0001);\n    float lanternAlong = clamp(dot(v_lanternCutawayPosition.xz - u_lanternCutawayCamera.xz, lanternSegment) / lanternLengthSq, 0.0, 1.0);\n    vec2 lanternClosest = u_lanternCutawayCamera.xz + lanternSegment * lanternAlong;\n    float lanternRadius = mix(u_lanternCutawayRadius * 0.42, u_lanternCutawayRadius, lanternAlong);\n    bool lanternInSightCorridor = distance(v_lanternCutawayPosition.xz, lanternClosest) < lanternRadius;\n    if (u_lanternCutawayEnabled > 0.5 && lanternInSightCorridor && v_lanternCutawayPosition.y > u_lanternCutawayY) discard;",
+    "uniform float u_lanternCutawayY;\nuniform float u_lanternCutawayEnabled;\nuniform vec3 u_lanternCutawayCamera;\nuniform vec3 u_lanternCutawayTarget;\nuniform float u_lanternCutawayRadius;\nuniform float u_lanternCutawayHitAlong;\nuniform float u_lanternCutawayHalfSpan;\nin vec3 v_lanternCutawayPosition;\n\nvoid main() {\n    vec2 lanternSegment = u_lanternCutawayTarget.xz - u_lanternCutawayCamera.xz;\n    float lanternLengthSq = max(dot(lanternSegment, lanternSegment), 0.0001);\n    float lanternAlongRaw = dot(v_lanternCutawayPosition.xz - u_lanternCutawayCamera.xz, lanternSegment) / lanternLengthSq;\n    float lanternAlong = clamp(lanternAlongRaw, 0.0, 1.0);\n    vec2 lanternClosest = u_lanternCutawayCamera.xz + lanternSegment * lanternAlong;\n    float lanternRadius = mix(u_lanternCutawayRadius * 0.42, u_lanternCutawayRadius, lanternAlong);\n    bool lanternBeyondFirstHit = lanternAlongRaw >= max(0.0, u_lanternCutawayHitAlong - u_lanternCutawayHalfSpan) && lanternAlongRaw <= 1.0;\n    bool lanternInSightCorridor = distance(v_lanternCutawayPosition.xz, lanternClosest) < lanternRadius;\n    if (u_lanternCutawayEnabled > 0.5 && lanternBeyondFirstHit && lanternInSightCorridor && v_lanternCutawayPosition.y > u_lanternCutawayY) discard;",
   );
   material.uniforms ||= {};
   material.uniforms.u_lanternCutawayEnabled = { value: 0 };
@@ -2201,16 +2275,16 @@ function patchDungeonCutawayShader(material) {
   material.uniforms.u_lanternCutawayCamera = { value: new Vector3() };
   material.uniforms.u_lanternCutawayTarget = { value: new Vector3() };
   material.uniforms.u_lanternCutawayRadius = { value: DUNGEON_OCCLUSION_CORRIDOR_RADIUS };
+  material.uniforms.u_lanternCutawayHitAlong = { value: 1 };
+  material.uniforms.u_lanternCutawayHalfSpan = { value: 0.1 };
   material.userData.__lanternDungeonCutawayPatched = true;
   material.needsUpdate = true;
   return true;
 }
 
-function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene }) {
+function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {
   refreshDungeonCutawayMaterials();
-  const world = globalThis.world;
-  const renderer = world?.renderer;
-  const sceneOrigin = world?.sceneOrigin;
+  const sceneOrigin = globalThis.world?.sceneOrigin;
   if (!sceneOrigin) return false;
   const cutoffSceneY = sceneOrigin.toSceneY(cutoffWorldY);
   dungeonOcclusionTargetScene.set(
@@ -2218,7 +2292,18 @@ function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraSce
     cameraScene.y + (targetWorld.y - cameraWorld.y),
     cameraScene.z + (targetWorld.z - cameraWorld.z),
   );
-  dungeonOcclusionPlane.constant = cutoffSceneY;
+  const segmentX = targetWorld.x - cameraWorld.x;
+  const segmentZ = targetWorld.z - cameraWorld.z;
+  const segmentLengthSq = segmentX * segmentX + segmentZ * segmentZ;
+  const hitAlong = obstruction && segmentLengthSq > 0.0001
+    ? clampNumber(((obstruction.x + 0.5 - cameraWorld.x) * segmentX +
+      (obstruction.z + 0.5 - cameraWorld.z) * segmentZ) / segmentLengthSq, 0, 1, 1)
+    : 1;
+  // Start the opening at the first obstruction and carry it through the avatar.
+  // A window around the first hit alone leaves the roof over the avatar intact.
+  const hitHalfSpan = segmentLengthSq > 0.0001
+    ? clampNumber(1.25 / Math.sqrt(segmentLengthSq), 0.025, 0.2, 0.2)
+    : 0.2;
   let applied = 0;
   for (const record of dungeonCutawayMaterials.values()) {
     if (record.mode === "uniform") {
@@ -2227,17 +2312,8 @@ function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraSce
       record.material.uniforms.u_lanternCutawayCamera.value.copy(cameraScene);
       record.material.uniforms.u_lanternCutawayTarget.value.copy(dungeonOcclusionTargetScene);
       record.material.uniforms.u_lanternCutawayRadius.value = DUNGEON_OCCLUSION_CORRIDOR_RADIUS;
-      applied += 1;
-    } else if (record.mode === "plane") {
-      if (renderer && dungeonCutawayPreviousLocalClipping === null) {
-        dungeonCutawayPreviousLocalClipping = renderer.localClippingEnabled === true;
-      }
-      if (renderer) renderer.localClippingEnabled = true;
-      if (record.material.clippingPlanes?.[0] !== dungeonOcclusionPlane) {
-        record.material.clippingPlanes = [dungeonOcclusionPlane];
-        record.material.clipIntersection = false;
-        record.material.needsUpdate = true;
-      }
+      record.material.uniforms.u_lanternCutawayHitAlong.value = hitAlong;
+      record.material.uniforms.u_lanternCutawayHalfSpan.value = hitHalfSpan;
       applied += 1;
     }
   }
@@ -2246,23 +2322,14 @@ function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraSce
 }
 
 function restoreDungeonCutaway() {
-  if (!dungeonCutawayApplied && dungeonCutawayPreviousLocalClipping === null) return;
-  const renderer = globalThis.world?.renderer;
+  if (!dungeonCutawayApplied) return;
   for (const record of dungeonCutawayMaterials.values()) {
     if (record.mode === "uniform") {
       if (record.material.uniforms?.u_lanternCutawayEnabled) {
         record.material.uniforms.u_lanternCutawayEnabled.value = 0;
       }
-    } else if (record.mode === "plane" && record.material.clippingPlanes?.[0] === dungeonOcclusionPlane) {
-      record.material.clippingPlanes = record.previousClippingPlanes;
-      record.material.clipIntersection = record.previousClipIntersection;
-      record.material.needsUpdate = true;
     }
   }
-  if (renderer && dungeonCutawayPreviousLocalClipping !== null) {
-    renderer.localClippingEnabled = dungeonCutawayPreviousLocalClipping;
-  }
-  dungeonCutawayPreviousLocalClipping = null;
   dungeonCutawayApplied = false;
 }
 
@@ -2793,12 +2860,31 @@ function toHandItem(item) {
   };
 }
 
+function fishingActors() {
+  return withSelfFishingActor([...entityCache.values()], pendingAvatarState);
+}
+
+function playFishingAction(phase) {
+  const selfId = pendingAvatarState?.entity?.id;
+  if (selfId === undefined) return;
+  if (isFirstPersonView) {
+    const swing = viewer?.backend?.backendMethods?.changeHandSwingingState;
+    swing?.(true, false);
+    setTimeout(() => swing?.(false, false), phase === "cast" ? 320 : 240);
+  } else {
+    applyEntityAnimation({ id: selfId, animation: "oneSwing", hand: "right",
+      nonce: `fishing:${phase}:${Date.now()}` });
+  }
+}
+
 function handleEntity(update, movementOnly) {
   if (!update || update.id === undefined || update.id === null) return;
   const id = String(update.id);
   if (update.delete) {
     const prior = entityCache.get(id) || { id: update.id };
     entityCache.delete(id);
+    fishingVisuals?.updateEntity(update);
+    fishingVisuals?.sync();
     pendingVillagerStyleChecks.delete(id);
     if (id === focusedCharacterId) {
       returnCameraToAvatar({ announce: false });
@@ -2839,6 +2925,8 @@ function handleEntity(update, movementOnly) {
   const normalized = normalizeEntity(merged);
   const previousRenderable = isRenderableEntity(previous);
   entityCache.set(id, normalized);
+  fishingVisuals?.updateEntity(normalized);
+  fishingVisuals?.sync();
   if (resolveCustomCharacterDefinition(normalized) || isOwnAvatarEntity(normalized)) {
     scheduleTrustedNpcAvatarRebalance("entity-updated");
   }
@@ -2857,6 +2945,7 @@ function handleEntity(update, movementOnly) {
     removeCustomCharacter(id);
     return;
   }
+  if (canonicalEntityName(normalized.name) === "fishing_bobber") return;
   const isMove = movementOnly || (!update.name && !update.metadata && !update.equipment && !update.skinUrl);
   worldView.emit(isMove ? "entityMoved" : "entity",
     isMove ? normalized : rendererEntityEquipment(normalized, globalThis.mcData?.itemsByName));
@@ -5313,6 +5402,8 @@ function installVisibilityHandling() {
     npcPortraitRenderer = null;
     viewerEffectSystem?.dispose();
     viewerEffectSystem = null;
+    fishingVisuals?.dispose();
+    fishingVisuals = null;
     pendingViewerEffects.length = 0;
     disposeAllPaintingEntities();
     removeSelectedPlayerModel({ restoreNative: false, restoreRig: false });
