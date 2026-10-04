@@ -2,6 +2,8 @@
 let cortiPanelAvatar = null;
 let cortiPanelWindow = null;
 let cortiInventoryOpen = false;
+let cortiIdleInventoryOpen = false;
+let cortiIdleInventoryTimer = null;
 let cortiPanelMap = null;
 const cortiMapCells = new Map();
 let cortiMapDimension = '';
@@ -156,10 +158,12 @@ function cortiInstallPanels(socket) {
   const button = document.getElementById('corti-inventory-toggle');
   const menu = document.getElementById('corti-menu');
   button?.addEventListener('click', () => {
+    cortiCancelInventoryPreview(false);
     cortiInventoryOpen = !cortiInventoryOpen;
     cortiRenderMenu();
   });
   menu?.querySelector('[data-menu-close]')?.addEventListener('click', () => {
+    cortiCancelInventoryPreview(false);
     cortiInventoryOpen = false;
     cortiDismissedWindowId = cortiPanelWindow?.id ?? null;
     menu.hidden = true;
@@ -169,10 +173,12 @@ function cortiInstallPanels(socket) {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey ||
         /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
     if (event.code === 'KeyE') {
+      cortiCancelInventoryPreview(false);
       cortiInventoryOpen = !cortiInventoryOpen;
       cortiRenderMenu();
       event.preventDefault();
     } else if (event.code === 'Escape' && menu && !menu.hidden) {
+      cortiCancelInventoryPreview(false);
       cortiInventoryOpen = false;
       cortiDismissedWindowId = cortiPanelWindow?.id ?? null;
       menu.hidden = true;
@@ -183,7 +189,7 @@ function cortiInstallPanels(socket) {
   socket.on('avatarState', (state) => {
     cortiPanelAvatar = state;
     cortiRenderMana();
-    if (cortiInventoryOpen && !cortiPanelWindow) cortiRenderMenu();
+    if ((cortiInventoryOpen || cortiIdleInventoryOpen) && !cortiPanelWindow) cortiRenderMenu();
     cortiSyncInventoryPlayerPreview();
     if (performance.now() - cortiMapDrawAt > 120) {
       cortiMapDrawAt = performance.now();
@@ -193,11 +199,17 @@ function cortiInstallPanels(socket) {
   socket.on('containerState', (state) => {
     const previousId = cortiPanelWindow?.id;
     cortiPanelWindow = state && typeof state === 'object' ? state : null;
+    if (cortiPanelWindow) cortiCancelInventoryPreview(false);
     if (!cortiPanelWindow || cortiPanelWindow.id !== previousId) cortiDismissedWindowId = null;
     if (cortiPanelWindow || previousId !== undefined || cortiInventoryOpen) cortiRenderMenu();
   });
-  socket.on('disconnect', () => cortiInventoryPlayerPreview?.reset());
+  socket.on('inventoryPreview', cortiInventoryPreview);
+  for (const name of ['disconnect', 'viewerReset']) socket.on(name, () => {
+    cortiCancelInventoryPreview();
+    cortiInventoryPlayerPreview?.reset();
+  });
   window.addEventListener('pagehide', (event) => {
+    cortiCancelInventoryPreview();
     if (event.persisted) cortiInventoryPlayerPreview?.reset();
     else cortiInventoryPlayerPreview?.dispose();
   });
@@ -272,6 +284,7 @@ function cortiInstallPanels(socket) {
 
 function cortiMarkCombat() {
   cortiCombatUntil = performance.now() + 5_000;
+  cortiCancelInventoryPreview(false);
   cortiRenderMenu();
   if (cortiCombatTimer !== null) clearTimeout(cortiCombatTimer);
   cortiCombatTimer = setTimeout(() => {
@@ -280,24 +293,50 @@ function cortiMarkCombat() {
   }, 5_000);
 }
 
+function cortiCancelInventoryPreview(render = true) {
+  cortiIdleInventoryOpen = false;
+  if (cortiIdleInventoryTimer !== null) clearTimeout(cortiIdleInventoryTimer);
+  cortiIdleInventoryTimer = null;
+  if (render) cortiRenderMenu();
+}
+
+function cortiInventoryPreview(event) {
+  cortiCancelInventoryPreview(false);
+  if (event?.open === true && !cortiInventoryOpen && !cortiPanelWindow &&
+      performance.now() >= cortiCombatUntil) {
+    cortiIdleInventoryOpen = true;
+    const ttlMs = Number.isFinite(event.ttlMs) && event.ttlMs > 0
+      ? Math.min(event.ttlMs, 2_400) : 2_400;
+    cortiIdleInventoryTimer = setTimeout(() => {
+      cortiIdleInventoryTimer = null;
+      cortiIdleInventoryOpen = false;
+      cortiRenderMenu();
+    }, ttlMs);
+  }
+  cortiRenderMenu();
+}
+
 function cortiRenderMenu() {
   const root = document.getElementById('corti-menu');
   if (!root) return;
   const container = cortiPanelWindow;
-  if ((!container && !cortiInventoryOpen) ||
+  if ((!container && !cortiInventoryOpen && !cortiIdleInventoryOpen) ||
       (container && cortiDismissedWindowId === container.id && !cortiInventoryOpen)) {
     root.hidden = true;
     cortiSyncInventoryPlayerPreview();
     return;
   }
+  const source = container ? 'container' : cortiInventoryOpen ? 'manual' : 'idle';
+  root.dataset.inventorySource = source;
   root.dataset.compact = String(performance.now() < cortiCombatUntil);
-  const signature = JSON.stringify(container || cortiPanelAvatar?.inventory || []);
+  const signature = JSON.stringify([source, container || cortiPanelAvatar?.inventory || []]);
   const wasHidden = root.hidden;
   root.hidden = false;
   if (!wasHidden && signature === cortiMenuSignature) { cortiSyncInventoryPlayerPreview(); return; }
   cortiMenuSignature = signature;
   root.querySelector('[data-menu-title]').textContent = container?.title || '背包';
-  root.querySelector('[data-menu-source]').textContent = container ? '游戏窗口 · 只读' : '玩家物品 · 只读';
+  root.querySelector('[data-menu-source]').textContent = container ? '游戏窗口 · 只读'
+    : source === 'idle' ? '待机预览 · 只读' : '玩家物品 · 只读';
   const target = root.querySelector('[data-menu-body]');
   cortiInventoryPlayerPreview?.setVisible(false);
   target.replaceChildren();

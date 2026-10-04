@@ -184,6 +184,7 @@ socket.emit('avatarState', {
 | 事件 | 主要字段与语义 |
 | --- | --- |
 | `containerState` | 当前窗口完整快照，关闭发 `null`；`{ id, type, title, slots, inventoryStart, hotbarStart, containerCount, properties, furnace, trades }`。`furnace: { burn, cook }` 为 0–1 进度；交易表需要额外从 `trade_list` 解码，不能只看菜单槽位 |
+| `inventoryPreview` | 可选的短暂只读背包预览：`{ open: true, ttlMs: 2400, source: 'idle' }`；取消发 `{ open: false }`。使用最新 `avatarState.inventory` 与当前人物装备，最长 2400 ms 后收起，不创建真实游戏容器 |
 | `minimap` | `{ centerX, centerZ, radius: 12, sampleY, dimension, cells }`，`cells` 是 25×25 共 625 个字符，z 为行、x 为列；`?` 未加载，空格为空气，W 水、L 岩浆、F 树叶、T 树干、G 草地、P 路径、S 沙、N 雪冰、C 作物、R 石、B 土、H 建筑、X 其他 |
 | `biome` | `{ name, dimension, id }`，如 plains / minecraft:overworld；未知时 name 为 unknown，id 为 null |
 | `lightingState` | `{ sky, block }`，玩家眼前天空光/方块光，均为 0–15；数据暂不可用可发 null |
@@ -226,6 +227,8 @@ socket.emit('presentationEvent', { kind: 'effect', id: effectId, active: false }
 迟到的异步音频不会在新世界重放。声音状态可由 `window.cortiWorldAudio.state()` 或窗口
 `mc-viewer-audio-state` 事件检查；`setVolume(category, 0..1)` 支持原版全部类别。
 完整 sounds.json 导出保留所有变体、权重、音量、音高与事件引用，不只抽取部分文件。
+
+`inventoryPreview` 由宿主的空闲行为或演出通道发送即可，不要求 Cortico 或服务器插件。真实容器、本人受伤与攻击会取消待机预览；用户按 E 或按钮打开背包后由手动界面接管，待机计时器和取消事件不会关闭手动背包。断线、切换世界及页面退出会清理待机预览。
 
 ## 6. 可选服务器技能扩展
 
