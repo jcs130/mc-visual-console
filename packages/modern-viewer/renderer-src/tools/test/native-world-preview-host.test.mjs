@@ -6,7 +6,7 @@ import os from 'node:os'
 import http from 'node:http'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, sendNativeWorldEvent } from '../native-world-preview-host.mjs'
+import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, sendNativeWorldEvent, createNativePlayerPresentation } from '../native-world-preview-host.mjs'
 
 let directory, prepared, registryHash
 const assetPath = 'assets/test/models/native.json'
@@ -102,6 +102,21 @@ function playerEntity (bot) {
 function ownPlayerInfo (bot, properties = []) {
   bot._client.emit('player_info', { action: { add_player: true }, data: [{ uuid: bot._client.uuid,
     player: { name: bot.username, properties } }] })
+}
+
+function nativeInventory (playerUuid) {
+  const slots = new Array(46).fill(null)
+  slots[36] = { id: 'farmersdelight:iron_knife', count: 1, snbt: '{id:"farmersdelight:iron_knife",count:1,components:{"minecraft:custom_name":"真正的刀"}}' }
+  return { schemaVersion: 1, playerUuid, windowId: 0, stateId: 7, menuType: 'minecraft:inventory', selectedHotbarSlot: 0, carried: null,
+    slots, mayPickup: slots.map(() => true) }
+}
+
+async function untilEvent (stream, predicate) {
+  let timer
+  try {
+    return await Promise.race([(async () => { while (true) { const event = await stream.next(); if (predicate(event)) return event } })(),
+      new Promise((resolve, reject) => { timer = setTimeout(() => reject(Error('Expected SSE event timed out')), 3000) })])
+  } finally { clearTimeout(timer) }
 }
 
 test('legacy positional CLI arguments and defaults are preserved without starting a bot', () => {
@@ -334,16 +349,26 @@ test('all HTTP routes reject foreign Host/Origin and non-GET requests before rea
   assert.equal(reads, 1)
 })
 
-test('same page and client are served with CSP, native assets keep their exact hash and unknown paths do not fall back', async t => {
+test('full original shell modes and diagnostic page coexist with native bundles, exact hashed assets and read-only CSP', async t => {
   const { host } = attachment(t)
   await host.listen()
-  for (const route of ['', 'client.js', 'manifest.json', assetPath]) {
+  for (const route of ['', 'third/', 'dungeon/', 'viewer.css', 'index.js', 'native-console.js', 'diagnostics', 'client.js', 'manifest.json', assetPath]) {
     const response = await request(host, route)
     assert.equal(response.status, 200)
     assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/)
     assert.equal(response.headers['x-content-type-options'], 'nosniff')
     assert.equal(response.headers['cache-control'], 'no-store')
   }
+  for (const [route, mode] of [['', 'first'], ['third/', 'third'], ['dungeon/', 'dungeon']]) {
+    const response = await request(host, route)
+    assert.match(response.body, new RegExp(`data-view-mode="${mode}"`))
+    assert.match(response.body, /src="\/index\.js"/)
+    assert.match(response.body, /class="corti-hotbar"/)
+    assert.match(response.body, /href="\/viewer\.css"/)
+  }
+  assert.match((await request(host, 'diagnostics')).body, /src="\/client\.js"/)
+  assert.equal((await request(host, 'index.js')).body, (await request(host, 'native-console.js')).body)
+  assert.equal((await request(host, 'third/', { method: 'POST' })).status, 405)
   assert.equal((await request(host, assetPath)).body, assetBytes.toString())
   assert.equal((await request(host, 'assets/test/models/unsupported.json')).status, 404)
   assert.equal((await request(host, 'registry/block-states.jsonl')).status, 404)
@@ -402,6 +427,139 @@ test('disconnect invalidates viewer health while preserving genuine caller recei
   assert.equal(status.connection.ended, true)
   assert.match(status.viewer.reason, /CONNECTION_ENDED/)
   assert.equal(status.agent.details.actionReceipts[0].outcomeUnknown, true)
+})
+
+test('native presentation preserves real mod IDs/components and open-container slots without consulting proxy items', () => {
+  const playerUuid = '01234567-89ab-cdef-0123-456789abcdef', menu = nativeInventory(playerUuid)
+  const state = createNativePlayerPresentation({ playerUuid, menu })
+  assert.equal(state.inventory.windowId, 0)
+  assert.equal(state.inventory.hotbarStart, 36); assert.equal(state.inventory.offhandSlot, 45)
+  assert.equal(state.inventory.slots.length, 46)
+  assert.deepEqual(state.inventory.slots[35], { slot: 35, item: null })
+  assert.deepEqual(state.inventory.slots[36].item, { name: menu.slots[36].id, count: 1, snbt: menu.slots[36].snbt })
+  assert.equal(state.nativeMenu.title, null)
+  menu.windowId = 4; menu.menuType = 'farmersdelight:cooking_pot'; menu.slots = menu.slots.slice(0, 45)
+  menu.slotRoles = { ingredients: [0, 1, 2, 3, 4, 5], cooked_buffer: [6], serving_container: [7], served_output: [8] }
+  const container = createNativePlayerPresentation({ playerUuid, menu })
+  assert.equal(container.inventory, null)
+  assert.equal(container.nativeMenu.windowId, 4); assert.equal(container.nativeMenu.slots.length, 45)
+  assert.deepEqual(container.nativeMenu.slotRoles, menu.slotRoles)
+  assert.equal(state.nativeMenu.windowId, 0)
+  menu.playerUuid = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+  assert.equal(createNativePlayerPresentation({ playerUuid, menu }).nativeMenu, null)
+})
+
+test('Ars HUD states are genuine timestamped receipts, unknown cooldowns stay null and changing held item hides the old catalogue', () => {
+  const playerUuid = '01234567-89ab-cdef-0123-456789abcdef', menu = nativeInventory(playerUuid)
+  const spellState = { playerUuid, heldSnbt: menu.slots[36].snbt, selectedHotbarSlot: 0, mana: { current: 23, max: 80 }, cooldown: { active: true, fraction: 0.5, totalTicks: null, remainingTicks: null } }
+  const spellCatalog = { playerUuid, state: { ...spellState }, spells: [{ id: 'ars_nouveau:slot_0', name: '治愈', manaCost: 12 }] }
+  const state = createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog, spellObservedAt: 800, now: 1000 })
+  assert.deepEqual(state.skills.mana, { current: 23, max: 80 })
+  assert.equal(state.skills.source, 'ars_nouveau_receipt'); assert.equal(state.skills.observedAt, 800); assert.equal(state.skills.stale, false)
+  assert.deepEqual(state.skills.abilities, [{ id: 'ars_nouveau:slot_0', name: '治愈', manaCost: 12, cooldownMs: null, cooldownRemainingMs: null }])
+  assert.equal(createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog, spellObservedAt: 800, now: 6000 }).skills.stale, true)
+  menu.slots[36] = null
+  const changed = createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog, spellObservedAt: 800, now: 1000 })
+  assert.equal(changed.skills.stale, true); assert.deepEqual(changed.skills.abilities, [])
+  spellState.playerUuid = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+  assert.equal(createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog }).skills, null)
+})
+
+test('same-player private presentation rejects foreign, asynchronous, cyclic and oversized callbacks without exposing unrelated provider data', t => {
+  let supplied, throws = false, reads = 0
+  const { bot, host, counts } = attachment(t, { getPresentationState: () => { reads++; if (throws) throw Error('private-auth-secret'); return supplied } })
+  const entity = playerEntity(bot)
+  Object.defineProperty(bot, 'inventory', { get () { assert.fail('never read vanilla proxy inventory') } })
+  bot._client.write = () => assert.fail('presentation must not write to the game connection')
+  supplied = { ...createNativePlayerPresentation({ playerUuid: bot._client.uuid, menu: nativeInventory(bot._client.uuid) }), runtimeSecret: 'private-auth-secret' }
+  const current = host.status().presentation
+  assert.equal(current.playerUuid, bot._client.uuid); assert.equal(current.available, true)
+  assert.equal(current.source, 'same_player_connection'); assert.equal(current.nativeState.available, true)
+  assert.equal(current.inventory.slots[36].item.name, 'farmersdelight:iron_knife')
+  assert(!JSON.stringify(current).includes('private-auth-secret'))
+  const original = supplied
+  for (const value of [null, [], Promise.resolve(original), { ...original, playerUuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff' },
+    { ...original, nativeMenu: { playerUuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff', slots: [] } }]) {
+    supplied = value
+    const result = host.status().presentation
+    assert.equal(result.available, true); assert.equal(result.nativeState.available, false)
+    assert.equal(result.inventory, null); assert.equal(result.nativeMenu, null); assert.equal(result.skills, null)
+    assert.equal(result.self.health, 17)
+  }
+  supplied = { ...original }; supplied.loop = supplied
+  assert.equal(host.status().presentation.nativeState.reason, 'PRESENTATION_INVALID')
+  supplied = { ...original, skills: { abilities: new Array(257).fill(null) } }
+  assert.equal(host.status().presentation.nativeState.reason, 'PRESENTATION_TOO_LARGE')
+  supplied = { ...original, skills: { oversized: new Array(100).fill('x'.repeat(1000)) } }
+  assert.equal(host.status().presentation.nativeState.reason, 'PRESENTATION_TOO_LARGE')
+  throws = true
+  assert.equal(host.status().presentation.nativeState.reason, 'PRESENTATION_UNAVAILABLE')
+  assert(!JSON.stringify(host.status()).includes('private-auth-secret'))
+  entity.uuid = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+  const previousReads = reads
+  const unavailable = host.status().presentation
+  assert.equal(unavailable.available, false); assert.equal(unavailable.self, null); assert.equal(unavailable.playerUuid, null)
+  assert.equal(reads, previousReads)
+  assert.deepEqual(counts(), { quitCount: 0, detachCount: 0 })
+})
+
+test('own messages, title, actionbar, vitals and weather stay private and clear on native respawn/disconnect', t => {
+  const { bot, host, nativeStream } = attachment(t)
+  playerEntity(bot)
+  bot.entity.isInWater = true
+  bot.foodSaturation = 3.5; bot.oxygenLevel = 18; bot.experience = { level: 4, points: 42, progress: 0.25 }; bot.quickBarSlot = 2
+  bot.isRaining = true; bot.rainState = 0.7; bot.thunderState = 0.1
+  bot.emit('messagestr', '玩家私聊', 'chat'); bot.emit('messagestr', '本人系统回执', 'system'); bot.emit('messagestr', '技能生效', 'game_info')
+  bot.emit('title_times', 10, 50, 10); bot.emit('title', '{"text":"咏唱","extra":[{"text":"成功"}]}', 'title'); bot.emit('title', '只给本人', 'subtitle')
+  let state = host.status().presentation
+  assert.deepEqual(state.gameMessages.map(m => [m.kind, m.text]), [['chat', '玩家私聊'], ['system', '本人系统回执']])
+  assert.equal(state.actionbar.text, '技能生效'); assert.equal(state.title.title, '咏唱成功'); assert.equal(state.title.subtitle, '只给本人'); assert.equal(state.title.stay, 50)
+  assert.equal(state.self.saturation, 3.5); assert.equal(state.self.oxygen, 18); assert.equal(state.self.armor, null); assert.equal(state.self.inWater, true)
+  assert.equal(state.self.experienceLevel, 4); assert.equal(state.self.experienceProgress, 0.25); assert.equal(state.self.quickBarSlot, 2)
+  assert.deepEqual(state.weather, { raining: true, rain: 0.7, thunder: 0.1 })
+  for (let i = 0; i < 30; i++) bot.emit('messagestr', String(i), 'system')
+  assert.equal(host.status().presentation.gameMessages.length, 24)
+  assert.equal(host.status().presentation.gameMessages.at(-1).text, '29')
+  bot.emit('title_clear'); assert.equal(host.status().presentation.title, null)
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 1, name: 'respawn', params: { worldState: { dimension: 0 } } })
+  state = host.status().presentation
+  assert.deepEqual(state.gameMessages, []); assert.equal(state.actionbar, null)
+  bot.emit('end', 'connection_closed')
+  state = host.status().presentation
+  assert.equal(state.available, false); assert.deepEqual(state.gameMessages, []); assert.equal(state.weather, null)
+})
+
+test('SSE identity is refreshed after early browser login and a new respawn entity before its private frame', async t => {
+  const bot = new EventEmitter(); bot._client = new EventEmitter()
+  bot.registry = { dimensionsArray: [{ name: 'minecraft:overworld', minY: 0, height: 128 }] }
+  const nativeStream = { events: new EventEmitter() }
+  let menu = null
+  const host = prepared.attach({ bot, nativeStream, expectedUsername: 'EarlyAgent', simplifyNBT: value => value, logger: null,
+    getPresentationState: () => createNativePlayerPresentation({ playerUuid: bot._client.uuid, menu }) })
+  t.after(() => host.close()); await host.listen()
+  const stream = await events(host); t.after(() => stream.close())
+  const initial = await stream.next()
+  assert.equal(initial.type, 'identity'); assert.equal(initial.playerUuid, null); assert.equal(initial.confirmed, false)
+  bot.username = 'EarlyAgent'; bot._client.username = bot.username; bot._client.uuid = '01234567-89ab-cdef-0123-456789abcdef'
+  const entity = playerEntity(bot); menu = nativeInventory(bot._client.uuid)
+  bot._client.write = () => assert.fail('no additional query, action or login')
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 1, name: 'login', params: { worldState: { dimension: 0 } } })
+  bot.emit('login'); host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight })
+  const loggedIn = await untilEvent(stream, e => e.type === 'identity' && e.confirmed)
+  assert.equal(loggedIn.playerUuid, bot._client.uuid); assert.equal(loggedIn.entityId, 42)
+  const snapshot = await untilEvent(stream, e => e.type === 'snapshot')
+  assert.equal(snapshot.presentation.playerUuid, bot._client.uuid); assert.equal(snapshot.presentation.inventory.slots[36].item.name, 'farmersdelight:iron_knife')
+  menu.slots[36].count = 2
+  const frame = await untilEvent(stream, e => e.type === 'frame')
+  assert.equal(frame.presentation.inventory.slots[36].item.count, 2)
+  assert.equal(snapshot.presentation.inventory.slots[36].item.count, 1)
+  entity.id = 99
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 2, name: 'respawn', params: { worldState: { dimension: 0 } } })
+  bot.emit('spawn'); host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight })
+  const respawned = await untilEvent(stream, e => e.type === 'identity' && e.entityId === 99)
+  assert.equal(respawned.epoch, 2)
+  const next = await untilEvent(stream, e => e.type === 'snapshot')
+  assert.equal(next.selfPlayer.entityId, 99); assert.equal(next.presentation.self.entityId, 99)
 })
 
 test('tampered native registry prevents preparation before any bot can be attached', async () => {

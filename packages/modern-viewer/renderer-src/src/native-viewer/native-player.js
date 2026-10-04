@@ -74,6 +74,8 @@ export async function createNativePlayerActor (reader, { uuid, skin, loadTexture
   texture.generateMipmaps = false; texture.colorSpace = THREE.SRGBColorSpace; texture.needsUpdate = true
   const root = new THREE.Group(), playerObject = new PlayerObject()
   root.name = 'native-own-player'; root.visible = false
+  // Original console inventory preview mirrors this verified actor, never a substitute.
+  root.playerObject = playerObject
   const body = new THREE.Group()
   body.scale.setScalar(0.9375 / 16)
   playerObject.position.y = 16; playerObject.rotation.y = Math.PI

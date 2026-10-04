@@ -1,7 +1,8 @@
-# Minecraft 1.20.6 现代网页渲染器
+# Minecraft 现代网页渲染器
 
 此目录提供浏览器源码、页面与样式、HUD/动画/特效增强、离线资源导出与构建工具。
 可以在其他 Mineflayer 项目复用，无需本机 Cortico 目录。
+1.20.6 的独立构建与 Socket.IO 接入保留；1.21.1 模组实验通过原生资源、同账号包流和独立场景后端接入同一套页面。
 
 ## 目录
 
@@ -152,7 +153,7 @@ app.use(['/textures', '/third/textures', '/dungeon/textures'],
 
 ## 1.21.1 模组画面的原生资源准备
 
-My Agent World 要求贴图和建模与相同模组包的 Java 客户端一致。该实验路径禁止原版替代块、代理 state ID、裁切贴图和凭名称生成简化模型；尚不提供已经完成的 1.21.1 模组浏览器渲染器。上文的 1.20.6 构建入口保持其原有版本范围。
+My Agent World 要求贴图和建模与相同模组包的 Java 客户端一致。该实验路径禁止原版替代块、代理 state ID、裁切贴图和凭名称生成简化模型；目前支持部分原生场景和原完整页面的本人界面，尚未完成全部 1.21.1 模组画面。上文的 1.20.6 构建入口保持其原有版本范围。
 
 `tools/native_viewer_assets.py` 从对应客户端、已锁定的模组 JAR、平台 JAR及可选资源包导出原始 `assets/<namespace>/...` 字节，逐文件核对 SHA-256；保留父模型、UV、旋转、动画元数据和嵌套库。输入必须包含实际模组包的注册表，不能用原版属性顺序推导模组 state ID。不同资源来源的同名文件全部保存在 `asset-variants/`，报告覆盖关系；特别是 atlas 定义需要按原生资源栈合并，不能仅使用最后一个 JSON 文件。未证明的 FML/资源包优先级明确标为未验收。
 
@@ -242,24 +243,71 @@ node --test tools/test/native-create.test.mjs tools/test/native-model-selection.
 
 ### 同账号本人模型与观战视角（2026-10-04）
 
-原生世界入口现在默认第三人称跟随行动玩家，提供第一人称、自由观察和“回到 Agent”；F5 切换第一／第三人称，双击画布回到 Agent。镜头与模型使用本人连接的绝对坐标、yaw/pitch 和眼高，不新建观战账号。自由观察距离限制在已收到的局部区域，跟随镜头随移动／重生更新；镜头避障仅使用实际已绘制的几何，不替未知方块编造碰撞。
+21:06 首轮独立检查页默认第三人称跟随行动玩家，提供第一人称、自由观察和“回到 Agent”；F5 切换第一／第三人称，双击画布回到 Agent。本轮完整页面的默认第一人称及路由见下一节。镜头与模型使用本人连接的绝对坐标、yaw/pitch 和眼高，不新建观战账号。自由观察距离限制在已收到的局部区域，跟随镜头随移动／重生更新；镜头避障仅使用实际已绘制的几何，不替未知方块编造碰撞。
 
 `native-world-preview-host.mjs` 的 snapshot/frame 与 `/status.json` 增加 `selfPlayer`：本人 UUID、名字、实体 ID、位置、朝向、眼高、生命、最大生命、饱食、着地、潜行、速度和皮肤可用状态。缺失数值用 null；断连或 UUID／身份不符时整个对象为 null。最大生命由收到的真实属性和 modifier 计算，HUD 不用固定 20 冒充实时值。profile 只报告是否含自定义 textures，不输出纹理值或 URL。
 
 `native-player.js` 使用 skinview3d 3.4.2 的经典玩家六部位与第二层原始 UV。默认皮肤按锁定 Minecraft 1.21.1 客户端的 `floorMod(UUID.hashCode(),18)` 选择，九张 slim 后九张 wide；只读取资源清单中的原始 64×64 PNG 并校验哈希。真实 profile 有自定义纹理或未确定时明确标为不可用，不套用 Steve、VRoid 或千灯纪旧皮肤。`player-camera.js` 使用 Mineflayer 的真实视线约定（yaw=0 朝 -Z、正 pitch 朝上）。
 
-这一步只显示本账号经典身体和真实头部俯仰；步行动画、潜行／游泳姿态、持物、防具、自定义在线皮肤和其他实体尚未适配。原生状态中的 `entityRenderingAvailable` 与完整场景一致性门槛仍为 false。原始模型和皮肤来源核验、实际 WebGL 可见性、完整 Java 画面对照分别验收，不能相互替代。
+首轮验收只覆盖本账号经典身体和真实头部俯仰；没有证明完整步行／潜行／游泳动画、持物、防具、自定义在线皮肤和其他实体一致。原生状态中的 `entityRenderingAvailable` 与完整场景一致性门槛仍为 false。原始模型和皮肤来源核验、实际 WebGL 可见性、完整 Java 画面对照分别验收，不能相互替代。
 
 ```powershell
 node --test tools/test/native-player.test.mjs tools/test/player-camera.test.mjs tools/test/native-world-preview-host.test.mjs tools/test/agent-status.test.mjs
 ```
 
-## 检查 1.20.6 源码
+### 原完整页面接入原生场景与本人界面
+
+`native-scene.js` 从原实时检查页拆出场景、相机、资源与生命周期逻辑；`world-preview.js` 继续作为诊断入口。
+`native-console.js` 在原 `page-template.html` / `viewer.css` 下挂接该场景，复用背包人物预览、钓获展示组件和
+自适应画质控制器。皮肤预览只能克隆当前已验证的本人模型，禁用无来源的默认人物回退；Three.js 在浏览器构建中统一为同一个实例。
+
+页面 `/` 默认为第一人称，`/third/` 为第三人称，F5 切换两者；`/dungeon/` 使用地下城 2.5D 相机跟随本人，遮挡、切面和点击操控仍待接入。
+`/diagnostics` 保留独立检查页。首页收起开发诊断，但继续明确说明未适配内容；重新使用完整页面不代表旧版所有显示功能已迁移。
+
+`prepareNativeWorldPreviewHost({ assetDirectory, port })` 只准备资源和浏览器 bundle，不登录游戏或监听端口。
+`prepared.attach({ bot, nativeStream, simplifyNBT, resolveDimension, expectedUsername, getAgentStatus, getPresentationState })`
+绑定调用方已有账号，再由 `host.listen()` 监听回环；关闭宿主只释放自己的网页、订阅和计时器，不停止调用方的 bot。
+必须在登录包到达前挂接原生包流。`getPresentationState` 是可选的同步只读回调，不是新增模型或管理员接口。
+
+本人界面接收 `presentation`：实际生命、饥饿、经验与姿态、本人原生 `inventory` / `nativeMenu`、已收到的 `skills`，
+以及这条连接的消息、标题、动作栏、时间和天气。原生物品保留命名空间、数量、槽位和完整 SNBT；菜单暂未提供标题时显示未知。
+菜单打开/关闭只观察真实游戏状态，观众打开背包、切换视角和查看资料都不会发游戏点击。详见 [原生 SSE 合约](SOCKET_PROTOCOL.md#8-1211-模组原生前端sse)。
+
+生存 HUD 的图像从同一资产清单中的原始 1.21.1 GUI PNG 校验读取，不借用旧 1.20.6 图集。
+部分已核对无运行时颜色/模型选择的原版物品支持静态图标：按原始 JSON 的 generated/handheld 继承解析单层 PNG，
+核对资源哈希与覆盖优先级。模组提供器、组件敏感、override、多层、动画和非平面模型仍拒绝；格子保留原生名称、真实数量与 SNBT，
+不会把未知物品映射成同名原版图标。持物/盔甲模型仍未支持。
+声音、音乐、小地图和网页夜视按钮明确标为未支持。没有魔力、冷却或最大生命数据时保留未知，不能补固定值或推算成可施放。
+
+原生会话校验账号 UUID、注册表哈希和 epoch；断流清空旧场景与界面，旧 frame 不能复活已清理的世界。
+宿主只接受 GET、同源 Host/Origin，SSE 最多四个客户端并有字节上限和背压处理；浏览器从唯一原生场景订阅取得状态。
+不会为了重用界面把模组编号送入原版代理注册表。模型源码/状态测试、真实浏览器演示与匹配 Java 客户端的画面比较仍分别验收，
+`completeSceneParityVerified=false` 和严格资源验收门槛保持不变。
+
+```powershell
+node --test tools/test/native-session.test.mjs tools/test/native-world-preview-host.test.mjs tools/test/native-ui-adapter.test.mjs tools/test/native-console.test.mjs tools/test/native-item-icons.test.mjs
+```
+
+本轮 UI/页面/静态图标 21 项定向回归通过，覆盖同账号组件保留、未知 HUD、原始 GUI 资源、真实 actor 预览、菜单生命周期、
+唯一场景订阅、真实三种相机、持续压力下的画质调整、图标资源与异步释放。本轮 renderer 全部专项 213 项、仓库根回归 230 项、
+真实 Cortico 0.1.4 集成 6 项和 typecheck 通过；各入口有重叠，不能相加。可选真实 SDK 测试独立运行，见 [仓库测试说明](../../../docs/TESTING.md)。
+
+22:35:10 新 My Agent World 通过其 owned 守护恢复，22:35:37 worker 启动，旧服务器未改。
+真实浏览器在完整页面 `/third/` 看到本人原始 Makena 皮肤，按 E 后显示实际 46 格原生背包和本人预览；第一人称与地下城相机也实际验证。
+小麦种子与腐肉使用原始模型/PNG 的静态图标，其余未适配内容显示原生文字，不借用近似图标。实服当前生命 20，最大生命未收到仍显示未知；
+Ars 本人回执为 100/100 魔力。三种页面没有浏览器 warn/error，截图保留于仓库外
+`E:\QiandengJiSocietyLab\agents\maw-explorer\full-native-console-20261004.jpg`。
+这是实际发布与短时展示验证，不证明全部实体、装备、动画、光照、声音、长期稳定或新服基岩兼容。
+本次可视化源码待维护者提交合并 `main`，发布记录不替代 Git 合并结果。
+
+## 检查源码
 
 ```powershell
 # 本目录：离线工具与预设隔离测试
 npm run test:tools
 # 仓库根目录，先安装根依赖：通用控制台、渲染模型、钓鱼及页面测试
 pnpm test
+# 可选真实 Cortico SDK；缺失源码明确失败，详见仓库 docs/TESTING.md
+pnpm test:cortico
 pnpm run typecheck
 ```

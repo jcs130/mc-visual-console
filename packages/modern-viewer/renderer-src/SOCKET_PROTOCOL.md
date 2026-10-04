@@ -297,3 +297,94 @@ socket.emit('castCue', {
 6. 调试 JSON 留在专用状态/事件通道。`gameMessage.text` 先解析 Minecraft 文本组件，避免显示 `[object Object]`。
 
 本协议为前端的显示输入约定。接入后的导航、战斗、背包操作和服务器权限仍由宿主项目负责。
+
+## 8. 1.21.1 模组原生前端：SSE
+
+本节是与前七节独立的原生显示合约。它用于锁定 Minecraft 1.21.1 / NeoForge 模组包的已有动作玩家，
+复用原完整页面；不把模组网络 ID 发给 1.20.6 Socket.IO 渲染器，也不是 `mcagent:state` 的 JSON 格式。
+
+宿主先准备资源，再绑定调用方已经建立的 Mineflayer 连接：
+
+```js
+const prepared = await prepareNativeWorldPreviewHost({ assetDirectory, port });
+const host = prepared.attach({
+  bot, nativeStream, simplifyNBT, resolveDimension, expectedUsername,
+  getAgentStatus,             // 可选：宿主的安全摘要
+  getPresentationState,       // 可选：同步读取此账号已有的原生菜单/技能观察
+});
+await host.listen();          // 仅回环 HTTP；不另建游戏账号
+// host.close() 释放网页、订阅和计时器；bot/nativeStream 生命周期仍归调用方。
+```
+
+`nativeStream` 在该连接收到登录包前挂接，校验同包的注册表 SHA-256 与连续包序号。
+网关的私有 `mcviewer:native_packet` 使用 MCNP 头和压缩 V8 信封保存原生包语义（名称、参数、注册表与序号）；
+它不是浏览器直接消费的 Socket.IO 事件，也不是原始 Minecraft 包逐字转发。
+原生数据先进入专用世界状态，网页再通过 SSE 接收同账号快照。兼容前门的原版代理状态不参与此渲染。
+
+### 路径与生命周期
+
+| HTTP 路径 | 含义 |
+| --- | --- |
+| `/`、`/third/`、`/dungeon/` | 原完整页面：第一人称、第三人称、地下城 2.5D 跟随相机 |
+| `/index.js` | 上述页面的原生 ESM 入口 |
+| `/diagnostics`、`/client.js` | 原生诊断页及其独立入口 |
+| `/events` | SSE；浏览器场景唯一订阅，界面共用它的状态 |
+| `/status.json` | 当前身份、本人数据、原生流与 Agent 安全摘要的只读快照 |
+| `/healthz` | 当前连接与原生世界流是否就绪；不证明模型目标或完整画面成功 |
+
+SSE 首先发送 `type: "identity"`，包含 `minecraftVersion: "1.21.1"`、`registrySha256`、
+`mode: "live_same_player_connection"`、账号名、已确认的 `playerUuid` 和世界 `epoch`。
+登录前 UUID 未确认时不得显示另一个账号；登录/重生后的实际身份变化会重新发送 identity。
+随后发送完整 `snapshot`，以及含 `epoch / pose / selfPlayer / presentation / time / packetSequence` 的 `frame`。
+快照的方块、区块、方块实体、坐标与维度来自此玩家实际收到的原生包，不读取磁盘存档或额外加载区块。
+
+客户端验证注册表、账号 UUID 与 epoch；先有可信身份和快照，才消费增量。
+断线、重生、换维度、注册表/序号错误或 `unavailable` 清空旧场景和本人界面，旧 epoch 的迟到 frame 不能恢复它。
+不知道的数据保持 `null` 或显式不可用，不填固定血量、默认皮肤、空背包或可施放状态。
+
+### 本人界面 `presentation`
+
+`snapshot`、`frame` 与 `/status.json` 携带相同来源的 `presentation`：
+
+| 字段 | 当前含义 |
+| --- | --- |
+| `schemaVersion / playerUuid / source` | `1`、此连接本人的 UUID、`"same_player_connection"`；内嵌对象若声明 UUID 也必须相同 |
+| `available / reason / sampledAt` | 本人状态是否可用、不可用原因、宿主采样 Unix 毫秒 |
+| `self` | 真实位置/姿态、生命与已收到的最大生命属性、饥饿/饱和、氧气、护甲、经验与快捷栏选择；未解析属性为 null |
+| `inventory` | 仅确认本人 window 0、`minecraft:inventory` 且 46 格后提供；热栏 36–44、主背包 9–35、副手 45 |
+| `nativeMenu` | 当前真实原生窗口 ID、stateId、menuType、全部槽位、游标及可取/槽位角色；未知标题为 null |
+| `skills` | 本人已收到的 Ars 回执：魔力、法术目录、来源、observedAt 与 stale；未知冷却为 null |
+| `nativeState` | 可选原生数据回调是否通过校验；即使 self 已知，未提供菜单/技能时也可能 available=false |
+| `gameMessages / title / actionbar` | 此游戏连接实际收到的消息、标题、动作栏；纯文本、安全有界，重生/断线清空 |
+| `time / weather` | 此连接收到的时间、雨与雷状态；未知值保留 null |
+
+原生槽位格式为 `{ slot, item: null | { name: "namespace:item", count, snbt } }`。
+`name` 保留原生命名空间，`snbt` 保留物品完整原生组件；不使用 Mineflayer 前门代理背包代替。
+打开通用容器时保留原始槽位布局，不按总格数猜测其中哪部分是玩家背包；缺少已确认的 window 0 时 `inventory=null`。
+浏览器背包、菜单和物品详情是只读展示，点击、视角切换和 F5 不会调用游戏物品点击或施法。
+
+`createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog, spellObservedAt })` 可从宿主已有观察生成上述可选数据。
+它不额外查询模型或游戏；目录只在本人当前持物与实际回执一致时显示。技能读数超过 5 秒或持物变化时标 stale，
+`cooldownMs / cooldownRemainingMs` 未取得时保持 null，不能由旧回执推算技能可用。
+
+回调必须同步返回 schemaVersion 1 与本人 UUID；Promise、循环对象、越界数据或其他玩家的嵌套 UUID 全部拒绝。
+回调只提取 `inventory / nativeMenu / skills`，不转发任意配置、模型任务、prompt 或凭据。
+每条字符串最多 65536 字符、数组最多 256 项，回调整体 UTF-8 JSON 仍最多 64 KiB、完整 presentation 最多 128 KiB；
+超限明确不可用，不截断组件后伪装成完整物品。
+
+### 展示与维护边界
+
+原生生存 HUD 使用同一模组资产清单中经哈希验证的原始 1.21.1 GUI PNG。
+有限的原版静态物品图标从原始 generated/handheld JSON 与单层 PNG 解析；模组颜色/模型提供器、组件敏感、动态 override、
+动画、多层与未知 GUI 变换未支持时保留原生名称和 SNBT。原背包人物预览只克隆真实本人 actor，无默认人物回退。
+地下城相机的遮挡/切面/点击操控、装备/持物、声音、音乐、小地图、完整实体和整体画面一致性仍未验收。
+复用钓获组件及待机预览 API 不代表宿主已发送真实钓获或待机事件。
+
+宿主仅监听回环，拒绝非 GET、异源 Host/Origin；同源资源通过清单哈希读取，SSE 最多四个客户端、单事件最多 2 MiB。
+遇到背压不继续排队堆积增量，按下一次完整快照恢复；关闭页面/宿主清理订阅、资源 URL 和计时器。
+维护需分别验证身份/组件/生命周期回归、真实浏览器、匹配模组 Java 客户端画面对照及持续运行。
+`completeSceneParityVerified=false` 保持关闭，网络完整与资源完整不能代替最终视觉一致。
+
+2026-10-04 新 My Agent World 已使用这套合约实际发布完整页面；同账号身份、真实 46 格背包/本人预览、
+三种视角、实际生命与 Ars 魔力在浏览器验过，页面无 warn/error。此部署记录不扩大本节的支持范围；
+完整实体、装备、动画、光照、声音、持续运行及新服基岩连接仍需独立验收。
