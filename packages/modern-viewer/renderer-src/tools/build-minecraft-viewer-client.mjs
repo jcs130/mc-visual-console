@@ -255,7 +255,7 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('  if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);\n  for (const event of pendingChunks.values())')) {
   throw Error('modern viewer 源码版本锚点已变化')
 }
-const clientWithHud = `import * as CortiThree from "three";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${eventsSource}\n${particleSource}\n${presentationSource}\n${soundSource}\n`
+const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${eventsSource}\n${particleSource}\n${presentationSource}\n${soundSource}\n`
 
 await mkdir(path.join(outputRoot, 'dist'), { recursive: true })
 await mkdir(path.join(outputRoot, 'public'), { recursive: true })

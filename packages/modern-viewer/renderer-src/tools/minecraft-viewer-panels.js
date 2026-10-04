@@ -22,6 +22,35 @@ let cortiMenuSignature = '';
 let cortiDismissedWindowId = null;
 let cortiCombatUntil = 0;
 let cortiCombatTimer = null;
+let cortiInventoryPlayerPreview = null;
+
+function cortiSyncInventoryPlayerPreview() {
+  const menu = document.getElementById('corti-menu');
+  const host = menu?.querySelector('[data-inventory-player-preview]');
+  if (!menu || menu.hidden || !host) {
+    cortiInventoryPlayerPreview?.setVisible(false);
+    return;
+  }
+  if (cortiInventoryPlayerPreview?.disposed) cortiInventoryPlayerPreview = null;
+  cortiInventoryPlayerPreview ??= new InventoryPlayerPreview({
+    THREE: CortiThree,
+    resolveSource: () => {
+      const entities = globalThis.world?.entities;
+      const id = cortiPanelAvatar?.entity?.id;
+      if (id === undefined || id === null) return null;
+      const entity = entities?.entities?.[String(id)];
+      if (entity?.playerObject) return entity;
+      const special = entities?.playerEntity;
+      return special?.originalEntity?.id === id ? special : null;
+    },
+    createFallback: () => createInventoryPreviewFallback(CortiThree, {
+      getAvatar: () => cortiPanelAvatar,
+      getSkin: () => selectedPlayerSkin,
+      getEntities: () => globalThis.world?.entities,
+    }),
+  });
+  cortiInventoryPlayerPreview.attach(host);
+}
 
 const cortiMenuTextures = '/textures/gui/container/';
 const cortiMenuLayouts = Object.freeze({
@@ -134,6 +163,7 @@ function cortiInstallPanels(socket) {
     cortiInventoryOpen = false;
     cortiDismissedWindowId = cortiPanelWindow?.id ?? null;
     menu.hidden = true;
+    cortiSyncInventoryPlayerPreview();
   });
   window.addEventListener('keydown', (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey ||
@@ -146,6 +176,7 @@ function cortiInstallPanels(socket) {
       cortiInventoryOpen = false;
       cortiDismissedWindowId = cortiPanelWindow?.id ?? null;
       menu.hidden = true;
+      cortiSyncInventoryPlayerPreview();
       event.preventDefault();
     }
   });
@@ -153,6 +184,7 @@ function cortiInstallPanels(socket) {
     cortiPanelAvatar = state;
     cortiRenderMana();
     if (cortiInventoryOpen && !cortiPanelWindow) cortiRenderMenu();
+    cortiSyncInventoryPlayerPreview();
     if (performance.now() - cortiMapDrawAt > 120) {
       cortiMapDrawAt = performance.now();
       cortiDrawMinimap();
@@ -164,6 +196,12 @@ function cortiInstallPanels(socket) {
     if (!cortiPanelWindow || cortiPanelWindow.id !== previousId) cortiDismissedWindowId = null;
     if (cortiPanelWindow || previousId !== undefined || cortiInventoryOpen) cortiRenderMenu();
   });
+  socket.on('disconnect', () => cortiInventoryPlayerPreview?.reset());
+  window.addEventListener('pagehide', (event) => {
+    if (event.persisted) cortiInventoryPlayerPreview?.reset();
+    else cortiInventoryPlayerPreview?.dispose();
+  });
+  window.addEventListener('pageshow', () => cortiSyncInventoryPlayerPreview());
   for (const eventName of ['entityDamage', 'tacticalAttack', 'combatFeedback']) {
     socket.on(eventName, (event) => {
       if (eventName === 'entityDamage' && event?.isSelf !== true) return;
@@ -249,17 +287,19 @@ function cortiRenderMenu() {
   if ((!container && !cortiInventoryOpen) ||
       (container && cortiDismissedWindowId === container.id && !cortiInventoryOpen)) {
     root.hidden = true;
+    cortiSyncInventoryPlayerPreview();
     return;
   }
   root.dataset.compact = String(performance.now() < cortiCombatUntil);
   const signature = JSON.stringify(container || cortiPanelAvatar?.inventory || []);
   const wasHidden = root.hidden;
   root.hidden = false;
-  if (!wasHidden && signature === cortiMenuSignature) return;
+  if (!wasHidden && signature === cortiMenuSignature) { cortiSyncInventoryPlayerPreview(); return; }
   cortiMenuSignature = signature;
   root.querySelector('[data-menu-title]').textContent = container?.title || '背包';
   root.querySelector('[data-menu-source]').textContent = container ? '游戏窗口 · 只读' : '玩家物品 · 只读';
   const target = root.querySelector('[data-menu-body]');
+  cortiInventoryPlayerPreview?.setVisible(false);
   target.replaceChildren();
   if (!container) { cortiRenderInventory(target, cortiPanelAvatar?.inventory); return; }
   const type = String(container.type || '').replace(/^minecraft:/, '');
@@ -349,11 +389,20 @@ function cortiPlayerRows(parent, slots, start, hotbarStart, y = 84, x = 8) {
 
 function cortiRenderInventory(parent, slots) {
   const body = cortiVanillaBackground(parent, 'inventory');
+  const preview = document.createElement('div');
+  preview.className = 'corti-inventory-player-preview';
+  preview.dataset.inventoryPlayerPreview = '';
+  preview.dataset.previewState = 'waiting';
+  preview.setAttribute('role', 'img');
+  preview.setAttribute('aria-label', '玩家皮肤与当前装备预览');
+  preview.title = '移动鼠标查看当前皮肤与装备';
+  body.append(preview);
   for (let i = 0; i < 4; i++) cortiSlot(body, 8, 8 + i * 18, slots?.[5 + i], '护甲');
   for (let i = 0; i < 4; i++) cortiSlot(body, 98 + (i % 2) * 18, 18 + Math.floor(i / 2) * 18, slots?.[1 + i], '合成');
   cortiSlot(body, 154, 28, slots?.[0], '合成结果');
   cortiSlot(body, 77, 62, slots?.[45], '副手');
   cortiPlayerRows(body, slots, 9, 36);
+  cortiSyncInventoryPlayerPreview();
 }
 
 function cortiRenderFurnace(parent, container, type) {

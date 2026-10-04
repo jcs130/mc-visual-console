@@ -71,6 +71,11 @@ to{background-position:128px -128px,-120% 0}
 .corti-menu header span{font:11px/1.2 sans-serif;color:#a9bfc1}
 .corti-menu header button{padding:0 5px;background:none;color:#fff;border:0;font:22px/1 sans-serif;cursor:pointer}
 .corti-menu-body{position:relative;image-rendering:pixelated}
+.corti-inventory-player-preview{position:absolute;left:52px;top:16px;width:104px;height:140px;overflow:hidden;isolation:isolate;cursor:move;touch-action:pan-y}
+.corti-inventory-player-preview canvas{display:block;width:100%;height:100%;image-rendering:auto;pointer-events:none}
+.corti-inventory-player-preview[data-preview-state="waiting"]:after,.corti-inventory-player-preview[data-preview-state="unavailable"]:after{position:absolute;inset:0;display:grid;place-items:center;padding:10px;color:#ccc;font:11px/1.4 system-ui;text-align:center;pointer-events:none}
+.corti-inventory-player-preview[data-preview-state="waiting"]:after{content:"载入角色…"}
+.corti-inventory-player-preview[data-preview-state="unavailable"]:after{content:"角色预览暂不可用"}
 .corti-menu-vanilla{width:352px;height:332px;background-position:left top;background-size:512px 512px;background-repeat:no-repeat}
 .corti-menu-slot{position:absolute;width:36px;height:36px;box-sizing:border-box}
 .corti-menu-slot img{position:absolute;top:2px;left:2px;width:32px;height:32px;image-rendering:pixelated}
