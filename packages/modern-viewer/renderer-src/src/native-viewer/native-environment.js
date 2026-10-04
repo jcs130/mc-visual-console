@@ -94,7 +94,11 @@ export function blockTint (snapshot, state, position, tintIndex, colormaps) {
 export function modelOffset (state, position) {
   if (!state.hasOffsetFunction) return [0, 0, 0]
   const xyz = ['minecraft:short_grass', 'minecraft:fern'].includes(state.name)
-  if (!xyz && !['minecraft:tall_grass', 'minecraft:large_fern'].includes(state.name)) throw Error(`NATIVE_MODEL_OFFSET_UNSUPPORTED:${state.name}`)
+  // Locked 1.21.1 Blocks registers these two FlowerBlocks with OffsetType.XZ.
+  // FlowerBlock/BushBlock inherit BlockBehaviour's 0.25f horizontal maximum;
+  // XZ uses the same float-ratio seed formula and no vertical displacement.
+  // Other vanilla/mod offset providers still require their own verification.
+  if (!xyz && !['minecraft:tall_grass', 'minecraft:large_fern', 'minecraft:dandelion', 'minecraft:poppy'].includes(state.name)) throw Error(`NATIVE_MODEL_OFFSET_UNSUPPORTED:${state.name}`)
   const seed = blockPositionSeed({ x: position.x, y: 0, z: position.z })
   const floatRatio = n => Math.fround(Number(n) / 15)
   return [(floatRatio(seed & 15n) - 0.5) * 0.5, xyz ? (floatRatio((seed >> 4n) & 15n) - 1) * Math.fround(0.2) : 0, (floatRatio((seed >> 8n) & 15n) - 0.5) * 0.5]

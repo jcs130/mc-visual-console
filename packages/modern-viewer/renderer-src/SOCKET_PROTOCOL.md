@@ -338,6 +338,20 @@ SSE 首先发送 `type: "identity"`，包含 `minecraftVersion: "1.21.1"`、`reg
 随后发送完整 `snapshot`，以及含 `epoch / pose / selfPlayer / presentation / time / packetSequence` 的 `frame`。
 快照的方块、区块、方块实体、坐标与维度来自此玩家实际收到的原生包，不读取磁盘存档或额外加载区块。
 
+快照默认水平±24、垂直上下各24格，随维度边界裁切。`groups` 保留实际 `bounds` 内全部非空气块；
+`viewCoverage` 包含 `requestedBounds / receivedColumns / clippedBy / horizontalRangeReduced / verticalRangeLimited / limits / scanWorkVoxels`。
+收到列中未出现在groups的格子才可按实际空气理解，未收到列必须保持未知。
+`neighbors` 的语义为 `fluid_stencil_only`：仅流体几何需要的去重邻点，不能用它作为全体积方块表。
+遇到扫描、模型数量或UTF-8预算限制，缩小整个水平矩形并声明实际bounds，无法提供完整最小范围时明确不可用。
+地形合并刷新至少间隔500ms，移动4格重新锚定；本人HUD帧仍每200ms采样，二者不共享过期时间。
+
+已建立快照后，真实 `bot.physicsTick` 发送轻量 `{type:"motion", epoch, playerUuid, pose, motion}`，约20Hz。
+`motion` 是 `same_player_physics_tick` 来源的连续tick状态，包含 `tick / sampledAt / tickMs:50 / walk:{speedOld,speed,position}`；
+未初始化、缺tick、显式传送/死亡/重生/换维度时 `available=false`，不补造动作。
+它不含 `presentation`、背包、模型决策或游戏操作；客户端校验本人UUID/epoch，只允许插值一个已知tick，
+不会用浏览器时钟续走。完整快照和HUD frame也携带最近motion，以防刷新时丢失动作状态。
+该通道只提供基础步态，`animationParityVerified=false`；未知entity age的idle bob、bodyYaw与攻击姿势没有回退模拟。
+
 客户端验证注册表、账号 UUID 与 epoch；先有可信身份和快照，才消费增量。
 断线、重生、换维度、注册表/序号错误或 `unavailable` 清空旧场景和本人界面，旧 epoch 的迟到 frame 不能恢复它。
 不知道的数据保持 `null` 或显式不可用，不填固定血量、默认皮肤、空背包或可施放状态。
@@ -376,7 +390,9 @@ SSE 首先发送 `type: "identity"`，包含 `minecraftVersion: "1.21.1"`、`reg
 
 原生生存 HUD 使用同一模组资产清单中经哈希验证的原始 1.21.1 GUI PNG。
 有限的原版静态物品图标从原始 generated/handheld JSON 与单层 PNG 解析；模组颜色/模型提供器、组件敏感、动态 override、
-动画、多层与未知 GUI 变换未支持时保留原生名称和 SNBT。原背包人物预览只克隆真实本人 actor，无默认人物回退。
+动画、多层与未知 GUI 变换未支持时保留原生名称和 SNBT。泥土、橡木原木、圆石另外支持经原客户端核对的六面立方模型、
+原始纹理、GUI变换和光照；此白名单不扩展到组件敏感或模组物品，像素一致性仍未验收。
+原背包人物预览只克隆真实本人 actor，无默认人物回退。
 地下城相机的遮挡/切面/点击操控、装备/持物、声音、音乐、小地图、完整实体和整体画面一致性仍未验收。
 复用钓获组件及待机预览 API 不代表宿主已发送真实钓获或待机事件。
 

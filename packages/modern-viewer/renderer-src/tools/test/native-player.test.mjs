@@ -109,6 +109,26 @@ test('pose uses real world feet position and native camera yaw/pitch without a n
   actor.dispose()
 })
 
+test('verified walk angles reach the real skin limbs while identity/feet stay unchanged and missing motion clears stale arms', async () => {
+  const source = fixture(), decoder = textureDecoder(), actor = await createNativePlayerActor(source.reader, { uuid: nil, loadTexture: decoder.load })
+  actor.applyPose({ x: -432, y: 72, z: 400, yaw: 0.5, pitch: 0.2 })
+  const value = actor.applyMotion({ schemaVersion: 1, source: 'same_player_physics_tick', tickMs: 50, epoch: 1, tick: 2,
+    sampledAt: 1000, available: true, walk: { speedOld: 0, speed: 0.4, position: 0.4 }, ageInTicks: null }, 1050)
+  assert.equal(value.available, true)
+  for (const [name, rotation] of Object.entries(value.skinview)) {
+    assert.equal(actor.playerObject.skin[name].rotation.x, rotation.x)
+    assert.equal(actor.playerObject.skin[name].rotation.y, rotation.y)
+    assert.equal(actor.playerObject.skin[name].rotation.z, rotation.z)
+    assert.equal(actor.playerObject.skin[name].rotation.order, 'ZYX')
+  }
+  assert.deepEqual(actor.root.position.toArray(), [-432, 72, 400]); assert.equal(actor.root.userData.playerUuid, nil)
+  assert.equal(actor.root.userData.motion.animationParityVerified, false)
+  actor.applyMotion(null, 1100)
+  assert.equal(actor.playerObject.skin.rightArm.rotation.x, 0)
+  assert.equal(actor.root.userData.motion.available, false)
+  actor.dispose()
+})
+
 test('missing, tampered or unresolved assets fail before decode without default substitutions', async () => {
   const source = fixture(), decoder = textureDecoder()
   delete source.reader.manifest.assets[source.path]

@@ -60,6 +60,31 @@ test('native plant offsets repeat vertically for XZ plants and reject unknown of
   assert.throws(() => modelOffset({ name: 'mod:plant', hasOffsetFunction: true }, { x: 0, y: 0, z: 0 }), /UNSUPPORTED/)
 })
 
+test('the two verified FlowerBlock XZ offsets match native float arithmetic and remain independent of height', () => {
+  // Official 1.21.1 client SHA256 499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99.
+  // Numeric seeds came from that JAR's actual Mth.getSeed, with XZ arithmetic
+  // checked against BlockBehaviour.Properties.lambda$offsetType$11 bytecode.
+  // Blocks.DANDELION/POPPY select XZ; inherited maxHorizontalOffset=0.25f,
+  // maxVerticalOffset=0.2f is unused by XZ (actual Y displacement is zero).
+  const cases = [
+    [{ x: 0, y: 64, z: 0 }, [-0.25, 0, -0.25]],
+    [{ x: -7, y: 63, z: 3 }, [-0.0833333283662796, 0, -0.18333332985639572]],
+    [{ x: -432, y: 72, z: 400 }, [0.15000000596046448, 0, -0.25]],
+    [{ x: 17, y: 80, z: -23 }, [-0.25, 0, 0.0833333432674408]],
+    [{ x: 29999000, y: 64, z: -29999000 }, [-0.25, 0, -0.0833333283662796]]
+  ]
+  for (const name of ['minecraft:dandelion', 'minecraft:poppy']) {
+    const state = { name, hasOffsetFunction: true }
+    for (const [position, expected] of cases) {
+      assert.deepEqual(modelOffset(state, position), expected)
+      assert.deepEqual(modelOffset(state, { ...position, y: position.y + 91 }), expected)
+    }
+    assert.deepEqual(modelOffset({ ...state, hasOffsetFunction: false }, cases[1][0]), [0, 0, 0])
+  }
+  for (const name of ['mod:dandelion', 'mod:poppy', 'minecraft:blue_orchid'])
+    assert.throws(() => modelOffset({ name, hasOffsetFunction: true }, cases[0][0]), /NATIVE_MODEL_OFFSET_UNSUPPORTED/)
+})
+
 test('animation honors original rectangular sheets, frame order, durations and integer-tick interpolation', () => {
   const animation = animationFrames({ animation: { width: 16, height: 16, frametime: 3, interpolate: true, frames: [3, { index: 0, time: 5 }, 2] } }, 32, 32)
   assert.deepEqual(frameAt(animation, 0).offset, [0.5, 0])

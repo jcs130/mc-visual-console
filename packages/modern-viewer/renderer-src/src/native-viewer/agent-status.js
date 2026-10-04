@@ -1,6 +1,7 @@
 const MODES = {
   starting: '正在启动', waiting_for_player: '等待玩家进入游戏', thinking: '等待模型决策', acting: '执行动作',
   observing: '观察／等待下一轮', paused: '已暂停', paused_unknown: '结果未知，已暂停',
+  paused_model: '模型接口受限，已暂停',
   decision_backoff: '决策失败，退避等待', stopping: '正在停止'
 }
 const text = value => typeof value === 'string' && value.length ? value : null
@@ -38,10 +39,13 @@ export function agentStatusView (status, expectedPlayer = null) {
     if (text(result.code)) receipt += ' · ' + result.code
   }
   const mode = text(details.mode)
+  const modelNotice = mode?.startsWith('paused') && /\bMODEL_QUOTA_EXCEEDED\b/.test(text(details.lastError) || '')
+    ? '模型接口返回额度／限流错误，决策已暂停；游戏连接仍在线'
+    : mode?.startsWith('paused') && details.modelTask?.status === 'failed' ? '决策已暂停；最近一次模型任务失败，游戏连接仍在线' : ''
   return { available: true, name: text(details.username) || status.identity.player,
     mode: mode ? `${MODES[mode] || mode} (${mode})` : '未提供', goal: text(details.goal) || '未提供',
     action: action || '未收到动作回执', receipt, receiptAt: timestamp(last?.at), decisionAt: timestamp(details.lastDecision?.at),
-    notice: status.connection?.ended ? '玩家连接已断开；以下为最后收到的状态' : details.online === false ? '尚未进入游戏' : '' }
+    notice: status.connection?.ended ? '玩家连接已断开；以下为最后收到的状态' : details.online === false ? '尚未进入游戏' : modelNotice }
 }
 
 export function renderAgentStatus (view, element) {

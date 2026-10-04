@@ -39,3 +39,17 @@ test('empty pre-login identity is explicitly replaced by the verified player ide
   assert.equal(loggedIn.reset, true); assert.equal(loggedIn.value.playerUuid, uuid)
   assert.equal(session.receive({ type: 'future_feature' }).kind, 'ignored')
 })
+
+test('physics motion cannot establish identity, replay another epoch or animate another account', () => {
+  const session = createNativeSession(hash); session.receive(identity)
+  const motion = { type: 'motion', epoch: 1, playerUuid: uuid, motion: { epoch: 1 } }
+  assert.equal(session.receive(motion).kind, 'ignored')
+  session.receive(snapshot)
+  assert.equal(session.receive(motion).kind, 'motion')
+  assert.throws(() => session.receive({ ...motion, playerUuid: '00000000-0000-3000-8000-000000000000' }), /MOTION_IDENTITY_MISMATCH/)
+  assert.throws(() => session.receive({ ...motion, motion: { epoch: 2 } }), /MOTION_IDENTITY_MISMATCH/)
+  session.receive({ ...snapshot, epoch: 2 })
+  assert.equal(session.receive(motion).kind, 'ignored')
+  session.receive({ type: 'unavailable' })
+  assert.equal(session.receive({ ...motion, epoch: 2, motion: { epoch: 2 } }).kind, 'ignored')
+})

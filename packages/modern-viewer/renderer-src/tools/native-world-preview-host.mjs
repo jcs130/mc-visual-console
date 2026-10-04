@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { build } from 'esbuild'
 import { NativeWorldState, loadNativeStateRegistry, attachNativeWorld } from './native-world-host.mjs'
+import { NativeSnapshotCadence } from './native-snapshot-cadence.mjs'
+import { createNativePlayerMotionTracker } from '../src/native-viewer/native-player-motion.js'
 import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
@@ -260,7 +262,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         }) })
       const detach = attachNativeWorld({ bot, nativeStream, world })
       const clients = new Set()
-      let closed = false, closing = null, listening = null, currentPort = port, snapshotDirty = true, lastCenter = null, connectionEnded = false, identityConfirmed = Boolean(bot.username)
+      let closed = false, closing = null, listening = null, currentPort = port, connectionEnded = false, identityConfirmed = Boolean(bot.username)
+      const cadence = new NativeSnapshotCadence()
+      let cachedSnapshot = null, snapshotBuildCount = 0, snapshotBuildMs = null
+      const motionTracker = createNativePlayerMotionTracker()
+      let physicsTickCount = 0
       let receivedProfile = null, messageSequence = 0, gameMessages = [], currentTitle = null, currentActionbar = null
       const ownProfile = () => {
         const uuid = bot._client.uuid
@@ -288,6 +294,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           onGround: typeof entity.onGround === 'boolean' ? entity.onGround : null,
           sneaking: typeof entity.crouching === 'boolean' ? entity.crouching : null, velocity: vector(entity.velocity), skin }
       }
+      const playerPose = player => player && [player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)
+        ? { ...player.position, yaw: player.yaw, pitch: player.pitch, eyeHeight: player.eyeHeight } : world.pose
       const identity = () => ({ player: username, confirmed: identityConfirmed, playerUuid: bot._client.uuid || null, entityId: bot.entity?.id ?? null, epoch: world.epoch, profile: ownProfile() })
       const sendIdentity = client => {
         const value = identity(), signature = JSON.stringify(value)
@@ -322,6 +330,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         viewer: { available: !closed && !world.error, closed, state: world.error || closed ? 'unavailable' : world.dimension && world.pose ? 'snapshot' : 'waiting',
           reason: world.error || (closed ? 'NATIVE_WORLD_HOST_CLOSED' : null), registrySha256: hash, epoch: world.epoch,
           packetSequence: world.lastSequence, packetCount: world.packetCount, loadedColumns: world.columns.size,
+          terrain: { coverage: cachedSnapshot?.viewCoverage ?? null, bounds: cachedSnapshot?.bounds ?? null,
+            snapshotBuildCount, snapshotBuildMs, minimumIntervalMs: cadence.minimumIntervalMs, recenterDistance: cadence.recenterDistance },
           entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false },
         agent: injectedAgentStatus(getAgentStatus, now) })
       const headers = type => ({ 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': CSP })
@@ -370,14 +380,33 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         }
       })
       server.requestTimeout = 10000; server.headersTimeout = 10000
-      const worldChanged = () => { snapshotDirty = true }
+      const worldChanged = () => { cadence.invalidate() }
       const resetPresentation = () => { gameMessages = []; currentTitle = null; currentActionbar = null }
-      const reset = () => { snapshotDirty = true; lastCenter = null; resetPresentation() }
-      const pose = () => {
-        const center = `${Math.floor(world.pose.x)},${Math.floor(world.pose.y)},${Math.floor(world.pose.z)}`
-        if (lastCenter !== center) { lastCenter = center; snapshotDirty = true }
+      const reset = () => { cadence.reset(); cachedSnapshot = null; motionTracker.reset('dimension'); resetPresentation() }
+      const pose = () => { cadence.observe(world.pose) }
+      const motionReset = () => motionTracker.reset('respawn')
+      const motionDeath = () => motionTracker.reset('death')
+      const motionTeleport = () => motionTracker.reset('teleport')
+      const physicsTick = () => {
+        if (closed || connectionEnded || world.error) return
+        const player = selfPlayer()
+        if (!player) { motionTracker.reset('connection'); return }
+        const state = player.health > 0
+          ? motionTracker.record({ epoch: world.epoch, tick: ++physicsTickCount, sampledAt: now(), pose: player.position })
+          : motionTracker.reset(player.health === 0 ? 'death' : 'connection')
+        const motion = { ...state, epoch: world.epoch }
+        if (!clients.size || ![player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)) return
+        const currentPose = playerPose(player)
+        const value = { type: 'motion', epoch: world.epoch, playerUuid: player.uuid, pose: currentPose, motion }
+        for (const client of clients) {
+          if (client.blocked || client.needsSnapshot) continue
+          if (!sendIdentity(client) || client.blocked) continue
+          sendNativeWorldEvent(client, value)
+        }
       }
       const unavailable = reason => {
+        cachedSnapshot = null; cadence.reset(); motionTracker.reset('connection'); resetPresentation()
+        for (const client of clients) client.needsSnapshot = true
         for (const client of clients) sendNativeWorldEvent(client, { type: 'unavailable', reason })
         logger?.error?.('NATIVE_WORLD_UNAVAILABLE ' + reason)
       }
@@ -421,22 +450,35 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       world.on('world', worldChanged); world.on('reset', reset); world.on('pose', pose); world.on('unavailable', unavailable)
       bot.on('error', error); bot.on('kicked', kicked); bot.on('end', ended)
       bot.on('login', verifyIdentity); bot.on('spawn', verifyIdentity)
+      bot.on('physicsTick', physicsTick); bot.on('spawn', motionReset); bot.on('death', motionDeath)
+      bot._client.on('position', motionTeleport)
       bot.on('messagestr', message); bot.on('title', title); bot.on('title_times', titleTimes); bot.on('title_clear', titleClear)
       bot._client.on('player_info', playerInfo)
       const timer = setInterval(() => {
         if (closed || !clients.size) return
         try {
+          // A blocked browser must not cause repeated world scans. Its next
+          // drain requests one current snapshot instead of replaying old frames.
+          for (const client of clients) if (client.blocked) client.missedWorld ||= cadence.dirty
+          if (![...clients].some(client => !client.blocked)) return
           const player = selfPlayer()
           const ownPresentation = presentation(player)
-          const snapshot = snapshotDirty || [...clients].some(c => c.needsSnapshot) ? { ...world.snapshot(), selfPlayer: player, presentation: ownPresentation } : null
-          for (const client of clients) {
-            if (client.blocked) { client.missedWorld ||= snapshotDirty; continue }
-            if (!sendIdentity(client) || client.blocked) { client.missedWorld ||= snapshotDirty; continue }
-            if (snapshot || client.needsSnapshot) {
-              if (sendNativeWorldEvent(client, snapshot || { ...world.snapshot(), selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
-            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: world.pose, selfPlayer: player, presentation: ownPresentation, time: world.time, packetSequence: world.lastSequence })
+          let snapshot = null
+          const startedAt = performance.now()
+          if (cadence.required(world.pose, startedAt, !cachedSnapshot && [...clients].some(c => !c.blocked && c.needsSnapshot))) {
+            snapshot = world.snapshot()
+            snapshotBuildMs = Math.round((performance.now() - startedAt) * 100) / 100; snapshotBuildCount++
+            cachedSnapshot = snapshot.type === 'snapshot' ? snapshot : null
+            cadence.completed(world.pose, startedAt, snapshot.type === 'snapshot', snapshot.bounds)
           }
-          snapshotDirty = false
+          for (const client of clients) {
+            if (client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
+            if (!sendIdentity(client) || client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
+            if (snapshot || client.needsSnapshot) {
+              const value = snapshot || cachedSnapshot
+              if (value && sendNativeWorldEvent(client, { ...value, pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
+            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: playerPose(player), motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation, time: world.time, packetSequence: world.lastSequence })
+          }
         } catch (error) { world.unavailable(error) }
       }, 200)
       timer.unref()
@@ -459,6 +501,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           world.off('world', worldChanged); world.off('reset', reset); world.off('pose', pose); world.off('unavailable', unavailable)
           bot.off('error', error); bot.off('kicked', kicked); bot.off('end', ended)
           bot.off('login', verifyIdentity); bot.off('spawn', verifyIdentity)
+          bot.off('physicsTick', physicsTick); bot.off('spawn', motionReset); bot.off('death', motionDeath)
+          bot._client.off('position', motionTeleport)
           bot.off('messagestr', message); bot.off('title', title); bot.off('title_times', titleTimes); bot.off('title_clear', titleClear)
           bot._client.off('player_info', playerInfo)
           for (const client of clients) client.response.end()

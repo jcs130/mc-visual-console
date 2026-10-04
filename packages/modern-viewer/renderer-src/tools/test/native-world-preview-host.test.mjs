@@ -7,6 +7,7 @@ import http from 'node:http'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, sendNativeWorldEvent, createNativePlayerPresentation } from '../native-world-preview-host.mjs'
+import { createNativeSession } from '../../src/native-viewer/native-session.js'
 
 let directory, prepared, registryHash
 const assetPath = 'assets/test/models/native.json'
@@ -299,13 +300,91 @@ test('SSE snapshot and frames resample the action player without borrowing anoth
   const frame = await stream.next()
   assert.equal(frame.type, 'frame')
   assert.equal(frame.selfPlayer.position.x, 3.75); assert.equal(frame.selfPlayer.yaw, -1.1)
+  assert.equal(frame.pose.x, frame.selfPlayer.position.x); assert.equal(frame.pose.yaw, frame.selfPlayer.yaw)
   assert.equal(frame.selfPlayer.health, 9); assert.equal(frame.selfPlayer.food, 7)
   assert.equal(frame.selfPlayer.onGround, false); assert.equal(frame.selfPlayer.sneaking, true)
   assert.equal(snapshot.selfPlayer.position.x, 3.5)
+  assert.equal(host.status().viewer.terrain.snapshotBuildCount, 1, 'HUD/head movement must not rescan geometry')
   bot.username = 'WrongPlayer'; bot.emit('spawn')
   assert.equal(host.status().selfPlayer, null)
   bot.emit('end', 'closed')
   assert.equal(host.status().selfPlayer, null)
+})
+
+test('a second viewer reuses coherent terrain; movement outside the anchor gets a new bounded snapshot', async t => {
+  const { bot, host, nativeStream } = attachment(t)
+  const entity = playerEntity(bot); bot.registry.dimensionsArray[0].height = 128
+  ownPlayerInfo(bot)
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 1, name: 'login', params: { worldState: { dimension: 0 } } })
+  host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight })
+  await host.listen()
+  const first = await events(host); t.after(() => first.close())
+  await untilEvent(first, e => e.type === 'snapshot')
+  const second = await events(host); t.after(() => second.close())
+  const retained = await untilEvent(second, e => e.type === 'snapshot')
+  assert.equal(host.status().viewer.terrain.snapshotBuildCount, 1)
+  entity.position.x += 5
+  host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight })
+  const shifted = await untilEvent(first, e => e.type === 'snapshot' && e.bounds.minX !== retained.bounds.minX)
+  assert.equal(shifted.pose.x, entity.position.x)
+  assert.equal(host.status().viewer.terrain.snapshotBuildCount, 2)
+  assert.equal(shifted.selfPlayer.uuid, bot._client.uuid)
+})
+
+test('only consecutive ticks from the supplied body send private motion; teleport clears the old walk phase', async t => {
+  let clock = 1000
+  const { bot, host, nativeStream } = attachment(t, { now: () => clock })
+  const entity = playerEntity(bot); bot.registry.dimensionsArray[0].height = 128
+  ownPlayerInfo(bot)
+  bot._client.write = () => assert.fail('motion may not command the game')
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 1, name: 'login', params: { worldState: { dimension: 0 } } })
+  host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight })
+  await host.listen(); const stream = await events(host); t.after(() => stream.close())
+  const snapshot = await untilEvent(stream, e => e.type === 'snapshot')
+  const session = createNativeSession(registryHash)
+  session.receive({ type: 'identity', registrySha256: registryHash, playerUuid: bot._client.uuid, player: bot.username,
+    minecraftVersion: '1.21.1', mode: 'live_same_player_connection' })
+  session.receive(snapshot)
+  bot.emit('physicsTick')
+  entity.position.x += 0.1; clock += 50; bot.emit('physicsTick')
+  const motion = await untilEvent(stream, e => e.type === 'motion' && e.motion.available)
+  assert.equal(motion.playerUuid, bot._client.uuid)
+  assert.equal(motion.motion.source, 'same_player_physics_tick'); assert.equal(motion.motion.tick, 2)
+  assert(Math.abs(motion.motion.walk.speed - 0.16) < 1e-6)
+  assert.equal(motion.pose.x, entity.position.x)
+  assert.equal(motion.presentation, undefined, '20Hz motion must not duplicate inventory/HUD payloads')
+  assert.equal(host.status().viewer.terrain.snapshotBuildCount, 1)
+  bot._client.emit('position', {})
+  clock += 50; bot.emit('physicsTick')
+  const reset = await untilEvent(stream, e => e.type === 'motion' && !e.motion.available)
+  assert.equal(reset.motion.walk, null)
+  clock += 50; bot.emit('physicsTick')
+  const standing = await untilEvent(stream, e => e.type === 'motion' && e.motion.available)
+  assert.equal(standing.motion.walk.speed, 0)
+  bot.health = 0; bot.emit('death'); clock += 50; bot.emit('physicsTick')
+  const dead = await untilEvent(stream, e => e.type === 'motion' && !e.motion.available)
+  assert.match(dead.motion.reason, /DEATH/)
+  assert.equal(session.receive(dead).kind, 'motion', 'real browser decoder must accept reset motion without disconnecting')
+  clock += 50; bot.emit('physicsTick')
+  assert.equal((await untilEvent(stream, e => e.type === 'motion')).motion.available, false)
+  await host.close()
+  assert.equal(bot.listenerCount('physicsTick'), 0); assert.equal(bot._client.listenerCount('position'), 0)
+})
+
+test('an unavailable native stream discards cached terrain before a second viewer connects', async t => {
+  const { bot, host, nativeStream } = attachment(t)
+  const entity = playerEntity(bot); bot.registry.dimensionsArray[0].height = 128
+  ownPlayerInfo(bot)
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 1, name: 'login', params: { worldState: { dimension: 0 } } })
+  host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight })
+  await host.listen(); const first = await events(host); t.after(() => first.close())
+  await untilEvent(first, e => e.type === 'snapshot')
+  host.world.unavailable(Error('native_sequence_test_failure'))
+  assert.equal(host.status().viewer.terrain.bounds, null)
+  const second = await events(host); t.after(() => second.close())
+  const identity = await second.next(); assert.equal(identity.type, 'identity')
+  const failed = await second.next(); assert.equal(failed.type, 'unavailable')
+  assert.equal(failed.groups, undefined); assert.equal(failed.selfPlayer, null)
 })
 
 test('missing, throwing, asynchronous, cyclic and oversized Agent data remain explicit unavailable', async t => {

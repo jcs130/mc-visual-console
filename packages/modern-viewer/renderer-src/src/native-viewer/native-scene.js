@@ -59,6 +59,7 @@ async function start () {
         updatePlayerCamera(now)
         if (selfActor) {
           selfActor.applyPose(current.pose)
+          selfActor.applyMotion(current.selfPlayer?.onGround === true && current.selfPlayer?.sneaking === false ? current.motion : null, Date.now())
           selfActor.root.visible = viewMode !== 'first' && (cameraDistance === null || cameraDistance > 0.9)
         }
         // The game's absolute clock supplies the shaft phase; crank chase is
@@ -92,7 +93,9 @@ async function start () {
         if (epoch !== value.epoch) { clearScene(); epoch = value.epoch }
         current = value; pending = value; void rebuildLatest()
       } else if (value.type === 'frame' && current && value.epoch === epoch) {
-        current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.time = value.time; current.packetSequence = value.packetSequence
+        current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
+      } else if (value.type === 'motion' && current && value.epoch === epoch) {
+        current.pose = value.pose; current.motion = value.motion; return
       } else return
       onState(value); void ensureSelfActor(current.selfPlayer)
     } catch (error) { fail(error) }
@@ -146,7 +149,7 @@ async function ensureSelfActor (self) {
     }
     if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose() }
     selfActor = actor; worldRoot.add(actor.root)
-    skinState = `1.21.1 ${actor.assetInfo.name || self.skin.model}; 装备和完整动画未验收`; onActor(actor); publishDiagnostics()
+    skinState = `1.21.1 ${actor.assetInfo.name || self.skin.model}; 已接本人步行动作，装备和完整动画未验收`; onActor(actor); publishDiagnostics()
   } catch (error) {
     if (run === generation) { skinState = error.message; onActor(null); publishDiagnostics() }
   }
@@ -165,7 +168,7 @@ function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
     drawn: drawn + actors.size, issues: [...unknown], missingColumns: current?.missingColumns?.length || 0,
     kinetics: current?.kinetic?.map(n => n.speed) || [], environment: current?.biomes?.map(b => b.name) || [],
-    skinState, completeSceneParityVerified: false })
+    skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
 function clearStatics () {
   if (!statics) return
@@ -228,7 +231,14 @@ async function rebuildLatest () {
       for (const [key, actor] of actors) if (!existing.has(key)) { removeActor(actor); actors.delete(key) }
       if (signature !== lastGroupSignature) {
         const next = new THREE.Group(), tintCache = new Map(); let count = 0
+        let workStarted = performance.now()
         for (const group of snapshot.groups) {
+          // A larger native volume must leave the controls/HUD responsive.
+          // Only scheduling changes; no geometry, state or texture is omitted.
+          if (performance.now() - workStarted > 8) {
+            await new Promise(resolve => requestAnimationFrame(resolve)); workStarted = performance.now()
+            if (run !== generation) break
+          }
           const state = definitions.get(group.stateId)
           if (['create:shaft', 'create:hand_crank'].includes(state.name)) continue
           if (state.name === 'minecraft:water') {

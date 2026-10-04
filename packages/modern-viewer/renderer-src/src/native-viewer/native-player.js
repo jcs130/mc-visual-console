@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { PlayerObject } from 'skinview3d/libs/model.js'
 import { NativeAssetReader } from './model-loader.js'
+import { renderNativePlayerMotion } from './native-player-motion.js'
 
 // Minecraft 1.21.1 client JAR, official client mappings: DefaultPlayerSkin
 // (grd.get(UUID): UUID.hashCode -> Math.floorMod(...,18)), PlayerRenderer
@@ -101,6 +102,17 @@ export async function createNativePlayerActor (reader, { uuid, skin, loadTexture
       // +Z, so the body turns PI; pitch sign is converted in that local frame.
       playerObject.skin.head.rotation.x = -pose.pitch
       root.visible = true
+    },
+    applyMotion (motion, now) {
+      if (disposed) throw Error('NATIVE_PLAYER_ACTOR_DISPOSED')
+      const value = renderNativePlayerMotion(motion, now)
+      for (const name of ['rightArm', 'leftArm', 'rightLeg', 'leftLeg']) {
+        const rotation = value.skinview?.[name]
+        playerObject.skin[name].rotation.set(rotation?.x ?? 0, rotation?.y ?? 0, rotation?.z ?? 0, 'ZYX')
+      }
+      root.userData.motion = { available: value.available, reason: value.reason ?? null, tick: value.tick ?? null,
+        scope: 'humanoid_walk_base', animationParityVerified: false }
+      return value
     },
     dispose () {
       if (disposed) return

@@ -51,6 +51,19 @@ test('missing provider and foreign identities fail closed; disconnect identifies
   assert.equal(agentStatusView(ended).goal, '真实采集木材')
 })
 
+test('a real quota pause is visible without exposing raw provider errors or suggesting a disconnected player', () => {
+  const details = { mode: 'paused', lastError: 'MODEL_TASK_FAILED: MODEL_QUOTA_EXCEEDED secret=do-not-display' }
+  const view = agentStatusView(status(details))
+  assert.match(view.notice, /额度.*决策已暂停.*游戏连接仍在线/)
+  assert(!view.notice.includes('secret'))
+  assert.equal(agentStatusView(status({ ...details, mode: 'observing' })).notice, '')
+  const afterRestart = agentStatusView(status({ mode: 'paused', lastError: null, modelTask: { status: 'failed', error: { message: 'private raw error' } } }))
+  assert.match(afterRestart.notice, /最近一次模型任务失败/)
+  assert(!afterRestart.notice.includes('private raw error'))
+  const ended = status(details); ended.connection.ended = true
+  assert.match(agentStatusView(ended).notice, /玩家连接已断开/)
+})
+
 test('DOM rendering uses textContent, retains full text in title and clears stale fields on unavailable data', () => {
   const nodes = new Map()
   const element = id => {

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { weightedModel, multipartMatches } from './model-selection.js'
+import { weightedModel, multipartMatches, defaultBlockSeedEvidence } from './model-selection.js'
 import { lockedFaceUV } from './uv-lock.js'
 import { animationFrames, applyFrame, enableInterpolation } from './texture-animation.js'
 
@@ -79,9 +79,9 @@ export function selectVariant (blockstate, properties, context = {}) {
 }
 
 export function selectBlockVariants (blockstate, state, position) {
-  // These vanilla blocks use the bytecode-verified default BlockBehaviour seed.
-  // A mod override of getSeed must be ported explicitly, never silently guessed.
-  const context = { position, defaultBlockSeedVerified: ['minecraft:stone', 'minecraft:sand'].includes(state.name) }
+  // Only explicit original registrations/state schemas with a verified getSeed
+  // inheritance chain may use this position seed. Mod overrides stay closed.
+  const context = { position, defaultBlockSeedVerified: defaultBlockSeedEvidence(state) !== null }
   if (!blockstate.multipart) return [selectVariant(blockstate, state.properties, context)]
   const parts = blockstate.multipart.filter(part => multipartMatches(part.when, state.properties)).map(part => {
     let model = part.apply

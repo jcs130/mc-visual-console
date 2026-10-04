@@ -1,4 +1,5 @@
 import { resourcePath, textureId } from './model-loader.js'
+import { NativeBlockItemIconRenderer, nativeBlockItemEligible } from './native-block-item-icons.js'
 
 // These vanilla items have no ItemColors provider or runtime GUI model choice
 // in the locked client. Mod item-color/model providers must be ported before
@@ -13,15 +14,22 @@ const STATIC_ITEMS = new Set(['wheat_seeds', 'wheat', 'rotten_flesh', 'bread', '
   'ender_pearl', 'blaze_rod', 'blaze_powder', 'gunpowder', 'slime_ball', 'honeycomb',
   'snowball', 'sugar', 'bowl', 'brick', 'nether_brick', 'quartz', 'amethyst_shard'])
 const TOOL = /^(wooden|stone|iron|golden|diamond|netherite)_(sword|pickaxe|axe|shovel|hoe)$/
+const PLAIN_NATIVE_STACK = /^\{\s*(?:(?:id|"id"|'id')\s*:\s*"([a-z0-9_.-]+:[a-z0-9_./-]+)"\s*,\s*(?:count|"count"|'count')\s*:\s*(\d+)|(?:count|"count"|'count')\s*:\s*(\d+)\s*,\s*(?:id|"id"|'id')\s*:\s*"([a-z0-9_.-]+:[a-z0-9_./-]+)")\s*\}$/
 
 export function nativeItemIconEligible(item) {
   if (!item || typeof item.name !== 'string' || !item.name.startsWith('minecraft:')) return false
   const name = item.name.slice(10)
-  if (!STATIC_ITEMS.has(name) && !TOOL.test(name)) return false
+  if (!STATIC_ITEMS.has(name) && !TOOL.test(name) && !nativeBlockItemEligible(item.name)) return false
   // No component is discarded to synthesize a generic icon. Until these
   // render rules are ported, even glint/custom-model/tinted items stay explicit.
   if (item.components && Object.keys(item.components).length) return false
-  return typeof item.snbt !== 'string' || (item.snbt.length <= 8192 && !/\bcomponents\s*:|\btag\s*:/.test(item.snbt))
+  if (typeof item.snbt !== 'string') return true
+  if (item.snbt.length > 8192) return false
+  // Only a plain native ItemStack envelope can share a static icon cache key.
+  // In particular quoted/escaped component keys must not bypass a regex and
+  // silently display the generic block/tool in place of the real item.
+  const plain = PLAIN_NATIVE_STACK.exec(item.snbt)
+  return Boolean(plain && (plain[1] ?? plain[4]) === item.name && Number(plain[2] ?? plain[3]) === item.count)
 }
 
 export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {
@@ -42,9 +50,10 @@ export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {
 }
 
 export class NativeItemIcons {
-  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url) } = {}) {
+  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
+    this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
   }
   resolve(item) {
     if (this.disposed || !nativeItemIconEligible(item)) return null
@@ -63,6 +72,13 @@ export class NativeItemIcons {
   async load(name) {
     const entry = this.entries.get(name)
     try {
+      if (nativeBlockItemEligible(name)) {
+        const { blob, ...info } = await this.blockRenderer.render(name)
+        if (this.disposed) return
+        entry.result = { verified: true, url: this.createUrl(blob), sourcePath: info.sourcePaths.find(path => path.includes('/models/item/')), ...info }
+        entry.reason = null
+        return
+      }
       const [namespace, leaf] = name.split(':')
       const model = await resolveNativeFlatItemTexture(this.reader, `${namespace}:item/${leaf}`)
       if (Object.keys(model.textures).some(key => /^layer[1-9]/.test(key)) || !model.textures.layer0) throw Error('NATIVE_ITEM_LAYERS_UNSUPPORTED')
@@ -73,11 +89,12 @@ export class NativeItemIcons {
       entry.result = { verified: true, url: this.createUrl(new Blob([bytes], { type: 'image/png' })), sourcePath: png }
       entry.reason = null
     } catch(error) { entry.reason = error.message }
-    if (!this.disposed) this.onChange()
+    finally { if (!this.disposed) this.onChange() }
   }
   dispose() {
     if (this.disposed) return
     this.disposed = true; this.queue.length = 0
+    this.blockRenderer.dispose()
     for (const entry of this.entries.values()) if (entry.result) this.revokeUrl(entry.result.url)
     this.entries.clear()
   }

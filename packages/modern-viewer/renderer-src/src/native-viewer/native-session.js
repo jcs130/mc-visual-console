@@ -28,7 +28,8 @@ export function createNativeSession(registrySha256) {
       if (value.type === 'snapshot') {
         if (value.registrySha256 !== registrySha256 || value.mode !== ownConnection || !Number.isSafeInteger(value.epoch)) throw Error('NATIVE_WORLD_SNAPSHOT_MISMATCH')
         if (epoch !== null && value.epoch < epoch) return { kind: 'ignored' }
-      } else if (value.type !== 'frame' || !ready || value.epoch !== epoch) return { kind: 'ignored' }
+      } else if (!['frame', 'motion'].includes(value.type) || !ready || value.epoch !== epoch) return { kind: 'ignored' }
+      if (value.type === 'motion' && (!identity.playerUuid || value.playerUuid?.toLowerCase() !== identity.playerUuid || value.motion?.epoch !== epoch)) throw Error('NATIVE_WORLD_MOTION_IDENTITY_MISMATCH')
       if (value.selfPlayer && (!identity.playerUuid || value.selfPlayer.uuid?.toLowerCase() !== identity.playerUuid || value.selfPlayer.name !== identity.player)) throw Error('NATIVE_WORLD_SELF_PLAYER_MISMATCH')
       if (value.presentation?.available && (!identity.playerUuid || value.presentation.playerUuid?.toLowerCase() !== identity.playerUuid)) throw Error('NATIVE_WORLD_PRESENTATION_IDENTITY_MISMATCH')
       const reset = value.type === 'snapshot' && epoch !== value.epoch
