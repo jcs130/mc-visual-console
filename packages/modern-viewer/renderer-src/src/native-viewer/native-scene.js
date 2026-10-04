@@ -234,7 +234,8 @@ async function rebuildLatest () {
           if (state.name === 'minecraft:water') {
             const result = await waterMeshes(snapshot, group, definitions)
             if (run !== generation) { for (const mesh of result.meshes) mesh.geometry.dispose(); break }
-            next.add(...result.meshes); count += result.count; nextIssues.push(...result.issues); continue
+            for (const mesh of result.meshes) next.add(mesh)
+            count += result.count; nextIssues.push(...result.issues); continue
           }
           if (state.fluid && !state.fluid.empty) nextIssues.push(`${state.name}：${state.fluid.name === 'minecraft:water' || state.fluid.name === 'minecraft:flowing_water' ? '原生含水方块的液体面未适配' : '原生液体渲染提供器未适配'}`)
           try {
@@ -282,13 +283,14 @@ async function rebuildLatest () {
                   mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
                 })
               } catch (error) { for (const mesh of meshes) mesh.dispose(); throw error }
-              next.add(...meshes)
+              for (const mesh of meshes) next.add(mesh)
               count += instanceCount
             }
           } catch (error) { nextIssues.push(`${state.name}：${error.message}`) }
         }
         if (run !== generation) { for (const mesh of next.children) { mesh.dispose?.(); if (mesh.userData.nativeFluid) mesh.geometry.dispose() } continue }
-        clearStatics(); statics.add(...[...next.children]); drawn = count; lastGroupSignature = signature; unknown = nextIssues
+        clearStatics(); for (const mesh of [...next.children]) statics.add(mesh)
+        drawn = count; lastGroupSignature = signature; unknown = nextIssues
       } else nextIssues.push(...unknown.filter(x => !x.includes('原生转速')))
       if (run !== generation) continue
       if (!current) continue
