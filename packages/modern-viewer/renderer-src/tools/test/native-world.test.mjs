@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import chunkFactory from 'prismarine-chunk'
 import { Vec3 } from 'vec3'
-import { NativeWorldState, loadNativeStateRegistry, longNumber, attachNativeWorld } from '../native-world-host.mjs'
+import { NativeWorldState, loadNativeStateRegistry, longNumber, longBigInt, nativeChunk, attachNativeWorld } from '../native-world-host.mjs'
 
 const rows = [
   { stateId: 777, name: 'minecraft:air', properties: {}, renderShape: 'INVISIBLE', hasBlockEntity: false },
@@ -105,4 +105,40 @@ test('attachment consumes just its supplied player stream and uses actual eye he
   } finally { detach() }
   assert.equal(stream.events.listenerCount('packet'), 0)
   assert.equal(stream.events.listenerCount('unavailable'), 0)
+})
+
+test('dense native global palettes preserve 17-bit modded state IDs after the 256-entry transition', () => {
+  const denseStates = new Map(Array.from({ length: 300 }, (_, i) => [70000 + i, { stateId: 70000 + i }]))
+  const source = nativeChunk({ minY: 0, worldHeight: 16 }, denseStates, 1)
+  for (let i = 0; i < 300; i++) source.setBlockStateId(new Vec3(i % 16, Math.floor(i / 256), Math.floor(i / 16) % 16), 70000 + i)
+  const target = nativeChunk({ minY: 0, worldHeight: 16 }, denseStates, 1)
+  const encoded = source.dump()
+  target.load(encoded)
+  for (let i = 0; i < 300; i++) assert.equal(target.getBlockStateId(new Vec3(i % 16, Math.floor(i / 256), Math.floor(i / 16) % 16)), 70000 + i)
+  assert.equal(target.maxBitsPerBlock, 17)
+  const wrongWidth = Buffer.from(encoded); wrongWidth[2] = 16
+  assert.throws(() => target.load(wrongWidth), /WIDTH_MISMATCH/)
+  const wrongLength = Buffer.from(encoded); wrongLength[3]++
+  assert.throws(() => target.load(wrongLength), /LENGTH_INVALID/)
+})
+
+test('received biome registry, hashed seed and neighboring blocks accompany native snapshots', () => {
+  const { world, packet, chunk } = worldFixture()
+  world.setBiomeRegistry({ id: 'minecraft:worldgen/biome', entries: [{ key: 'mod:real_plains', value: { value: { temperature: 0.8, downfall: 0.4, effects: { water_color: 0x3f76e4 } } } }] })
+  packet('respawn', { worldState: { dimension: 3, hashedSeed: [-2147483648, 1] } })
+  packet('map_chunk', { x: -1, z: -1, chunkData: chunk.dump() })
+  world.setPose(pose)
+  const snapshot = world.snapshot({ halfExtent: 1, below: 0, above: 0 })
+  assert.equal(snapshot.biomeSeed, '-9223372036854775807')
+  assert.equal(snapshot.biomes[0].name, 'mod:real_plains')
+  assert.ok(snapshot.biomeGrid.ids.includes(0))
+  assert.ok(snapshot.neighbors.length > 0)
+  assert.equal(world.biomeIdAtQuart(-1, 16, -1), 0)
+  assert.equal(longBigInt([-1, -1]), -1n)
+})
+
+test('missing configured biome values fail closed rather than substituting vanilla climates', () => {
+  const { world } = worldFixture()
+  world.setBiomeRegistry({ id: 'minecraft:worldgen/biome', entries: [{ key: 'minecraft:plains', value: null }] })
+  assert.match(world.snapshot().reason, /BIOME_REGISTRY_INCOMPLETE/)
 })

@@ -137,7 +137,7 @@ Create 的轴/曲柄原生旋转、女仆骨骼动画、Domum 材质组合等需
 
 ### 原生 Create 动画的网页验收入口
 
-`src/native-viewer/model-loader.js` 在读取每份模型/贴图时核对导出索引的 SHA-256，解析父模型、子级纹理、原始面 UV、方块变体和元素旋转；使用原始 PNG，不生成替代几何。资源覆盖未决、缺失模型/贴图、自定义 loader、未适配 tint/UV lock/动画贴图均明确拒绝。下文的实时入口新增了经核对的位置加权变体及普通 multipart；未核对的随机种子覆盖仍拒绝，不能据此宣称通用模型加载器已经覆盖整个模组包。
+`src/native-viewer/model-loader.js` 在读取每份模型/贴图时核对导出索引的 SHA-256，解析父模型、子级纹理、原始面 UV、方块变体和元素旋转；使用原始 PNG，不生成替代几何。资源覆盖未决、缺失模型/贴图、自定义 loader 和未知染色提供器仍明确拒绝。下文的实时入口新增了经核对的位置加权变体、普通 multipart、UV lock 与原始动画贴图；未核对的随机种子覆盖仍拒绝，不能据此宣称通用模型加载器已经覆盖整个模组包。
 
 `create-kinetics.js` 当前只验收锁定的 Create 6.0.10 JAR（SHA-256 `ef87fe5709f1ba1f5b8bb20a2925b5afb4669e178fd6d8bf10c167759eefe37a`）。传动轴依据原生 RPM、轴向、坐标相位偏移旋转；曲柄加载原始 `hand_crank/block` 和完整 `hand_crank/handle` 模型，保留握柄的 45° 部件，按原生每 tick 四分之一速度追踪与 partial tick 插值处理正反转和停机惯性。规则核对安装 JAR 的字节码及 [Create 对应提交源码](https://github.com/Creators-of-Create/Create/tree/ac0c444d9828da3453ae8cc65338e8de063286fb)。更新 Create 版本须重新核对，不能悄悄套用旧适配。
 
@@ -160,7 +160,7 @@ python -m unittest discover -s tools/test -p "test_native_viewer_assets.py" -v
 
 原生快照包含 `login/respawn`、区块加载/卸载、单方块及批量变化、方块实体转速和真实 `update_time`。注册表 SHA-256 或包序号不符立即清空并说明原因；不读取磁盘世界、不请求额外区块。默认检查玩家周围水平 ±10 格、向下 5 格、向上 10 格，缓存最多 512 个已收到区块列。快照带绝对坐标、维度、本人位置/实际眼高、区域范围和未收到的区块；重生或换维度以 `epoch` 丢弃旧场景。时间包间按 20 tick/s 插值机械动画，完整光照、服务器低 TPS 时的相位对照仍待验收。
 
-`src/native-viewer/world-preview.js` 使用原始面几何的 `InstancedMesh` 绘制静态方块，原生方块实体驱动 Create 轴/曲柄。普通 multipart 按实际属性和 `OR/AND` 条件选择原始模型；加权变体目前只允许已核对默认 `BlockBehaviour.getSeed` 的原版石头与沙子。1.21.1 官方客户端（SHA-1 `30c73b1c5da787909b2f73340419fdf13b9def88`）的字节码证明变体使用**方块绝对位置种子**，不是世界种子；`model-selection.js` 保留 Java 32/64 位溢出、48 位随机数与加权选择。模组自定义种子、加权 multipart、UV lock 等未适配时明确列出，不能改用随机贴图。
+`src/native-viewer/world-preview.js` 使用原始面几何的 `InstancedMesh` 绘制静态方块，原生方块实体驱动 Create 轴/曲柄。普通 multipart 按实际属性和 `OR/AND` 条件选择原始模型；加权变体目前只允许已核对默认 `BlockBehaviour.getSeed` 的原版石头与沙子。1.21.1 官方客户端（SHA-1 `30c73b1c5da787909b2f73340419fdf13b9def88`）的字节码证明变体使用**方块绝对位置种子**，不是世界种子；`model-selection.js` 保留 Java 32/64 位溢出、48 位随机数与加权选择。模组自定义种子、加权 multipart 等未适配时明确列出，不能改用随机贴图。
 
 隔离 QA 入口可以用一个普通动作账号联机，网页跟随的就是这个账号，而非另一个观察者：
 
@@ -174,7 +174,23 @@ node --test tools/test/native-create.test.mjs tools/test/native-model-selection.
 
 2026-10-04 隔离服实测：同一普通账号获得 201 个原生区块列，原版圆石在 `(3,64,-3)` 正常放置并拆除（原生状态 `0→14→0`），实际移动改变网页位置；Create 正反转/停止 `32/-32/0 RPM` 在原生状态与真实浏览器均可见。首次放置因 MineColonies 权限拒绝，失败记录保留；将 QA 账号加入研究城镇后通过，没有授予 OP。圆石由 QA 控制台提供，仅证明普通放置/拆除与同步，不证明自主获取材料。16 项模型/随机变体/原生世界回归通过，包括真实区块二进制、负坐标、未知维度、序号丢失、卸载/重生清理与实际眼高。网页可切换区域视角和本人视角，并列出未适配内容；断流时清空旧画面。
 
-此时区域约 2,600 个非空气方块中绘制约 2,200 个；作物/草木染色、水体、原生实体方块、模组自定义材质等有明确缺口。实体、完整游戏光照、GUI/背包、动画贴图和粒子显示尚未完成。`completeSceneParityVerified=false`、`renderParityVerified=false` 保持关闭，当前页面是实时检查工具，**不能作为已经一致的 Agent 完整视觉输入**。Minecraft JAR、导出资源、存档和私人实测记录仍不提交到 Git。
+上述首轮区域约 2,600 个非空气方块中绘制约 2,200 个；当时草木染色、水体、原生实体方块等有明确缺口。下面记录环境适配后的进展。`completeSceneParityVerified=false`、`renderParityVerified=false` 保持关闭，当前页面是实时检查工具，**不能作为已经一致的 Agent 完整视觉输入**。Minecraft JAR、导出资源、存档和私人实测记录仍不提交到 Git。
+
+### 原生环境、液体和动画贴图（2026-10-04）
+
+同一连接的 CONFIG `minecraft:worldgen/biome` 提供真实群系 ID、温度、降水及颜色覆盖，登录/重生的 `hashedSeed` 以完整有符号 64 位字符串保留。`native-environment.js` 移植官方 BiomeManager 的八角扰动查找和半径 2 的颜色混合，用经哈希验证的原始草/叶颜色图处理已适配的原版提供器；保留松树/桦树固定颜色、群系覆盖及深色森林规则。草、蕨和高草使用经核对的位置偏移。沼泽噪声染色、模组颜色或偏移提供器仍明确报缺口，不套用普通草地颜色。
+
+诊断注册表需要包含原生 `solid`、`blocksMotion`、`canOcclude`、`dynamicShape`、`hasOffsetFunction`、`fluid` 及静态 `occlusionBoxes`。由隔离服的 `build_lab_registry_dump.py` 从实际 BlockState/FluidState 导出，动态形状不猜测。快照增加已收到的 1 格方块邻居和群系 quart 网格；不加载额外区块。区块列按真实注册表确定全局 palette 位宽，并针对本包的 17 位状态 ID 扩展解码；只扩展自己的列对象，不修改依赖或其他 bot。位宽、长度或尾部数据不符明确失败。
+
+`native-fluid.js` 移植原版水的加权角高度、邻居面遮挡、浅水/流动方向、原始 still/flow/overlay UV 及背面规则。使用真实流体高度与静态体素形状，空数据、动态形状、未知模组 overlay 均报错。**原生 atlas 打包与 UV shrink、透明面排序、完整游戏光照、水中雾仍未验收**，`atlasShrinkVerified=false`；水面几何移植不代表最终水体画面已达 1:1。含水方块和其他模组液体也还需独立适配。
+
+`uv-lock.js` 对照官方 FaceBakery 的面坐标变换；96 组方向/旋转/非对称 UV 在 3e-5 容差内吻合。`texture-animation.js` 按原始 `.mcmeta` 的帧尺寸、顺序和时长切换完整原始 PNG 的 GPU UV，支持整数 tick 插帧、原始 RGB 字节混合并保留当前帧 alpha；不裁剪或重写贴图。浏览器资源动画从本地加载时钟起算，尚未与 Java 客户端资源加载相位、atlas/mipmap 插帧逐像素对照。
+
+直接调用官方客户端类核对了 96 组 UV、5 组 64 位种子扰动距离、9 组流向角、5 组真实草颜色图结果和原生液体高度累加。32 项 Node 回归与 8 项导出回归通过，覆盖大于 256 个状态的 17 位 direct palette、损坏长度/位宽、缺失群系、动态遮挡及动画时序。隔离服重连后当前区域 2,615 个非空气方块绘制 2,568 个，6 个实服水体状态全部生成几何、无未收到区块，真实 WebGL 未报错；随后用隔离服 3×3 小水池检查实时方块更新。小水池是明确的 QA 设施，不是自主建造或自然探索证明。原生实体方块、资源覆盖冲突、沼泽草染色、红树苗偏移等仍列在检查页；实体、GUI/背包、完整光照和粒子仍待继续移植。
+
+```powershell
+node --test tools/test/native-create.test.mjs tools/test/native-model-selection.test.mjs tools/test/native-world.test.mjs tools/test/native-environment.test.mjs tools/test/native-fluid.test.mjs
+```
 
 ## 检查 1.20.6 源码
 

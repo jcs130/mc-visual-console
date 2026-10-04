@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import chunkFactory from 'prismarine-chunk'
 import { Vec3 } from 'vec3'
 
@@ -7,6 +8,12 @@ const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'
 const key = p => `${p.x},${p.y},${p.z}`
 const columnKey = (x, z) => `${x},${z}`
 const finite = p => p && [p.x, p.y, p.z].every(Number.isFinite)
+const BaseChunk = chunkFactory('1.21.1'), stateWidths = new WeakMap()
+const require = createRequire(import.meta.url), requireChunk = createRequire(require.resolve('prismarine-chunk'))
+const { SmartBuffer } = requireChunk('smart-buffer')
+const BiomeSection = requireChunk('./src/pc/common/PaletteBiome')
+const { DirectPaletteContainer } = requireChunk('./src/pc/common/PaletteContainer')
+const varInt = requireChunk('./src/pc/common/varInt')
 
 export function loadNativeStateRegistry (bytes, expectedHash) {
   if (createHash('sha256').update(bytes).digest('hex') !== expectedHash) throw Error('NATIVE_WORLD_REGISTRY_HASH_MISMATCH')
@@ -22,19 +29,55 @@ export function loadNativeStateRegistry (bytes, expectedHash) {
 }
 
 export function longNumber (value) {
-  if (Array.isArray(value) && value.length === 2) value = (BigInt(value[0]) << 32n) | BigInt(value[1] >>> 0)
-  const number = Number(value)
+  const number = Number(longBigInt(value))
   if (!Number.isSafeInteger(number)) throw Error('NATIVE_WORLD_TIME_INVALID')
   return number
+}
+
+export function longBigInt (value) {
+  if (Array.isArray(value) && value.length === 2) return BigInt.asIntN(64, (BigInt(value[0]) << 32n) | BigInt(value[1] >>> 0))
+  if (typeof value === 'number' && !Number.isSafeInteger(value)) throw Error('NATIVE_LONG_UNSAFE_NUMBER')
+  return BigInt.asIntN(64, BigInt(value))
+}
+
+export function nativeChunk (options, states, biomeCount) {
+  const column = new BaseChunk(options)
+  if (!stateWidths.has(states)) { let max = 0; for (const id of states.keys()) max = Math.max(max, id); stateWidths.set(states, Math.ceil(Math.log2(max + 1))) }
+  column.maxBitsPerBlock = stateWidths.get(states)
+  column.maxBitsPerBiome = Math.ceil(Math.log2(Math.max(1, biomeCount)))
+  column.sections = column.sections.map(() => new BaseChunk.section({ noSizePrefix: false, hasFluidCount: false, maxBitsPerBlock: column.maxBitsPerBlock }))
+  // prismarine-chunk 1.41.0 caps reads at 16 bits; this native modpack has
+  // 107,852 states (17 bits). Extend this column only, never global dependencies.
+  column.load = data => {
+    const reader = SmartBuffer.fromBuffer(data)
+    for (let i = 0; i < column.numSections; i++) {
+      const bits = data[reader.readOffset + 2]
+      if (bits > 8 && bits !== column.maxBitsPerBlock) throw Error('NATIVE_GLOBAL_PALETTE_WIDTH_MISMATCH')
+      if (bits > 16) {
+        if (bits > 31) throw Error('NATIVE_GLOBAL_PALETTE_WIDTH_UNSUPPORTED')
+        const solidBlockCount = reader.readInt16BE(); reader.readUInt8()
+        if (solidBlockCount < 0 || solidBlockCount > 4096) throw Error('NATIVE_GLOBAL_PALETTE_COUNT_INVALID')
+        const longs = varInt.read(reader)
+        if (longs !== Math.ceil(4096 / Math.floor(64 / bits))) throw Error('NATIVE_GLOBAL_PALETTE_LENGTH_INVALID')
+        const palette = new DirectPaletteContainer({ noSizePrefix: false, bitsPerValue: bits, capacity: 4096 })
+        palette.data.readBuffer(reader, longs * 2)
+        column.sections[i] = new BaseChunk.section({ noSizePrefix: false, hasFluidCount: false, solidBlockCount, data: palette, maxBitsPerBlock: bits })
+      } else column.sections[i] = BaseChunk.section.read(reader, column.maxBitsPerBlock, false, false)
+      column.biomes[i] = BiomeSection.read(reader, column.maxBitsPerBiome, false)
+    }
+    if (reader.readOffset !== data.length) throw Error('NATIVE_CHUNK_TRAILING_DATA')
+  }
+  return column
 }
 
 // Receives only already-verified native packets from the action bot's own
 // connection. Never queries disk worlds, generates chunks or decodes proxy IDs.
 export class NativeWorldState extends EventEmitter {
-  constructor ({ states, registrySha256, resolveDimension, simplifyNBT, makeChunk = options => new (chunkFactory('1.21.1'))(options), now = Date.now }) {
+  constructor ({ states, registrySha256, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
     super()
     this.states = states; this.registrySha256 = registrySha256
-    this.resolveDimension = resolveDimension; this.simplifyNBT = simplifyNBT; this.makeChunk = makeChunk; this.now = now
+    this.resolveDimension = resolveDimension; this.simplifyNBT = simplifyNBT; this.makeChunk = makeChunk || (options => nativeChunk(options, this.states, this.biomes.size)); this.now = now
+    this.biomes = new Map(); this.biomeSeed = null
     this.columns = new Map(); this.blockEntities = new Map(); this.dimension = null; this.pose = null
     this.epoch = 0; this.revision = 0; this.lastSequence = 0; this.packetCount = 0; this.error = null; this.time = null
   }
@@ -57,6 +100,7 @@ export class NativeWorldState extends EventEmitter {
           const d = this.resolveDimension(p.worldState || p)
           if (!d || !Number.isInteger(d.minY) || !Number.isInteger(d.height) || d.height <= 0 || d.height > 4096 || d.minY % 16 || d.height % 16 || typeof d.name !== 'string') throw Error('NATIVE_WORLD_DIMENSION_UNAVAILABLE')
           this.dimension = d; this.columns.clear(); this.blockEntities.clear(); this.pose = null; this.time = null
+          this.biomeSeed = (p.worldState || p).hashedSeed !== undefined ? longBigInt((p.worldState || p).hashedSeed).toString() : null
           this.epoch++; this.revision++; this.emit('reset', this.epoch); break
         }
         case 'map_chunk': {
@@ -90,6 +134,21 @@ export class NativeWorldState extends EventEmitter {
     } catch (error) { this.unavailable(error) }
   }
 
+  setBiomeRegistry (packet) {
+    if (packet.id !== 'minecraft:worldgen/biome' || this.error) return
+    try {
+      const biomes = new Map()
+      for (const [id, entry] of packet.entries.entries()) {
+        if (!entry.value || typeof entry.key !== 'string') throw Error('NATIVE_BIOME_REGISTRY_INCOMPLETE')
+        const data = this.simplifyNBT(entry.value)
+        if (!data || ![data.temperature, data.downfall].every(Number.isFinite) || !data.effects) throw Error('NATIVE_BIOME_REGISTRY_INVALID')
+        biomes.set(id, { id, name: entry.key, temperature: data.temperature, downfall: data.downfall, effects: data.effects })
+      }
+      if (!biomes.size) throw Error('NATIVE_BIOME_REGISTRY_EMPTY')
+      this.biomes = biomes; this.revision++; this.emit('world')
+    } catch (error) { this.unavailable(error) }
+  }
+
   removeBlockEntities (x, z) {
     for (const [k, be] of this.blockEntities) if (Math.floor(be.position.x / 16) === x && Math.floor(be.position.z / 16) === z) this.blockEntities.delete(k)
   }
@@ -104,6 +163,12 @@ export class NativeWorldState extends EventEmitter {
     const cx = Math.floor(p.x / 16), cz = Math.floor(p.z / 16)
     const chunk = this.columns.get(columnKey(cx, cz))
     return chunk?.getBlockStateId(new Vec3(p.x - cx * 16, p.y, p.z - cz * 16)) ?? null
+  }
+
+  biomeIdAtQuart (x, y, z) {
+    const cx = Math.floor(x / 4), cz = Math.floor(z / 4), chunk = this.columns.get(columnKey(cx, cz))
+    y = Math.max(this.dimension.minY / 4, Math.min((this.dimension.minY + this.dimension.height) / 4 - 1, y))
+    return chunk?.getBiome(new Vec3((x - cx * 4) * 4, y * 4, (z - cz * 4) * 4)) ?? null
   }
 
   changeBlock (p, stateId) {
@@ -134,6 +199,24 @@ export class NativeWorldState extends EventEmitter {
       minY: Math.max(this.dimension.minY, Math.floor(this.pose.y) - below), maxY: Math.min(this.dimension.minY + this.dimension.height - 1, Math.floor(this.pose.y) + above),
       minZ: Math.floor(this.pose.z) - halfExtent, maxZ: Math.floor(this.pose.z) + halfExtent }
     const groups = new Map(), definitions = new Map(), kinetic = [], missingColumns = new Set()
+    // Neighbor halo for fluid geometry. These are already received blocks,
+    // never disk/server queries or an extra observation account.
+    const neighbors = []
+    for (let y = Math.max(this.dimension.minY, bounds.minY - 1); y <= Math.min(this.dimension.minY + this.dimension.height - 1, bounds.maxY + 1); y++)
+      for (let z = bounds.minZ - 1; z <= bounds.maxZ + 1; z++) for (let x = bounds.minX - 1; x <= bounds.maxX + 1; x++) {
+        const id = this.stateIdAt({ x, y, z })
+        if (id !== null) { neighbors.push(x, y, z, id); const state = this.states.get(id); if (!state) throw Error(`NATIVE_WORLD_STATE_UNREGISTERED:${id}`); definitions.set(id, state) }
+      }
+    const worldMinY = this.dimension.minY / 4, worldMaxY = (this.dimension.minY + this.dimension.height) / 4 - 1
+    const biomeGrid = { x: Math.floor((bounds.minX - 6) / 4), y: Math.max(worldMinY, Math.floor((bounds.minY - 6) / 4)), z: Math.floor((bounds.minZ - 6) / 4), worldMinY, worldMaxY }
+    biomeGrid.width = Math.floor((bounds.maxX + 6) / 4) - biomeGrid.x + 1
+    biomeGrid.height = Math.min(worldMaxY, Math.floor((bounds.maxY + 6) / 4)) - biomeGrid.y + 1
+    biomeGrid.depth = Math.floor((bounds.maxZ + 6) / 4) - biomeGrid.z + 1
+    biomeGrid.ids = []
+    const usedBiomes = new Set()
+    for (let y = biomeGrid.y; y < biomeGrid.y + biomeGrid.height; y++) for (let z = biomeGrid.z; z < biomeGrid.z + biomeGrid.depth; z++) for (let x = biomeGrid.x; x < biomeGrid.x + biomeGrid.width; x++) {
+      const id = this.biomeIdAtQuart(x, y, z); biomeGrid.ids.push(id); if (id !== null) usedBiomes.add(id)
+    }
     for (let y = bounds.minY; y <= bounds.maxY; y++) for (let z = bounds.minZ; z <= bounds.maxZ; z++) for (let x = bounds.minX; x <= bounds.maxX; x++) {
       const p = { x, y, z }, id = this.stateIdAt(p)
       if (id === null) { missingColumns.add(columnKey(Math.floor(x / 16), Math.floor(z / 16))); continue }
@@ -149,6 +232,7 @@ export class NativeWorldState extends EventEmitter {
     return { type: 'snapshot', schemaVersion: 1, mode: 'live_same_player_connection', minecraftVersion: '1.21.1', registrySha256: this.registrySha256,
       epoch: this.epoch, revision: this.revision, packetSequence: this.lastSequence, dimension: this.dimension, pose: this.pose, time: this.time, bounds,
       states: [...definitions.values()], groups: [...groups].map(([stateId, positions]) => ({ stateId, positions })), kinetic, missingColumns: [...missingColumns],
+      neighbors, biomeSeed: this.biomeSeed, biomeGrid, biomes: [...usedBiomes].map(id => this.biomes.get(id)).filter(Boolean),
       entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false }
   }
 }
@@ -159,10 +243,12 @@ export function attachNativeWorld ({ bot, nativeStream, world, intervalMs = 100 
   const packet = body => world.handle(body)
   const unavailable = error => world.unavailable(error)
   nativeStream.events.on('packet', packet); nativeStream.events.on('unavailable', unavailable)
+  const registry = packet => world.setBiomeRegistry(packet)
+  bot._client?.on('registry_data', registry)
   const timer = setInterval(() => {
     if (!bot.entity) return
     world.setPose({ ...bot.entity.position, yaw: bot.entity.yaw, pitch: bot.entity.pitch, eyeHeight: bot.entity.eyeHeight })
   }, intervalMs)
   timer.unref()
-  return () => { clearInterval(timer); nativeStream.events.off('packet', packet); nativeStream.events.off('unavailable', unavailable) }
+  return () => { clearInterval(timer); nativeStream.events.off('packet', packet); nativeStream.events.off('unavailable', unavailable); bot._client?.off('registry_data', registry) }
 }

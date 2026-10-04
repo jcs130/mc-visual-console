@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import { weightedModel, multipartMatches } from './model-selection.js'
+import { lockedFaceUV } from './uv-lock.js'
+import { animationFrames, applyFrame, enableInterpolation } from './texture-animation.js'
 
 // Native assets only. A missing loader/model/texture is an error, never a cube
 // or a vanilla replacement. Scene lighting and complete mod parity are separate
@@ -73,7 +75,6 @@ export function selectVariant (blockstate, properties, context = {}) {
     if (variant.length !== 1 && !context.defaultBlockSeedVerified) throw Error('NATIVE_WEIGHTED_BLOCK_SEED_UNVERIFIED')
     variant = variant.length === 1 ? variant[0] : weightedModel(variant, context.position)
   }
-  if (variant.uvlock) throw Error('NATIVE_UVLOCK_UNSUPPORTED')
   return variant
 }
 
@@ -88,7 +89,6 @@ export function selectBlockVariants (blockstate, state, position) {
       if (model.length !== 1) throw Error('NATIVE_MULTIPART_WEIGHTED_RANDOM_UNSUPPORTED')
       model = model[0]
     }
-    if (model.uvlock) throw Error('NATIVE_UVLOCK_UNSUPPORTED')
     return model
   })
   if (!parts.length) throw Error('NATIVE_MULTIPART_MODEL_UNRESOLVED')
@@ -112,20 +112,21 @@ const defaultUV = (direction, a, b) => ({
   west: [a[2], 16 - b[1], b[2], 16 - a[1]], east: [16 - b[2], 16 - b[1], 16 - a[2], 16 - a[1]]
 })[direction]
 
-export function bakeFaces (model) {
+export function bakeFaces (model, variant = {}, { allowTint = false } = {}) {
   const faces = []
   for (const element of model.elements) {
     const a = element.from, b = element.to
     if (!a?.every(Number.isFinite) || !b?.every(Number.isFinite) || a.length !== 3 || b.length !== 3) throw Error('NATIVE_ELEMENT_BOUNDS_INVALID')
     for (const [direction, face] of Object.entries(element.faces || {})) {
       if (!CORNERS[direction]) throw Error('NATIVE_FACE_DIRECTION_INVALID')
-      if (face.tintindex !== undefined && face.tintindex !== -1) throw Error('NATIVE_BLOCK_TINT_UNAVAILABLE')
+      if (!allowTint && face.tintindex !== undefined && face.tintindex !== -1) throw Error('NATIVE_BLOCK_TINT_UNAVAILABLE')
       if (face.neoforge_data && Object.keys(face.neoforge_data).length) throw Error('NATIVE_FACE_EXTENSION_UNSUPPORTED')
       const extensionKeys = Object.keys(element.neoforge_data || {})
       if (extensionKeys.some(k => k !== 'calculate_normals')) throw Error('NATIVE_ELEMENT_EXTENSION_UNSUPPORTED')
-      const rect = face.uv || defaultUV(direction, a, b)
-      const rotation = face.rotation || 0
+      let rect = face.uv || defaultUV(direction, a, b)
+      let rotation = face.rotation || 0
       if (![0, 90, 180, 270].includes(rotation) || rect.length !== 4 || !rect.every(Number.isFinite)) throw Error('NATIVE_FACE_UV_INVALID')
+      if (variant.uvlock) ({ rectangle: rect, rotation } = lockedFaceUV(rect, rotation, direction, variant))
       const position = [], uv = []
       const r = element.rotation
       if (r && (!AXES[r.axis] || !Number.isFinite(r.angle) || !r.origin?.every(Number.isFinite))) throw Error('NATIVE_ELEMENT_ROTATION_INVALID')
@@ -146,7 +147,7 @@ export function bakeFaces (model) {
         uv.push(rect[index === 0 || index === 1 ? 0 : 2] / 16, 1 - rect[index === 0 || index === 3 ? 1 : 3] / 16)
       }
       faces.push({ texture: textureId(model, face.texture), direction, position, uv, indices: [0, 1, 2, 0, 2, 3],
-        cullface: face.cullface ?? null, shade: element.shade !== false })
+        cullface: face.cullface ?? null, shade: element.shade !== false, tintIndex: face.tintindex ?? -1 })
     }
   }
   return faces
@@ -163,27 +164,50 @@ export class NativeModelLoader {
     this.materials = new Map()
     this.geometries = new Set()
     this.blockstates = new Map()
+    this.animations = new Map()
   }
 
   async material (id) {
     if (!this.materials.has(id)) this.materials.set(id, (async () => {
       const path = resourcePath(id, 'textures', '.png')
       const meta = this.reader.manifest.assets[`${path}.mcmeta`]
-      if (meta && (await this.reader.json(`${path}.mcmeta`)).animation) throw Error(`NATIVE_ANIMATED_TEXTURE_UNSUPPORTED:${id}`)
+      const animationMeta = meta ? (await this.reader.json(`${path}.mcmeta`)).animation : null
       const texture = await this.loadTexture(await this.reader.bytes(path))
       texture.magFilter = THREE.NearestFilter
       texture.minFilter = THREE.NearestMipmapLinearFilter
       texture.colorSpace = THREE.SRGBColorSpace
       texture.generateMipmaps = true
       this.textures.set(id, texture)
-      return new THREE.MeshLambertMaterial({ map: texture, alphaTest: 0.1 })
+      const material = new THREE.MeshLambertMaterial({ map: texture, alphaTest: 0.1 })
+      if (animationMeta) {
+        const animation = animationFrames({ animation: animationMeta }, texture.image.width, texture.image.height)
+        if (animation.interpolate) enableInterpolation(material, THREE)
+        this.animations.set(id, { texture, material, animation }); applyFrame(texture, material, animation, 0)
+      }
+      return material
     })())
     return this.materials.get(id)
   }
 
-  async model (id, variant = {}) {
+  async fluidMaterial (id) {
+    const key = `native-fluid:${id}`
+    if (!this.materials.has(key)) this.materials.set(key, (async () => {
+      const material = (await this.material(id)).clone()
+      material.transparent = true; material.vertexColors = true
+      const original = this.animations.get(id)
+      if (original) {
+        if (original.animation.interpolate) enableInterpolation(material, THREE)
+        this.animations.set(key, { ...original, material })
+        applyFrame(original.texture, material, original.animation, 0)
+      }
+      return material
+    })())
+    return this.materials.get(key)
+  }
+
+  async model (id, variant = {}, context = {}) {
     const model = await resolveModel(this.reader, id)
-    const faces = bakeFaces(model)
+    const faces = bakeFaces(model, variant, context)
     const materials = new Map(await Promise.all([...new Set(faces.map(f => f.texture))].map(async texture => [texture, await this.material(texture)])))
     const group = new THREE.Group()
     group.userData = { nativeModel: id, sourcePaths: model.sourcePaths, faceCount: faces.length }
@@ -196,7 +220,7 @@ export class NativeModelLoader {
       geometry.computeVertexNormals()
       this.geometries.add(geometry)
       const mesh = new THREE.Mesh(geometry, materials.get(face.texture))
-      mesh.userData = { direction: face.direction, originalTexture: face.texture, originalUV: face.uv, cullface: face.cullface, shade: face.shade }
+      mesh.userData = { direction: face.direction, originalTexture: face.texture, originalUV: face.uv, cullface: face.cullface, shade: face.shade, tintIndex: face.tintIndex }
       group.add(mesh)
     }
     return group
@@ -211,9 +235,9 @@ export class NativeModelLoader {
     return selectBlockVariants(await this.blockstate(nativeState.name), nativeState, position)
   }
 
-  async models (variants) {
+  async models (variants, context = {}) {
     const group = new THREE.Group()
-    for (const variant of variants) group.add(await this.model(variant.model, variant))
+    for (const variant of variants) group.add(await this.model(variant.model, variant, context))
     return group
   }
 
@@ -228,10 +252,14 @@ export class NativeModelLoader {
     })
   }
 
+  animateTextures (ticks) {
+    for (const { texture, material, animation } of this.animations.values()) applyFrame(texture, material, animation, ticks)
+  }
+
   async dispose () {
     for (const geometry of this.geometries) geometry.dispose()
     for (const promise of this.materials.values()) { try { (await promise).dispose() } catch {} }
     for (const texture of this.textures.values()) texture.dispose()
-    this.geometries.clear(); this.materials.clear(); this.textures.clear()
+    this.geometries.clear(); this.materials.clear(); this.textures.clear(); this.animations.clear()
   }
 }

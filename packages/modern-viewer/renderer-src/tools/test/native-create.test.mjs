@@ -43,12 +43,12 @@ test('missing or conflicting native assets reject rather than substitute', async
   await assert.rejects(conflict.bytes('assets/mod/models/block/base.json'), /PRIORITY_UNRESOLVED/)
 })
 
-test('native block variants reject missing properties, weighted seeds and UV lock', () => {
+test('native block variants reject missing properties and unverified weighted seeds, and retain UV lock', () => {
   const variants = { variants: { 'axis=x': { model: 'create:block/shaft', x: 90, y: 90 }, 'axis=y': { model: 'create:block/shaft' } } }
   assert.equal(selectVariant(variants, { axis: 'x' }).y, 90)
   assert.throws(() => selectVariant(variants, {}), /UNRESOLVED/)
   assert.throws(() => selectVariant({ variants: { '': [{ model: 'a' }, { model: 'b' }] } }, {}), /SEED_UNVERIFIED/)
-  assert.throws(() => selectVariant({ variants: { '': { model: 'a', uvlock: true } } }, {}), /UVLOCK/)
+  assert.equal(selectVariant({ variants: { '': { model: 'a', uvlock: true } } }, {}).uvlock, true)
 })
 
 test('shaft uses actual RPM sign, block parity offset and server-speed stop', () => {
