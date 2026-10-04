@@ -185,6 +185,7 @@ socket.emit('avatarState', {
 | --- | --- |
 | `containerState` | 当前窗口完整快照，关闭发 `null`；`{ id, type, title, slots, inventoryStart, hotbarStart, containerCount, properties, furnace, trades }`。`furnace: { burn, cook }` 为 0–1 进度；交易表需要额外从 `trade_list` 解码，不能只看菜单槽位 |
 | `inventoryPreview` | 可选的短暂只读背包预览：`{ open: true, ttlMs: 2400, source: 'idle' }`；取消发 `{ open: false }`。使用最新 `avatarState.inventory` 与当前人物装备，最长 2400 ms 后收起，不创建真实游戏容器 |
+| `documentState` | 可选只读服务资料快照；完整结构见下文。关闭或失效发 `null`，新浏览器连接由宿主重发当前资料 |
 | `minimap` | `{ centerX, centerZ, radius: 12, sampleY, dimension, cells }`，`cells` 是 25×25 共 625 个字符，z 为行、x 为列；`?` 未加载，空格为空气，W 水、L 岩浆、F 树叶、T 树干、G 草地、P 路径、S 沙、N 雪冰、C 作物、R 石、B 土、H 建筑、X 其他 |
 | `biome` | `{ name, dimension, id }`，如 plains / minecraft:overworld；未知时 name 为 unknown，id 为 null |
 | `lightingState` | `{ sky, block }`，玩家眼前天空光/方块光，均为 0–15；数据暂不可用可发 null |
@@ -229,6 +230,28 @@ socket.emit('presentationEvent', { kind: 'effect', id: effectId, active: false }
 完整 sounds.json 导出保留所有变体、权重、音量、音高与事件引用，不只抽取部分文件。
 
 `inventoryPreview` 由宿主的空闲行为或演出通道发送即可，不要求 Cortico 或服务器插件。真实容器、本人受伤与攻击会取消待机预览；用户按 E 或按钮打开背包后由手动界面接管，待机计时器和取消事件不会关闭手动背包。断线、切换世界及页面退出会清理待机预览。
+
+### 只读服务资料
+
+宿主可以把实际收到的任务看板、调查记录或服务说明转换为 `documentState`。资料与真实容器分别显示，不会执行服务器命令或产生模型上下文。
+
+```js
+socket.emit('documentState', {
+  schemaVersion: 1, id: 'example:journal', title: '调查记录',
+  subtitle: '当前可接的调查', source: '服务端', observedAt: Date.now(),
+  sections: [{ title: '今日调查', rows: [{
+    id: 'river-survey', title: '沿岸调查', body: '寻找通往小溪对岸的桥梁',
+    detail: '奖励由服务端给出', status: '可接',
+  }] }],
+  summary: { title: '沿岸调查', body: '寻找桥梁', status: '进行中 · 1/3' },
+});
+```
+
+`observedAt` 是资料接收时间的 Unix 毫秒值。显示最多 8 组、共 64 行，名称、说明和奖励均为纯文本；`summary` 为宿主确认的当前项目，没有当前项时省略。收到快照后展开 18 秒，再缩成当前项目卡片；战斗或真实容器打开时紧凑显示。观众点“查看”仅改变网页展示。断线、`viewerReset` 和页面退出清空资料，刷新后没有新快照时不显示旧资料。
+
+可选浏览器适配器 `globalThis.mcViewerGameMessagePreset(event, MinecraftViewerDocuments)` 从现有 `gameMessage` 生成显示快照；确实消费该条消息时返回 `true`，普通消息继续走原有提示。适配器在系统提示限流前运行。`MinecraftViewerDocuments.set(snapshot, { expand: true })`、`clear()` 和 `state()` 提供只读显示与核验接口。
+
+`--preset=qiandengji` 加入千灯纪公会文字显示适配：只接受系统来源的实际看板标题、委托行、认证及进行中进度。普通聊天与私聊不会更新公会资料，动态委托 ID 来自服务端原话。它不查询 `/mycli`，不猜刷新前的内容，不把只有日期和修订号的 `mcagent:board` 通知当成完整看板。其他服务器使用自己的适配器或直接发送 `documentState`。
 
 ## 6. 可选服务器技能扩展
 

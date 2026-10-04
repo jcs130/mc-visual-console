@@ -44,6 +44,7 @@ function cortiInstallGameEvents(socket) {
   socket.on('gameMessage', (event) => {
     if (!event || !Object.hasOwn(labels, event.kind) ||
         typeof event.text !== 'string' || !event.text.trim()) return;
+    if (globalThis.MinecraftViewerDocuments?.consumeMessage(event)) return;
     const kind = event.kind;
     const message = event.text.slice(0, 160);
     if (kind === 'actionbar') {

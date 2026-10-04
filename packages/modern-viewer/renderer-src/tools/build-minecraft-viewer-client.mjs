@@ -17,9 +17,10 @@ if (!sourceArg || !outputArg) {
 }
 if (options.some(option => option !== '--preset=qiandengji')) throw Error('未知构建选项')
 const presetSource = options.includes('--preset=qiandengji')
-  ? await readFile(new URL('./presets/qiandengji-skills.js', import.meta.url), 'utf8') : ''
-// Compatibility exports in the reference source point to its authored NPC
-// preset. Ordinary servers must keep their streamed vanilla identities/models.
+  ? (await Promise.all(['qiandengji-skills.js', 'qiandengji-guild.js'].map(file =>
+    readFile(new URL(`./presets/${file}`, import.meta.url), 'utf8')))).join('\n') : ''
+// Presentation presets do not enable the reference package's authored NPC
+// identities or game state. Entities retain their streamed vanilla identities/models.
 const vanillaPresetModules = {
   'custom-characters.js': `export const CUSTOM_CHARACTER_DEFINITIONS = Object.freeze([]);
     export const resolveCustomCharacterDefinition = () => null;
@@ -134,6 +135,7 @@ const presentationSource = await readFile(new URL('./minecraft-viewer-presentati
 const soundSource = await readFile(new URL('./minecraft-viewer-sound.js', import.meta.url), 'utf8')
 const biomeStyleSource = await readFile(new URL('./minecraft-viewer-biome-style.js', import.meta.url), 'utf8')
 const panelsSource = await readFile(new URL('./minecraft-viewer-panels.js', import.meta.url), 'utf8')
+const servicePanelSource = await readFile(new URL('./minecraft-viewer-service-panel.js', import.meta.url), 'utf8')
 const sheepSource = await readFile(new URL('./minecraft-viewer-sheep.js', import.meta.url), 'utf8')
 const paintingFile = path.join(sourceRoot, 'src', 'modern-viewer', 'painting-variants.js')
 const paintingSource = await readFile(paintingFile, 'utf8')
@@ -255,7 +257,7 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('  if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);\n  for (const event of pendingChunks.values())')) {
   throw Error('modern viewer 源码版本锚点已变化')
 }
-const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${eventsSource}\n${particleSource}\n${presentationSource}\n${soundSource}\n`
+const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${eventsSource}\n${particleSource}\n${presentationSource}\n${soundSource}\n`
 
 await mkdir(path.join(outputRoot, 'dist'), { recursive: true })
 await mkdir(path.join(outputRoot, 'public'), { recursive: true })
@@ -277,7 +279,7 @@ const buildResult = await build({
       })
       context.onResolve({ filter: /^valtio\/utils$/ }, () => ({ path: path.join(sourceRoot, 'src', 'modern-viewer', 'valtio-utils-shim.js') }))
       context.onResolve({ filter: /^valtio$/ }, () => ({ path: path.join(sourceRoot, 'node_modules', 'valtio', 'esm', 'vanilla.mjs') }))
-      if (!presetSource) context.onLoad({ filter: /[\\/]presets[\\/]qiandengji[\\/][^\\/]+\.js$/ }, async ({ path: file }) => {
+      context.onLoad({ filter: /[\\/]presets[\\/]qiandengji[\\/][^\\/]+\.js$/ }, async ({ path: file }) => {
         const name = path.basename(file)
         if (vanillaPresetModules[name]) return { contents: vanillaPresetModules[name], loader: 'js', resolveDir: path.dirname(file) }
         if (name !== 'npc-gameplay.js') throw Error(`未处理的服务器预设模块：${name}`)

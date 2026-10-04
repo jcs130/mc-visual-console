@@ -28,7 +28,7 @@ node tools/build-minecraft-viewer-client.mjs . "<output-dir>"
 node tools/verify-minecraft-viewer-assets.mjs "<1.20.6-client.jar>" "<output-dir>"
 ```
 
-构建默认使用通用模式。千灯纪的额外呈现用 `--preset=qiandengji` 显式开启；服务端机制和 Agent 决策仍在独立 World 中。
+构建默认使用通用模式。千灯纪的技能视觉映射和公会看板显示用 `--preset=qiandengji` 显式开启；此选项不启用参考包内的命名 NPC 身份或本地剧情。服务端机制和 Agent 决策仍在独立 World 中。
 
 ## 在另一个项目复用
 

@@ -38,11 +38,15 @@ node tools/verify-minecraft-viewer-assets.mjs "<1.20.6-client.jar>" "<output-dir
 构建器从锁定的 npm 依赖提取 worker，自动接入原版皮肤和浏览器增强组件。
 该构建流程当前只接受 1.20.6，不使用其他版本的资源代替。
 
-默认使用通用 Minecraft 呈现。千灯纪的额外美术映射可以显式开启：
+默认使用通用 Minecraft 呈现。千灯纪的技能视觉映射和公会委托看板显示可以显式开启：
 
 ```powershell
 node tools/build-minecraft-viewer-client.mjs . "<output-dir>" --preset=qiandengji
 ```
+
+此选项只增加技能和公会资料显示适配，不启用参考包内的命名 NPC 身份、剧情或本地游戏玩法。
+公会 CLI 的已收到文字会显示为只读看板，查看后收为当前委托卡片；通用宿主也可发送
+`documentState` 展示自己的服务资料，字段见 [Socket.IO 合约](SOCKET_PROTOCOL.md)。
 
 模型和肖像等额外美术资源需要宿主自己提供。Minecraft JAR、贴图、音频、角色模型与生成的
 bundle 不在 Git 中分发；源码与工具使用仓库 MIT 许可，第三方依赖按其各自许可使用。
