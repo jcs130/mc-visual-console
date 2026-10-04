@@ -5,6 +5,7 @@ import {
 } from "minecraft-renderer/dist/minecraft-renderer.js";
 import { io } from "socket.io-client";
 import { pendingChunkOrigins } from "./chunk-loading-guard.js";
+import { FishingCatchHud } from "./fishing-catch.js";
 import {
   Box3,
   BoxGeometry,
@@ -608,6 +609,16 @@ const socket = io({
   transports: ["websocket", "polling"],
 });
 
+const fishingCatchHud = new FishingCatchHud({
+  root: document.getElementById("viewer-fishing-catch"),
+  renderIcon(slot, item) {
+    cortiAppendHeadFace(slot, item, 2);
+    cortiAppendEnchantmentGlint(slot, item, 2);
+  },
+});
+socket.on("fishingCatch", (event) => fishingCatchHud.push(event));
+window.addEventListener("beforeunload", () => fishingCatchHud.dispose(), { once: true });
+
 let socketEverConnected = false;
 socket.on("connect", () => {
   if (socketEverConnected && rendererReady) {
@@ -625,6 +636,7 @@ socket.on("viewerBusy", () => {
   setStatus("本地画面连接已满，请关闭多余的画面页面后刷新。", true);
 });
 socket.on("disconnect", (reason) => {
+  fishingCatchHud.reset();
   setStatus("画面数据流暂时中断，正在重连…", true);
   if (reason !== "io server disconnect" || !reconnectAfterServerDisconnect) return;
   clearTimeout(serverReconnectTimer);
@@ -633,7 +645,10 @@ socket.on("disconnect", (reason) => {
   }, 350);
 });
 socket.on("connect_error", () => setStatus("无法连接本地画面服务，正在重试…", true));
-socket.on("viewerReset", () => setTimeout(() => window.location.reload(), 250));
+socket.on("viewerReset", () => {
+  fishingCatchHud.reset();
+  setTimeout(() => window.location.reload(), 250);
+});
 socket.on("chunkStreamState", (state) => {
   if (!state || !Number.isFinite(state.streamed) || !Number.isFinite(state.expected)) return;
   latestChunkStreamState = {

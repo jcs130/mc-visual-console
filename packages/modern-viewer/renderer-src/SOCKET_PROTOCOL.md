@@ -6,6 +6,13 @@
 
 ## 1. 页面、资源和连接
 
+只读截图客户端可在本地浏览器的 HTTP 与 WebSocket 请求中发送 `x-mc-viewer-capture: 1`。
+支持此能力的宿主在 `/healthz` 提供 `viewers`、`maxSessions`、`captureSessions`、
+`maxCaptureSessions` 与 `version`，分别表示观众连接和临时截图连接的计数及上限。
+临时截图独占一个单独名额，关闭时释放，宿主也应设置租期清理失联连接；现有宿主租期为 60 秒。
+截图名额满时拒绝该截图连接，保留观众连接。宿主未声明独立截图能力时，截图客户端应遵守
+普通连接上限。截图客户端结束后关闭自己的浏览器，不操纵正在播放的观众页面。
+
 | 页面 | 模式 | Socket.IO `path` |
 | --- | --- | --- |
 | `/` | 第一人称 | `/socket.io` |
@@ -149,8 +156,10 @@ socket.emit('avatarState', {
   horizontalSpeed: 0.12, verticalSpeed: 0,
   velocity: { x: 0.12, y: 0, z: 0 }, // Mineflayer 速度，方块/游戏 tick
   onGround: true, inWater: false, inLava: false,
+  surfaceBlock: { name: 'grass_block', stateId: 9 }, // 实际脚下已加载方块，未知用 null
   sprinting: false, sneaking: false, burning: false,
   shieldRaised: false, usingHeldItem: false,
+  heldItemEdible: false, // 原版 food 数据或真实物品 food component，不能只看名称猜测
   health: 20, maxHealth: 20, absorption: 0,
   food: 20, armor: 10, oxygen: 20,
   experienceLevel: 9, experienceProgress: 0.4,
@@ -175,6 +184,8 @@ socket.emit('avatarState', {
 | 事件 | 主要字段与语义 |
 | --- | --- |
 | `containerState` | 当前窗口完整快照，关闭发 `null`；`{ id, type, title, slots, inventoryStart, hotbarStart, containerCount, properties, furnace, trades }`。`furnace: { burn, cook }` 为 0–1 进度；交易表需要额外从 `trade_list` 解码，不能只看菜单槽位 |
+| `inventoryPreview` | 可选的短暂只读背包预览：`{ open: true, ttlMs: 2400, source: 'idle' }`；取消发 `{ open: false }`。使用最新 `avatarState.inventory` 与当前人物装备，最长 2400 ms 后收起，不创建真实游戏容器 |
+| `documentState` | 可选只读服务资料快照；完整结构见下文。关闭或失效发 `null`，新浏览器连接由宿主重发当前资料 |
 | `minimap` | `{ centerX, centerZ, radius: 12, sampleY, dimension, cells }`，`cells` 是 25×25 共 625 个字符，z 为行、x 为列；`?` 未加载，空格为空气，W 水、L 岩浆、F 树叶、T 树干、G 草地、P 路径、S 沙、N 雪冰、C 作物、R 石、B 土、H 建筑、X 其他 |
 | `biome` | `{ name, dimension, id }`，如 plains / minecraft:overworld；未知时 name 为 unknown，id 为 null |
 | `lightingState` | `{ sky, block }`，玩家眼前天空光/方块光，均为 0–15；数据暂不可用可发 null |
@@ -183,7 +194,10 @@ socket.emit('avatarState', {
 | `gameTitleClear` | 无数据；清空标题 |
 | `bossBars` | 完整数组 `[{ title, progress, color }]`，progress 0–1；最多 8 条，color 为 pink / blue / red / green / yellow / purple / white；删除时也要发送，全部消失发 `[]` |
 | `scoreboardState` | `{ title, rows: [{ name, value }] }`；完整侧栏快照，移除时发空 title 和空 rows |
-| `worldSound` | `{ name, position, volume, pitch }`；name 为原版声音事件名，position 为绝对坐标或 null；需要另行导出并提供声音资源 |
+| `worldSound` | `{ name, position, volume, pitch, category?, entityId?, seed?, fixedRange? }`；name 为原版声音事件名，position 为绝对坐标或 null。宿主从原始 sound_effect / named_sound_effect / entity_sound_effect 包统一转发，不能再重复转发 Mineflayer 的 soundEffectHeard。category 为原版混音类别；entityId 让空间声音跟随实体，seed 用于变体选择；需要另行导出并提供声音资源 |
+| `worldSoundStop` | `{ name?, category? }`；转发原始 stop_sound。仅 name 停止该声音，仅 category 停止该类别，空对象停止全部；不要把参数缺失当作忽略这个事件 |
+| `musicContext` | 可选 `{ name }`，宿主指定实际场景的原版音乐事件；通常省略，前端按 biome / dimension 选曲并保留播放间隔 |
+| `fishingCatch` | `{ seq, atMs, item, count, position? }`；实际确认的钓获入包事件，item 为上面的统一物品格式，count 为本次获得数量，atMs 为 Unix 毫秒。不能把任意背包增量当作钓获 |
 | `presentationEvent` | 原版 `particle` / `explosion` / `world_event` / `pickup` / `effect` / `cooldown` 或自定义提示事件 |
 | `tacticalRoute` | `{ points: [{x,y,z}], goal: {x,y,z} 或 null, status }`，最多 64 点；任务结束发空 points 和 null goal |
 | `tacticalAttack` | `{ id, name, position }`，表示真实发出的攻击指令 |
@@ -199,6 +213,47 @@ socket.emit('presentationEvent', {
 // 收到移除状态包时立即清除，不等计时器猜测。
 socket.emit('presentationEvent', { kind: 'effect', id: effectId, active: false });
 ```
+
+钓获与声音有独立的通用 Mineflayer 桥接示例，见 [host/README.md](host/README.md)。钓获来源同时核对本人的鱼漂、上钩、真实收竿、向施法者飞来的掉落实体、本人的 collect 包和对应背包增量。宝藏、杂物和自定义物品使用同一逻辑，不维护鱼种白名单；新浏览器连接不重放过去的钓获。
+
+原版也在客户端生成部分声音。`presentationEvent` 的 pickup 应带 `self`、`entityId`、`collectorId` 和 `entityName`，自捡物品或经验才能播放本地拾取音。脚步使用 avatarState 的实际位置、onGround 与 surfaceBlock；digProgress 可以带真实 blockName。前端读取从本机 1.20.6 客户端导出的 block-sounds.json，区分草地、木头、雪等声音。没有已加载的方块或对应资源时保持安静，不猜材质、不声称操作成功。客户端声音会与近期同名服务端声音去重。
+
+`inWater` 的真实变化与位移驱动入水、游泳音，首次水中快照不误报入水；`burning` 驱动着火声，熄火清掉正在播或等待中的声音。按钮/菜单仅对可信用户点击播放原版 UI 点击音；展示数据不会制造伤害、死亡或成功施法声音。
+
+网页声音须由浏览器中的首次点击或按键解锁。音效与背景音乐可以独立开关，并有总音量、音效和音乐三个音量控制；设置仅保存在本机浏览器。长音乐以流方式播放，声音包不会进入聊天或模型上下文。
+
+音乐在已知世界就绪后等待 10–30 秒，歌曲结束后等待 5–10 分钟，群系变化稳定 15 秒后才切换，
+避免在水边抖动或无间歇重复。服务端直接指定的音乐与唱片优先于自动背景音乐。
+`worldSoundStop` 同时取消尚在下载/解码的声音；viewerReset、断线与页面离开清理全部声音，
+迟到的异步音频不会在新世界重放。声音状态可由 `window.cortiWorldAudio.state()` 或窗口
+`mc-viewer-audio-state` 事件检查；`setVolume(category, 0..1)` 支持原版全部类别。
+完整 sounds.json 导出保留所有变体、权重、音量、音高与事件引用，不只抽取部分文件。
+
+`inventoryPreview` 由宿主的空闲行为或演出通道发送即可，不要求 Cortico 或服务器插件。真实容器、本人受伤与攻击会取消待机预览；用户按 E 或按钮打开背包后由手动界面接管，待机计时器和取消事件不会关闭手动背包。断线、切换世界及页面退出会清理待机预览。
+
+### 只读服务资料
+
+宿主可以把实际收到的任务看板、调查记录或服务说明转换为 `documentState`。资料与真实容器分别显示，不会执行服务器命令或产生模型上下文。
+
+```js
+socket.emit('documentState', {
+  schemaVersion: 1, id: 'example:journal', title: '调查记录',
+  subtitle: '当前可接的调查', source: '服务端', observedAt: Date.now(),
+  sections: [{ title: '今日调查', rows: [{
+    id: 'river-survey', title: '沿岸调查', body: '寻找通往小溪对岸的桥梁',
+    detail: '奖励由服务端给出', status: '可接',
+  }] }],
+  summary: { title: '沿岸调查', body: '寻找桥梁', status: '进行中 · 1/3' },
+});
+```
+
+`observedAt` 是资料接收时间的 Unix 毫秒值。显示最多 8 组、共 64 行，名称、说明和奖励均为纯文本；`summary` 为宿主确认的当前项目，没有当前项时省略。收到快照后展开 18 秒，再缩成当前项目卡片；战斗或真实容器打开时紧凑显示。观众点“查看”仅改变网页展示。断线、`viewerReset` 和页面退出清空资料，刷新后没有新快照时不显示旧资料。
+
+资料展开时临时隐藏技能图标栏，生命、饱食度和魔力 HUD 保持显示。资料收起、战斗紧凑或清空后恢复技能栏本身的显示状态。
+
+可选浏览器适配器 `globalThis.mcViewerGameMessagePreset(event, MinecraftViewerDocuments)` 从现有 `gameMessage` 生成显示快照；确实消费该条消息时返回 `true`，普通消息继续走原有提示。适配器在系统提示限流前运行。`MinecraftViewerDocuments.set(snapshot, { expand: true })`、`clear()` 和 `state()` 提供只读显示与核验接口。
+
+`--preset=qiandengji` 加入千灯纪公会文字显示适配：只接受系统来源的实际看板标题、委托行、认证及进行中进度。普通聊天与私聊不会更新公会资料，动态委托 ID 来自服务端原话。它不查询 `/mycli`，不猜刷新前的内容，不把只有日期和修订号的 `mcagent:board` 通知当成完整看板。其他服务器使用自己的适配器或直接发送 `documentState`。
 
 ## 6. 可选服务器技能扩展
 

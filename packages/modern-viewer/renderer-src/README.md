@@ -11,6 +11,7 @@
 | `src/page-template.html`、`src/viewer.css` | 页面结构、生存 HUD、物品界面、小地图与技能栏布局 |
 | `src/viewer-page.mjs` | 输出第一人称、第三人称、地下城 2.5D 页面 |
 | `tools/` | HUD、物品图标、动作、盾牌、粒子、音效、遮挡处理以及离线构建/校验 |
+| [host/](host/README.md) | 通用 Mineflayer 钓获与声音观察器，无 Cortico 或千灯纪运行依赖 |
 | `src/modern-viewer/presets/qiandengji/`、`tools/presets/` | 可选的千灯纪 NPC 美术、身份与技能视觉映射 |
 | [SOCKET_PROTOCOL.md](SOCKET_PROTOCOL.md) | 宿主项目的数据接入合约 |
 
@@ -37,11 +38,15 @@ node tools/verify-minecraft-viewer-assets.mjs "<1.20.6-client.jar>" "<output-dir
 构建器从锁定的 npm 依赖提取 worker，自动接入原版皮肤和浏览器增强组件。
 该构建流程当前只接受 1.20.6，不使用其他版本的资源代替。
 
-默认使用通用 Minecraft 呈现。千灯纪的额外美术映射可以显式开启：
+默认使用通用 Minecraft 呈现。千灯纪的技能视觉映射和公会委托看板显示可以显式开启：
 
 ```powershell
 node tools/build-minecraft-viewer-client.mjs . "<output-dir>" --preset=qiandengji
 ```
+
+此选项只增加技能和公会资料显示适配，不启用参考包内的命名 NPC 身份、剧情或本地游戏玩法。
+公会 CLI 的已收到文字会显示为只读看板，查看后收为当前委托卡片；通用宿主也可发送
+`documentState` 展示自己的服务资料，字段见 [Socket.IO 合约](SOCKET_PROTOCOL.md)。
 
 模型和肖像等额外美术资源需要宿主自己提供。Minecraft JAR、贴图、音频、角色模型与生成的
 bundle 不在 Git 中分发；源码与工具使用仓库 MIT 许可，第三方依赖按其各自许可使用。
@@ -49,7 +54,7 @@ bundle 不在 Git 中分发；源码与工具使用仓库 MIT 许可，第三方
 [`tools/CORTICO_LICENSE`](tools/CORTICO_LICENSE)；方块实体几何的许可保留于
 [`tools/minecraft-viewer-block-entity-geometry.LICENSE`](tools/minecraft-viewer-block-entity-geometry.LICENSE)。
 
-### 可选：游戏音效
+### 可选：游戏音效与背景音乐
 
 音频来自启动器的本地 `assets` 索引和对象缓存。以下工具校验版本索引与文件哈希，
 不会联网下载资源；缺少本地资源时先用启动器安装相应版本：
@@ -58,7 +63,38 @@ bundle 不在 Git 中分发；源码与工具使用仓库 MIT 许可，第三方
 node tools/export-minecraft-viewer-sounds.mjs "<versions/1.20.6/1.20.6.json>" "<launcher-assets-dir>" "<output-dir>"
 ```
 
-浏览器按音效按钮或与页面交互后才能播放音频。宿主还需要转发相应的音效事件。
+导出完整 sounds.json，包括所有变体、声音事件引用、音乐和唱片；音乐流式播放，不把长曲全部解码到内存。
+宿主用 [通用观察器](host/README.md) 转发原始位置、实体及停止声音包，避免与 Mineflayer 派生事件重复播放。
+浏览器点击音效/音乐按钮或与页面交互后才能播放音频。两个开关独立，声音设置中分别控制总音量、音效和音乐。
+音乐按钮显示播放、等待倒数或静音状态；声音设置提供“试听音效”和“立即播放音乐”。后者可跳过当前等待，不会叠加正在播放的曲目或打断唱片。自动音乐仍保留原版的曲间间隔。
+背景音乐根据已知维度/群系选择，曲目之间保留原版式间隔，不连续循环。
+
+1.20.6 的服务器编号音效必须使用准确的原版注册表；依赖库沿用的 1.20.4 编号会播出错误声音。以下工具同时导出声音编号和脚步、挖掘所需的方块声音类型：
+
+```powershell
+# 额外需要 Java 21；最后一个参数可省略，默认使用 PATH 中的 java
+node tools/export-minecraft-viewer-block-sounds.mjs "<versions/1.20.6/1.20.6.json>" "<launcher-libraries-dir>" "<output-dir>" "<java-21-executable>"
+```
+
+工具离线校验客户端与已安装依赖哈希，读取准确的 1607 个声音编号及 1060 种方块的 step / hit / break 等声音。
+生成 `public/sounds/registry.json` 和 `block-sounds.json`；不下载或分发 JAR，不启动游戏窗口、不连接服务器。
+宿主先用 `loadViewerSoundRegistry` 读取准确表，再转发原始声音包。缺少准确编号表时禁用编号音效并显示诊断，
+直接名称音效和背景音乐仍可用；缺少方块声音映射时，脚步与挖掘不猜材质。
+宿主须提供实际已加载的 surfaceBlock、动作状态及原版拾取事件，详见 Socket.IO 合约。
+
+### 钓获展示
+
+通用观察器核对本人鱼漂、上钩、收竿、战利品飞行、实际拾取和入包，才发送 `fishingCatch`。
+三个视角都显示短暂钓获卡片，包含物品图标、实际数量、自定义名称及附魔装饰；宝藏与杂物无需单独名单。
+普通拾取不会冒充钓获，旧事件不会在重连后重播，也不会向聊天或模型上下文塞入展示数据。
+
+### 背包人物预览
+
+点击「背包」或按 E，在原版背包的人物槽查看当前皮肤、四件盔甲及双手物品；移动鼠标可轻微转向。
+人物保持独立站姿，不改变游戏中的位置、视角或动作。第一人称、第三人称和地下城视角均可使用。
+预览优先复用现有玩家模型；尚未生成世界模型时，用同一皮肤和装备装配器建立私有模型，
+装备与贴图延迟加载仍会更新。此功能只用通用 `avatarState.entity.equipment`，无需额外服务端插件。
+关闭背包、切换到其他物品窗口、断线或页面隐藏后停止绘制；只复用一个预览渲染器，不释放世界的共享资源。
 
 ## 产物与接入
 
