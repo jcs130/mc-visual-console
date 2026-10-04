@@ -282,7 +282,7 @@ export function createNativeInterface ({ document = globalThis.document,
       preview ??= previewFactory({ THREE, document, resolveSource: actorSource })
       preview.attach(host)
     }
-    body.append(node(document, 'p', 'corti-menu-note', '本人原生物品与组件 · 只读；静态原版图标按原模型加载，其他图标/装备待适配'))
+    body.append(node(document, 'p', 'corti-menu-note', '本人原生物品与组件 · 只读；已支持图标按原生模型加载，未支持的专用模型及装备明确标注'))
   }
   const renderMenu = () => {
     const menu = el('corti-menu'), body = q('[data-menu-body]')

@@ -10,6 +10,7 @@ const reader = (overrides = {}) => ({ manifest: { assets: {} }, json: async path
 const settled = () => new Promise(resolve => setImmediate(resolve))
 test('flat icons retain native namespace and decline custom components and unknown mod providers', () => {
   assert.equal(nativeItemIconEligible(item), true)
+  assert.equal(nativeItemIconEligible({ name: item.name, count: item.count }), false, 'unknown components cannot become a plain item')
   for (const candidate of [{ ...item, name: 'mod:wheat_seeds' }, { ...item, name: 'minecraft:potion' },
     { ...item, components: { 'minecraft:custom_model_data': 3 } }, { ...item, snbt: '{components:{"minecraft:enchantments":{}}}' }]) assert.equal(nativeItemIconEligible(candidate), false)
 })

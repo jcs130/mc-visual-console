@@ -67,7 +67,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       d?.bounds ? `地形范围：${d.bounds.maxX - d.bounds.minX + 1}×${d.bounds.maxZ - d.bounds.minZ + 1} 格，高度 ${d.bounds.minY}–${d.bounds.maxY}；只显示本人收到的区块` : '',
       d?.coverage?.horizontalRangeReduced ? '地形因预算收缩，实际范围以上述数值为准' : '',
       d?.skinState ?? '本人模型未同步',
-      presentation.available ? '背包/菜单/技能：同一玩家原生状态；静态原版物品图标已接入，模组/组件图标与装备待适配' : `展示数据：${presentation.reason}`,
+      presentation.available ? '背包/菜单/技能：同一玩家原生状态；原生物品图标已接入，未支持的专用模型/组件及装备明确标注' : `展示数据：${presentation.reason}`,
       pendingMode === 'dungeon' ? '地下城2.5D跟随相机；遮挡/切面/点击操控未接入' : '',
       '音效/音乐/小地图：原生接口未接入', '完整场景一致性尚未验收',
       ...(d?.issues ?? []).slice(0, 16)].filter(Boolean).join('\n')

@@ -1,5 +1,8 @@
 import { resourcePath, textureId } from './model-loader.js'
 import { NativeBlockItemIconRenderer, nativeBlockItemEligible } from './native-block-item-icons.js'
+import { parseNativeItemStack } from './native-item-stack.js'
+import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
+import { nativeArsItemEligible, NativeArsItemIconRenderer } from './native-ars-item-icons.js'
 
 // These vanilla items have no ItemColors provider or runtime GUI model choice
 // in the locked client. Mod item-color/model providers must be ported before
@@ -23,7 +26,7 @@ export function nativeItemIconEligible(item) {
   // No component is discarded to synthesize a generic icon. Until these
   // render rules are ported, even glint/custom-model/tinted items stay explicit.
   if (item.components && Object.keys(item.components).length) return false
-  if (typeof item.snbt !== 'string') return true
+  if (typeof item.snbt !== 'string') return false
   if (item.snbt.length > 8192) return false
   // Only a plain native ItemStack envelope can share a static icon cache key.
   // In particular quoted/escaped component keys must not bypass a regex and
@@ -50,18 +53,29 @@ export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {
 }
 
 export class NativeItemIcons {
-  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {} } = {}) {
+  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
+    this.arsRenderer = new NativeArsItemIconRenderer(reader, arsRendererOptions)
   }
   resolve(item) {
-    if (this.disposed || !nativeItemIconEligible(item)) return null
-    if (!this.entries.has(item.name)) {
+    if (this.disposed) return null
+    let provider = null, stack = null, key = item?.name
+    if (nativeGuideItemEligible(key) || nativeArsItemEligible(key)) {
+      try { stack = parseNativeItemStack(item) } catch { return null }
+      provider = nativeGuideItemEligible(key) ? 'guide' : 'ars'
+      // Bind to the complete authoritative SNBT, including numeric tag types.
+      // JSON.stringify would conflate a typed tag wrapper with a compound that
+      // happens to contain the same type/value fields. Never share their icon.
+      // Input is bounded to 64 KiB and this cache to 128 entries.
+      key += '#' + item.snbt
+    } else if (!nativeItemIconEligible(item)) return null
+    if (!this.entries.has(key)) {
       if (this.entries.size >= 128) return null
-      this.entries.set(item.name, { result: null, reason: 'loading' }); this.queue.push(item.name); this.pump()
+      this.entries.set(key, { result: null, reason: 'loading', name: item.name, provider, stack }); this.queue.push(key); this.pump()
     }
-    return this.entries.get(item.name).result
+    return this.entries.get(key).result
   }
   pump() {
     while (!this.disposed && this.active < 2 && this.queue.length) {
@@ -69,9 +83,16 @@ export class NativeItemIcons {
       void this.load(name).finally(() => { this.active--; this.pump() })
     }
   }
-  async load(name) {
-    const entry = this.entries.get(name)
+  async load(key) {
+    const entry = this.entries.get(key), name = entry.name
     try {
+      if (entry.provider === 'ars') {
+        const { blob, ...info } = await this.arsRenderer.render(entry.stack)
+        if (this.disposed) return
+        entry.result = { verified: true, url: this.createUrl(blob), sourcePath: info.sourcePaths.find(path => path.includes('/models/item/')), ...info }
+        entry.reason = null
+        return
+      }
       if (nativeBlockItemEligible(name)) {
         const { blob, ...info } = await this.blockRenderer.render(name)
         if (this.disposed) return
@@ -80,13 +101,15 @@ export class NativeItemIcons {
         return
       }
       const [namespace, leaf] = name.split(':')
-      const model = await resolveNativeFlatItemTexture(this.reader, `${namespace}:item/${leaf}`)
+      const guide = entry.provider === 'guide' ? await prepareNativeGuideItemIcon(this.reader, entry.stack) : null
+      const model = await resolveNativeFlatItemTexture(this.reader, guide?.modelId ?? `${namespace}:item/${leaf}`)
       if (Object.keys(model.textures).some(key => /^layer[1-9]/.test(key)) || !model.textures.layer0) throw Error('NATIVE_ITEM_LAYERS_UNSUPPORTED')
       const png = resourcePath(textureId(model, model.textures.layer0), 'textures', '.png')
       if (this.reader.manifest.assets[`${png}.mcmeta`]) throw Error('NATIVE_ITEM_ANIMATION_UNSUPPORTED')
       const bytes = await this.reader.bytes(png)
       if (this.disposed) return
-      entry.result = { verified: true, url: this.createUrl(new Blob([bytes], { type: 'image/png' })), sourcePath: png }
+      entry.result = { verified: true, url: this.createUrl(new Blob([bytes], { type: 'image/png' })), sourcePath: png,
+        ...(guide ? { kind: guide.kind, bookId: guide.bookId ?? null, sourcePaths: [...new Set([...guide.sourcePaths, png])], pixelParityVerified: false } : {}) }
       entry.reason = null
     } catch(error) { entry.reason = error.message }
     finally { if (!this.disposed) this.onChange() }
@@ -95,6 +118,7 @@ export class NativeItemIcons {
     if (this.disposed) return
     this.disposed = true; this.queue.length = 0
     this.blockRenderer.dispose()
+    this.arsRenderer.dispose()
     for (const entry of this.entries.values()) if (entry.result) this.revokeUrl(entry.result.url)
     this.entries.clear()
   }
