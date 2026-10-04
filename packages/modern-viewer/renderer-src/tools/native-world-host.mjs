@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import chunkFactory from 'prismarine-chunk'
 import { Vec3 } from 'vec3'
+import { CUTTING_BOARD_ID, cuttingBoardContent } from '../src/native-viewer/cutting-board.js'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const key = p => `${p.x},${p.y},${p.z}`
@@ -157,6 +158,7 @@ export class NativeWorldState extends EventEmitter {
     if (!finite(position) || ![position.x, position.y, position.z].every(Number.isInteger)) throw Error('NATIVE_WORLD_BLOCK_ENTITY_POSITION_INVALID')
     const value = tag?.type ? this.simplifyNBT(tag) : tag
     if (value && typeof value === 'object') this.blockEntities.set(key(position), { position: { ...position }, data: value })
+    else this.blockEntities.delete(key(position)) // Missing new data cannot reuse an older verified empty inventory.
   }
 
   stateIdAt (p) {
@@ -198,7 +200,7 @@ export class NativeWorldState extends EventEmitter {
     const bounds = { minX: Math.floor(this.pose.x) - halfExtent, maxX: Math.floor(this.pose.x) + halfExtent,
       minY: Math.max(this.dimension.minY, Math.floor(this.pose.y) - below), maxY: Math.min(this.dimension.minY + this.dimension.height - 1, Math.floor(this.pose.y) + above),
       minZ: Math.floor(this.pose.z) - halfExtent, maxZ: Math.floor(this.pose.z) + halfExtent }
-    const groups = new Map(), definitions = new Map(), kinetic = [], missingColumns = new Set()
+    const groups = new Map(), definitions = new Map(), kinetic = [], cuttingBoards = [], missingColumns = new Set()
     // Neighbor halo for fluid geometry. These are already received blocks,
     // never disk/server queries or an extra observation account.
     const neighbors = []
@@ -228,10 +230,11 @@ export class NativeWorldState extends EventEmitter {
       groups.get(id).push(x, y, z)
       const be = this.blockEntities.get(key(p))
       if (['create:shaft', 'create:hand_crank'].includes(state.name)) kinetic.push({ position: p, stateId: id, speed: Number.isFinite(be?.data.Speed) ? be.data.Speed : null, overstressed: be?.data.Overstressed ?? null })
+      if (state.name === CUTTING_BOARD_ID) cuttingBoards.push({ position: p, stateId: id, ...cuttingBoardContent(be?.data) })
     }
     return { type: 'snapshot', schemaVersion: 1, mode: 'live_same_player_connection', minecraftVersion: '1.21.1', registrySha256: this.registrySha256,
       epoch: this.epoch, revision: this.revision, packetSequence: this.lastSequence, dimension: this.dimension, pose: this.pose, time: this.time, bounds,
-      states: [...definitions.values()], groups: [...groups].map(([stateId, positions]) => ({ stateId, positions })), kinetic, missingColumns: [...missingColumns],
+      states: [...definitions.values()], groups: [...groups].map(([stateId, positions]) => ({ stateId, positions })), kinetic, cuttingBoards, missingColumns: [...missingColumns],
       neighbors, biomeSeed: this.biomeSeed, biomeGrid, biomes: [...usedBiomes].map(id => this.biomes.get(id)).filter(Boolean),
       entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false }
   }

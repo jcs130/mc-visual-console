@@ -4,6 +4,7 @@ import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath
 import { createKineticActor } from './create-kinetics.js'
 import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
 import { waterGeometry } from './native-fluid.js'
+import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
 
 const el = id => document.getElementById(id)
 const pointKey = p => `${p.x},${p.y},${p.z}`
@@ -122,7 +123,9 @@ function removeActor (actor) {
 async function template (state, variants) {
   const key = `${state.stateId}:${JSON.stringify(variants)}`
   if (!templates.has(key)) templates.set(key, (async () => {
-    if (state.hasBlockEntity || state.renderShape !== 'MODEL') throw Error('原生实体方块渲染未适配')
+    // The exact empty-board entity guard is checked per position before this
+    // shared template is used. Other entity-backed blocks remain unsupported.
+    if ((state.hasBlockEntity && state.name !== CUTTING_BOARD_ID) || state.renderShape !== 'MODEL') throw Error('原生实体方块渲染未适配')
     const model = await loader.models(variants, { allowTint: true })
     let faces = 0; model.traverse(part => { if (part.isMesh) faces++ })
     if (!faces) throw Error('原生模型无可绘制面')
@@ -138,7 +141,8 @@ async function rebuildLatest () {
     while (pending) {
       const snapshot = pending, run = generation; pending = null
       const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
-      const signature = JSON.stringify([snapshot.groups, snapshot.neighbors, snapshot.biomeGrid?.ids, snapshot.biomes, snapshot.biomeSeed])
+      const cuttingBoards = new Map((snapshot.cuttingBoards || []).map(board => [pointKey(board.position), board]))
+      const signature = JSON.stringify([snapshot.groups, snapshot.neighbors, snapshot.biomeGrid?.ids, snapshot.biomes, snapshot.biomeSeed, snapshot.cuttingBoards])
       const nextIssues = [], existing = new Set()
       for (const node of snapshot.kinetic) {
         const key = pointKey(node.position); existing.add(key)
@@ -170,10 +174,22 @@ async function rebuildLatest () {
           }
           if (state.fluid && !state.fluid.empty) nextIssues.push(`${state.name}：${state.fluid.name === 'minecraft:water' || state.fluid.name === 'minecraft:flowing_water' ? '原生含水方块的液体面未适配' : '原生液体渲染提供器未适配'}`)
           try {
-            const blockstate = await loader.blockstate(state.name)
-            const subgroups = new Map()
+            const positions = []
             for (let i = 0; i < group.positions.length; i += 3) {
               const position = { x: group.positions[i], y: group.positions[i + 1], z: group.positions[i + 2] }
+              if (state.name === CUTTING_BOARD_ID) {
+                const support = cuttingBoardStaticModelStatus(state, cuttingBoards.get(pointKey(position)), loader.reader.manifest)
+                if (!support.available) {
+                  nextIssues.push(`${state.name} @ ${pointKey(position)}：${support.reason}${support.storedItem ? ` (${support.storedItem.id} × ${support.storedItem.count})` : ''}`)
+                  continue
+                }
+              }
+              positions.push(position)
+            }
+            if (!positions.length) continue
+            const blockstate = await loader.blockstate(state.name)
+            const subgroups = new Map()
+            for (const position of positions) {
               const variants = selectBlockVariants(blockstate, state, position), key = JSON.stringify(variants)
               if (!subgroups.has(key)) subgroups.set(key, { variants, positions: [] })
               subgroups.get(key).positions.push(position.x, position.y, position.z)

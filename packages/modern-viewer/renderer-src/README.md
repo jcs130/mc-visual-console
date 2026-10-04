@@ -167,7 +167,7 @@ python -m unittest discover -s tools/test -p "test_native_viewer_assets.py" -v
 ```powershell
 # 在本目录执行；游戏模块需由所传 native-packet.cjs 的项目依赖或 NODE_PATH 解析。
 node tools/serve-native-world-preview.mjs "<native-assets-dir>" "<native-viewer-packet.cjs>" MawWebRenderQA 28980 28983
-node --test tools/test/native-create.test.mjs tools/test/native-model-selection.test.mjs tools/test/native-world.test.mjs
+node --test tools/test/native-create.test.mjs tools/test/native-model-selection.test.mjs tools/test/native-world.test.mjs tools/test/native-cutting-board.test.mjs
 ```
 
 网关需要同包注册表并开启 `GATE_NATIVE_VIEWER=1`；NeoForge 时间桥需 `GATE_NEOFORGE_TIME_BRIDGE=1`。模组组件/粒子仍按各自真实 codec 配置，不能省略协议适配。QA 启动器只连接 `127.0.0.1`，HTTP 也只监听回环；只允许 GET、最多四个 SSE 客户端，检查 Host/Origin/资源路径及哈希。网页无游戏动作或管理接口。实际 Agent 项目应复用 `attachNativeWorld`，不要另外登录一个同名观察账号。诊断 harness 可在启动器内部导出的同一个 `bot` 上执行动作；这不开放 HTTP 控制。
@@ -189,8 +189,20 @@ node --test tools/test/native-create.test.mjs tools/test/native-model-selection.
 直接调用官方客户端类核对了 96 组 UV、5 组 64 位种子扰动距离、9 组流向角、5 组真实草颜色图结果和原生液体高度累加。32 项 Node 回归与 8 项导出回归通过，覆盖大于 256 个状态的 17 位 direct palette、损坏长度/位宽、缺失群系、动态遮挡及动画时序。隔离服重连后当前区域 2,615 个非空气方块绘制 2,568 个，6 个实服水体状态全部生成几何、无未收到区块，真实 WebGL 未报错；随后用隔离服 3×3 小水池检查实时方块更新。小水池是明确的 QA 设施，不是自主建造或自然探索证明。原生实体方块、资源覆盖冲突、沼泽草染色、红树苗偏移等仍列在检查页；实体、GUI/背包、完整光照和粒子仍待继续移植。
 
 ```powershell
-node --test tools/test/native-create.test.mjs tools/test/native-model-selection.test.mjs tools/test/native-world.test.mjs tools/test/native-environment.test.mjs tools/test/native-fluid.test.mjs
+node --test tools/test/native-create.test.mjs tools/test/native-model-selection.test.mjs tools/test/native-world.test.mjs tools/test/native-environment.test.mjs tools/test/native-fluid.test.mjs tools/test/native-cutting-board.test.mjs
 ```
+
+### 空切菜板原生模型与短游玩闭环（2026-10-04）
+
+`src/native-viewer/cutting-board.js` 只适配已核对的 Farmer's Delight 1.3.4 JAR（SHA-256 `139ad7696462c89c03eea463f805abffa552526c5dadaadae221dd9624cb197c`）。原生 `CuttingBoardBlockEntity` 同步 `Inventory` 和 `IsItemCarved`；其 Java 渲染器在板上没有物品时立即返回，因此空板可直接显示原始方块模型。实际导出资源经过哈希读取验证：`farmersdelight:block/cutting_board` 有 4 个原始元素、20 个面，使用原始 497 字节 PNG；朝西变体保留原生 `y=270` 旋转。没有用木板、代理方块或生成几何代替切菜板。
+
+宿主快照新增 `cuttingBoards[]`，每项含绝对 `position`、原生 `stateId` 和 `content`。它只读取行动玩家已经收到的方块实体数据：`Inventory.Size=1`、`Items=[]` 且完整字段可核对时为 `empty`，有实际物品时为 `occupied`，缺失或格式未知时为 `unknown`。**仅确认空板后才绘制原始静态模型**；占用状态明确报告顶部物品渲染未适配，并列出原生物品 ID 和数量，未知状态明确报告未收到或无法核对的数据，不把两者画成空板。不会额外读取磁盘库存或查询其他玩家。板上内容参与场景重建签名，原木放入、加工后清空等变化会使旧空板缓存失效；方块替换、卸载及缺失的新方块实体数据也不能沿用旧的空库存。
+
+39 项原生渲染 Node 回归通过，包含本轮 7 项新增检查：真实空板标签、占用标签、缺失或损坏库存、版本与状态锁定、同连接的空板→占用→空板变化，以及替换和卸载后的旧数据清理。它们验证资源来源与状态门槛，**不能代替实际 WebGL 画面或相同模组 Java 客户端的场景对照**。顶部物品、实体、GUI/背包、完整光照和其他已有缺口仍未完成；`completeSceneParityVerified` 与 `renderParityVerified` 保持 false，整个画面尚未验收为 1:1。
+
+同一普通 Mineflayer 动作账号还在隔离服实际完成自然采木→手工合成工作台、木斧和切菜板→放置并切割原木→拾取树皮和去皮原木。材料、合成产物和加工产物由本人原生库存及世界状态核对，本轮没有通过管理命令提供材料。这是同一账号的脚本游玩闭环，尚不证明 Agent 已能长期自主规划、持续生活或掌握全部模组功能。
+
+真实浏览器读取 `MawWebRenderQA` 的当前连接，空板 `(5,64,-3)` 使用朝南的原始模型和贴图显示；将本人去皮原木放上板后，页面列出顶部物品渲染未适配及 `minecraft:stripped_mangrove_log ×1`，没有继续画旧的空板。空手取回并走近拾取后，模型恢复；最终区域 2,608 个非空气方块、2,560 个已绘制方块，13 项明确缺口、0 个未收到区块，浏览器无 warn/error。截图位于私人研究目录 `E:\QiandengJiSocietyLab\research\native-survival-play-preview-20261004.png`，不提交资源或实测库存。Mineflayer 动作端尚将此薄板映射为完整石头碰撞，通用模组 physics/pathfinder 仍需另行适配；正确原生渲染不代表兼容代理的寻路已正确。
 
 ## 检查 1.20.6 源码
 

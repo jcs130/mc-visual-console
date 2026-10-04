@@ -9,7 +9,8 @@ import { NativeWorldState, loadNativeStateRegistry, longNumber, longBigInt, nati
 const rows = [
   { stateId: 777, name: 'minecraft:air', properties: {}, renderShape: 'INVISIBLE', hasBlockEntity: false },
   { stateId: 70001, name: 'mod:original_bricks', properties: { facing: 'north' }, renderShape: 'MODEL', hasBlockEntity: false },
-  { stateId: 70002, name: 'create:shaft', properties: { axis: 'y' }, renderShape: 'MODEL', hasBlockEntity: true }
+  { stateId: 70002, name: 'create:shaft', properties: { axis: 'y' }, renderShape: 'MODEL', hasBlockEntity: true },
+  { stateId: 70003, name: 'farmersdelight:cutting_board', properties: { facing: 'west', waterlogged: 'false' }, renderShape: 'MODEL', hasBlockEntity: true }
 ]
 const bytes = Buffer.from(rows.map(r => JSON.stringify(r)).join('\n'))
 const hash = createHash('sha256').update(bytes).digest('hex')
@@ -141,4 +142,49 @@ test('missing configured biome values fail closed rather than substituting vanil
   const { world } = worldFixture()
   world.setBiomeRegistry({ id: 'minecraft:worldgen/biome', entries: [{ key: 'minecraft:plains', value: null }] })
   assert.match(world.snapshot().reason, /BIOME_REGISTRY_INCOMPLETE/)
+})
+
+test('empty, loaded and cleared cutting boards come only from this stream and change snapshot inputs', () => {
+  const { world, packet, chunk } = worldFixture()
+  const position = { x: -2, y: 64, z: -1 }
+  chunk.setBlockStateId(new Vec3(14, 64, 15), 70003)
+  const empty = { IsItemCarved: 0, Inventory: { Size: 1, Items: [] } }
+  packet('map_chunk', { x: -1, z: -1, chunkData: chunk.dump(), blockEntities: [{ x: 14, z: 15, y: 64, nbtData: empty }] })
+  world.setPose(pose)
+  const before = world.snapshot({ halfExtent: 1, below: 0, above: 0 })
+  assert.deepEqual(before.cuttingBoards, [{ position, stateId: 70003, content: 'empty' }])
+  assert.equal(before.completeSceneParityVerified, false)
+
+  packet('tile_entity_data', { location: position, nbtData: { IsItemCarved: 0,
+    Inventory: { Size: 1, Items: [{ count: 1, Slot: 0, id: 'minecraft:mangrove_log', components: { 'mod:native_owner': 'private-value' } }] } } })
+  const loaded = world.snapshot({ halfExtent: 1, below: 0, above: 0 })
+  assert.deepEqual(loaded.groups, before.groups)
+  assert.equal(loaded.cuttingBoards[0].content, 'occupied')
+  assert.deepEqual(loaded.cuttingBoards[0].storedItem, { id: 'minecraft:mangrove_log', count: 1 })
+  assert(!JSON.stringify(loaded.cuttingBoards).includes('private-value'))
+  assert.notEqual(JSON.stringify(loaded.cuttingBoards), JSON.stringify(before.cuttingBoards))
+
+  packet('tile_entity_data', { location: position, nbtData: empty })
+  assert.deepEqual(world.snapshot({ halfExtent: 1, below: 0, above: 0 }).cuttingBoards, before.cuttingBoards)
+})
+
+test('missing, cleared or replaced cutting-board data cannot reuse an old empty inventory', () => {
+  const { world, packet, chunk } = worldFixture()
+  const position = { x: -2, y: 64, z: -1 }
+  chunk.setBlockStateId(new Vec3(14, 64, 15), 70003)
+  packet('map_chunk', { x: -1, z: -1, chunkData: chunk.dump(), blockEntities: [] })
+  world.setPose(pose)
+  const board = () => world.snapshot({ halfExtent: 1, below: 0, above: 0 }).cuttingBoards[0]
+  assert.equal(board().content, 'unknown')
+  assert.equal(board().reason, 'NATIVE_CUTTING_BOARD_ENTITY_NOT_RECEIVED')
+  packet('tile_entity_data', { location: position, nbtData: { IsItemCarved: 0, Inventory: { Size: 1, Items: [] } } })
+  assert.equal(board().content, 'empty')
+  packet('tile_entity_data', { location: position, nbtData: null })
+  assert.equal(board().content, 'unknown')
+  packet('tile_entity_data', { location: position, nbtData: { IsItemCarved: 0, Inventory: { Size: 1, Items: [] } } })
+  packet('block_change', { location: position, type: 70001 })
+  packet('block_change', { location: position, type: 70003 })
+  assert.equal(board().content, 'unknown')
+  packet('unload_chunk', { chunkX: -1, chunkZ: -1 })
+  assert.deepEqual(world.snapshot({ halfExtent: 1, below: 0, above: 0 }).cuttingBoards, [])
 })
