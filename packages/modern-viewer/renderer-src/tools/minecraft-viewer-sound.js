@@ -49,9 +49,34 @@ function cortiMusicEvent(state, events) {
   return events?.[fallback]?.length ? fallback : null;
 }
 
+function cortiAudioWaitLabel(milliseconds) {
+  const seconds = Math.max(0, Math.ceil((milliseconds || 0) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+function cortiAudioStatus(snapshot) {
+  if (snapshot.error) return snapshot.error;
+  if (!snapshot.available) return '等待本地 1.20.6 声音资源';
+  if (!snapshot.connected) return '连接断开，声音已停止';
+  if (!snapshot.soundEnabled && !snapshot.musicEnabled) return '游戏音效与背景音乐已关闭';
+  if (!snapshot.unlocked) return '点击音效或音乐，开启网页声音';
+  if (!snapshot.volumes.master) return '总音量为零，请调整声音设置';
+  const effects = !snapshot.soundEnabled ? '音效已关闭' : !snapshot.volumes.effects ? '音效已静音' : '音效已开启';
+  const music = {
+    disabled: '背景音乐已关闭', muted: '背景音乐已静音',
+    'listener-unknown': '背景音乐等待角色位置', 'context-unavailable': '当前区域没有背景音乐',
+    'record-playing': '正在播放唱片，背景音乐暂候', loading: '背景音乐正在加载',
+    playing: `正在播放：${snapshot.musicTrack || '背景音乐'}`,
+    scheduled: `背景音乐将在 ${cortiAudioWaitLabel(snapshot.musicWaitMs)} 后播放`,
+    'awaiting-schedule': '正在安排背景音乐',
+  }[snapshot.musicGate] || '背景音乐等待就绪';
+  return `${effects} · ${music}`;
+}
+
 function cortiInstallWorldSound(socket) {
   const button = document.getElementById('corti-sound-toggle');
   const musicButton = document.getElementById('corti-music-toggle');
+  const testButton = document.getElementById('corti-sound-test');
+  const playMusicButton = document.getElementById('corti-music-play');
   if (!button && !musicButton) return null;
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   const loadPreference = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
@@ -116,7 +141,8 @@ function cortiInstallWorldSound(socket) {
     if (!musicCandidate()) return 'context-unavailable';
     if (!volumes.master || !volumes.music) return 'muted';
     if ([...voices.values()].some(voice => voice.category === 'records')) return 'record-playing';
-    if ([...voices.values()].some(voice => voice.category === 'music')) return 'playing';
+    const music = [...voices.values()].find(voice => voice.category === 'music');
+    if (music) return music.started ? 'playing' : 'loading';
     return Number.isFinite(nextMusicAt) ? 'scheduled' : 'awaiting-schedule';
   };
   const state = () => ({ available: Boolean(AudioContextClass && manifest), unlocked: context?.state === 'running',
@@ -124,6 +150,7 @@ function cortiInstallWorldSound(socket) {
     manifestEventCount: manifest?.events ? Object.keys(manifest.events).length : 0,
     soundEnabled: enabled, musicEnabled, volumes: { ...volumes }, voices: voices.size, pendingLocalSounds: localTimers.size,
     music: [...voices.values()].find(voice => voice.category === 'music')?.name ?? null,
+    musicTrack: [...voices.values()].find(voice => voice.category === 'music')?.track ?? null,
     error: lastAudioError, connected, originKnown: Boolean(origin), dimension: musicState.dimension,
     biome: musicState.biome, musicCandidate: musicCandidate(), musicGate: musicGate(),
     musicWaitMs: Number.isFinite(nextMusicAt) ? Math.max(0, Math.ceil(nextMusicAt - now())) : null });
@@ -142,15 +169,21 @@ function cortiInstallWorldSound(socket) {
     }
     if (musicButton) {
       musicButton.textContent = !musicEnabled ? '音乐 关闭' : !manifest ? '音乐 资源未就绪'
-        : snapshot.unlocked ? '音乐 开启' : '音乐 点击开启';
+        : !snapshot.unlocked ? '音乐 点击开启'
+          : snapshot.musicGate === 'muted' ? '音乐 静音'
+            : snapshot.musicGate === 'playing' ? '音乐 播放中'
+              : snapshot.musicGate === 'loading' ? '音乐 加载中'
+                : snapshot.musicGate === 'scheduled' ? `音乐 ${cortiAudioWaitLabel(snapshot.musicWaitMs)}` : '音乐 等待';
       musicButton.dataset.active = String(musicEnabled && snapshot.unlocked && available);
       musicButton.setAttribute('aria-pressed', String(musicEnabled));
+      musicButton.title = cortiAudioStatus(snapshot);
     }
+    if (testButton) testButton.disabled = !available || !connected || !enabled || !volumes.master || !volumes.effects;
+    if (playMusicButton) playMusicButton.disabled = !available || !connected || !origin || !musicCandidate()
+      || !volumes.master || !volumes.music || [...voices.values()].some(voice => ['music', 'records'].includes(voice.category));
     const output = document.querySelector('[data-corti-audio-status]');
     if (output) {
-      output.textContent = lastAudioError || (!manifest ? '等待本地 1.20.6 声音资源'
-        : !snapshot.unlocked ? '点击页面开启声音（浏览器要求）'
-          : !connected ? '连接断开，声音已停止' : snapshot.music ? '游戏音效与背景音乐正在播放' : '游戏音频已就绪');
+      output.textContent = cortiAudioStatus(snapshot);
       const diagnostics = { audioOriginKnown: String(snapshot.originKnown),
         audioDimension: snapshot.dimension ?? '', audioBiome: snapshot.biome ?? '',
         audioManifestEvents: String(snapshot.manifestEventCount),
@@ -277,6 +310,7 @@ function cortiInstallWorldSound(socket) {
       if (recentServerSounds.size > 256) recentServerSounds.delete(recentServerSounds.keys().next().value);
     }
     const voice = { id: ++sequence, name, category, streaming: isStream, entityId: event.entityId,
+      started: false, track: variant.file.split('/').at(-1).replace(/\.ogg$/, '').replace(/_/g, ' ').replace(/\b[a-z]/g, letter => letter.toUpperCase()),
       position: position ? { ...position } : null, managedWeather: local && event.clientWeather === true,
       managedBurning: local && event.clientBurning === true,
       managedMusic: local && category === 'music', generation, createdAt: now(), cancelled: false, finished: false };
@@ -321,7 +355,7 @@ function cortiInstallWorldSound(socket) {
         attach(source); source.onended = () => finish(voice); source.start();
       }
       if (voice.cancelled || voice.generation !== generation || disposed || !connected) { stopVoice(voice); return false; }
-      update(); return true;
+      voice.started = true; update(); return true;
     } catch {
       if (!voice.cancelled && voice.generation === generation && !disposed && connected)
         lastAudioError = '部分声音资源无法读取或解码，请检查本地音频资源';
@@ -347,20 +381,32 @@ function cortiInstallWorldSound(socket) {
   };
   const localPickup = event => {
     if (event?.kind === 'world_event') {
-      if (event.id === 2001 && validPosition(event.position)) {
+      const effectId = Number.isInteger(event.effectId) ? event.effectId : event.id;
+      if (effectId === 2001 && validPosition(event.position)) {
         const sound = cortiBlockSound(event.blockName, 'break', blockSounds, manifest?.events);
         if (sound) playLocal({ name: sound.name, category: 'blocks', position: event.position,
           volume: (sound.volume + 1) / 2, pitch: sound.pitch * 0.8 });
-      } else if (event.id === 1010 && validPosition(event.position)) {
+      } else if (effectId === 1010 && validPosition(event.position)) {
         const item = String(event.itemName || '').replace(/^minecraft:/, '');
         if (/^music_disc_[a-z0-9_]+$/.test(item)) {
           const name = `music_disc.${item.slice('music_disc_'.length)}`;
           if (manifest?.events?.[name]?.length) {
+            // Plugins can supply the raw record sound as well as the vanilla
+            // level event. Keep that fresh same-position voice in either order.
+            const forwarded = [...voices.values()].some(voice => voice.category === 'records' && voice.name === name
+              && now() - voice.createdAt < 400 && voice.position
+              && Math.hypot(voice.position.x - event.position.x, voice.position.y - event.position.y,
+                voice.position.z - event.position.z) < 1);
+            if (forwarded) { stop({ category: 'music' }); return; }
             stop({ category: 'music' }); stop({ category: 'records', position: event.position });
             playLocal({ name, category: 'records', position: event.position, volume: 4, pitch: 1, fixedRange: 64 });
           }
         }
-      } else if (event.id === 1011 && validPosition(event.position)) stop({ category: 'records', position: event.position });
+      } else if (effectId === 1011 && validPosition(event.position)) stop({ category: 'records', position: event.position });
+      // Exact 1.20.6 LevelRenderer mapping. Blaze firing is a level event,
+      // rather than a sound_effect packet, and must not remain silent.
+      else if (effectId === 1018 && validPosition(event.position)) playLocal({ name: 'entity.blaze.shoot',
+        category: 'hostile', position: event.position, volume: 2, pitch: 1 + (Math.random() - Math.random()) * 0.2 });
       return;
     }
     if (event?.kind !== 'pickup' || event.self !== true || !['item', 'experience_orb'].includes(event.entityName)) return;
@@ -509,13 +555,16 @@ function cortiInstallWorldSound(socket) {
   // on pointerdown first would turn an initial "enable" click into "disable".
   const pageGesture = event => {
     if (event?.target === button || event?.target === musicButton || button?.contains?.(event?.target)
-      || musicButton?.contains?.(event?.target)) return;
+      || musicButton?.contains?.(event?.target) || event?.target === testButton || event?.target === playMusicButton
+      || testButton?.contains?.(event?.target) || playMusicButton?.contains?.(event?.target)) return;
     gesture();
   };
   document.addEventListener('pointerdown', pageGesture, { passive: true });
   document.addEventListener('keydown', pageGesture);
   const uiClick = event => {
     if (event?.isTrusted === false || !enabled || now() - lastClickAt < 90) return;
+    if (event?.target === testButton || event?.target === playMusicButton
+      || testButton?.contains?.(event?.target) || playMusicButton?.contains?.(event?.target)) return;
     const control = event?.target?.closest?.('button,[role="button"],summary');
     if (!control || control.disabled) return;
     lastClickAt = now();
@@ -535,6 +584,25 @@ function cortiInstallWorldSound(socket) {
     mixer(); if (musicEnabled) void resume();
   };
   button?.addEventListener('click', toggleEffects); musicButton?.addEventListener('click', toggleMusic);
+  const testSound = async () => {
+    hasGesture = true;
+    await resume();
+    return play({ name: 'ui.button.click', category: 'players', position: null, volume: 0.5, pitch: 1 }, true);
+  };
+  const playMusicNow = async () => {
+    hasGesture = true; musicEnabled = true;
+    savePreference('corti-viewer-music', 'on'); mixer(); await resume();
+    const key = musicCandidate();
+    if (!key || !origin || !volumes.master || !volumes.music
+      || [...voices.values()].some(voice => ['music', 'records'].includes(voice.category))) return false;
+    nextMusicAt = Infinity;
+    const played = await play({ name: key, category: 'music', position: null, volume: 1, pitch: 1 }, true);
+    if (!played && !disposed && connected) scheduleMusic(true);
+    update(); return played;
+  };
+  const onTestSound = () => { void testSound(); };
+  const onPlayMusic = () => { void playMusicNow(); };
+  testButton?.addEventListener('click', onTestSound); playMusicButton?.addEventListener('click', onPlayMusic);
   const inputs = [...document.querySelectorAll('[data-corti-audio-volume]')];
   const setVolume = (key, value) => {
     if (!Object.hasOwn(volumes, key) || !Number.isFinite(value)) return false;
@@ -555,6 +623,7 @@ function cortiInstallWorldSound(socket) {
       document.removeEventListener('pointerdown', pageGesture); document.removeEventListener('keydown', pageGesture);
       document.removeEventListener('click', uiClick);
       button?.removeEventListener('click', toggleEffects); musicButton?.removeEventListener('click', toggleMusic);
+      testButton?.removeEventListener('click', onTestSound); playMusicButton?.removeEventListener('click', onPlayMusic);
       for (const [input, handler] of inputHandlers) input.removeEventListener('input', handler);
       context?.removeEventListener?.('statechange', update); void context?.close(); buffers.clear();
     } };

@@ -1,4 +1,4 @@
-/** Optional exact surface sounds; requires Java 21 and an installed 1.20.6 client. */
+/** Exact sound IDs and optional surface sounds; requires Java 21 and an installed 1.20.6 client. */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { validateViewerSoundRegistry } from '../host/viewer-sound-registry.mjs';
 
 const [versionArg, librariesArg, outputArg, javaArg = 'java'] = process.argv.slice(2);
 if (!versionArg || !librariesArg || !outputArg) {
@@ -38,10 +39,11 @@ const temporary = await mkdtemp(path.join(tmpdir(), 'mc-block-sounds-'));
 try {
   const source = path.join(temporary, 'ExportMinecraftBlockSounds.java');
   const resultFile = path.join(temporary, 'block-sounds.json');
+  const registryFile = path.join(temporary, 'registry.json');
   await copyFile(fileURLToPath(new URL('./ExportMinecraftBlockSounds.java', import.meta.url)), source);
   const processResult = spawnSync(javaArg, ['-Djava.awt.headless=true', '-cp',
-    [client, ...libraries.map(value => value.file)].join(path.delimiter), source, resultFile],
-  { timeout: 60_000, windowsHide: true, encoding: 'utf8', maxBuffer: 1024 * 1024 });
+    [client, ...libraries.map(value => value.file)].join(path.delimiter), source, resultFile, registryFile],
+  { cwd: temporary, timeout: 60_000, windowsHide: true, encoding: 'utf8', maxBuffer: 1024 * 1024 });
   if (processResult.error || processResult.status !== 0) {
     throw Error('Native block sound export failed; check Java 21 and the installed client libraries');
   }
@@ -50,10 +52,14 @@ try {
     throw Error('Unexpected native block registry; no surface sound mapping was published');
   }
   result.clientJarSha256 = clientJarSha256;
+  const registry = JSON.parse(await readFile(registryFile, 'utf8'));
+  registry.clientJarSha256 = clientJarSha256;
+  validateViewerSoundRegistry(registry, '1.20.6');
   const output = path.join(path.resolve(outputArg), 'public', 'sounds');
   await mkdir(output, { recursive: true });
   await writeFile(path.join(output, 'block-sounds.json'), JSON.stringify(result) + '\n');
-  console.log(`1.20.6 方块声音已导出：${Object.keys(result.blocks).length} 种原版方块`);
+  await writeFile(path.join(output, 'registry.json'), JSON.stringify(registry) + '\n');
+  console.log(`1.20.6 声音已导出：${Object.keys(result.blocks).length} 种方块，${Object.keys(registry.events).length} 个准确声音编号`);
 } finally {
   // This path is the single directory returned by mkdtemp above.
   if (path.dirname(path.resolve(temporary)) !== path.resolve(tmpdir())

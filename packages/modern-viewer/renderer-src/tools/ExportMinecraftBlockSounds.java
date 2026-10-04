@@ -1,7 +1,7 @@
 import java.lang.reflect.*;
 import java.nio.file.*;
 
-/** Read native SoundType facts from a verified 1.20.6 client, without joining a world.
+/** Read native SoundType and sound registry facts from a verified 1.20.6 client, without joining a world.
  * The mapped member names below are specific to that version. No game code or
  * launcher assets are redistributed with this source. */
 class ExportMinecraftBlockSounds {
@@ -34,5 +34,17 @@ class ExportMinecraftBlockSounds {
     result.append("}}\n");
     Files.writeString(Path.of(args[0]),result);
     System.err.println("Exported block sound types: " + count);
+    Object registry = Class.forName("lp").getField("b").get(null); // BuiltInRegistries.SOUND_EVENT
+    Method id = Class.forName("jv").getMethod("a", Object.class); // Registry.getId
+    StringBuilder soundRegistry = new StringBuilder("{\"schemaVersion\":1,\"minecraftVersion\":\"1.20.6\",\"events\":{");
+    int soundCount = 0;
+    for (Object event : (Iterable<?>)registry) {
+      if (soundCount++ > 0) soundRegistry.append(',');
+      soundRegistry.append(quote(id.invoke(registry,event))).append(":{\"name\":")
+        .append(quote(key.invoke(registry,event))).append('}');
+    }
+    soundRegistry.append("}}\n");
+    Files.writeString(Path.of(args[1]),soundRegistry);
+    System.err.println("Exported sound registry: " + soundCount);
   }
 }

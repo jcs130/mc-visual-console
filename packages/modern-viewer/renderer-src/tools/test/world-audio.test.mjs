@@ -15,6 +15,7 @@ const sampleManifest = () => ({ minecraftVersion: '1.20.6', assetIndexSha1: 'a'.
   'block.stone.break': [variant('break')], 'weather.rain': [variant('rain')],
   'entity.player.swim': [variant('swim')], 'entity.player.splash': [variant('splash')],
   'block.fire.ambient': [variant('fire')], 'ui.button.click': [variant('click')],
+  'entity.blaze.shoot': [variant('blaze')],
   'music.game': [variant('music', { stream: true })], 'music.end': [variant('end', { stream: true })],
   'music_disc.cat': [variant('record', { stream: true })], 'music.nether.warped_forest': [],
 } });
@@ -31,8 +32,10 @@ function fixture(options = {}) {
   let clock = 0; let counter = 0;
   const timers = new Map(); const intervals = new Map();
   const button = new Events(); const musicButton = new Events(); const output = new Events();
+  const testButton = new Events(); const playMusicButton = new Events();
   const document = new Events();
-  document.getElementById = id => id === 'corti-sound-toggle' ? button : id === 'corti-music-toggle' ? musicButton : null;
+  document.getElementById = id => ({ 'corti-sound-toggle': button, 'corti-music-toggle': musicButton,
+    'corti-sound-test': testButton, 'corti-music-play': playMusicButton })[id] ?? null;
   document.querySelector = () => output; document.querySelectorAll = () => [];
   const socket = new Events(); socket.connected = true;
   socket.on = socket.addEventListener; socket.off = socket.removeEventListener;
@@ -70,7 +73,7 @@ function fixture(options = {}) {
     setInterval: fn => { const id = ++counter; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id),
   });
   runInContext(script, vm);
-  return { vm, api: window.cortiWorldAudio, button, musicButton, document, socket, contexts, media, starts, panners, requests, requestOptions, output, storage,
+  return { vm, api: window.cortiWorldAudio, button, musicButton, testButton, playMusicButton, document, socket, contexts, media, starts, panners, requests, requestOptions, output, storage,
     async ready() { await flush(); }, async unlock() { document.emit('pointerdown', {}); await flush(); },
     async advance(ms) { clock += ms; for (const [id, timer] of [...timers]) if (timer.at <= clock) { timers.delete(id); timer.fn(); }
       for (const fn of intervals.values()) fn(); await flush(); },
@@ -175,6 +178,53 @@ test('client music has a startup wait and a gap between tracks; explicit server 
   assert.equal(view.media.length, 2);
   await view.advance(30000); assert.equal(view.media[1].paused, false); view.close();
 });
+
+test('audio settings reveal scheduled playback, track names, music mute and master mute', async () => {
+  const view = fixture(); await view.ready(); await view.unlock();
+  view.socket.emit('position', { pos: { x: 0, y: 64, z: 0 } });
+  view.socket.emit('biome', { dimension: 'overworld', name: 'plains' });
+  await view.advance(1000);
+  assert.match(view.musicButton.textContent, /音乐 \d+:\d{2}/);
+  assert.match(view.output.textContent, /后播放/);
+  await view.advance(31000);
+  assert.equal(view.musicButton.textContent, '音乐 播放中');
+  assert.match(view.output.textContent, /正在播放：Music/);
+  view.api.setVolume('music', 0);
+  assert.equal(view.musicButton.textContent, '音乐 静音');
+  assert.match(view.output.textContent, /背景音乐已静音/);
+  view.api.setVolume('master', 0);
+  assert.match(view.output.textContent, /总音量为零/);
+  view.close();
+});
+
+test('explicit music play unlocks the browser, skips the wait and never overlaps tracks or records', async () => {
+  const view = fixture(); await view.ready();
+  view.socket.emit('position', { pos: { x: 0, y: 64, z: 0 } });
+  view.socket.emit('biome', { dimension: 'overworld', name: 'plains' });
+  view.document.emit('pointerdown', { target: view.playMusicButton }); await flush();
+  assert.equal(view.contexts.length, 0);
+  view.playMusicButton.emit('click'); await flush();
+  assert.equal(view.api.state().unlocked, true);
+  assert.equal(view.api.state().musicEnabled, true);
+  assert.equal(view.media.length, 1); assert.equal(view.media[0].paused, false);
+  view.playMusicButton.emit('click'); await flush(); assert.equal(view.media.length, 1);
+  view.media[0].emit('ended');
+  await view.api.play({ name: 'music_disc.cat', category: 'records' });
+  view.playMusicButton.emit('click'); await flush(); assert.equal(view.media.length, 2);
+  view.close();
+});
+
+test('sound preview unlocks and plays once without duplicating the normal UI click', async () => {
+  const view = fixture(); await view.ready();
+  view.document.emit('pointerdown', { target: view.testButton }); await flush();
+  assert.equal(view.contexts.length, 0);
+  view.testButton.emit('click');
+  view.document.emit('click', { target: view.testButton, isTrusted: true });
+  await flush(); await view.advance(100);
+  assert.equal(view.api.state().unlocked, true); assert.equal(view.starts.length, 1);
+  view.api.setVolume('effects', 0); assert.equal(view.testButton.disabled, true);
+  view.close();
+});
 test('a connect after unlock schedules music from a stationary own avatar without a second user click', async () => {
   const view = fixture(); await view.ready(); await view.unlock();
   view.socket.emit('connect');
@@ -247,21 +297,50 @@ test('missing local audio reports a sanitized playback error instead of silent s
 });
 test('confirmed world blockbreak and jukebox start/stop use exact source names and positions', async () => {
   const view = fixture(); await view.ready(); await view.unlock();
-  view.socket.emit('presentationEvent', { kind: 'world_event', id: 2001, blockName: 'stone', position: { x: 1, y: 64, z: 1 } });
+  view.socket.emit('presentationEvent', { kind: 'world_event', effectId: 2001, data: 1, blockName: 'stone', position: { x: 1, y: 64, z: 1 } });
   await view.advance(100); assert.equal(view.starts.length, 1); assert.equal(view.starts[0].playbackRate.value, 0.8);
-  view.socket.emit('presentationEvent', { kind: 'world_event', id: 1010, itemName: 'music_disc_cat', position: { x: 1, y: 64, z: 1 } });
+  view.socket.emit('presentationEvent', { kind: 'world_event', effectId: 1010, data: 1, itemName: 'music_disc_cat', position: { x: 1, y: 64, z: 1 } });
   await view.advance(100); assert.equal(view.media.length, 1); assert.equal(view.media[0].paused, false);
-  view.socket.emit('presentationEvent', { kind: 'world_event', id: 1011, position: { x: 50, y: 64, z: 1 } });
+  view.socket.emit('presentationEvent', { kind: 'world_event', effectId: 1011, data: 0, position: { x: 50, y: 64, z: 1 } });
   assert.equal(view.media[0].paused, false);
-  view.socket.emit('presentationEvent', { kind: 'world_event', id: 1011, position: { x: 1, y: 64, z: 1 } });
+  view.socket.emit('presentationEvent', { kind: 'world_event', effectId: 1011, data: 0, position: { x: 1, y: 64, z: 1 } });
   assert.equal(view.media[0].paused, true); view.close();
 });
 test('a jukebox stop arriving before the local delay cancels its pending record start', async () => {
   const view = fixture(); await view.ready(); await view.unlock();
   const position = { x: 1, y: 64, z: 1 };
-  view.socket.emit('presentationEvent', { kind: 'world_event', id: 1010, itemName: 'music_disc_cat', position });
-  view.socket.emit('presentationEvent', { kind: 'world_event', id: 1011, position });
+  view.socket.emit('presentationEvent', { kind: 'world_event', effectId: 1010, data: 1, itemName: 'music_disc_cat', position });
+  view.socket.emit('presentationEvent', { kind: 'world_event', effectId: 1011, data: 0, position });
   await view.advance(100); assert.equal(view.media.length, 0); view.close();
+});
+
+test('raw and level-event record delivery retains one voice in either arrival order', async () => {
+  for (const rawFirst of [true, false]) {
+    const view = fixture(); await view.ready(); await view.unlock();
+    const position = { x: 1, y: 64, z: 1 };
+    const raw = () => view.socket.emit('worldSound', { name: 'music_disc.cat', category: 'records', position });
+    const level = () => view.socket.emit('presentationEvent', { kind: 'world_event', effectId: 1010, data: 1,
+      itemName: 'music_disc_cat', position });
+    if (rawFirst) { raw(); await flush(); level(); } else { level(); raw(); }
+    await view.advance(100);
+    assert.equal(view.media.filter(voice => !voice.paused).length, 1);
+    view.close();
+  }
+});
+
+test('vanilla blaze fire level events produce the positional hostile sound and deduplicate raw sound', async () => {
+  for (const withRaw of [false, true]) {
+    const view = fixture(); await view.ready(); await view.unlock();
+    const position = { x: 2, y: 64, z: 1 };
+    view.socket.emit('presentationEvent', { kind: 'world_event', effectId: 1018, data: 0, position });
+    if (withRaw) view.socket.emit('worldSound', { name: 'entity.blaze.shoot', category: 'hostile', position, volume: 2 });
+    await view.advance(100);
+    assert.equal(view.starts.length, 1);
+    assert.ok(view.requests.includes('/sounds/blaze.ogg'));
+    assert.equal(view.panners[0].positionX.value, 2);
+    assert.equal(view.panners[0].destination.gain.value, 0.8);
+    view.close();
+  }
 });
 test('rain ambience requires actual rain, known rain precipitation and visible sky', async () => {
   const view = fixture(); await view.ready(); await view.unlock();

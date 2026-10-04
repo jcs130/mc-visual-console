@@ -13,6 +13,7 @@ test('all camera modes mount the same survival and interaction HUD without a dep
     for (const mount of ['data-corti-hearts', 'data-corti-food', 'data-corti-air', 'data-corti-mana-vital',
       'data-corti-level', 'data-corti-slots', 'data-corti-offhand', 'id="corti-menu"', 'id="corti-minimap"',
       'id="viewer-fishing-catch"', 'id="corti-sound-toggle"', 'id="corti-music-toggle"',
+      'id="corti-sound-test"', 'id="corti-music-play"',
       'data-corti-audio-volume="master"', 'data-corti-audio-volume="effects"', 'data-corti-audio-volume="music"']) {
       assert.ok(html.includes(mount), `${mode} is missing ${mount}`);
     }

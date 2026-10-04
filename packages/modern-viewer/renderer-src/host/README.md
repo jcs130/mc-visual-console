@@ -4,11 +4,14 @@ These ESM observers attach to an existing Mineflayer bot. They do not create a b
 
 ```js
 import { observeViewerSounds } from './viewer-sound-packets.mjs'
+import { loadViewerSoundRegistry } from './viewer-sound-registry.mjs'
 import { observeViewerFishingCatch } from './viewer-fishing.mjs'
 
+const audioRegistry = await loadViewerSoundRegistry(assetRoot, bot.version, bot.registry)
+if (audioRegistry.diagnostic) console.warn(audioRegistry.diagnostic)
 const stopSounds = observeViewerSounds(
   bot._client,
-  bot.registry,
+  audioRegistry.registry,
   id => id === bot.entity?.id ? bot.entity.position : bot.entities[id]?.position,
   event => io.emit('worldSound', event),
   event => io.emit('worldSoundStop', event)
@@ -30,7 +33,9 @@ function dispose() {
 
 Raw `sound_effect`, `named_sound_effect` and `entity_sound_effect` are the audio source. Adding Mineflayer's derivative `soundEffectHeard` to the same socket would play duplicate sounds. Registry holders and inline resource names are supported; coordinates use the protocol's 1/8 block units. `stop_sound` forwards the specified category, resource name or both; empty `worldSoundStop` stops all active sounds. New viewer connections do not replay sound packets.
 
-Hosts can include original registry facts in other presentation messages: block break world event `2001` carries `blockName` from `registry.blocksByStateId[data]`; jukebox event `1010` carries `itemName` from `registry.items[data]`. Event `1011` stops the jukebox. Biome and weather snapshots can include known `hasPrecipitation`, `temperature` and `precipitation` fields. Leave unknown climate fields absent; the world's raining flag alone does not imply rain falls in the current biome.
+Java 1.20.6 numeric sound IDs require `public/sounds/registry.json`, exported from the matching client alongside block sounds. `minecraft-data` inherits the 1.20.4 sound table for this version, which maps real fish and villager sounds to unrelated events. The loader validates the complete version and client hash; missing or invalid exact assets disable numeric sounds with a diagnostic while inline named sounds still work. The protocol library already converts holder IDs to zero-based registry IDs; do not subtract again.
+
+Hosts can include original registry facts in other presentation messages: `presentationEvent` with `kind: 'world_event'` uses `effectId`, integer `data` and absolute `position`. Block break event `2001` carries `blockName` from `registry.blocksByStateId[data]`; jukebox event `1010` carries `itemName` from `registry.items[data]`. Event `1011` stops the jukebox; `1018` plays the vanilla blaze firing sound. Biome and weather snapshots can include known `hasPrecipitation`, `temperature` and `precipitation` fields. Leave unknown climate fields absent; the world's raining flag alone does not imply rain falls in the current biome.
 
 Catch attribution requires the local player's bobber, bite, actual rod reel, newly spawned loot close to the hook, velocity toward its owner, collection by that player and a matching inventory increase. Ordinary pickups, other players' catches, cancelled casts and full-inventory loot produce no catch receipt. Vanilla fish, junk and treasure use the same path. Pending evidence expires after 8 seconds and resets on Mineflayer `respawn` or `end`.
 
