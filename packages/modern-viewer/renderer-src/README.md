@@ -204,6 +204,20 @@ node --test tools/test/native-create.test.mjs tools/test/native-model-selection.
 
 真实浏览器读取 `MawWebRenderQA` 的当前连接，空板 `(5,64,-3)` 使用朝南的原始模型和贴图显示；将本人去皮原木放上板后，页面列出顶部物品渲染未适配及 `minecraft:stripped_mangrove_log ×1`，没有继续画旧的空板。空手取回并走近拾取后，模型恢复；最终区域 2,608 个非空气方块、2,560 个已绘制方块，13 项明确缺口、0 个未收到区块，浏览器无 warn/error。截图位于私人研究目录 `E:\QiandengJiSocietyLab\research\native-survival-play-preview-20261004.png`，不提交资源或实测库存。Mineflayer 动作端尚将此薄板映射为完整石头碰撞，通用模组 physics/pathfinder 仍需另行适配；正确原生渲染不代表兼容代理的寻路已正确。
 
+### 同账号本人模型与观战视角（2026-10-04）
+
+原生世界入口现在默认第三人称跟随行动玩家，提供第一人称、自由观察和“回到 Agent”；F5 切换第一／第三人称，双击画布回到 Agent。镜头与模型使用本人连接的绝对坐标、yaw/pitch 和眼高，不新建观战账号。自由观察距离限制在已收到的局部区域，跟随镜头随移动／重生更新；镜头避障仅使用实际已绘制的几何，不替未知方块编造碰撞。
+
+`native-world-preview-host.mjs` 的 snapshot/frame 与 `/status.json` 增加 `selfPlayer`：本人 UUID、名字、实体 ID、位置、朝向、眼高、生命、最大生命、饱食、着地、潜行、速度和皮肤可用状态。缺失数值用 null；断连或 UUID／身份不符时整个对象为 null。最大生命由收到的真实属性和 modifier 计算，HUD 不用固定 20 冒充实时值。profile 只报告是否含自定义 textures，不输出纹理值或 URL。
+
+`native-player.js` 使用 skinview3d 3.4.2 的经典玩家六部位与第二层原始 UV。默认皮肤按锁定 Minecraft 1.21.1 客户端的 `floorMod(UUID.hashCode(),18)` 选择，九张 slim 后九张 wide；只读取资源清单中的原始 64×64 PNG 并校验哈希。真实 profile 有自定义纹理或未确定时明确标为不可用，不套用 Steve、VRoid 或千灯纪旧皮肤。`player-camera.js` 使用 Mineflayer 的真实视线约定（yaw=0 朝 -Z、正 pitch 朝上）。
+
+这一步只显示本账号经典身体和真实头部俯仰；步行动画、潜行／游泳姿态、持物、防具、自定义在线皮肤和其他实体尚未适配。原生状态中的 `entityRenderingAvailable` 与完整场景一致性门槛仍为 false。原始模型和皮肤来源核验、实际 WebGL 可见性、完整 Java 画面对照分别验收，不能相互替代。
+
+```powershell
+node --test tools/test/native-player.test.mjs tools/test/player-camera.test.mjs tools/test/native-world-preview-host.test.mjs tools/test/agent-status.test.mjs
+```
+
 ## 检查 1.20.6 源码
 
 ```powershell

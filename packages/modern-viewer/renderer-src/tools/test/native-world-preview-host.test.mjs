@@ -11,6 +11,7 @@ import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, sendNa
 let directory, prepared, registryHash
 const assetPath = 'assets/test/models/native.json'
 const assetBytes = Buffer.from('{"parent":"test:original"}')
+const defaultSkinNames = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri']
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 
 before(async () => {
@@ -21,8 +22,17 @@ before(async () => {
   registryHash = digest(bytes)
   await fs.writeFile(path.join(directory, 'registry/block-states.jsonl'), bytes)
   await fs.writeFile(path.join(directory, assetPath), assetBytes)
+  const assets = { [assetPath]: { sha256: digest(assetBytes), bytes: assetBytes.length } }
+  // These fixture bytes test selection/integrity metadata, never scene parity.
+  for (const model of ['slim', 'wide']) for (const name of defaultSkinNames) {
+    const skinPath = `assets/minecraft/textures/entity/player/${model}/${name}.png`
+    const skinBytes = Buffer.from(`test-native-default-skin:${model}:${name}`)
+    await fs.mkdir(path.dirname(path.join(directory, skinPath)), { recursive: true })
+    await fs.writeFile(path.join(directory, skinPath), skinBytes)
+    assets[skinPath] = { sha256: digest(skinBytes), bytes: skinBytes.length }
+  }
   await fs.writeFile(path.join(directory, 'native-assets.json'), JSON.stringify({ minecraftVersion: '1.21.1', assetIntegrityVerified: true,
-    registryHashes: { 'block-states.jsonl': registryHash }, assets: { [assetPath]: { sha256: digest(assetBytes), bytes: assetBytes.length } } }))
+    registryHashes: { 'block-states.jsonl': registryHash }, assets }))
   prepared = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0 })
 })
 after(async () => {
@@ -82,6 +92,18 @@ function events (host) {
   })
 }
 
+function playerEntity (bot) {
+  bot.entity = { id: 42, username: bot.username, isValid: true, position: { x: 3.5, y: 64, z: -8.25 },
+    yaw: 0.75, pitch: -0.25, eyeHeight: 1.62, onGround: true, crouching: false, velocity: { x: 0.1, y: 0, z: -0.2 } }
+  bot.health = 17; bot.food = 12
+  return bot.entity
+}
+
+function ownPlayerInfo (bot, properties = []) {
+  bot._client.emit('player_info', { action: { add_player: true }, data: [{ uuid: bot._client.uuid,
+    player: { name: bot.username, properties } }] })
+}
+
 test('legacy positional CLI arguments and defaults are preserved without starting a bot', () => {
   assert.deepEqual(parseNativeWorldPreviewArguments(['assets', 'native.cjs']), {
     assetDirectory: 'assets', nativePacketFile: 'native.cjs', username: 'MawWebRenderQA', gamePort: 28980, port: 28983
@@ -103,6 +125,7 @@ test('attachment synchronously reads the supplied stream before listening and pr
   assert.equal(host.world.dimension.name, 'minecraft:overworld')
   assert.equal(host.world.lastSequence, 1)
   assert.equal(bot._client.listenerCount('registry_data'), 1)
+  assert.equal(bot._client.listenerCount('player_info'), 1)
   await host.listen()
   assert.equal(host.server.address().address, '127.0.0.1')
   const close = host.close()
@@ -111,6 +134,7 @@ test('attachment synchronously reads the supplied stream before listening and pr
   assert.deepEqual(counts(), { quitCount: 0, detachCount: 0 })
   assert.equal(nativeStream.events.listenerCount('packet'), 0)
   assert.equal(bot._client.listenerCount('registry_data'), 0)
+  assert.equal(bot._client.listenerCount('player_info'), 0)
   assert.equal(bot.listenerCount('end'), 1)
   assert.equal(host.status().viewer.available, false)
   await assert.rejects(host.listen(), /HOST_CLOSED/)
@@ -162,6 +186,111 @@ test('status returns caller-provided goals, decisions and receipts without inven
   const health = JSON.parse((await request(host, 'health.json')).body)
   assert.equal(health.ok, true); assert.equal(health.ready, false)
   assert.deepEqual(JSON.parse((await request(host, 'healthz')).body), health)
+})
+
+test('self player reads only the caller connection, with real attribute modifiers and explicit missing fields', t => {
+  const { bot, host, counts } = attachment(t)
+  const entity = playerEntity(bot)
+  entity.attributes = { 'minecraft:generic.max_health': { value: 20, modifiers: [
+    { amount: 4, operation: 0 }, { amount: 0.25, operation: 1 }, { amount: 0.1, operation: 2 }
+  ] } }
+  bot._client.write = () => assert.fail('read-only preview must not write Minecraft packets')
+  bot.players = { ExistingAgent: { username: 'ExistingAgent', uuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff', skinData: { url: 'private-peer-texture' } } }
+  const self = host.status().selfPlayer
+  assert.equal(self.uuid, bot._client.uuid)
+  assert.equal(self.name, 'ExistingAgent'); assert.equal(self.entityId, 42)
+  assert.deepEqual(self.position, { x: 3.5, y: 64, z: -8.25 })
+  assert.equal(self.yaw, 0.75); assert.equal(self.pitch, -0.25); assert.equal(self.eyeHeight, 1.62)
+  assert.equal(self.health, 17); assert.equal(self.food, 12); assert.equal(self.maxHealth, 33)
+  entity.attributes['minecraft:generic.max_health'].modifiers.push({ amount: 1, operation: 99 })
+  assert.equal(host.status().selfPlayer.maxHealth, null)
+  assert.equal(self.onGround, true); assert.equal(self.sneaking, false)
+  assert.deepEqual(self.velocity, { x: 0.1, y: 0, z: -0.2 })
+  assert.deepEqual(self.skin, { kind: 'unavailable', reason: 'PLAYER_SKIN_PROFILE_UNAVAILABLE' })
+  assert.deepEqual(host.status().identity.profile, { available: false, hasCustomTextures: null })
+  assert(!JSON.stringify(host.status()).includes('private-peer-texture'))
+  delete entity.attributes; delete entity.onGround; delete entity.crouching; delete entity.velocity
+  bot.health = NaN; bot.food = undefined
+  const unavailable = host.status().selfPlayer
+  for (const field of ['health', 'food', 'maxHealth', 'onGround', 'sneaking', 'velocity']) assert.equal(unavailable[field], null)
+  entity.uuid = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+  assert.equal(host.status().selfPlayer, null)
+  assert.deepEqual(counts(), { quitCount: 0, detachCount: 0 })
+})
+
+test('default skins follow the matched 1.21.1 UUID hash ordering including negative Java hashes', t => {
+  const { bot, host } = attachment(t)
+  playerEntity(bot)
+  for (let index = 0; index < 18; index++) {
+    bot._client.uuid = `00000000-0000-0000-0000-${index.toString(16).padStart(12, '0')}`
+    ownPlayerInfo(bot)
+    const skin = host.status().selfPlayer.skin, model = index < 9 ? 'slim' : 'wide'
+    assert.equal(skin.kind, 'default'); assert.equal(skin.model, model)
+    assert.equal(skin.assetPath, `assets/minecraft/textures/entity/player/${model}/${defaultSkinNames[index % 9]}.png`)
+    assert.match(skin.sha256, /^[a-f0-9]{64}$/)
+    assert.deepEqual(host.status().identity.profile, { available: true, hasCustomTextures: false })
+  }
+  bot._client.uuid = '00000000-0000-0000-0000-0000ffffffff'
+  ownPlayerInfo(bot)
+  assert.equal(host.status().selfPlayer.skin.assetPath, 'assets/minecraft/textures/entity/player/wide/zuri.png')
+})
+
+test('custom or unknown own textures never silently become a default skin or disclose texture contents', async t => {
+  const { bot, host } = attachment(t)
+  playerEntity(bot)
+  ownPlayerInfo(bot, [{ name: 'textures', value: 'private-base64-do-not-send', signature: 'private-signature' }])
+  assert.deepEqual(host.status().identity.profile, { available: true, hasCustomTextures: true })
+  assert.deepEqual(host.status().selfPlayer.skin, { kind: 'unavailable', reason: 'CUSTOM_PLAYER_SKIN_NOT_RESOLVED' })
+  await host.listen()
+  const stream = await events(host); t.after(() => stream.close())
+  const identity = await stream.next()
+  assert.deepEqual(identity.profile, { available: true, hasCustomTextures: true })
+  assert(!JSON.stringify(identity).includes('private-'))
+  const state = await stream.next()
+  assert(!JSON.stringify(state).includes('private-'))
+  // Missing properties differ from a received empty properties array.
+  bot._client.emit('player_info', { action: { add_player: true }, data: [{ uuid: bot._client.uuid, player: { name: bot.username } }] })
+  assert.equal(host.status().identity.profile.hasCustomTextures, null)
+  assert.equal(host.status().selfPlayer.skin.reason, 'PLAYER_SKIN_PROFILE_UNAVAILABLE')
+})
+
+test('an already logged-in profile is accepted only for the same account UUID and name', t => {
+  const { bot, host } = attachment(t)
+  playerEntity(bot)
+  bot.player = { username: bot.username, uuid: bot._client.uuid, skinData: { url: 'private-texture-url', model: 'slim' } }
+  assert.equal(host.status().selfPlayer.skin.reason, 'CUSTOM_PLAYER_SKIN_NOT_RESOLVED')
+  delete bot.player.skinData
+  assert.equal(host.status().selfPlayer.skin.kind, 'default')
+  bot.player.username = 'AnotherAgent'
+  assert.equal(host.status().selfPlayer.skin.reason, 'PLAYER_SKIN_PROFILE_UNAVAILABLE')
+})
+
+test('SSE snapshot and frames resample the action player without borrowing another player or writing commands', async t => {
+  const { bot, host, nativeStream } = attachment(t)
+  const entity = playerEntity(bot)
+  bot.registry.dimensionsArray[0].height = 128
+  bot._client.write = () => assert.fail('preview is read-only')
+  ownPlayerInfo(bot)
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 1, name: 'login', params: { worldState: { dimension: 0 } } })
+  host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight })
+  await host.listen()
+  const stream = await events(host); t.after(() => stream.close())
+  assert.equal((await stream.next()).playerUuid, bot._client.uuid)
+  const snapshot = await stream.next()
+  assert.equal(snapshot.type, 'snapshot'); assert.equal(snapshot.selfPlayer.health, 17)
+  assert.equal(snapshot.selfPlayer.uuid, bot._client.uuid)
+  assert.equal(snapshot.selfPlayer.skin.kind, 'default')
+  entity.position.x = 3.75; entity.yaw = -1.1; bot.health = 9; bot.food = 7; entity.onGround = false; entity.crouching = true
+  const frame = await stream.next()
+  assert.equal(frame.type, 'frame')
+  assert.equal(frame.selfPlayer.position.x, 3.75); assert.equal(frame.selfPlayer.yaw, -1.1)
+  assert.equal(frame.selfPlayer.health, 9); assert.equal(frame.selfPlayer.food, 7)
+  assert.equal(frame.selfPlayer.onGround, false); assert.equal(frame.selfPlayer.sneaking, true)
+  assert.equal(snapshot.selfPlayer.position.x, 3.5)
+  bot.username = 'WrongPlayer'; bot.emit('spawn')
+  assert.equal(host.status().selfPlayer, null)
+  bot.emit('end', 'closed')
+  assert.equal(host.status().selfPlayer, null)
 })
 
 test('missing, throwing, asynchronous, cyclic and oversized Agent data remain explicit unavailable', async t => {

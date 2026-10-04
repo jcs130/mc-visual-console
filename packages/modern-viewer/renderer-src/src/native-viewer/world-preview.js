@@ -6,13 +6,18 @@ import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.
 import { waterGeometry } from './native-fluid.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
 import { renderAgentStatus, startAgentStatusPolling } from './agent-status.js'
+import { createNativePlayerActor } from './native-player.js'
+import { playerCamera, playerHud } from './player-camera.js'
 
 const el = id => document.getElementById(id)
 const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
 const templates = new Map(), actors = new Map()
-let statics, worldRoot, camera, controls, following = false, lastGroupSignature = null, unknown = [], drawn = 0, tickAge = null
+let statics, worldRoot, camera, controls, viewMode = 'third', lastGroupSignature = null, unknown = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
+let assetReader, playerUuid, selfActor = null, selfActorKey = null, cameraCollisionAt = 0, cameraDistance = null
+const cameraRay = new THREE.Raycaster(), labelPoint = new THREE.Vector3()
+const viewButtons = () => [el('third'), el('orbit'), el('follow'), el('recenter')]
 const stopAgentStatus = startAgentStatusPolling({
   fetchStatus: signal => fetch('/status.json', { cache: 'no-store', credentials: 'same-origin', signal }),
   onView: view => renderAgentStatus(view, el), expectedPlayer: () => player
@@ -28,6 +33,7 @@ async function start () {
     if (!result.ok) throw Error(`NATIVE_ASSET_UNAVAILABLE:${path}`)
     return result.arrayBuffer()
   })
+  assetReader = reader
   loader = new NativeModelLoader(reader)
   colormaps = {}
   for (const name of ['grass', 'foliage']) {
@@ -42,22 +48,28 @@ async function start () {
   const light = new THREE.DirectionalLight(0xffffff, 2.2); light.position.set(35, 70, 15); scene.add(light)
   camera = new THREE.PerspectiveCamera(70, 1, 0.05, 150)
   renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.outputColorSpace = THREE.SRGBColorSpace
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.domElement.setAttribute('aria-label', '实时原生区块与 Create 动力画面')
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.domElement.setAttribute('aria-label', 'Agent 本人及实时原生世界画面')
   el('viewport').append(renderer.domElement)
-  controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxDistance = 50
+  controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxDistance = 9; controls.enabled = false
   const resize = () => { const host = el('viewport'); renderer.setSize(host.clientWidth, host.clientHeight); camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix() }
   const observer = new ResizeObserver(resize); observer.observe(el('viewport')); resize()
-  el('orbit').onclick = () => { following = false; controls.enabled = true; orbitPosition() }
-  el('follow').onclick = () => { following = true; controls.enabled = false }
+  el('orbit').onclick = () => setView('region')
+  el('follow').onclick = () => setView('first')
+  el('third').onclick = () => setView('third')
+  el('recenter').onclick = () => setView('third')
+  renderer.domElement.ondblclick = () => setView('third')
+  addEventListener('keydown', event => {
+    if (event.key === 'F5') { event.preventDefault(); setView(viewMode === 'third' ? 'first' : 'third') }
+  })
   renderer.setAnimationLoop(now => {
     try {
       loader.animateTextures((now - textureStart) / 50)
       if (current?.pose) {
-        if (following) {
-          const p = current.pose
-          camera.position.set(p.x, p.y + p.eyeHeight, p.z)
-          camera.quaternion.setFromEuler(new THREE.Euler(p.pitch, p.yaw, 0, 'YXZ'))
-        } else controls.update()
+        updatePlayerCamera(now)
+        if (selfActor) {
+          selfActor.applyPose(current.pose)
+          selfActor.root.visible = viewMode !== 'first' && (cameraDistance === null || cameraDistance > 0.9)
+        }
         // The game's absolute clock supplies the shaft phase; crank chase is
         // integrated once per tick, independently of browser frame rate.
         if (current.time) {
@@ -69,6 +81,7 @@ async function start () {
         }
       }
       renderer.render(scene, camera)
+      updatePlayerLabel()
     } catch (error) { fail(error) }
   })
   events = new EventSource('/events')
@@ -77,7 +90,8 @@ async function start () {
       const value = JSON.parse(message.data)
       if (value.type === 'identity') {
         if (value.registrySha256 !== manifest.registryHashes['block-states.jsonl'] || value.mode !== 'live_same_player_connection') throw Error('NATIVE_WORLD_IDENTITY_MISMATCH')
-        player = value.player; el('player').textContent = player; return
+        if (playerUuid && playerUuid !== value.playerUuid) clearScene()
+        player = value.player; playerUuid = value.playerUuid?.toLowerCase(); el('player').textContent = player; el('hud-player').textContent = player; return
       }
       if (value.type === 'unavailable') { clearScene(); el('status').textContent = '原生连接不可用'; el('error').textContent = value.reason; return }
       if (value.type === 'waiting') {
@@ -89,23 +103,87 @@ async function start () {
         if (value.registrySha256 !== manifest.registryHashes['block-states.jsonl'] || value.mode !== 'live_same_player_connection') throw Error('NATIVE_WORLD_SNAPSHOT_MISMATCH')
         if (epoch !== value.epoch) { clearScene(); epoch = value.epoch; tickAge = null }
         current = value; pending = value; void rebuildLatest()
-      } else if (value.type === 'frame' && current && value.epoch === epoch) { current.pose = value.pose; current.time = value.time; current.packetSequence = value.packetSequence }
+      } else if (value.type === 'frame' && current && value.epoch === epoch) { current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.time = value.time; current.packetSequence = value.packetSequence }
       if (current) {
         const p = current.pose
         el('position').textContent = `${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`
+        el('hud-position').textContent = `X ${p.x.toFixed(1)} · Y ${p.y.toFixed(1)} · Z ${p.z.toFixed(1)}`
+        const hud = playerHud(current.selfPlayer, playerUuid)
+        el('hud-health').textContent = hud.health; el('hud-food').textContent = hud.food
+        void ensureSelfActor(current.selfPlayer)
         el('sequence').textContent = String(current.packetSequence)
         el('clock').textContent = current.time ? `${current.time.age} tick` : '时钟未同步（动画暂停）'
       }
     } catch (error) { fail(error) }
   }
-  events.onerror = () => { clearScene(); el('status').textContent = '世界流已断开，等待重新连接'; for (const button of [el('orbit'), el('follow')]) button.disabled = true }
+  events.onerror = () => { clearScene(); el('status').textContent = '世界流已断开，等待重新连接'; for (const button of viewButtons()) button.disabled = true }
   addEventListener('pagehide', () => { events.close(); observer.disconnect(); controls.dispose(); clearScene(); loader.dispose(); renderer.dispose() }, { once: true })
 }
 function orbitPosition () {
   if (!current?.pose) return
-  const p = current.pose
-  controls.target.set(p.x - 2, p.y + 1, p.z + 1)
-  camera.position.set(p.x + 10, p.y + 12, p.z + 14); controls.update()
+  const view = playerCamera(current.pose, 'region')
+  controls.target.fromArray(view.target); camera.position.fromArray(view.position); controls.update()
+}
+function setView (mode) {
+  viewMode = mode; cameraDistance = null; cameraCollisionAt = 0
+  controls.enabled = mode === 'region'; if (controls.enabled) orbitPosition()
+  el('viewport').dataset.view = mode
+  el('third').setAttribute('aria-pressed', String(mode === 'third'))
+  el('follow').setAttribute('aria-pressed', String(mode === 'first'))
+  el('orbit').setAttribute('aria-pressed', String(mode === 'region'))
+  el('view-name').textContent = { third: '第三人称 · 跟随 Agent', first: '第一人称 · Agent 眼位', region: '自由观察 · 双击回到 Agent' }[mode]
+}
+function updatePlayerCamera (now) {
+  if (viewMode === 'region') { controls.update(); return }
+  const view = playerCamera(current.pose, viewMode)
+  const target = new THREE.Vector3().fromArray(view.target), desired = new THREE.Vector3().fromArray(view.position)
+  if (viewMode === 'third') {
+    const direction = desired.clone().sub(target), length = direction.length(); direction.normalize()
+    if (now - cameraCollisionAt >= 100 || cameraDistance === null) {
+      // Collide only against geometry actually rendered from received blocks.
+      // Never reveal an unsupported block with an invented collision mesh.
+      statics.updateMatrixWorld(true); cameraRay.set(target, direction); cameraRay.far = length
+      const hit = cameraRay.intersectObjects(statics.children, true).find(hit => hit.distance > 0.05)
+      cameraDistance = hit ? Math.max(0.1, hit.distance - 0.2) : length; cameraCollisionAt = now
+    }
+    desired.copy(target).addScaledVector(direction, Math.min(cameraDistance, length))
+  } else cameraDistance = null
+  camera.position.copy(desired); camera.lookAt(target)
+}
+async function ensureSelfActor (self) {
+  if (!self || self.uuid !== playerUuid || self.skin?.kind !== 'default') {
+    if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose(); selfActor = null }
+    selfActorKey = null; el('viewport').dataset.playerModel = 'unavailable'
+    el('skin-state').textContent = `本人模型未显示：${self?.skin?.reason || '等待本账号的原始皮肤信息'}`
+    return
+  }
+  const key = `${self.uuid}:${self.skin.assetPath}`
+  if (key === selfActorKey) return
+  const run = generation; selfActorKey = key
+  try {
+    const actor = await createNativePlayerActor(assetReader, { uuid: self.uuid })
+    if (run !== generation || selfActorKey !== key) { actor.dispose(); return }
+    if (actor.assetInfo.path !== self.skin.assetPath || actor.assetInfo.sha256 !== self.skin.sha256) {
+      actor.dispose(); throw Error('NATIVE_PLAYER_SKIN_BINDING_MISMATCH')
+    }
+    if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose() }
+    selfActor = actor; worldRoot.add(actor.root)
+    el('viewport').dataset.playerModel = 'ready'
+    el('skin-state').textContent = `本人模型：1.21.1 原始 ${actor.assetInfo.name || self.skin.model} 皮肤 · 经典玩家模型；装备与完整动画待适配`
+  } catch (error) {
+    if (run === generation) { el('viewport').dataset.playerModel = 'unavailable'; el('skin-state').textContent = `本人模型未显示：${error.message}` }
+  }
+}
+function updatePlayerLabel () {
+  const label = el('player-label'), p = current?.pose
+  if (!p || !selfActor?.root.visible || viewMode === 'first') { label.hidden = true; return }
+  labelPoint.set(p.x, p.y + 2.1, p.z).project(camera)
+  const visible = labelPoint.z >= -1 && labelPoint.z <= 1 && Math.abs(labelPoint.x) <= 1 && Math.abs(labelPoint.y) <= 1
+  label.hidden = !visible
+  if (visible) {
+    label.textContent = player; label.style.left = `${(labelPoint.x + 1) * el('viewport').clientWidth / 2}px`
+    label.style.top = `${(1 - labelPoint.y) * el('viewport').clientHeight / 2}px`
+  }
 }
 function clearStatics () {
   if (!statics) return
@@ -116,11 +194,14 @@ function clearScene () {
   generation++; pending = null; current = null; lastGroupSignature = null; clearStatics()
   for (const actor of actors.values()) removeActor(actor)
   actors.clear()
+  if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose(); selfActor = null }
+  selfActorKey = null; cameraDistance = null; el('player-label').hidden = true; el('viewport').dataset.playerModel = 'waiting'
+  el('hud-health').textContent = '未收到'; el('hud-food').textContent = '未收到'; el('hud-position').textContent = '等待绝对坐标'
   drawn = 0; unknown = []; tickAge = null
   for (const id of ['blocks', 'drawn', 'sequence']) el(id).textContent = '0'
   for (const id of ['position', 'kinetics', 'clock', 'environment']) el(id).textContent = '等待新状态'
   el('coverage').textContent = '等待新区域状态'; el('issues').replaceChildren()
-  for (const button of [el('orbit'), el('follow')]) button.disabled = true
+  for (const button of viewButtons()) button.disabled = true
   camera?.position.set(0, 0, 0)
 }
 function removeActor (actor) {
@@ -242,8 +323,8 @@ async function rebuildLatest () {
       el('coverage').textContent = `${nextIssues.length} 项模型/材质缺口，${snapshot.missingColumns.length} 个区块未收到；实体和光照尚未验收。`
       el('issues').replaceChildren(...nextIssues.slice(0, 12).map(text => { const li = document.createElement('li'); li.textContent = text; return li }))
       el('status').textContent = '实时状态已接入 · 画面适配进行中'
-      el('error').textContent = ''; el('orbit').disabled = false; el('follow').disabled = false
-      if (camera.position.lengthSq() === 0) orbitPosition()
+      el('error').textContent = ''; for (const button of viewButtons()) button.disabled = false
+      if (camera.position.lengthSq() === 0 && viewMode === 'region') orbitPosition()
     }
   } catch (error) { fail(error) } finally { rebuilding = false }
 }

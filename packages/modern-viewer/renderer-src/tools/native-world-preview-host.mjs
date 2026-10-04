@@ -10,6 +10,36 @@ const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../sr
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536
 const CSP = "default-src 'self'; script-src 'self'; img-src 'self' blob:; style-src 'unsafe-inline'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'"
 const SHA256 = /^[a-f0-9]{64}$/
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
+// DefaultPlayerSkin.get(UUID), matched to the original 1.21.1 client. The
+// client's order is all nine slim skins, then all nine wide skins.
+const DEFAULT_PLAYER_SKINS = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri']
+const finiteNumber = value => Number.isFinite(value) ? value : null
+const vector = value => value && [value.x, value.y, value.z].every(Number.isFinite) ? { x: value.x, y: value.y, z: value.z } : null
+
+function defaultPlayerSkin (uuid, manifest) {
+  const hex = uuid.replaceAll('-', '')
+  // java.util.UUID.hashCode folds the four 32-bit words into a signed int.
+  const hash = [0, 8, 16, 24].reduce((value, offset) => value ^ Number.parseInt(hex.slice(offset, offset + 8), 16), 0)
+  const index = ((hash % 18) + 18) % 18, model = index < 9 ? 'slim' : 'wide'
+  const assetPath = `assets/minecraft/textures/entity/player/${model}/${DEFAULT_PLAYER_SKINS[index % 9]}.png`
+  const asset = manifest.assets[assetPath]
+  if (!SHA256.test(asset?.sha256 || '') || !Number.isSafeInteger(asset?.bytes) || asset.bytes <= 0) return { kind: 'unavailable', reason: 'DEFAULT_PLAYER_SKIN_ASSET_MISSING' }
+  return { kind: 'default', model, assetPath, sha256: asset.sha256 }
+}
+
+function maximumHealth (entity) {
+  const attributes = entity?.attributes
+  const attribute = attributes?.['minecraft:generic.max_health'] || attributes?.['generic.max_health'] || attributes?.['minecraft:max_health'] || attributes?.max_health
+  if (!attribute || !Number.isFinite(attribute.value)) return null
+  const modifiers = attribute.modifiers ?? []
+  if (!Array.isArray(modifiers) || modifiers.some(m => !Number.isFinite(m?.amount) || ![0, 1, 2].includes(m.operation))) return null
+  const base = modifiers.filter(m => m.operation === 0).reduce((value, m) => value + m.amount, attribute.value)
+  const multipliedBase = modifiers.filter(m => m.operation === 1).reduce((value, m) => value + base * m.amount, base)
+  const result = modifiers.filter(m => m.operation === 2).reduce((value, m) => value * (1 + m.amount), multipliedBase)
+  // The matched vanilla max_health attribute bounds its effective value.
+  return Number.isFinite(result) ? Math.max(1, Math.min(1024, result)) : null
+}
 
 export function parseNativeWorldPreviewArguments (args) {
   const [assetDirectory, nativePacketFile, username = 'MawWebRenderQA', gamePortString = '28980', portString = '28983'] = args
@@ -95,8 +125,36 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       const detach = attachNativeWorld({ bot, nativeStream, world })
       const clients = new Set()
       let closed = false, closing = null, listening = null, currentPort = port, snapshotDirty = true, lastCenter = null, connectionEnded = false, identityConfirmed = Boolean(bot.username)
-      const identity = () => ({ player: username, confirmed: identityConfirmed, playerUuid: bot._client.uuid || null, entityId: bot.entity?.id ?? null })
+      let receivedProfile = null
+      const ownProfile = () => {
+        const uuid = bot._client.uuid
+        if (!UUID.test(uuid || '') || !identityConfirmed || connectionEnded || world.error) return { available: false, hasCustomTextures: null }
+        if (receivedProfile?.uuid === uuid.toLowerCase()) return { available: true, hasCustomTextures: receivedProfile.hasCustomTextures }
+        // Also support attaching to an already logged-in caller. Mineflayer's
+        // public profile is usable only after its UUID has matched this client.
+        const player = [bot.players?.[username], bot.player].find(p => typeof p?.uuid === 'string' && p.uuid.toLowerCase() === uuid.toLowerCase() && p.username === username)
+        if (!player) return { available: false, hasCustomTextures: null }
+        return { available: true, hasCustomTextures: Boolean(player.skinData) }
+      }
+      const selfPlayer = () => {
+        const uuid = bot._client.uuid, entity = bot.entity
+        if (!identityConfirmed || closed || connectionEnded || world.error || !UUID.test(uuid || '') ||
+            (bot.username || bot._client.username) !== username || (entity?.username && entity.username !== username) ||
+            (entity?.uuid && (typeof entity.uuid !== 'string' || entity.uuid.toLowerCase() !== uuid.toLowerCase())) ||
+            !Number.isSafeInteger(entity?.id) || entity.isValid === false || !vector(entity.position)) return null
+        const profile = ownProfile()
+        const skin = profile.hasCustomTextures === false ? defaultPlayerSkin(uuid, manifest) : {
+          kind: 'unavailable', reason: profile.hasCustomTextures === true ? 'CUSTOM_PLAYER_SKIN_NOT_RESOLVED' : 'PLAYER_SKIN_PROFILE_UNAVAILABLE'
+        }
+        return { uuid: uuid.toLowerCase(), name: username, entityId: entity.id, position: vector(entity.position),
+          yaw: finiteNumber(entity.yaw), pitch: finiteNumber(entity.pitch), eyeHeight: finiteNumber(entity.eyeHeight),
+          health: finiteNumber(bot.health), maxHealth: maximumHealth(entity), food: finiteNumber(bot.food),
+          onGround: typeof entity.onGround === 'boolean' ? entity.onGround : null,
+          sneaking: typeof entity.crouching === 'boolean' ? entity.crouching : null, velocity: vector(entity.velocity), skin }
+      }
+      const identity = () => ({ player: username, confirmed: identityConfirmed, playerUuid: bot._client.uuid || null, entityId: bot.entity?.id ?? null, profile: ownProfile() })
       const status = () => ({ schemaVersion: 1, mode: 'live_same_player_connection', readOnly: true, identity: identity(),
+        selfPlayer: selfPlayer(),
         connection: { ended: connectionEnded, playerEntityAvailable: Boolean(bot.entity) },
         viewer: { available: !closed && !world.error, closed, state: world.error || closed ? 'unavailable' : world.dimension && world.pose ? 'snapshot' : 'waiting',
           reason: world.error || (closed ? 'NATIVE_WORLD_HOST_CLOSED' : null), registrySha256: hash, epoch: world.epoch,
@@ -167,18 +225,27 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         if (actual !== username) world.unavailable(Error('NATIVE_WORLD_PLAYER_IDENTITY_MISMATCH'))
         else identityConfirmed = true
       }
+      const playerInfo = packet => {
+        if (!packet?.action?.add_player || !UUID.test(bot._client.uuid || '')) return
+        const own = packet.data?.find(p => typeof p?.uuid === 'string' && p.uuid.toLowerCase() === bot._client.uuid.toLowerCase())
+        if (!own || own.player?.name !== username) return
+        receivedProfile = { uuid: own.uuid.toLowerCase(), hasCustomTextures: Array.isArray(own.player.properties)
+          ? own.player.properties.some(p => p?.name === 'textures') : null }
+      }
       world.on('world', worldChanged); world.on('reset', reset); world.on('pose', pose); world.on('unavailable', unavailable)
       bot.on('error', error); bot.on('kicked', kicked); bot.on('end', ended)
       bot.on('login', verifyIdentity); bot.on('spawn', verifyIdentity)
+      bot._client.on('player_info', playerInfo)
       const timer = setInterval(() => {
         if (closed || !clients.size) return
         try {
-          const snapshot = snapshotDirty || [...clients].some(c => c.needsSnapshot) ? world.snapshot() : null
+          const player = selfPlayer()
+          const snapshot = snapshotDirty || [...clients].some(c => c.needsSnapshot) ? { ...world.snapshot(), selfPlayer: player } : null
           for (const client of clients) {
             if (client.blocked) { client.missedWorld ||= snapshotDirty; continue }
             if (snapshot || client.needsSnapshot) {
-              if (sendNativeWorldEvent(client, snapshot || world.snapshot())) client.needsSnapshot = false
-            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: world.pose, time: world.time, packetSequence: world.lastSequence })
+              if (sendNativeWorldEvent(client, snapshot || { ...world.snapshot(), selfPlayer: player })) client.needsSnapshot = false
+            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: world.pose, selfPlayer: player, time: world.time, packetSequence: world.lastSequence })
           }
           snapshotDirty = false
         } catch (error) { world.unavailable(error) }
@@ -203,6 +270,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           world.off('world', worldChanged); world.off('reset', reset); world.off('pose', pose); world.off('unavailable', unavailable)
           bot.off('error', error); bot.off('kicked', kicked); bot.off('end', ended)
           bot.off('login', verifyIdentity); bot.off('spawn', verifyIdentity)
+          bot._client.off('player_info', playerInfo)
           for (const client of clients) client.response.end()
           clients.clear()
           // Both the action bot and native packet stream belong to the caller.
