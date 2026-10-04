@@ -5,6 +5,7 @@ import { createKineticActor } from './create-kinetics.js'
 import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
 import { waterGeometry } from './native-fluid.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
+import { renderAgentStatus, startAgentStatusPolling } from './agent-status.js'
 
 const el = id => document.getElementById(id)
 const pointKey = p => `${p.x},${p.y},${p.z}`
@@ -12,6 +13,11 @@ let renderer, loader, events, current, pending = null, rebuilding = false, epoch
 const templates = new Map(), actors = new Map()
 let statics, worldRoot, camera, controls, following = false, lastGroupSignature = null, unknown = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
+const stopAgentStatus = startAgentStatusPolling({
+  fetchStatus: signal => fetch('/status.json', { cache: 'no-store', credentials: 'same-origin', signal }),
+  onView: view => renderAgentStatus(view, el), expectedPlayer: () => player
+})
+addEventListener('pagehide', stopAgentStatus, { once: true })
 
 async function start () {
   const response = await fetch('/manifest.json')
