@@ -249,6 +249,8 @@ socket.emit('documentState', {
 
 `observedAt` 是资料接收时间的 Unix 毫秒值。显示最多 8 组、共 64 行，名称、说明和奖励均为纯文本；`summary` 为宿主确认的当前项目，没有当前项时省略。收到快照后展开 18 秒，再缩成当前项目卡片；战斗或真实容器打开时紧凑显示。观众点“查看”仅改变网页展示。断线、`viewerReset` 和页面退出清空资料，刷新后没有新快照时不显示旧资料。
 
+资料展开时临时隐藏技能图标栏，生命、饱食度和魔力 HUD 保持显示。资料收起、战斗紧凑或清空后恢复技能栏本身的显示状态。
+
 可选浏览器适配器 `globalThis.mcViewerGameMessagePreset(event, MinecraftViewerDocuments)` 从现有 `gameMessage` 生成显示快照；确实消费该条消息时返回 `true`，普通消息继续走原有提示。适配器在系统提示限流前运行。`MinecraftViewerDocuments.set(snapshot, { expand: true })`、`clear()` 和 `state()` 提供只读显示与核验接口。
 
 `--preset=qiandengji` 加入千灯纪公会文字显示适配：只接受系统来源的实际看板标题、委托行、认证及进行中进度。普通聊天与私聊不会更新公会资料，动态委托 ID 来自服务端原话。它不查询 `/mycli`，不猜刷新前的内容，不把只有日期和修订号的 `mcagent:board` 通知当成完整看板。其他服务器使用自己的适配器或直接发送 `documentState`。

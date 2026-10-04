@@ -8,7 +8,13 @@ const presetSource = readFileSync(new URL('../presets/qiandengji-guild.js', impo
 const eventsSource = readFileSync(new URL('../minecraft-viewer-events.js', import.meta.url), 'utf8');
 
 class Element {
-  constructor(tag = 'div') { this.tagName = tag.toUpperCase(); this.children = []; this.dataset = {}; this.handlers = new Map(); this.hidden = false; this.textContent = ''; this.style = { setProperty() {} }; this.classList = { add() {}, remove() {} }; }
+  constructor(tag = 'div') {
+    this.tagName = tag.toUpperCase(); this.children = []; this.dataset = {}; this.handlers = new Map();
+    this.hidden = false; this.textContent = ''; this.style = { setProperty() {} };
+    const classes = new Set();
+    this.classList = { add: (...names) => names.forEach(name => classes.add(name)),
+      remove: (...names) => names.forEach(name => classes.delete(name)), contains: name => classes.has(name) };
+  }
   append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } }
   replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
   addEventListener(name, fn) { this.handlers.set(name, fn); }
@@ -46,7 +52,7 @@ function browser({ preset = true, feed = false } = {}) {
     now += ms;
     for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.fn(); }
   };
-  return { api: context.MinecraftViewerDocuments, root: body.children[0], say, emit, advance,
+  return { api: context.MinecraftViewerDocuments, root: body.children[0], body, say, emit, advance,
     lifecycle, timers, feed: elements['corti-event-feed'] };
 }
 // Received system lines from a guild CLI snapshot. IDs and title wording change per board.
@@ -108,6 +114,27 @@ test('combat and real game windows reduce the document without losing its conten
   assert.equal(view.api.state().sections.flatMap(section => section.rows).length, 5);
 });
 
+test('only an expanded document hides the skill panel and collapse or combat restores it', () => {
+  const view = browser();
+  const hidden = () => view.body.classList.contains('mc-viewer-document-expanded');
+  board.forEach(line => view.say(line));
+  assert.equal(hidden(), true);
+  view.emit('tacticalAttack', { id: 3 });
+  assert.equal(hidden(), false);
+  view.advance(5000);
+  assert.equal(hidden(), true);
+  view.emit('containerState', { id: 2 });
+  assert.equal(hidden(), false);
+  view.emit('containerState', null);
+  assert.equal(hidden(), true);
+  view.advance(13_000);
+  assert.equal(hidden(), false);
+  view.root.children[0].children[1].handlers.get('click')();
+  assert.equal(hidden(), true);
+  view.root.children[0].children[1].handlers.get('click')();
+  assert.equal(hidden(), false);
+});
+
 for (const lifecycle of ['viewerReset', 'disconnect', 'pagehide']) test(`${lifecycle} clears received data and cancels timers`, () => {
   const view = browser();
   board.forEach(line => view.say(line));
@@ -116,6 +143,7 @@ for (const lifecycle of ['viewerReset', 'disconnect', 'pagehide']) test(`${lifec
   assert.equal(view.root.hidden, true);
   assert.equal(view.api.state(), null);
   assert.equal(view.timers.size, 0);
+  assert.equal(view.body.classList.contains('mc-viewer-document-expanded'), false);
   assert.equal(view.say(board[4]), false);
 });
 
@@ -138,6 +166,7 @@ test('another host can supply its own normalized document without this preset', 
   assert.equal(view.root.dataset.compact, 'false');
   view.emit('documentState', null);
   assert.equal(view.root.hidden, true);
+  assert.equal(view.body.classList.contains('mc-viewer-document-expanded'), false);
 });
 
 test('new board snapshots replace prior entries and dynamic IDs are not hard-coded', () => {
