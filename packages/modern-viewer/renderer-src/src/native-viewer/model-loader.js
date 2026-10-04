@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { weightedModel, multipartMatches } from './model-selection.js'
 
 // Native assets only. A missing loader/model/texture is an error, never a cube
 // or a vanilla replacement. Scene lighting and complete mod parity are separate
@@ -60,7 +61,7 @@ export function textureId (model, reference) {
   return reference.includes(':') ? reference : `minecraft:${reference}`
 }
 
-export function selectVariant (blockstate, properties) {
+export function selectVariant (blockstate, properties, context = {}) {
   if (blockstate.multipart) throw Error('NATIVE_MULTIPART_MODEL_UNSUPPORTED')
   const matches = Object.entries(blockstate.variants || {}).filter(([key]) => !key || key.split(',').every(pair => {
     const [name, value] = pair.split('=')
@@ -69,11 +70,29 @@ export function selectVariant (blockstate, properties) {
   if (matches.length !== 1) throw Error('NATIVE_BLOCKSTATE_VARIANT_UNRESOLVED')
   let variant = matches[0][1]
   if (Array.isArray(variant)) {
-    if (variant.length !== 1) throw Error('NATIVE_WEIGHTED_VARIANT_REQUIRES_WORLD_SEED')
-    variant = variant[0]
+    if (variant.length !== 1 && !context.defaultBlockSeedVerified) throw Error('NATIVE_WEIGHTED_BLOCK_SEED_UNVERIFIED')
+    variant = variant.length === 1 ? variant[0] : weightedModel(variant, context.position)
   }
   if (variant.uvlock) throw Error('NATIVE_UVLOCK_UNSUPPORTED')
   return variant
+}
+
+export function selectBlockVariants (blockstate, state, position) {
+  // These vanilla blocks use the bytecode-verified default BlockBehaviour seed.
+  // A mod override of getSeed must be ported explicitly, never silently guessed.
+  const context = { position, defaultBlockSeedVerified: ['minecraft:stone', 'minecraft:sand'].includes(state.name) }
+  if (!blockstate.multipart) return [selectVariant(blockstate, state.properties, context)]
+  const parts = blockstate.multipart.filter(part => multipartMatches(part.when, state.properties)).map(part => {
+    let model = part.apply
+    if (Array.isArray(model)) {
+      if (model.length !== 1) throw Error('NATIVE_MULTIPART_WEIGHTED_RANDOM_UNSUPPORTED')
+      model = model[0]
+    }
+    if (model.uvlock) throw Error('NATIVE_UVLOCK_UNSUPPORTED')
+    return model
+  })
+  if (!parts.length) throw Error('NATIVE_MULTIPART_MODEL_UNRESOLVED')
+  return parts
 }
 
 // FaceInfo vertex order, and BlockFaceUV's rotated UV indices, in Minecraft
@@ -143,6 +162,7 @@ export class NativeModelLoader {
     this.textures = new Map()
     this.materials = new Map()
     this.geometries = new Set()
+    this.blockstates = new Map()
   }
 
   async material (id) {
@@ -182,10 +202,30 @@ export class NativeModelLoader {
     return group
   }
 
-  async block (nativeState) {
-    const blockstate = await this.reader.json(resourcePath(nativeState.name, 'blockstates', '.json'))
-    const variant = selectVariant(blockstate, nativeState.properties)
-    return this.model(variant.model, variant)
+  async blockstate (name) {
+    if (!this.blockstates.has(name)) this.blockstates.set(name, this.reader.json(resourcePath(name, 'blockstates', '.json')))
+    return this.blockstates.get(name)
+  }
+
+  async variantsAt (nativeState, position) {
+    return selectBlockVariants(await this.blockstate(nativeState.name), nativeState, position)
+  }
+
+  async models (variants) {
+    const group = new THREE.Group()
+    for (const variant of variants) group.add(await this.model(variant.model, variant))
+    return group
+  }
+
+  async block (nativeState, position) {
+    return this.models(await this.variantsAt(nativeState, position))
+  }
+
+  releaseModel (model) {
+    // Each call to model() owns its geometry; textures/materials are shared.
+    model.traverse(part => {
+      if (part.isMesh && this.geometries.delete(part.geometry)) part.geometry.dispose()
+    })
   }
 
   async dispose () {

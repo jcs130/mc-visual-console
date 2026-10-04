@@ -137,7 +137,7 @@ Create 的轴/曲柄原生旋转、女仆骨骼动画、Domum 材质组合等需
 
 ### 原生 Create 动画的网页验收入口
 
-`src/native-viewer/model-loader.js` 在读取每份模型/贴图时核对导出索引的 SHA-256，解析父模型、子级纹理、原始面 UV、方块变体和元素旋转；使用原始 PNG，不生成替代几何。资源覆盖未决、缺失模型/贴图、自定义 loader、未适配 tint/UV lock/加权变体/动画贴图均明确拒绝，不能据此宣称通用模型加载器已经覆盖整个模组包。
+`src/native-viewer/model-loader.js` 在读取每份模型/贴图时核对导出索引的 SHA-256，解析父模型、子级纹理、原始面 UV、方块变体和元素旋转；使用原始 PNG，不生成替代几何。资源覆盖未决、缺失模型/贴图、自定义 loader、未适配 tint/UV lock/动画贴图均明确拒绝。下文的实时入口新增了经核对的位置加权变体及普通 multipart；未核对的随机种子覆盖仍拒绝，不能据此宣称通用模型加载器已经覆盖整个模组包。
 
 `create-kinetics.js` 当前只验收锁定的 Create 6.0.10 JAR（SHA-256 `ef87fe5709f1ba1f5b8bb20a2925b5afb4669e178fd6d8bf10c167759eefe37a`）。传动轴依据原生 RPM、轴向、坐标相位偏移旋转；曲柄加载原始 `hand_crank/block` 和完整 `hand_crank/handle` 模型，保留握柄的 45° 部件，按原生每 tick 四分之一速度追踪与 partial tick 插值处理正反转和停机惯性。规则核对安装 JAR 的字节码及 [Create 对应提交源码](https://github.com/Creators-of-Create/Create/tree/ac0c444d9828da3453ae8cc65338e8de063286fb)。更新 Create 版本须重新核对，不能悄悄套用旧适配。
 
@@ -153,6 +153,28 @@ node --test tools/test/native-create.test.mjs
 ```powershell
 python -m unittest discover -s tools/test -p "test_native_viewer_assets.py" -v
 ```
+
+### 同一玩家连接的实时原生世界
+
+`tools/native-world-host.mjs` 提供 `loadNativeStateRegistry`、`NativeWorldState` 和 `attachNativeWorld({ bot, nativeStream, world })`，供宿主接入**已有执行动作的 bot**。`nativeStream` 使用同一 bot 的 `attachNativeViewerPackets(bot, registryHash)`，必须在登录包到达之前挂载；掉线后用新连接重建，不能延用旧序号或旧世界。维度解析回调读取这条连接实际收到的注册表高度、最小 Y 与维度名。普通 Mineflayer 世界中的兼容代理 ID 不参与原生渲染。
+
+原生快照包含 `login/respawn`、区块加载/卸载、单方块及批量变化、方块实体转速和真实 `update_time`。注册表 SHA-256 或包序号不符立即清空并说明原因；不读取磁盘世界、不请求额外区块。默认检查玩家周围水平 ±10 格、向下 5 格、向上 10 格，缓存最多 512 个已收到区块列。快照带绝对坐标、维度、本人位置/实际眼高、区域范围和未收到的区块；重生或换维度以 `epoch` 丢弃旧场景。时间包间按 20 tick/s 插值机械动画，完整光照、服务器低 TPS 时的相位对照仍待验收。
+
+`src/native-viewer/world-preview.js` 使用原始面几何的 `InstancedMesh` 绘制静态方块，原生方块实体驱动 Create 轴/曲柄。普通 multipart 按实际属性和 `OR/AND` 条件选择原始模型；加权变体目前只允许已核对默认 `BlockBehaviour.getSeed` 的原版石头与沙子。1.21.1 官方客户端（SHA-1 `30c73b1c5da787909b2f73340419fdf13b9def88`）的字节码证明变体使用**方块绝对位置种子**，不是世界种子；`model-selection.js` 保留 Java 32/64 位溢出、48 位随机数与加权选择。模组自定义种子、加权 multipart、UV lock 等未适配时明确列出，不能改用随机贴图。
+
+隔离 QA 入口可以用一个普通动作账号联机，网页跟随的就是这个账号，而非另一个观察者：
+
+```powershell
+# 在本目录执行；游戏模块需由所传 native-packet.cjs 的项目依赖或 NODE_PATH 解析。
+node tools/serve-native-world-preview.mjs "<native-assets-dir>" "<native-viewer-packet.cjs>" MawWebRenderQA 28980 28983
+node --test tools/test/native-create.test.mjs tools/test/native-model-selection.test.mjs tools/test/native-world.test.mjs
+```
+
+网关需要同包注册表并开启 `GATE_NATIVE_VIEWER=1`；NeoForge 时间桥需 `GATE_NEOFORGE_TIME_BRIDGE=1`。模组组件/粒子仍按各自真实 codec 配置，不能省略协议适配。QA 启动器只连接 `127.0.0.1`，HTTP 也只监听回环；只允许 GET、最多四个 SSE 客户端，检查 Host/Origin/资源路径及哈希。网页无游戏动作或管理接口。实际 Agent 项目应复用 `attachNativeWorld`，不要另外登录一个同名观察账号。诊断 harness 可在启动器内部导出的同一个 `bot` 上执行动作；这不开放 HTTP 控制。
+
+2026-10-04 隔离服实测：同一普通账号获得 201 个原生区块列，原版圆石在 `(3,64,-3)` 正常放置并拆除（原生状态 `0→14→0`），实际移动改变网页位置；Create 正反转/停止 `32/-32/0 RPM` 在原生状态与真实浏览器均可见。首次放置因 MineColonies 权限拒绝，失败记录保留；将 QA 账号加入研究城镇后通过，没有授予 OP。圆石由 QA 控制台提供，仅证明普通放置/拆除与同步，不证明自主获取材料。16 项模型/随机变体/原生世界回归通过，包括真实区块二进制、负坐标、未知维度、序号丢失、卸载/重生清理与实际眼高。网页可切换区域视角和本人视角，并列出未适配内容；断流时清空旧画面。
+
+此时区域约 2,600 个非空气方块中绘制约 2,200 个；作物/草木染色、水体、原生实体方块、模组自定义材质等有明确缺口。实体、完整游戏光照、GUI/背包、动画贴图和粒子显示尚未完成。`completeSceneParityVerified=false`、`renderParityVerified=false` 保持关闭，当前页面是实时检查工具，**不能作为已经一致的 Agent 完整视觉输入**。Minecraft JAR、导出资源、存档和私人实测记录仍不提交到 Git。
 
 ## 检查 1.20.6 源码
 

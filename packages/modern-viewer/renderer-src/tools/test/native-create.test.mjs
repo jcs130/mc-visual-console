@@ -47,7 +47,7 @@ test('native block variants reject missing properties, weighted seeds and UV loc
   const variants = { variants: { 'axis=x': { model: 'create:block/shaft', x: 90, y: 90 }, 'axis=y': { model: 'create:block/shaft' } } }
   assert.equal(selectVariant(variants, { axis: 'x' }).y, 90)
   assert.throws(() => selectVariant(variants, {}), /UNRESOLVED/)
-  assert.throws(() => selectVariant({ variants: { '': [{ model: 'a' }, { model: 'b' }] } }, {}), /WORLD_SEED/)
+  assert.throws(() => selectVariant({ variants: { '': [{ model: 'a' }, { model: 'b' }] } }, {}), /SEED_UNVERIFIED/)
   assert.throws(() => selectVariant({ variants: { '': { model: 'a', uvlock: true } } }, {}), /UVLOCK/)
 })
 

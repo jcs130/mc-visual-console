@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Agent World · 实时原生世界</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,"Microsoft YaHei",sans-serif;background:#111820;color:#e5ecef}body{margin:0}header{padding:20px 26px;border-bottom:1px solid #34444c;background:#17232b}h1{font-size:22px;font-weight:550;margin:0 0 8px}p{color:#a7bbc5;font-size:13px;line-height:1.65;margin:0}main{display:grid;grid-template-columns:minmax(0,1fr) 320px;min-height:calc(100vh - 108px)}#viewport{position:relative;min-height:550px;overflow:hidden}canvas{display:block;position:absolute;inset:0;width:100%;height:100%}aside{padding:22px;background:#17232b;border-left:1px solid #34444c}.tag{display:inline-block;border:1px solid #47715c;color:#9ee0b8;border-radius:4px;padding:5px 8px;margin-bottom:18px;font-size:12px}.row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #2c3b44;font-size:13px}.value{color:#b0d6ed;font-variant-numeric:tabular-nums;text-align:right}h2{font-size:15px;margin:20px 0 10px}button{background:#254152;border:1px solid #47748b;color:#e5ecef;padding:9px;border-radius:4px;cursor:pointer}.controls{display:flex;gap:8px;margin:16px 0}.caption{position:absolute;z-index:1;bottom:15px;left:15px;padding:8px;background:#17232bdc;color:#cfba8e;font-size:12px;max-width:75%}#error{position:relative;z-index:2;white-space:pre-wrap;padding:20px;color:#ffc0b7}#error:empty{display:none}ul{padding-left:16px;color:#ddc4a4;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.small{font-size:12px;margin-top:16px}#status{color:#edcc8b}
+    @media(max-width:760px){main{grid-template-columns:1fr}#viewport{min-height:420px}aside{border-left:0;border-top:1px solid #34444c}}
+  </style>
+</head>
+<body>
+  <header><h1>My Agent World · 实时原生世界</h1><p>区块、方块变化与机械转速来自同一个玩家连接。保留原始模型和贴图。</p></header>
+  <main>
+    <div id="viewport"><div class="caption">隔离服检查画面 · 当前区域有未适配内容</div><div id="error" role="alert"></div></div>
+    <aside>
+      <div class="tag">实时联机 · 非记录回放</div><p id="status" role="status">正在连接原生世界…</p>
+      <div class="row"><span>连接账号</span><span class="value" id="player">等待</span></div>
+      <div class="row"><span>绝对位置</span><span class="value" id="position">等待</span></div>
+      <div class="row"><span>原生包序号</span><span class="value" id="sequence">0</span></div>
+      <div class="row"><span>区域内方块</span><span class="value" id="blocks">0</span></div>
+      <div class="row"><span>已绘制方块</span><span class="value" id="drawn">0</span></div>
+      <div class="row"><span>机械动力</span><span class="value" id="kinetics">等待</span></div>
+      <div class="row"><span>原生世界时钟</span><span class="value" id="clock">等待</span></div>
+      <div class="controls"><button id="orbit">区域视角</button><button id="follow">跟随玩家视角</button></div>
+      <h2>尚未适配的内容</h2><p class="small" id="coverage">等待区域状态</p><ul id="issues"></ul>
+      <p class="small">检查范围：玩家周围 10 格，向下 5 格、向上 10 格；没有额外读取存档或未加载区块。实体、完整光照及特殊材质仍待实现，当前画面不能作为 Agent 完整视觉输入。</p>
+    </aside>
+  </main>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>
