@@ -28,6 +28,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const viewport = el('viewer-canvas') ?? append(document, document.body, 'div', 'native-console-viewport')
   viewport.id = 'viewer-canvas'; viewport.setAttribute('aria-label', '同一 Agent 本人及原生世界')
   const label = append(document, viewport, 'div', 'native-player-label'); label.hidden = true
+  const ysmNotice = append(document, viewport, 'div', 'native-ysm-preview-notice', 'YSM 外形预览 · 动画与装备暂未显示'); ysmNotice.hidden = true
   const boot = q('.boot') ?? append(document, document.body, 'div', 'boot', '正在载入原生世界…')
   const stateBar = append(document, document.body, 'aside', 'native-agent-status')
   stateBar.setAttribute('aria-label', '实际 Agent 状态')
@@ -45,6 +46,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   style.textContent = `
     .native-console-viewport{position:absolute;inset:0;overflow:hidden}
     .native-player-label{position:absolute;z-index:2;padding:2px 7px;color:white;background:#0009;transform:translate(-50%,-100%);pointer-events:none}
+    .native-ysm-preview-notice{position:absolute;z-index:3;bottom:14px;left:14px;padding:5px 9px;color:#e1ebed;background:#11242ce8;border:1px solid #aec3b4;border-radius:5px;font:11px/1.4 system-ui;pointer-events:none}
     .native-agent-status{position:fixed;z-index:7;top:54px;left:50%;transform:translateX(-50%);max-width:min(640px,calc(100vw - 32px));display:flex;flex-wrap:wrap;gap:3px 12px;padding:5px 9px;background:var(--mc-viewer-ui-bg,#11242cdb);border:1px solid var(--mc-viewer-ui-border,#aec3b4);border-radius:7px;font:11px/1.5 system-ui}
     .native-agent-field{overflow-wrap:anywhere}.native-agent-field small{color:#aebfc1}
     .native-agent-field:has(#agent-goal){flex-basis:100%}.native-agent-field:has(#agent-notice:empty){display:none}
@@ -61,6 +63,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5 })
   const updateDiagnosticText = () => {
     const d = lastDiagnostics
+    ysmNotice.hidden = d?.selfModel?.kind !== 'ysm'
     const presentation = ui.getState().presentation
     diagnostics.textContent = [identity ? `玩家：${identity.player} (${identity.playerUuid || 'UUID未同步'})` : '玩家身份未同步',
       d ? `原生模型：${d.drawn}/${d.total}；缺列 ${d.missingColumns ?? '未同步'}` : '原生模型数据未同步',
@@ -114,7 +117,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     if (disposed) return
     disposed = true; stopStatus(); ui.dispose(); sceneHost?.dispose()
     for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
-    label.remove(); stateBar.remove(); details.remove(); style.remove()
+    label.remove(); ysmNotice.remove(); stateBar.remove(); details.remove(); style.remove()
   }
   listen(window, 'pagehide', dispose)
   ui.reset(); switchView(pendingMode)
@@ -133,6 +136,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         if (disposed) return
         label.hidden = true; ui.reset(); boot.classList.add('is-compact','is-error'); boot.textContent = `原生画面不可用：${reason}`
         updateDiagnosticText()
+        ysmNotice.hidden = true
       },
       onDiagnostics (value) {
         if (disposed) return

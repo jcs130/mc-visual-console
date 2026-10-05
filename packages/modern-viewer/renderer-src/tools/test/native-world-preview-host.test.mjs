@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, sendNativeWorldEvent, createNativePlayerPresentation, injectTrackedMaidPresentation } from '../native-world-preview-host.mjs'
 import { createNativeSession } from '../../src/native-viewer/native-session.js'
+import { NATIVE_YSM_SOURCE, NATIVE_YSM_JAR_SHA256 } from '../../src/native-viewer/native-ysm-state.js'
 
 let directory, prepared, registryHash
 const assetPath = 'assets/test/models/native.json'
@@ -175,6 +176,44 @@ test('foreign or unavailable server body state never becomes a fabricated HUD de
   assert.equal(value.self.equipment, null)
   menu.playerInventory = Array(45).fill(null); menu.windowId = 8
   assert.equal(createNativePlayerPresentation({ playerUuid, menu }).inventory, null)
+})
+
+test('native YSM attachment reaches both own self-player and presentation with bounded fields and no foreign fallback', t => {
+  const playerUuid = '01234567-89ab-cdef-0123-456789abcdef', menu = nativeInventory(playerUuid)
+  const ysm = { available: true, installed: true, source: NATIVE_YSM_SOURCE, playerUuid, enabled: true, mandatory: true,
+    modelId: 'misc/3_default_boy', texture: 'blue', ysmVersion: '2.6.5', jarSha256: NATIVE_YSM_JAR_SHA256, unrelatedPrivateField: 'excluded' }
+  menu.self = { playerUuid, ysm }
+  let projection = createNativePlayerPresentation({ playerUuid, menu })
+  const { bot, host } = attachment(t, { getPresentationState: () => projection })
+  playerEntity(bot)
+  let status = host.status()
+  assert.deepEqual(status.selfPlayer.ysm, status.presentation.self.ysm)
+  assert.equal(status.selfPlayer.ysm.modelId, ysm.modelId); assert.equal(status.selfPlayer.ysm.texture, 'blue')
+  assert.equal(status.selfPlayer.ysm.unrelatedPrivateField, undefined)
+  menu.self.ysm = { ...ysm, texture: 'red' }; projection = createNativePlayerPresentation({ playerUuid, menu })
+  assert.equal(host.status().selfPlayer.ysm.texture, 'red')
+  menu.self.ysm = { ...ysm, playerUuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }
+  projection = createNativePlayerPresentation({ playerUuid, menu }); status = host.status()
+  assert.equal(status.selfPlayer.ysm.available, false); assert.equal(status.selfPlayer.ysm.playerUuid, playerUuid)
+  assert.match(status.selfPlayer.ysm.reason, /IDENTITY_MISMATCH/)
+  assert.equal(status.presentation.self.ysm.available, false)
+  // The injected adapter must also protect callers which provide an already
+  // projected shape directly rather than using createNativePlayerPresentation.
+  projection.self.ysm = { ...ysm, playerUuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }
+  assert.equal(host.status().selfPlayer.ysm.available, false)
+})
+
+test('actual helper not-installed and missing-installed-attachment observations stay distinct', t => {
+  const playerUuid = '01234567-89ab-cdef-0123-456789abcdef', menu = nativeInventory(playerUuid)
+  menu.self = { playerUuid, ysm: { available: true, installed: false, enabled: false, source: NATIVE_YSM_SOURCE, playerUuid } }
+  let projection = createNativePlayerPresentation({ playerUuid, menu })
+  const { bot, host } = attachment(t, { getPresentationState: () => projection }); playerEntity(bot)
+  assert.equal(host.status().selfPlayer.ysm.available, true); assert.equal(host.status().selfPlayer.ysm.enabled, false)
+  menu.self.ysm = { available: false, installed: true, source: NATIVE_YSM_SOURCE, playerUuid, reason: 'attachment_missing' }
+  projection = createNativePlayerPresentation({ playerUuid, menu })
+  const status = host.status()
+  assert.equal(status.selfPlayer.ysm.available, false); assert.equal(status.selfPlayer.ysm.installed, true)
+  assert.equal(status.presentation.self.ysm.reason, 'attachment_missing')
 })
 
 test('villager renderer registries preserve actual numeric IDs only for this connection', () => {

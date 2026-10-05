@@ -466,7 +466,8 @@ export function createNativeInterface ({ document = globalThis.document,
       panel.style.backgroundImage = `url("${background}")`
       const host = node(document, 'div', 'corti-inventory-player-preview')
       host.dataset.inventoryPlayerPreview = ''; host.dataset.previewState = 'waiting'
-      host.setAttribute('role', 'img'); host.setAttribute('aria-label', '本人真实皮肤预览；装备渲染未支持')
+      host.setAttribute('role', 'img'); host.setAttribute('aria-label', actor?.assetInfo?.kind === 'ysm'
+        ? 'YSM 背包人物预览未支持' : '本人真实皮肤预览；装备渲染未支持')
       panel.append(host)
       for (const [id, x, y, label] of [[5,8,8,'头盔'],[6,8,26,'胸甲'],[7,8,44,'护腿'],[8,8,62,'靴子'],
         [1,98,18,'合成'],[2,116,18,'合成'],[3,98,36,'合成'],[4,116,36,'合成'],[0,154,28,'合成结果'],[45,77,62,'副手']]) {
@@ -489,6 +490,7 @@ export function createNativeInterface ({ document = globalThis.document,
       preview.attach(host)
     }
     body.append(node(document, 'p', 'corti-menu-note', '本人原生物品与组件 · 只读；已支持图标按原生模型加载，未支持的专用模型及装备明确标注'))
+    if (actor?.assetInfo?.kind === 'ysm') body.append(node(document, 'p', 'corti-menu-note', 'YSM 背包人物预览未适配；场景仅显示原模型静态姿态'))
   }
   const renderMenu = () => {
     const menu = el('corti-menu'), body = q('[data-menu-body]')

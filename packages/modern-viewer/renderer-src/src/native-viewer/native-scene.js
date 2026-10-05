@@ -5,7 +5,7 @@ import { createKineticActor } from './create-kinetics.js'
 import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
 import { waterGeometry } from './native-fluid.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
-import { createNativePlayerActor } from './native-player.js'
+import { NativeSelfPlayerController } from './native-self-player.js'
 import { playerCamera } from './player-camera.js'
 import { createNativeSession } from './native-session.js'
 import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
@@ -24,7 +24,7 @@ let renderer, loader, events, current, pending = null, rebuilding = false, epoch
 const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
-let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfActorKey = null, cameraCollisionAt = 0, cameraDistance = null, entityLayer
+let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
 const cameraRay = new THREE.Raycaster(), labelPoint = new THREE.Vector3()
 const kineticClock = new NativeKineticRenderClock()
 let kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
@@ -58,6 +58,15 @@ async function start () {
   }
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#111820')
   worldRoot = new THREE.Group(); statics = new THREE.Group(); worldRoot.add(statics); scene.add(worldRoot)
+  selfController = new NativeSelfPlayerController(reader, { onChange (actor, status) {
+    selfActor = actor; skinState = status
+    if (actor) {
+      worldRoot.add(actor.root)
+      if (actor.firstPersonRoot) firstPersonScene.add(actor.firstPersonRoot)
+      actor.setFirstPersonViewport?.(firstPersonCamera)
+    }
+    onActor(actor); publishDiagnostics()
+  } })
   entityLayer = new NativeEntityLayer(reader,{onChange:publishDiagnostics});worldRoot.add(entityLayer.root)
   scene.add(new THREE.AmbientLight(0xffffff, 1.1))
   const light = new THREE.DirectionalLight(0xffffff, 2.2); light.position.set(35, 70, 15); scene.add(light)
@@ -185,31 +194,13 @@ function updatePlayerCamera (now) {
   camera.position.copy(desired); camera.lookAt(target)
 }
 async function ensureSelfActor (self) {
-  if (!self || self.uuid !== playerUuid || self.skin?.kind !== 'default') {
-    if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose(); selfActor = null }
-    selfActorKey = null; onActor(null)
-    skinState = self?.skin?.reason || 'PLAYER_SKIN_PROFILE_UNAVAILABLE'; publishDiagnostics()
-    return
-  }
-  const key = `${self.uuid}:${self.skin.assetPath}`
-  if (key === selfActorKey) return
-  const run = generation; selfActorKey = key
-  try {
-    const actor = await createNativePlayerActor(assetReader, { uuid: self.uuid })
-    if (run !== generation || selfActorKey !== key) { actor.dispose(); return }
-    if (actor.assetInfo.path !== self.skin.assetPath || actor.assetInfo.sha256 !== self.skin.sha256) {
-      actor.dispose(); throw Error('NATIVE_PLAYER_SKIN_BINDING_MISMATCH')
+  const nativeSelf = current?.presentation?.self
+  const ysm = nativeSelf && Object.hasOwn(nativeSelf, 'ysm') ? nativeSelf.ysm : self?.ysm
+  const actor = await selfController?.update(self, playerUuid, ysm)
+  if (actor && actor === selfActor && actor.applyHeldItems) {
+    try { await actor.applyHeldItems(current?.presentation) } catch (error) {
+      if (actor === selfActor) actor.root.userData.heldItems = { available: false, reason: error.message }
     }
-    if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose() }
-    selfActor = actor; worldRoot.add(actor.root)
-    if(actor.firstPersonRoot)firstPersonScene.add(actor.firstPersonRoot)
-    actor.setFirstPersonViewport?.(firstPersonCamera)
-    if (actor.applyHeldItems) {
-      try { await actor.applyHeldItems(current?.presentation) } catch(error) { actor.root.userData.heldItems={available:false,reason:error.message} }
-    }
-    skinState = `1.21.1 ${actor.assetInfo.name || self.skin.model}; 本人步态和部分持物已接入，完整动画未验收`; onActor(actor); publishDiagnostics()
-  } catch (error) {
-    if (run === generation) { skinState = error.message; onActor(null); publishDiagnostics() }
   }
 }
 function publishFrame(now) {
@@ -227,6 +218,7 @@ function publishDiagnostics() {
     drawn: drawn + [...actors.values()].filter(actor => !actor.staticBodyRenderedSeparately && actor.root.visible).length,
     issues: [...unknown, ...(actors.size && !kineticClockState.available ? [kineticClockState.reason] : []),
       ...[...actors.values()].map(actor => actor.root.userData.nativeClockReason).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
+    selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture } : null,
     heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,
     kinetics: current?.kinetic?.map(n => n.speed) || [], environment: current?.biomes?.map(b => b.name) || [],
     kineticClock: kineticClockState,
@@ -243,8 +235,8 @@ function clearScene () {
   for (const actor of actors.values()) removeActor(actor)
   actors.clear()
   entityLayer?.reset()
-  if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose(); selfActor = null }
-  selfActorKey = null; cameraDistance = null; skinState = null; drawn = 0; unknown = []; staticIssues = []; tickAge = null
+  selfController?.clear(); selfActor = null
+  cameraDistance = null; skinState = null; drawn = 0; unknown = []; staticIssues = []; tickAge = null
   kineticClock.reset(); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
   onActor(null); publishDiagnostics()
   camera?.position.set(0, 0, 0)
@@ -430,7 +422,7 @@ function dispose () {
   if (disposed) return
   disposed = true; events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
-  controls?.dispose(); clearScene(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
+  controls?.dispose(); clearScene(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }
 return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,

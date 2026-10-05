@@ -8,6 +8,7 @@ import { build } from 'esbuild'
 import { NativeWorldState, loadNativeStateRegistry, loadNativeEntityRegistry, attachNativeWorld } from './native-world-host.mjs'
 import { NativeSnapshotCadence } from './native-snapshot-cadence.mjs'
 import { createNativePlayerMotionTracker } from '../src/native-viewer/native-player-motion.js'
+import { projectNativeYsmState } from '../src/native-viewer/native-ysm-state.js'
 import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
@@ -49,17 +50,25 @@ function boundedPrivateCopy (value, prefix) {
 }
 
 function injectedPresentation (provider, uuid) {
-  const unavailable = reason => ({ inventory: null, nativeMenu: null, skills: null, nativeState: { available: false, reason } })
+  let hasYsm = false
+  const unavailable = reason => ({ inventory: null, nativeMenu: null, skills: null,
+    ...(hasYsm ? { nativeSelf: { ysm: projectNativeYsmState(null, uuid) } } : {}), nativeState: { available: false, reason } })
   if (!provider) return unavailable('PRESENTATION_NOT_PROVIDED')
   try {
     const value = provider()
     if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.then === 'function') throw Error('PRESENTATION_INVALID')
     const copy = boundedPrivateCopy(value, 'PRESENTATION')
+    hasYsm = Boolean(copy.self && Object.hasOwn(copy.self, 'ysm'))
     if (copy.schemaVersion !== 1) throw Error('PRESENTATION_INVALID')
     function own (part) {
       if (!part || typeof part !== 'object') return
       if (Object.hasOwn(part, 'playerUuid') && (typeof part.playerUuid !== 'string' || part.playerUuid.toLowerCase() !== uuid)) throw Error('PRESENTATION_IDENTITY_MISMATCH')
-      for (const child of Object.values(part)) own(child)
+      for (const [key, child] of Object.entries(part)) {
+        // A foreign/malformed YSM row becomes an explicit unavailable binding,
+        // never an absent field that permits a Minecraft replacement body.
+        if (part === copy.self && key === 'ysm') continue
+        own(child)
+      }
     }
     if (typeof copy.playerUuid !== 'string' || copy.playerUuid.toLowerCase() !== uuid) throw Error('PRESENTATION_IDENTITY_MISMATCH')
     own(copy)
@@ -70,7 +79,8 @@ function injectedPresentation (provider, uuid) {
     const ownSelf = copy.self && copy.self.playerUuid === uuid ? Object.fromEntries(
       ['health', 'maxHealth', 'absorption', 'armor', 'food', 'saturation', 'oxygen', 'airSupply', 'maxAirSupply',
         'inWater', 'experienceLevel', 'experienceProgress', 'experiencePoints', 'equipment', 'mainArm', 'usingItem',
-        'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'pose'].filter(key => Object.hasOwn(copy.self, key)).map(key => [key, copy.self[key]])) : null
+        'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'pose', 'ysm']
+        .filter(key => Object.hasOwn(copy.self, key)).map(key => [key, key === 'ysm' ? projectNativeYsmState(copy.self.ysm, uuid) : copy.self[key]])) : null
     return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
       nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null,
       entityRenderStates: copy.entityRenderStates ?? null, nativeState: { available: true } }
@@ -175,6 +185,7 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
         swinging: typeof source.swinging === 'boolean' ? source.swinging : null,
         attackAnim: number('attackAnim', 0, 1), attackStrengthScale: number('attackStrengthScale', 0, 1),
         pose: typeof source.pose === 'string' && /^[a-z_]{1,64}$/.test(source.pose) ? source.pose : null,
+        ...(Object.hasOwn(source, 'ysm') ? { ysm: projectNativeYsmState(source.ysm, uuid) } : {}),
         equipment: source.equipment && typeof source.equipment === 'object' && !Array.isArray(source.equipment)
           ? Object.fromEntries(['mainhand', 'offhand', 'feet', 'legs', 'chest', 'head'].filter(key => Object.hasOwn(source.equipment, key)).map(key => [key, nativeItem(source.equipment[key])])) : null }
     }
@@ -372,6 +383,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             (entity?.uuid && (typeof entity.uuid !== 'string' || entity.uuid.toLowerCase() !== uuid.toLowerCase())) ||
             !Number.isSafeInteger(entity?.id) || entity.isValid === false || !vector(entity.position)) return null
         const profile = ownProfile()
+        const nativeSelf = injectedPresentation(getPresentationState, uuid.toLowerCase()).nativeSelf
         const skin = profile.hasCustomTextures === false ? defaultPlayerSkin(uuid, manifest) : {
           kind: 'unavailable', reason: profile.hasCustomTextures === true ? 'CUSTOM_PLAYER_SKIN_NOT_RESOLVED' : 'PLAYER_SKIN_PROFILE_UNAVAILABLE'
         }
@@ -379,7 +391,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           yaw: finiteNumber(entity.yaw), pitch: finiteNumber(entity.pitch), eyeHeight: finiteNumber(entity.eyeHeight),
           health: finiteNumber(bot.health), maxHealth: maximumHealth(entity), food: finiteNumber(bot.food),
           onGround: typeof entity.onGround === 'boolean' ? entity.onGround : null,
-          sneaking: typeof entity.crouching === 'boolean' ? entity.crouching : null, velocity: vector(entity.velocity), skin }
+          sneaking: typeof entity.crouching === 'boolean' ? entity.crouching : null, velocity: vector(entity.velocity), skin,
+          ...(Object.hasOwn(nativeSelf ?? {}, 'ysm') ? { ysm: nativeSelf.ysm } : {}) }
       }
       const playerPose = player => player && [player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)
         ? { ...player.position, yaw: player.yaw, pitch: player.pitch, eyeHeight: player.eyeHeight } : world.pose

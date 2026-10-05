@@ -106,6 +106,21 @@ test('inventory preview reuses real actor only, has no fallback, and closing doe
   assert.equal(h.previews[0].options.resolveSource(), null)
   h.ui.dispose(); assert.equal(h.previews[0].disposed, true)
 })
+
+test('YSM static actor keeps native inventory usable and explicitly withholds the vanilla preview', () => {
+  const h = harness()
+  h.ui.setActor({ root: { userData: { playerUuid: UUID } }, assetInfo: { uuid: UUID, kind: 'ysm' } })
+  h.document.getElementById('corti-inventory-toggle').dispatch('click')
+  assert.equal(h.previews.length, 1); assert.equal(h.previews[0].options.resolveSource(), null)
+  assert.equal(h.previews[0].options.createFallback, undefined)
+  assert.match(h.document.querySelector('[data-menu-body]').textContent, /YSM 背包人物预览未适配/)
+  assert.match(h.document.querySelector('[data-menu-body]').textContent, /ars_nouveau:apprentice_spell_book/)
+  const original = { playerObject: {}, userData: { playerUuid: UUID } }
+  h.ui.setActor({ root: original, assetInfo: { uuid: UUID } })
+  assert.equal(h.previews[0].options.resolveSource(), original)
+  assert.doesNotMatch(h.document.querySelector('[data-menu-body]').textContent, /YSM 背包人物预览未适配/)
+  h.ui.dispose()
+})
 test('idle preview expires, manual takeover persists, native menus and combat cancel idle without actions', () => {
   const h = harness(), event = { type: 'inventoryPreview', playerUuid: UUID, open: true, ttlMs: 60000 }
   assert.equal(h.ui.event(event), true); assert.equal(h.ui.getState().idleOpen, true)
