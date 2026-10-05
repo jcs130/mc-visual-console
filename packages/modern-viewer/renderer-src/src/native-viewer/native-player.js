@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { PlayerObject } from 'skinview3d/libs/model.js'
 import { NativeAssetReader } from './model-loader.js'
 import { renderNativePlayerMotion } from './native-player-motion.js'
+import { NativeHeldItems } from './native-held-items.js'
 
 // Minecraft 1.21.1 client JAR, official client mappings: DefaultPlayerSkin
 // (grd.get(UUID): UUID.hashCode -> Math.floorMod(...,18)), PlayerRenderer
@@ -57,7 +58,7 @@ async function nativeSkinTexture (bytes) {
 
 // loadTexture is an optional decoder shared with NativeModelLoader/test code;
 // its newly created texture belongs to this actor and is disposed with it.
-export async function createNativePlayerActor (reader, { uuid, skin, loadTexture = nativeSkinTexture } = {}) {
+export async function createNativePlayerActor (reader, { uuid, skin, loadTexture = nativeSkinTexture, heldItemOptions = {} } = {}) {
   if (!(reader instanceof NativeAssetReader) || reader.manifest.clientJarSha256 !== PLAYER_CLIENT_JAR_SHA256) throw Error('NATIVE_PLAYER_SOURCE_UNSUPPORTED')
   if (typeof loadTexture !== 'function') throw Error('NATIVE_PLAYER_TEXTURE_LOADER_INVALID')
   const selected = selectedSkin(uuid, skin)
@@ -91,9 +92,14 @@ export async function createNativePlayerActor (reader, { uuid, skin, loadTexture
     selectionSource: skin ? 'caller_profile_binding' : 'Minecraft 1.21.1 DefaultPlayerSkin.get(UUID)',
     standingScale: 0.9375, animationParityVerified: false, equipmentRenderingAvailable: false })
   root.userData = { playerUuid: selected.uuid, assetInfo }
+  const heldItems = new NativeHeldItems(reader, { ...heldItemOptions, uuid: selected.uuid,
+    playerObject, slim: selected.model === 'slim', onChange: state => {
+      root.userData.heldItems = state; heldItemOptions.onChange?.(state)
+    } })
+  root.userData.heldItems = heldItems.state()
   let disposed = false
   return {
-    root, playerObject, assetInfo,
+    root, playerObject, assetInfo, firstPersonRoot: heldItems.firstPersonRoot,
     applyPose (pose) {
       if (disposed) throw Error('NATIVE_PLAYER_ACTOR_DISPOSED')
       if (!pose || ![pose.x, pose.y, pose.z, pose.yaw, pose.pitch].every(Number.isFinite)) throw Error('NATIVE_PLAYER_POSE_UNAVAILABLE')
@@ -106,17 +112,27 @@ export async function createNativePlayerActor (reader, { uuid, skin, loadTexture
     applyMotion (motion, now) {
       if (disposed) throw Error('NATIVE_PLAYER_ACTOR_DISPOSED')
       const value = renderNativePlayerMotion(motion, now)
+      const rotations = heldItems.armRotations(value, motion)
       for (const name of ['rightArm', 'leftArm', 'rightLeg', 'leftLeg']) {
-        const rotation = value.skinview?.[name]
+        const rotation = rotations?.[name]
         playerObject.skin[name].rotation.set(rotation?.x ?? 0, rotation?.y ?? 0, rotation?.z ?? 0, 'ZYX')
       }
       root.userData.motion = { available: value.available, reason: value.reason ?? null, tick: value.tick ?? null,
         scope: 'humanoid_walk_base', animationParityVerified: false }
+      heldItems.refreshPose()
       return value
     },
+    applyHeldItems (frame) {
+      if (disposed) throw Error('NATIVE_PLAYER_ACTOR_DISPOSED')
+      return heldItems.apply(frame)
+    },
+    heldItemsState () { return heldItems.state() },
+    firstPersonItemsState () { return heldItems.firstPersonState() },
+    setFirstPersonViewport (viewport) { return heldItems.setFirstPersonViewport(viewport) },
     dispose () {
       if (disposed) return
       disposed = true; root.visible = false; root.removeFromParent()
+      heldItems.dispose()
       const geometries = new Set(), materials = new Set()
       root.traverse(part => {
         if (part.geometry) geometries.add(part.geometry)

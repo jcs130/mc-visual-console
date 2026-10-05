@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { bakeFaces, resourcePath } from './model-loader.js'
+import { NATIVE_STATIC_BLOCK_ITEM_NAMES, verifyNativeStaticItemEvidence } from './native-static-item-providers.js'
 
 // Source: the locked 1.21.1 client, ItemTransform.apply/Deserializer,
 // GuiGraphics.renderItem, Lighting.setupFor3DItems and
@@ -12,9 +13,9 @@ export const BLOCK_ICON_SHADER_HASHES = Object.freeze({
   'assets/minecraft/shaders/core/rendertype_entity_cutout.vsh': 'dca1070a742c07fd94fd56f620cccc0bd820694743f53b30cbedca9c4e34a284',
   'assets/minecraft/shaders/core/rendertype_entity_cutout.fsh': '6319a09f7bf8322d0ec8dff7d24a24ac5f6bc10f04cda7d1a18cc4b1453b881d'
 })
-// ItemColors has no runtime tint/model provider for these ordinary BlockItems.
-// Extend this list only after checking the locked item's native client rules.
-export const NATIVE_GUI_BLOCK_ITEMS = Object.freeze(['minecraft:dirt', 'minecraft:oak_log', 'minecraft:cobblestone'])
+// Positive locked Item/BlockItem constructor evidence. This is a provider
+// candidate list; original model/material/texture guards still decide support.
+export const NATIVE_GUI_BLOCK_ITEMS = NATIVE_STATIC_BLOCK_ITEM_NAMES
 const BLOCK_ITEMS = new Set(NATIVE_GUI_BLOCK_ITEMS)
 export const nativeBlockItemEligible = name => BLOCK_ITEMS.has(name)
 const record = value => value && typeof value === 'object' && !Array.isArray(value)
@@ -25,13 +26,15 @@ export async function resolveNativeBlockItemModel(reader, id, ancestry = []) {
   const own = await reader.json(path)
   if (!record(own) || own.loader || own.overrides?.length ||
       (own.overrides !== undefined && !Array.isArray(own.overrides)) ||
-      (own.parent && /^(?:minecraft:)?builtin\//.test(own.parent))) throw Error('NATIVE_BLOCK_ITEM_DYNAMIC_MODEL_UNSUPPORTED')
+      (own.parent && /^(?:minecraft:)?builtin\//.test(own.parent) && !/^(?:minecraft:)?builtin\/generated$/.test(own.parent))) throw Error('NATIVE_BLOCK_ITEM_DYNAMIC_MODEL_UNSUPPORTED')
   if (own.display !== undefined && !record(own.display)) throw Error('NATIVE_BLOCK_ITEM_DISPLAY_INVALID')
   if (own.textures !== undefined && !record(own.textures)) throw Error('NATIVE_BLOCK_ITEM_TEXTURES_INVALID')
   if (own.elements !== undefined && (!Array.isArray(own.elements) || own.elements.length > 128)) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
-  const parent = own.parent ? await resolveNativeBlockItemModel(reader, own.parent, [...ancestry, path]) : {}
+  const generated = /^(?:minecraft:)?builtin\/generated$/.test(own.parent ?? '')
+  const parent = own.parent && !generated ? await resolveNativeBlockItemModel(reader, own.parent, [...ancestry, path]) : {}
   return { ...parent, ...own, textures: { ...parent.textures, ...own.textures },
     display: { ...parent.display, ...own.display }, elements: own.elements ?? parent.elements ?? [],
+    nativeGenerated: generated || Boolean(parent.nativeGenerated),
     sourcePaths: [...(parent.sourcePaths || []), path] }
 }
 
@@ -71,8 +74,32 @@ export function nativeGuiLight(normal, transform) {
   return Math.min(1, NATIVE_GUI_LIGHT_DIRECTIONS.reduce((sum, direction) => sum + Math.max(0, n.dot(new THREE.Vector3(...direction))), 0) * 0.6 + 0.4)
 }
 
+// GUI draw only: fixed orthographic camera looking -Z, positive ItemTransform
+// scale, FrontSide triangles. GuiGraphics' negative Y and its screen projection
+// negative Y cancel for raster winding; this offscreen camera uses Y-up. Cull
+// only a clearly negative transformed triangle normal, retaining near-edge-on
+// faces so float rounding cannot silently drop a possibly visible resource.
+// This proof cannot be reused for first/third person, a mirrored scale, another
+// camera or a DoubleSide/translucent renderer.
+export function nativeGuiFaceCulling(faces, transform) {
+  if(transform.scale.some(n=>!Number.isFinite(n)||n<=0))throw Error('NATIVE_BLOCK_ITEM_REFLECTED_GUI_UNSUPPORTED')
+  const matrix=new THREE.Matrix4().compose(new THREE.Vector3(...transform.translation),
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.rotation.map(THREE.MathUtils.degToRad),'XYZ')),
+    new THREE.Vector3(...transform.scale))
+  const visible=[],culled=[]
+  for(const [faceIndex,face] of faces.entries()) {
+    const points=[0,3,6].map(offset=>new THREE.Vector3(...face.position.slice(offset,offset+3).map(Math.fround)).applyMatrix4(matrix))
+    const normal=new THREE.Vector3().subVectors(points[1],points[0]).cross(new THREE.Vector3().subVectors(points[2],points[0])).normalize()
+    if(normal.z < -1e-5)culled.push({faceIndex,direction:face.direction,resourcePath:resourcePath(face.texture,'textures','.png'),
+      normalZ:normal.z,reason:'native_gui_frontside_backface',resourceRequested:false,resourceVerified:false})
+    else visible.push(face)
+  }
+  return {visible,culled,context:'GUI',projection:'orthographic',cameraForward:[0,0,-1],materialSide:'FrontSide',transform}
+}
+
 export async function prepareNativeBlockItemIcon(reader, name) {
   if (!nativeBlockItemEligible(name)) throw Error('NATIVE_BLOCK_ITEM_PROVIDER_UNSUPPORTED')
+  const evidence = verifyNativeStaticItemEvidence(reader, name)
   if (reader.manifest.clientJarSha256 !== BLOCK_ICON_CLIENT_SHA256) throw Error('NATIVE_BLOCK_ITEM_CLIENT_UNVERIFIED')
   for (const [path, hash] of Object.entries(BLOCK_ICON_SHADER_HASHES)) {
     if (reader.manifest.assets[path]?.sha256 !== hash) throw Error(`NATIVE_BLOCK_ITEM_SHADER_UNSUPPORTED:${path}`)
@@ -80,8 +107,10 @@ export async function prepareNativeBlockItemIcon(reader, name) {
   }
   const [namespace, leaf] = name.split(':')
   const model = await resolveNativeBlockItemModel(reader, `${namespace}:item/${leaf}`)
+  if (model.nativeGenerated) throw Error('NATIVE_BLOCK_ITEM_GENERATED_PROVIDER_REQUIRED')
   if (!model.elements.length || model.elements.length > 128) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
   if ((model.gui_light ?? 'side') !== 'side') throw Error('NATIVE_BLOCK_ITEM_FRONT_LIGHT_UNSUPPORTED')
+  if (model.render_type !== undefined && !['solid','minecraft:solid'].includes(model.render_type)) throw Error('NATIVE_BLOCK_ITEM_RENDER_TYPE_UNSUPPORTED')
   if (model.elements.some(element => !record(element) || !record(element.faces) || Object.keys(element.faces).length > 6)) throw Error('NATIVE_BLOCK_ITEM_FACES_INVALID')
   for (const element of model.elements) {
     // BlockElement.Deserializer's original coordinate/rotation limits also
@@ -94,14 +123,16 @@ export async function prepareNativeBlockItemIcon(reader, name) {
   }
   const faces = bakeFaces(model)
   if (!faces.length || faces.length > 768) throw Error('NATIVE_BLOCK_ITEM_FACE_LIMIT')
-  const texturePaths = [...new Set(faces.map(face => resourcePath(face.texture, 'textures', '.png')))]
+  const transform=nativeGuiItemTransform(model.display.gui)
+  const culling=nativeGuiFaceCulling(faces,transform)
+  const texturePaths = [...new Set(culling.visible.map(face => resourcePath(face.texture, 'textures', '.png')))]
   if (texturePaths.length > 32) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_LIMIT')
   for (const path of texturePaths) {
     if (reader.manifest.assets[`${path}.mcmeta`]) throw Error('NATIVE_BLOCK_ITEM_ANIMATION_UNSUPPORTED')
     const size = reader.manifest.assets[path]?.bytes
     if (!Number.isSafeInteger(size) || size <= 0 || size > 16777216) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_LIMIT')
   }
-  return { name, model, faces, transform: nativeGuiItemTransform(model.display.gui), texturePaths,
+  return { name, model, faces, renderFaces:culling.visible, culling, transform, texturePaths, evidence,
     sourcePaths: [...model.sourcePaths, ...texturePaths, ...Object.keys(BLOCK_ICON_SHADER_HASHES)] }
 }
 
@@ -125,7 +156,7 @@ function material(texture) {
 export function buildNativeBlockItemObject(plan, textures) {
   const group = new THREE.Group(), materials = new Map()
   try {
-    for (const face of plan.faces) {
+    for (const face of plan.renderFaces ?? plan.faces) {
       const path = resourcePath(face.texture, 'textures', '.png')
       if (!textures.has(path)) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_MISSING')
       if (!materials.has(path)) materials.set(path, material(textures.get(path)))
@@ -216,7 +247,8 @@ export class NativeBlockItemIconRenderer {
       this.renderer.clear(); this.renderer.render(scene, camera)
       const blob = await this.encode(this.renderer); ensureOpen()
       if (!(blob instanceof Blob) || blob.type !== 'image/png') throw Error('NATIVE_BLOCK_ITEM_PNG_ENCODE_FAILED')
-      return { blob, sourcePaths: plan.sourcePaths, guiTransform: plan.transform, kind: 'native-block-gui', pixelParityVerified: false }
+      return { blob, sourcePaths: plan.sourcePaths, guiTransform: plan.transform, kind: 'native-block-gui', pixelParityVerified: false,
+        providerEvidence: plan.evidence, guiCulling: { ...plan.culling, visible:undefined } }
     } finally {
       if (object) disposeNativeBlockItemObject(object)
       for (const texture of textures.values()) texture.dispose()

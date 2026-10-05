@@ -8,6 +8,8 @@ import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board
 import { createNativePlayerActor } from './native-player.js'
 import { playerCamera } from './player-camera.js'
 import { createNativeSession } from './native-session.js'
+import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
+import { NativeEntityLayer } from './native-entity-layer.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
@@ -16,10 +18,10 @@ export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{
 if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
 const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
-const templates = new Map(), actors = new Map()
-let statics, worldRoot, camera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], drawn = 0, tickAge = null
+const templates = new Map(), actors = new Map(), bedTemplates = new Set()
+let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
-let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfActorKey = null, cameraCollisionAt = 0, cameraDistance = null
+let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfActorKey = null, cameraCollisionAt = 0, cameraDistance = null, entityLayer
 const cameraRay = new THREE.Raycaster(), labelPoint = new THREE.Vector3()
 async function start () {
   const response = await fetch('/manifest.json')
@@ -31,7 +33,7 @@ async function start () {
     return result.arrayBuffer()
   })
   assetReader = reader
-  const session = createNativeSession(manifest.registryHashes['block-states.jsonl'])
+  const session = createNativeSession(manifest.registryHashes['block-states.jsonl'], { entityRegistrySha256: manifest.registryHashes['entities.tsv'] ?? null })
   loader = new NativeModelLoader(reader)
   colormaps = {}
   for (const name of ['grass', 'foliage']) {
@@ -42,14 +44,24 @@ async function start () {
   }
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#111820')
   worldRoot = new THREE.Group(); statics = new THREE.Group(); worldRoot.add(statics); scene.add(worldRoot)
+  entityLayer = new NativeEntityLayer(reader,{onChange:publishDiagnostics});worldRoot.add(entityLayer.root)
   scene.add(new THREE.AmbientLight(0xffffff, 1.1))
   const light = new THREE.DirectionalLight(0xffffff, 2.2); light.position.set(35, 70, 15); scene.add(light)
   camera = new THREE.PerspectiveCamera(70, 1, 0.05, 150)
+  firstPersonScene=new THREE.Scene();firstPersonCamera=new THREE.PerspectiveCamera(70,1,0.05,150)
+  firstPersonScene.add(new THREE.AmbientLight(0xffffff,1.1))
+  const handLight=new THREE.DirectionalLight(0xffffff,2.2);handLight.position.set(35,70,15);firstPersonScene.add(handLight)
   renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.domElement.setAttribute('aria-label', 'Agent 本人及实时原生世界画面')
   viewport.append(renderer.domElement)
   controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxDistance = 9; controls.enabled = false
-  const resize = () => { const host = viewport; renderer.setSize(host.clientWidth, host.clientHeight); camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix() }
+  const resize = () => {
+    const host = viewport
+    renderer.setSize(host.clientWidth, host.clientHeight)
+    camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix()
+    firstPersonCamera.aspect = camera.aspect; firstPersonCamera.updateProjectionMatrix()
+    selfActor?.setFirstPersonViewport?.(firstPersonCamera)
+  }
   observer = new ResizeObserver(resize); observer.observe(viewport); resize()
   renderer.setAnimationLoop(now => {
     try {
@@ -59,7 +71,8 @@ async function start () {
         updatePlayerCamera(now)
         if (selfActor) {
           selfActor.applyPose(current.pose)
-          selfActor.applyMotion(current.selfPlayer?.onGround === true && current.selfPlayer?.sneaking === false ? current.motion : null, Date.now())
+          const crouching=current.presentation?.self?.crouching ?? current.selfPlayer?.sneaking
+          selfActor.applyMotion(current.selfPlayer?.onGround === true && crouching === false ? current.motion : null, Date.now())
           selfActor.root.visible = viewMode !== 'first' && (cameraDistance === null || cameraDistance > 0.9)
         }
         // The game's absolute clock supplies the shaft phase; crank chase is
@@ -72,7 +85,15 @@ async function start () {
           for (const actor of actors.values()) actor.frame(renderTicks, renderTicks - whole)
         }
       }
+      entityLayer.frame(Date.now())
       renderer.render(scene, camera)
+      if(selfActor?.firstPersonRoot){
+        selfActor.firstPersonRoot.visible=viewMode==='first'
+        if(viewMode==='first'){
+          renderer.clearDepth();renderer.autoClear=false
+          try {renderer.render(firstPersonScene,firstPersonCamera)} finally {renderer.autoClear=true}
+        }
+      }
       publishFrame(now)
     } catch (error) { fail(error) }
   })
@@ -94,10 +115,17 @@ async function start () {
         current = value; pending = value; void rebuildLatest()
       } else if (value.type === 'frame' && current && value.epoch === epoch) {
         current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
+        current.presentation = value.presentation; current.entityState = value.entityState
       } else if (value.type === 'motion' && current && value.epoch === epoch) {
         current.pose = value.pose; current.motion = value.motion; return
       } else return
       onState(value); void ensureSelfActor(current.selfPlayer)
+      entityLayer.stage(current.entityState,{selfEntityId:current.selfPlayer?.entityId,playerUuid})
+      const body = selfActor
+      if (body?.applyHeldItems) void Promise.resolve(body.applyHeldItems(current.presentation)).catch(error => {
+        if (selfActor !== body) return
+        body.root.userData.heldItems = { available: false, reason: error.message }; publishDiagnostics()
+      })
     } catch (error) { fail(error) }
   }
   events.onerror = () => { session.receive({type:'unavailable'}); clearScene(); onUnavailable('NATIVE_WORLD_STREAM_DISCONNECTED') }
@@ -149,7 +177,12 @@ async function ensureSelfActor (self) {
     }
     if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose() }
     selfActor = actor; worldRoot.add(actor.root)
-    skinState = `1.21.1 ${actor.assetInfo.name || self.skin.model}; 已接本人步行动作，装备和完整动画未验收`; onActor(actor); publishDiagnostics()
+    if(actor.firstPersonRoot)firstPersonScene.add(actor.firstPersonRoot)
+    actor.setFirstPersonViewport?.(firstPersonCamera)
+    if (actor.applyHeldItems) {
+      try { await actor.applyHeldItems(current?.presentation) } catch(error) { actor.root.userData.heldItems={available:false,reason:error.message} }
+    }
+    skinState = `1.21.1 ${actor.assetInfo.name || self.skin.model}; 本人步态和部分持物已接入，完整动画未验收`; onActor(actor); publishDiagnostics()
   } catch (error) {
     if (run === generation) { skinState = error.message; onActor(null); publishDiagnostics() }
   }
@@ -166,7 +199,8 @@ function publishFrame(now) {
 }
 function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
-    drawn: drawn + actors.size, issues: [...unknown], missingColumns: current?.missingColumns?.length || 0,
+    drawn: drawn + actors.size, issues: [...unknown,...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
+    heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,
     kinetics: current?.kinetic?.map(n => n.speed) || [], environment: current?.biomes?.map(b => b.name) || [],
     skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
@@ -179,6 +213,7 @@ function clearScene () {
   generation++; pending = null; current = null; lastGroupSignature = null; clearStatics()
   for (const actor of actors.values()) removeActor(actor)
   actors.clear()
+  entityLayer?.reset()
   if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose(); selfActor = null }
   selfActorKey = null; cameraDistance = null; skinState = null; drawn = 0; unknown = []; tickAge = null
   onActor(null); publishDiagnostics()
@@ -190,10 +225,16 @@ function removeActor (actor) {
 async function template (state, variants) {
   const key = `${state.stateId}:${JSON.stringify(variants)}`
   if (!templates.has(key)) templates.set(key, (async () => {
+    if (/^minecraft:[a-z_]+_bed$/.test(state.name)) {
+      const bed = await createNativeBedTemplate(assetReader,state)
+      if(disposed){bed.dispose();throw Error('NATIVE_SCENE_DISPOSED')}
+      bedTemplates.add(bed); return bed.root
+    }
     // The exact empty-board entity guard is checked per position before this
     // shared template is used. Other entity-backed blocks remain unsupported.
     if ((state.hasBlockEntity && state.name !== CUTTING_BOARD_ID) || state.renderShape !== 'MODEL') throw Error('原生实体方块渲染未适配')
     const model = await loader.models(variants, { allowTint: true })
+    if(disposed){loader.releaseModel(model);throw Error('NATIVE_SCENE_DISPOSED')}
     let faces = 0; model.traverse(part => { if (part.isMesh) faces++ })
     if (!faces) throw Error('原生模型无可绘制面')
     model.updateMatrixWorld(true)
@@ -262,10 +303,12 @@ async function rebuildLatest () {
               positions.push(position)
             }
             if (!positions.length) continue
-            const blockstate = await loader.blockstate(state.name)
+            const isBed = /^minecraft:[a-z_]+_bed$/.test(state.name)
+            if (isBed) nativeBedState(state)
+            const blockstate = isBed ? null : await loader.blockstate(state.name)
             const subgroups = new Map()
             for (const position of positions) {
-              const variants = selectBlockVariants(blockstate, state, position), key = JSON.stringify(variants)
+              const variants = isBed ? [] : selectBlockVariants(blockstate, state, position), key = JSON.stringify(variants)
               if (!subgroups.has(key)) subgroups.set(key, { variants, positions: [] })
               subgroups.get(key).positions.push(position.x, position.y, position.z)
             }
@@ -354,7 +397,7 @@ function fail (error) {
 function dispose () {
   if (disposed) return
   disposed = true; events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
-  controls?.dispose(); clearScene(); loader?.dispose(); renderer?.dispose(); renderer?.domElement.remove()
+  controls?.dispose(); clearScene(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }
 return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,

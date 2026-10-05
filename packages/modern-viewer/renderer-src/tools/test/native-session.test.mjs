@@ -13,6 +13,21 @@ test('identity cannot be established by a world frame or a different native regi
   assert.throws(() => session.receive({ ...identity, minecraftVersion: '1.20.6' }), /IDENTITY_MISMATCH/)
   assert.equal(session.receive(identity).kind, 'identity')
 })
+
+test('entity state is bound to the matched native entity registry and current player epoch', () => {
+  const entityHash = 'e'.repeat(64), session = createNativeSession(hash, { entityRegistrySha256: entityHash })
+  session.receive(identity)
+  const entityState = { available: true, source: 'received_native_entity_packets', registrySha256: entityHash,
+    epoch: 1, rotationUnit: 'minecraft_degrees', entities: [] }
+  assert.equal(session.receive({ ...snapshot, entityState }).kind, 'snapshot')
+  for (const patch of [{ registrySha256: hash }, { epoch: 2 }, { source: 'proxy_entities' }, { rotationUnit: 'radians' }]) {
+    assert.throws(() => session.receive({ type: 'frame', epoch: 1, entityState: { ...entityState, ...patch } }), /ENTITY_STREAM_BINDING_MISMATCH/)
+  }
+  assert.equal(session.receive({ type: 'frame', epoch: 1, entityState: { available: false, reason: 'metadata unavailable' } }).kind, 'frame')
+  const withoutRegistry = createNativeSession(hash); withoutRegistry.receive(identity)
+  assert.throws(() => withoutRegistry.receive({ ...snapshot, entityState }), /ENTITY_STREAM_BINDING_MISMATCH/)
+  assert.throws(() => withoutRegistry.receive({ ...snapshot, entityState: { ...entityState, registrySha256: null } }), /ENTITY_STREAM_BINDING_MISMATCH/)
+})
 test('snapshot and presentation must belong to this connection rather than a camera or another account', () => {
   const session = createNativeSession(hash); session.receive(identity)
   assert.throws(() => session.receive({ ...snapshot, selfPlayer: { uuid: '00000000-0000-3000-8000-000000000000', name: identity.player } }), /SELF_PLAYER_MISMATCH/)

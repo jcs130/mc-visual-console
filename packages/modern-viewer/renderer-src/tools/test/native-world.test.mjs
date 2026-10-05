@@ -2,9 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { createRequire } from 'node:module'
+import { serialize, deserialize } from 'node:v8'
 import chunkFactory from 'prismarine-chunk'
 import { Vec3 } from 'vec3'
-import { NativeWorldState, loadNativeStateRegistry, longNumber, longBigInt, nativeChunk, attachNativeWorld } from '../native-world-host.mjs'
+import { NativeWorldState, loadNativeStateRegistry, loadNativeEntityRegistry, longNumber, longBigInt, nativeChunk, attachNativeWorld } from '../native-world-host.mjs'
 import { waterGeometry } from '../../src/native-viewer/native-fluid.js'
 
 const rows = [
@@ -31,6 +33,283 @@ function worldFixture (registryStates = states, registryHash = hash) {
   return { world, packet, chunk }
 }
 const pose = { x: -1.5, y: 64, z: -0.5, yaw: 0, pitch: 0, eyeHeight: 1.62 }
+const optionalMetadataTypes = ['optional_component', 'optional_block_pos', 'optional_uuid', 'optional_global_pos']
+// The deployment's locked minecraft-protocol can be supplied without adding
+// a runtime dependency to the browser renderer. CI with that package uses its
+// normal resolution; host-only regressions below always run independently.
+let metadataCodec = null
+try {
+  metadataCodec = createRequire(import.meta.url)(process.env.NATIVE_METADATA_CODEC_MODULE || 'minecraft-protocol/src/transforms/serializer.js')
+} catch (error) {
+  if (process.env.NATIVE_METADATA_CODEC_MODULE || error.code !== 'MODULE_NOT_FOUND') throw error
+}
+
+function entityFixture () {
+  const registryBytes = Buffer.from('minecraft:slime\t93\nexample:actual_mob\t300\n')
+  const entityRegistrySha256 = createHash('sha256').update(registryBytes).digest('hex')
+  const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry: loadNativeEntityRegistry(registryBytes, entityRegistrySha256), entityRegistrySha256,
+    resolveDimension: () => ({ name: 'minecraft:overworld', minY: 0, height: 256 }), simplifyNBT: value => value, now: () => 1000 })
+  let sequence = 0
+  const packet = (name, params) => world.handle({ registrySha256: hash, sequence: ++sequence, name, params })
+  packet('login', {})
+  const spawn = (entityId = 12, type = 93) => packet('spawn_entity', { entityId, type, objectUUID: '12345678-1234-5678-1234-567812345678', x: -10.25, y: 64, z: 5.5, yaw: -64, pitch: 16, headPitch: 32, velocity: { x: 800, y: -400, z: 0 } })
+  return { world, packet, spawn, registryBytes, entityRegistrySha256 }
+}
+
+test('native entity registry is hash anchored with no proxy fallback or duplicate names', () => {
+  const { registryBytes, entityRegistrySha256 } = entityFixture()
+  assert.throws(() => loadNativeEntityRegistry(Buffer.from('minecraft:pig\t93'), entityRegistrySha256), /HASH_MISMATCH/)
+  for (const text of ['minecraft:slime\t93\nexample:mob\t93', 'minecraft:slime\t93\nminecraft:slime\t94', 'minecraft:slime\tNaN']) {
+    const bytes = Buffer.from(text)
+    assert.throws(() => loadNativeEntityRegistry(bytes, createHash('sha256').update(bytes).digest('hex')), /INVALID/)
+  }
+})
+
+test('native spawn, signed-byte angles and quantized movement preserve original registry identity', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn(12, 300)
+  const before = world.revision
+  packet('entity_move_look', { entityId: 12, dX: -2048, dY: 1024, dZ: 4096, yaw: 64, pitch: -32, onGround: true })
+  packet('entity_head_rotation', { entityId: 12, headYaw: -128 })
+  const state = world.entitySnapshot()
+  assert.equal(state.source, 'received_native_entity_packets')
+  assert.equal(state.available, true)
+  assert.equal(state.rotationUnit, 'minecraft_degrees')
+  assert.equal(state.entities[0].name, 'example:actual_mob')
+  assert.equal(state.entities[0].typeId, 300)
+  assert.deepEqual(state.entities[0].position, { x: -10.75, y: 64.25, z: 6.5 })
+  assert.equal(state.entities[0].yaw, 90)
+  assert.equal(state.entities[0].pitch, -45)
+  assert.equal(state.entities[0].headYaw, -180)
+  assert.equal(state.entities[0].onGround, true)
+  assert.deepEqual(state.entities[0].velocity, { x: 0.1, y: -0.05, z: 0 })
+  assert.equal(world.revision, before, 'entity movement does not rescan terrain')
+})
+
+test('partial metadata and actual equipment persist, while unsupported types remain native', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn()
+  assert.equal(world.entitySnapshot().entities[0].onGround, null)
+  packet('entity_metadata', { entityId: 12, metadata: [{ key: 16, type: 'int', value: 4 }, { key: 0, type: 'byte', value: 0 }] })
+  packet('entity_metadata', { entityId: 12, metadata: [{ key: 16, type: 'int', value: 2 }] })
+  packet('entity_equipment', { entityId: 12, equipments: [{ slot: 0, item: { itemId: 9001, addedComponentCount: 1, addedComponents: [{ type: 700, data: { value: 42n } }] } }] })
+  const entity = world.entitySnapshot().entities[0]
+  assert.equal(entity.metadata.find(entry => entry.key === 0).value, 0)
+  assert.equal(entity.metadata.find(entry => entry.key === 16).value, 2)
+  assert.equal(entity.equipment[0].item.itemId, 9001)
+  assert.deepEqual(entity.equipment[0].item.addedComponents[0].data.value, { type: 'long', value: '42' })
+  assert.equal(JSON.stringify(entity).includes('proxy'), false)
+})
+
+test('native bool-prefixed optional metadata absence has an explicit immutable JSON representation', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn()
+  const metadata = optionalMetadataTypes.map((type, index) => ({ key: index + 2, type, value: undefined }))
+  const native = deserialize(serialize(metadata))
+  assert(native.every(entry => Object.hasOwn(entry, 'value') && entry.value === undefined))
+  packet('entity_metadata', { entityId: 12, metadata: native })
+  const snapshot = world.entitySnapshot()
+  assert.equal(snapshot.available, true)
+  assert.deepEqual(snapshot.entities[0].metadata, metadata.map(entry => ({ ...entry, value: null, nativeOptionalAbsent: true })))
+  assert.equal(world.entityDataBytes, snapshot.entities[0].metadata.reduce((sum, entry) => sum + Buffer.byteLength(JSON.stringify(entry)), 0))
+  assert.equal(world.entitySnapshot(), snapshot)
+  assert.throws(() => { snapshot.entities[0].metadata[0].nativeOptionalAbsent = false }, TypeError)
+  packet('entity_metadata', { entityId: 12, metadata: [{ key: 2, type: 'optional_component', value: { type: 'string', value: 'Received title' } }] })
+  assert.equal(world.entitySnapshot().entities[0].metadata[0].nativeOptionalAbsent, undefined, 'a present replacement releases the absence marker')
+  assert.equal(snapshot.entities[0].metadata[0].nativeOptionalAbsent, true, 'older cached snapshots remain detached')
+})
+
+test('locked 1.21.1 native codec parses and roundtrips optional absent and present byte fixtures', {
+  skip: !metadataCodec && 'Set NATIVE_METADATA_CODEC_MODULE to the deployment locked minecraft-protocol serializer module'
+}, () => {
+  const encoder = metadataCodec.createSerializer({ state: 'play', isServer: true, version: '1.21.1' })
+  const decoder = metadataCodec.createDeserializer({ state: 'play', isServer: false, version: '1.21.1' })
+  // Protocol 767 packet 0x58. These are codec regression fixtures, not a
+  // claimed capture of the live failure: false is absence; true has a value.
+  const absentWire = Buffer.from('580c020600030b00040d00051900ff', 'hex')
+  const presentWire = Buffer.from('580c02060108000b4e6174697665206e616d65030b01ffffe140001c8040040d0112345678123456781234567812345678051901136d696e6563726166743a6f766572776f726c64ff', 'hex')
+  const absent = decoder.parsePacketBuffer(absentWire).data, present = decoder.parsePacketBuffer(presentWire).data
+  assert.equal(absent.name, 'entity_metadata')
+  assert.deepEqual(absent.params.metadata.map(entry => entry.type), optionalMetadataTypes)
+  assert(absent.params.metadata.every(entry => Object.hasOwn(entry, 'value') && entry.value === undefined))
+  assert.deepEqual(encoder.createPacketBuffer(absent), absentWire)
+  assert.deepEqual(encoder.createPacketBuffer(present), presentWire)
+  assert.deepEqual(present.params.metadata.map(entry => entry.value), [
+    { type: 'string', value: 'Native name' }, { x: -123, y: 64, z: 456 },
+    '12345678-1234-5678-1234-567812345678', 'minecraft:overworld'
+  ])
+  const { world, packet, spawn } = entityFixture()
+  spawn()
+  for (const fixture of [absent, present, absent]) {
+    // The producer uses a v8 envelope rather than JSON, preserving undefined.
+    const native = deserialize(serialize(fixture))
+    packet(native.name, native.params)
+    assert.equal(world.entitySnapshot().available, true)
+    const metadata = world.entitySnapshot().entities[0].metadata
+    assert.deepEqual(metadata.map(entry => entry.value), fixture === absent ? [null, null, null, null] : present.params.metadata.map(entry => entry.value))
+    assert(metadata.every(entry => fixture === absent ? entry.nativeOptionalAbsent === true : !Object.hasOwn(entry, 'nativeOptionalAbsent')))
+  }
+})
+
+test('missing required metadata and absent unsupported serializers still close the entity stream', () => {
+  for (const entry of [
+    ...['int', 'string', 'optional_unsigned_int', 'optional_block_state', 'optional_unknown'].map(type => ({ key: 2, type, value: undefined })),
+    { key: 2, type: 6, value: undefined }, { key: 2, type: 'optional_component' }, null
+  ]) {
+    const { world, packet, spawn } = entityFixture()
+    spawn(); packet('entity_metadata', { entityId: 12, metadata: [entry] })
+    const snapshot = world.entitySnapshot()
+    assert.equal(world.error, null)
+    assert.equal(snapshot.available, false)
+    assert.equal(snapshot.reason, 'NATIVE_ENTITY_METADATA_INVALID')
+    assert.equal(snapshot.entities.length, 0)
+    assert.equal(snapshot.errorDetails.hasValue, !!entry && Object.hasOwn(entry, 'value'))
+    assert.equal(snapshot.errorDetails.hasDefinedValue, false)
+  }
+})
+
+test('metadata errors publish bounded names and property presence without retaining native values', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn(); packet('entity_metadata', { entityId: 12, metadata: [{ key: 500, type: 'invalid\n' + 'x'.repeat(200), value: { privateValue: 'never expose me' } }] })
+  const snapshot = world.entitySnapshot(), details = snapshot.errorDetails
+  assert.deepEqual(Object.keys(details), ['packet', 'sequence', 'entityId', 'entryIndex', 'key', 'type', 'typeTruncated', 'hasValue', 'hasDefinedValue'])
+  assert.equal(details.packet, 'entity_metadata'); assert.equal(details.sequence, 3)
+  assert.equal(details.entityId, 12); assert.equal(details.entryIndex, 0); assert.equal(details.key, 500)
+  assert.equal(details.type.length, 128); assert.match(details.type, /^invalid\?/)
+  assert.equal(details.typeTruncated, true); assert.equal(details.hasValue, true); assert.equal(details.hasDefinedValue, true)
+  assert.equal(JSON.stringify(snapshot).includes('privateValue'), false)
+  assert.equal(JSON.stringify(snapshot).includes('never expose me'), false)
+  assert(Buffer.byteLength(JSON.stringify(details)) < 512)
+  assert.throws(() => { details.key = 2 }, TypeError)
+  assert.equal(world.entitySnapshot(), snapshot)
+  assert.equal(world.entityDataBytes, 0)
+  packet('respawn', {}); spawn()
+  assert.equal(world.entitySnapshot().available, true)
+  assert.equal(Object.hasOwn(world.entitySnapshot(), 'errorDetails'), false, 'diagnostics cannot leak into a fresh native epoch')
+})
+
+test('destroy, respawn and unavailable clear entity identity and prevent late resurrection', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn(); packet('entity_destroy', { entityIds: [12] })
+  packet('rel_entity_move', { entityId: 12, dX: 1, dY: 0, dZ: 0, onGround: true })
+  assert.equal(world.entitySnapshot().entities.length, 0)
+  spawn(); packet('respawn', {})
+  assert.equal(world.entitySnapshot().entities.length, 0)
+  spawn(); world.unavailable(Error('test-disconnect'))
+  assert.equal(world.entitySnapshot().available, false)
+  assert.equal(world.entitySnapshot().entities.length, 0)
+})
+
+test('malformed native entity metadata closes entity rendering without inventing a replacement', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn(); packet('entity_metadata', { entityId: 12, metadata: [{ key: 500, type: 'int', value: 2 }] })
+  assert.equal(world.error, null, 'native terrain remains independently available')
+  assert.equal(world.entitySnapshot().available, false)
+  assert.match(world.entitySnapshot().reason, /METADATA_INVALID/)
+  assert.equal(world.entitySnapshot().entities.length, 0)
+})
+
+test('native entity retained-data budgets include repeated metadata and equipment without silent truncation', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn(12,300)
+  const large = 'x'.repeat(15000)
+  packet('entity_metadata',{entityId:12,metadata:Array.from({length:4},(_,key)=>({key,type:'string',value:large}))})
+  const original = world.entityDataBytes
+  assert.ok(original > 60000 && original < 65536)
+  packet('entity_metadata',{entityId:12,metadata:[{key:0,type:'string',value:'small'}]})
+  assert.ok(world.entityDataBytes < original-14000,'replacement releases the previous stored byte allowance')
+  packet('entity_equipment',{entityId:12,equipments:[{slot:0,item:{itemCount:1,components:large}}]})
+  assert.equal(world.entitySnapshot().available,true)
+  packet('entity_equipment',{entityId:12,equipments:[{slot:1,item:{itemCount:1,components:large}}]})
+  assert.match(world.entitySnapshot().reason,/NATIVE_ENTITY_DATA_BUDGET_EXCEEDED/)
+  assert.equal(world.entities.size,0);assert.equal(world.entityDataBytes,0);assert.equal(world.entityEntrySizes.size,0)
+  assert.equal(world.error,null,'terrain and the actual game connection are independent of entity render failure')
+})
+
+test('native entity aggregate budget is bounded across valid independent entities', () => {
+  const { world, packet, spawn } = entityFixture()
+  const metadata=Array.from({length:4},(_,key)=>({key,type:'string',value:'x'.repeat(15000)}))
+  for(let id=1;id<=35;id++) { spawn(id,300);packet('entity_metadata',{entityId:id,metadata}) }
+  assert.match(world.entitySnapshot().reason,/NATIVE_ENTITY_TOTAL_DATA_BUDGET_EXCEEDED/)
+  assert.equal(world.entityDataBytes,0);assert.equal(world.entities.size,0)
+  assert.equal(world.entityCollections.size,0)
+  packet('respawn',{});spawn(99,300)
+  assert.equal(world.entitySnapshot().available,true,'an actual new epoch recovers after clearing all old retained data')
+})
+
+test('destroy and entity ID reuse release retained data and cannot keep an old native motion tracker', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn();packet('entity_metadata',{entityId:12,metadata:[{key:16,type:'int',value:3}]})
+  assert.ok(world.entityDataBytes>0);assert.equal(world.entityMotions.size,1)
+  spawn(12,300)
+  assert.equal(world.entityDataBytes,0);assert.equal(world.entityMotions.size,0)
+  packet('entity_metadata',{entityId:12,metadata:[{key:0,type:'string',value:'actual'}]})
+  packet('entity_destroy',{entityIds:[12]})
+  assert.equal(world.entityDataBytes,0);assert.equal(world.entityEntrySizes.size,0)
+})
+
+test('snapshot cache preserves one revision and bounds, while real ticks reuse immutable heavy collections', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn();packet('entity_metadata',{entityId:12,metadata:[{key:16,type:'int',value:2}]})
+  const first=world.entitySnapshot(),again=world.entitySnapshot()
+  assert.equal(first,again)
+  assert.throws(()=>first.entities.push({}),TypeError)
+  packet('rel_entity_move',{entityId:12,dX:4096,dY:0,dZ:0,onGround:true})
+  world.tickEntities()
+  const second=world.entitySnapshot()
+  assert.notEqual(second,first)
+  assert.equal(second.entities[0].metadata,first.entities[0].metadata,'ordinary motion does not clone/stringify all metadata')
+  assert.equal(first.entities[0].position.x,-10.25)
+  assert.equal(second.entities[0].position.x,-9.25)
+  const distant={minX:100,maxX:110,minY:0,maxY:100,minZ:100,maxZ:110}
+  const empty=world.entitySnapshot(distant)
+  assert.equal(empty.entities.length,0);assert.equal(world.entitySnapshot({...distant}),empty)
+  assert.notEqual(world.entitySnapshot(),empty)
+})
+
+test('cached native entity values and motion cannot be rewritten through nested consumer references', () => {
+  const { world, packet, spawn } = entityFixture()
+  spawn()
+  const input = { native: { color: 2, list: [{ owner: 'received' }] } }
+  packet('entity_metadata', { entityId: 12, metadata: [{ key: 23, type: 'compound', value: input }] })
+  packet('entity_equipment', { entityId: 12, equipments: [{ slot: 0, item: { components: { native: { damage: 7 } } } }] })
+  packet('entity_status', { entityId: 12, entityStatus: 2 })
+  const before = world.entityDataBytes, snapshot = world.entitySnapshot(), row = snapshot.entities[0]
+  input.native.color = 99 // Receipt is a detached copy, not a frozen caller object.
+  assert.throws(() => { row.metadata[0].value.native.color = 99 }, TypeError)
+  assert.throws(() => { row.metadata[0].value.native.list[0].owner = 'changed' }, TypeError)
+  assert.throws(() => { row.metadata[0].key = 0 }, TypeError)
+  assert.throws(() => { row.equipment[0].item.components.native.damage = 99 }, TypeError)
+  assert.throws(() => { row.cues[0].code = 99 }, TypeError)
+  assert.throws(() => { row.motion.previous.position.x = 99 }, TypeError)
+  assert.throws(() => { row.motion.walk.speed = 99 }, TypeError)
+  assert.equal(world.entities.get(12).metadata.get(23).value.native.color, 2)
+  assert.equal(world.entities.get(12).equipment.get(0).item.components.native.damage, 7)
+  assert.equal(world.entityDataBytes, before)
+  assert.equal(world.entitySnapshot(), snapshot)
+  assert.doesNotThrow(() => world.tickEntities())
+  assert.equal(world.entitySnapshot().entities[0].motion.tick, 1, 'freezing snapshots does not freeze the live tracker')
+  world.entityError = 'TEST_UNAVAILABLE'; world.entityRevision++
+  assert.throws(() => world.entitySnapshot().entities.push({}), TypeError)
+})
+
+test('oversize entity snapshot stops before constructing or serializing the remaining table', () => {
+  const { world, packet, spawn } = entityFixture()
+  const metadata=Array.from({length:4},(_,key)=>({key,type:'string',value:'x'.repeat(15000)}))
+  for(let id=1;id<=12;id++){spawn(id,300);packet('entity_metadata',{entityId:id,metadata})}
+  assert.equal(world.entities.size,12)
+  const snapshot=world.entitySnapshot()
+  assert.equal(snapshot.entities.length,0);assert.match(snapshot.reason,/SNAPSHOT_BUDGET_EXCEEDED/)
+  assert.equal(world.entityCollections.size,3,'128KiB check stops at the third 60KiB entity, not after all twelve')
+  assert.equal(world.entitySnapshot(),snapshot,'unchanged oversize state is also cached, not repeatedly reserialized')
+})
+
+test('entity tick clock errors clear only the entity stream and never escape the game physics event', () => {
+  const {world,spawn}=entityFixture();spawn();world.now=()=>999
+  assert.doesNotThrow(()=>world.tickEntities())
+  assert.match(world.entitySnapshot().reason,/MOTION_CLOCK_INVALID/)
+  assert.equal(world.error,null);assert.equal(world.entityMotions.size,0)
+})
 
 test('registry is byte-anchored and never accepts a proxy ID table or duplicates', () => {
   assert.throws(() => loadNativeStateRegistry(Buffer.from('changed'), hash), /HASH_MISMATCH/)

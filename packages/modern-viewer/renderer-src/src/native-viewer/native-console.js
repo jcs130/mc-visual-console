@@ -67,6 +67,11 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       d?.bounds ? `地形范围：${d.bounds.maxX - d.bounds.minX + 1}×${d.bounds.maxZ - d.bounds.minZ + 1} 格，高度 ${d.bounds.minY}–${d.bounds.maxY}；只显示本人收到的区块` : '',
       d?.coverage?.horizontalRangeReduced ? '地形因预算收缩，实际范围以上述数值为准' : '',
       d?.skinState ?? '本人模型未同步',
+      d?.entities ? `周围实体：原生收到 ${d.entities.received}，已渲染 ${d.entities.rendered}` : '',
+      d?.heldItems ? `第三人称持物：${d.heldItems.available ? '原始模型已接入' : d.heldItems.reason || '未支持'}` : '',
+      pendingMode === 'first' && d?.firstPersonItems ? `第一人称持物：${d.firstPersonItems.available ? '原始静止持物姿态' : d.firstPersonItems.reason || '未支持'}；装备切换与完整使用动画待适配` : '',
+      ...Object.entries((pendingMode === 'first' ? d?.firstPersonItems : d?.heldItems)?.hands ?? {}).map(([arm, hand]) =>
+        `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}`),
       presentation.available ? '背包/菜单/技能：同一玩家原生状态；原生物品图标已接入，未支持的专用模型/组件及装备明确标注' : `展示数据：${presentation.reason}`,
       pendingMode === 'dungeon' ? '地下城2.5D跟随相机；遮挡/切面/点击操控未接入' : '',
       '音效/音乐/小地图：原生接口未接入', '完整场景一致性尚未验收',

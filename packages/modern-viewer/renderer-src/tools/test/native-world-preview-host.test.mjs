@@ -112,6 +112,49 @@ function nativeInventory (playerUuid) {
     slots, mayPickup: slots.map(() => true) }
 }
 
+test('server-authoritative body values and canonical inventory survive an open mod menu', () => {
+  const playerUuid = '01234567-89ab-cdef-0123-456789abcdef'
+  const canonical = nativeInventory(playerUuid).slots
+  canonical[36] = { id: 'ars_nouveau:worn_notebook', count: 1, snbt: '{count:1,id:"ars_nouveau:worn_notebook"}', displayName: '破旧笔记本', descriptionId: 'item.ars_nouveau.worn_notebook' }
+  const menu = { ...nativeInventory(playerUuid), windowId: 4, menuType: 'farmersdelight:cooking_pot', slots: Array(45).fill(null), playerInventory: canonical,
+    self: { playerUuid, health: 6.25, maxHealth: 28, absorption: 4, armor: 13, food: 17, saturation: 2.5,
+      airSupply: 150, maxAirSupply: 300, inWater: true, experienceLevel: 12, experienceProgress: 0.75, experiencePoints: 204,
+      equipment: { mainhand: canonical[36], offhand: null, feet: null, legs: null, chest: null, head: null } } }
+  const value = createNativePlayerPresentation({ playerUuid, menu })
+  assert.equal(value.nativeMenu.windowId, 4)
+  assert.equal(value.inventory.windowId, 0)
+  assert.equal(value.inventory.slots.length, 46)
+  assert.equal(value.inventory.slots[36].item.displayName, '破旧笔记本')
+  assert.equal(value.inventory.slots[36].item.snbt, canonical[36].snbt)
+  assert.equal(value.self.health, 6.25); assert.equal(value.self.maxHealth, 28)
+  assert.equal(value.self.armor, 13); assert.equal(value.self.oxygen, 10)
+  assert.equal(value.self.equipment.mainhand.name, canonical[36].id)
+  assert.equal(value.self.experienceLevel, 12)
+})
+
+test('foreign or unavailable server body state never becomes a fabricated HUD default', () => {
+  const playerUuid = '01234567-89ab-cdef-0123-456789abcdef', menu = nativeInventory(playerUuid)
+  menu.self = { playerUuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', health: 20, maxHealth: 20 }
+  assert.equal(createNativePlayerPresentation({ playerUuid, menu }).self, undefined)
+  menu.self = { playerUuid, health: '20', maxHealth: -1, armor: 0, airSupply: 100, maxAirSupply: 0 }
+  const value = createNativePlayerPresentation({ playerUuid, menu })
+  assert.equal(value.self.health, null); assert.equal(value.self.maxHealth, null)
+  assert.equal(value.self.armor, 0); assert.equal(value.self.oxygen, null)
+  assert.equal(value.self.equipment, null)
+  menu.playerInventory = Array(45).fill(null); menu.windowId = 8
+  assert.equal(createNativePlayerPresentation({ playerUuid, menu }).inventory, null)
+})
+
+test('villager renderer registries preserve actual numeric IDs only for this connection', () => {
+  const playerUuid='01234567-89ab-cdef-0123-456789abcdef',menu=nativeInventory(playerUuid)
+  menu.renderRegistries={playerUuid,source:'server_builtin_registries',villagerTypes:[{id:43,name:'minecraft:plains'}],villagerProfessions:[{id:27,name:'minecraft:farmer'}]}
+  assert.deepEqual(createNativePlayerPresentation({playerUuid,menu}).renderRegistries,menu.renderRegistries)
+  for(const patch of [{playerUuid:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'},{source:'proxy_registry'},{villagerTypes:[{id:43,name:'minecraft:plains'},{id:43,name:'minecraft:snow'}]},{villagerProfessions:[{id:27,name:'../guessed'}]}]){
+    const invalid={...menu,renderRegistries:{...menu.renderRegistries,...patch}}
+    assert.equal(createNativePlayerPresentation({playerUuid,menu:invalid}).renderRegistries,undefined)
+  }
+})
+
 async function untilEvent (stream, predicate) {
   let timer
   try {
@@ -396,6 +439,8 @@ test('missing, throwing, asynchronous, cyclic and oversized Agent data remain ex
   await host.listen()
   const empty = attachment(t).host
   assert.equal(empty.status().agent.reason, 'AGENT_STATUS_NOT_PROVIDED')
+  assert.equal(empty.status().viewer.entityDataAvailable, false)
+  assert.equal(empty.status().viewer.entityDataReason, 'NATIVE_ENTITY_REGISTRY_UNAVAILABLE')
   for (const value of [null, ['not-record'], Promise.resolve({ goal: 'later' }), { unsafe: 1n }, { bad: NaN }]) {
     supplied = value
     assert.equal(host.status().agent.reason, 'AGENT_STATUS_INVALID')

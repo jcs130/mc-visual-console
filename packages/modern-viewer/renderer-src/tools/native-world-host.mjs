@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import chunkFactory from 'prismarine-chunk'
 import { Vec3 } from 'vec3'
 import { CUTTING_BOARD_ID, cuttingBoardContent } from '../src/native-viewer/cutting-board.js'
+import { createNativeEntityMotion } from '../src/native-viewer/native-entity-motion.js'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 // Leave room for the same-player presentation in the host's 2 MiB SSE event.
@@ -22,6 +23,43 @@ const haloBounds = (b, dimension) => ({ minX: b.minX - 1, maxX: b.maxX + 1, minY
 const key = p => `${p.x},${p.y},${p.z}`
 const columnKey = (x, z) => `${x},${z}`
 const finite = p => p && [p.x, p.y, p.z].every(Number.isFinite)
+const ENTITY_LIMITS = Object.freeze({ tracked: 512, snapshotBytes: 128 * 1024, metadataBytes: 16384,
+  entityDataBytes: 64 * 1024, totalDataBytes: 2 * 1024 * 1024 })
+// Protocol 767's four bool-prefixed `option` metadata serializers decode an
+// absent value as an own property whose value is undefined. The native v8
+// envelope preserves it; expose JSON null with an explicit absence marker.
+// optvarint serializers have different semantics and are not in this list.
+const OPTIONAL_ENTITY_METADATA = new Set(['optional_component', 'optional_block_pos', 'optional_uuid', 'optional_global_pos'])
+const metadataFailure = (body, entry, entryIndex, reason = 'NATIVE_ENTITY_METADATA_INVALID') => {
+  const error = Error(reason), type = entry?.type
+  // Diagnostic names only: never retain or publish metadata values or NBT.
+  error.entityErrorDetails = Object.freeze({ packet: 'entity_metadata',
+    sequence: Number.isSafeInteger(body.sequence) ? body.sequence : null,
+    entityId: Number.isSafeInteger(body.params?.entityId) ? body.params.entityId : null,
+    entryIndex: Number.isSafeInteger(entryIndex) ? entryIndex : null,
+    key: Number.isSafeInteger(entry?.key) ? entry.key : null,
+    type: typeof type === 'string' ? type.slice(0, 128).replace(/[^a-zA-Z0-9_.:-]/g, '?') : Number.isSafeInteger(type) ? type : null,
+    typeTruncated: typeof type === 'string' && type.length > 128,
+    hasValue: !!entry && Object.prototype.hasOwnProperty.call(entry, 'value'),
+    hasDefinedValue: entry?.value !== undefined })
+  return error
+}
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
+const entityAngle = value => { if (!Number.isInteger(value) || value < -128 || value > 255) throw Error('NATIVE_ENTITY_ANGLE_INVALID'); return value * 360 / 256 }
+const entityJSON = value => JSON.stringify(value, (_, v) => typeof v === 'bigint' ? { type: 'long', value: v.toString() } : v)
+// Parsed native JSON belongs to this stream. Freeze it once on receipt so
+// consumers cannot mutate cached values, identity or their accounted size.
+// Iteration also handles deeply nested valid JSON without recursive freezing.
+const freezeEntityJSON = value => {
+  const pending = [value]
+  while (pending.length) {
+    const current = pending.pop()
+    if (!current || typeof current !== 'object' || Object.isFrozen(current)) continue
+    for (const child of Object.values(current)) if (child && typeof child === 'object') pending.push(child)
+    Object.freeze(current)
+  }
+  return value
+}
 const BaseChunk = chunkFactory('1.21.1'), stateWidths = new WeakMap()
 const require = createRequire(import.meta.url), requireChunk = createRequire(require.resolve('prismarine-chunk'))
 const { SmartBuffer } = requireChunk('smart-buffer')
@@ -40,6 +78,18 @@ export function loadNativeStateRegistry (bytes, expectedHash) {
   }
   if (!states.size) throw Error('NATIVE_WORLD_REGISTRY_EMPTY')
   return states
+}
+
+export function loadNativeEntityRegistry (bytes, expectedHash) {
+  if (createHash('sha256').update(bytes).digest('hex') !== expectedHash) throw Error('NATIVE_ENTITY_REGISTRY_HASH_MISMATCH')
+  const entities = new Map(), names = new Set()
+  for (const line of bytes.toString('utf8').trim().split('\n')) {
+    const [name, number, extra] = line.trim().split('\t'), id = Number(number)
+    if (extra !== undefined || !/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(name || '') || !/^\d+$/.test(number || '') || !Number.isSafeInteger(id) || id < 0 || id > 65535 || entities.has(id) || names.has(name)) throw Error('NATIVE_ENTITY_REGISTRY_INVALID')
+    entities.set(id, name); names.add(name)
+  }
+  if (!entities.size) throw Error('NATIVE_ENTITY_REGISTRY_EMPTY')
+  return entities
 }
 
 export function longNumber (value) {
@@ -87,19 +137,24 @@ export function nativeChunk (options, states, biomeCount) {
 // Receives only already-verified native packets from the action bot's own
 // connection. Never queries disk worlds, generates chunks or decodes proxy IDs.
 export class NativeWorldState extends EventEmitter {
-  constructor ({ states, registrySha256, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
+  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
     super()
     this.states = states; this.registrySha256 = registrySha256
     this.resolveDimension = resolveDimension; this.simplifyNBT = simplifyNBT; this.makeChunk = makeChunk || (options => nativeChunk(options, this.states, this.biomes.size)); this.now = now
     this.biomes = new Map(); this.biomeSeed = null
     this.columns = new Map(); this.blockEntities = new Map(); this.dimension = null; this.pose = null
     this.epoch = 0; this.revision = 0; this.lastSequence = 0; this.packetCount = 0; this.error = null; this.time = null
+    this.entityRegistry = entityRegistry; this.entityRegistrySha256 = entityRegistrySha256
+    if (entityRegistry !== null && (!(entityRegistry instanceof Map) || !/^[a-f0-9]{64}$/.test(entityRegistrySha256 || ''))) throw Error('NATIVE_ENTITY_REGISTRY_CONFIG_INVALID')
+    this.entities = new Map(); this.entityMotions = new Map(); this.entityRevision = 0; this.entityError = null; this.entityErrorDetails = null
+    this.entityDataBytes = 0; this.entityEntrySizes = new Map(); this.entityCollections = new Map(); this.entitySnapshotCache = null
   }
 
   unavailable (error) {
     if (this.error) return
     this.error = error.message || String(error)
     this.columns.clear(); this.blockEntities.clear(); this.pose = null
+    this.clearEntities(); this.entityRevision++
     this.emit('unavailable', this.error)
   }
 
@@ -114,6 +169,7 @@ export class NativeWorldState extends EventEmitter {
           const d = this.resolveDimension(p.worldState || p)
           if (!d || !Number.isInteger(d.minY) || !Number.isInteger(d.height) || d.height <= 0 || d.height > 4096 || d.minY % 16 || d.height % 16 || typeof d.name !== 'string') throw Error('NATIVE_WORLD_DIMENSION_UNAVAILABLE')
           this.dimension = d; this.columns.clear(); this.blockEntities.clear(); this.pose = null; this.time = null
+          this.clearEntities(); this.entityRevision++; this.entityError = null; this.entityErrorDetails = null
           this.biomeSeed = (p.worldState || p).hashedSeed !== undefined ? longBigInt((p.worldState || p).hashedSeed).toString() : null
           this.epoch++; this.revision++; this.emit('reset', this.epoch); break
         }
@@ -144,8 +200,151 @@ export class NativeWorldState extends EventEmitter {
         }
         case 'tile_entity_data': this.setBlockEntity(p.location, p.nbtData ?? p.nbt); this.revision++; this.emit('world'); break
         case 'update_time': this.time = { age: longNumber(p.age), day: longNumber(p.time), receivedAt: this.now() }; this.emit('time'); break
+        case 'spawn_entity': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
+        case 'rel_entity_move': case 'entity_move_look': case 'entity_look': case 'entity_teleport':
+        case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation':
+          this.handleEntity(body); break
       }
     } catch (error) { this.unavailable(error) }
+  }
+
+  handleEntity (body) {
+    if (!this.entityRegistry || this.entityError) return
+    try {
+      const p = body.params, timestamp = this.now()
+      if (body.name === 'entity_destroy') {
+        if (!Array.isArray(p.entityIds) || p.entityIds.length > ENTITY_LIMITS.tracked || !p.entityIds.every(Number.isSafeInteger)) throw Error('NATIVE_ENTITY_DESTROY_INVALID')
+        for (const id of p.entityIds) this.removeEntity(id)
+      } else if (body.name === 'spawn_entity') {
+        if (!Number.isSafeInteger(p.entityId) || !UUID.test(p.objectUUID || '') || !Number.isSafeInteger(p.type) || !this.entityRegistry.has(p.type) || !finite(p)) throw Error('NATIVE_ENTITY_SPAWN_INVALID')
+        if (!this.entities.has(p.entityId) && this.entities.size >= ENTITY_LIMITS.tracked) throw Error('NATIVE_ENTITY_TRACKING_BUDGET_EXCEEDED')
+        this.removeEntity(p.entityId)
+        this.entities.set(p.entityId, { entityId: p.entityId, uuid: p.objectUUID.toLowerCase(), typeId: p.type, name: this.entityRegistry.get(p.type), position: { x: p.x, y: p.y, z: p.z },
+          yaw: entityAngle(p.yaw), pitch: entityAngle(p.pitch), headYaw: entityAngle(p.headPitch), onGround: null, velocity: this.entityVelocity(p.velocity),
+          metadata: new Map(), equipment: new Map(), cues: [], spawnedAt: timestamp, updatedAt: timestamp, lastSequence: body.sequence })
+        const motion=createNativeEntityMotion(this.entities.get(p.entityId))
+        if(motion)this.entityMotions.set(p.entityId,motion)
+      } else {
+        const entity = this.entities.get(p.entityId)
+        // The receiving player's own status/animation packets may have no
+        // spawn packet. Never fabricate another identity from proxy state.
+        if (!entity) return
+        if (body.name === 'entity_metadata') {
+          if (!Array.isArray(p.metadata) || p.metadata.length > 255) throw metadataFailure(body)
+          for (const [entryIndex, entry] of p.metadata.entries()) {
+            const optionalAbsent = !!entry && Object.prototype.hasOwnProperty.call(entry, 'value') && entry.value === undefined && OPTIONAL_ENTITY_METADATA.has(entry.type)
+            if (!entry || !Number.isInteger(entry.key) || entry.key < 0 || entry.key > 254 || !(typeof entry.type === 'string' || Number.isInteger(entry.type)) || (entry.value === undefined && !optionalAbsent)) throw metadataFailure(body, entry, entryIndex)
+            if (typeof entry.type === 'string' && (entry.type.length > 128 || !/^[a-zA-Z0-9_.:-]+$/.test(entry.type))) throw metadataFailure(body, entry, entryIndex)
+            const json = entityJSON(optionalAbsent ? null : entry.value), valueBytes = Buffer.byteLength(json)
+            if (valueBytes > ENTITY_LIMITS.metadataBytes) throw metadataFailure(body, entry, entryIndex, 'NATIVE_ENTITY_METADATA_BUDGET_EXCEEDED')
+            const row = freezeEntityJSON({ key: entry.key, type: entry.type, value: JSON.parse(json), ...(optionalAbsent ? { nativeOptionalAbsent: true } : {}) })
+            this.accountEntityEntry(p.entityId, `metadata:${entry.key}`, Buffer.byteLength(JSON.stringify(row)))
+            entity.metadata.set(entry.key, row); this.entityCollections.delete(p.entityId)
+          }
+        } else if (body.name === 'entity_equipment') {
+          if (!Array.isArray(p.equipments) || p.equipments.length > 8) throw Error('NATIVE_ENTITY_EQUIPMENT_INVALID')
+          for (const entry of p.equipments) {
+            if (!Number.isInteger(entry.slot) || entry.slot < 0 || entry.slot > 7) throw Error('NATIVE_ENTITY_EQUIPMENT_INVALID')
+            const json = entityJSON(entry.item)
+            if (Buffer.byteLength(json) > ENTITY_LIMITS.metadataBytes) throw Error('NATIVE_ENTITY_EQUIPMENT_BUDGET_EXCEEDED')
+            const row = freezeEntityJSON({ slot: entry.slot, item: JSON.parse(json) })
+            this.accountEntityEntry(p.entityId, `equipment:${entry.slot}`, Buffer.byteLength(JSON.stringify(row)))
+            entity.equipment.set(entry.slot, row); this.entityCollections.delete(p.entityId)
+          }
+        } else if (body.name === 'entity_status' || body.name === 'animation') {
+          const code = p.entityStatus ?? p.animation
+          if (!Number.isInteger(code)) throw Error('NATIVE_ENTITY_CUE_INVALID')
+          entity.cues.push(Object.freeze({ kind: body.name, code, at: timestamp, sequence: body.sequence })); entity.cues = entity.cues.slice(-8)
+          this.entityCollections.delete(p.entityId)
+        } else {
+          if (body.name === 'entity_teleport') { if (!finite(p)) throw Error('NATIVE_ENTITY_POSITION_INVALID'); entity.position = { x: p.x, y: p.y, z: p.z } }
+          if (['rel_entity_move', 'entity_move_look'].includes(body.name)) {
+            if (![p.dX, p.dY, p.dZ].every(v => Number.isInteger(v) && v >= -32768 && v <= 32767)) throw Error('NATIVE_ENTITY_DELTA_INVALID')
+            entity.position = { x: entity.position.x + p.dX / 4096, y: entity.position.y + p.dY / 4096, z: entity.position.z + p.dZ / 4096 }
+          }
+          if (['entity_move_look', 'entity_look', 'entity_teleport'].includes(body.name)) { entity.yaw = entityAngle(p.yaw); entity.pitch = entityAngle(p.pitch) }
+          if (body.name === 'entity_head_rotation') entity.headYaw = entityAngle(p.headYaw)
+          if (body.name === 'entity_velocity') entity.velocity = this.entityVelocity(p.velocity)
+          if (['rel_entity_move', 'entity_move_look', 'entity_look', 'entity_teleport'].includes(body.name)) { if (typeof p.onGround !== 'boolean') throw Error('NATIVE_ENTITY_GROUND_INVALID'); entity.onGround = p.onGround }
+        }
+        entity.updatedAt = timestamp; entity.lastSequence = body.sequence
+        this.entityMotions.get(p.entityId)?.observe(entity,body.name)
+      }
+      this.entityRevision++; this.emit('entities')
+    } catch (error) {
+      this.entityError = error.message; this.entityErrorDetails = error.entityErrorDetails ?? null; this.clearEntities(); this.entityRevision++; this.emit('entities')
+    }
+  }
+
+  entityVelocity (value) {
+    if (!value || ![value.x, value.y, value.z].every(v => Number.isInteger(v) && v >= -32768 && v <= 32767)) throw Error('NATIVE_ENTITY_VELOCITY_INVALID')
+    return { x: value.x / 8000, y: value.y / 8000, z: value.z / 8000 }
+  }
+
+  clearEntities () {
+    this.entities.clear(); this.entityMotions.clear(); this.entityEntrySizes.clear(); this.entityCollections.clear()
+    this.entityDataBytes = 0; this.entitySnapshotCache = null
+  }
+
+  removeEntity (id) {
+    const sizes = this.entityEntrySizes.get(id)
+    if (sizes) this.entityDataBytes -= sizes.total
+    this.entityEntrySizes.delete(id); this.entityCollections.delete(id); this.entities.delete(id); this.entityMotions.delete(id)
+  }
+
+  accountEntityEntry (id, key, bytes) {
+    const sizes = this.entityEntrySizes.get(id) ?? { total: 0, entries: new Map() }
+    const delta = bytes - (sizes.entries.get(key) ?? 0)
+    if (sizes.total + delta > ENTITY_LIMITS.entityDataBytes) throw Error('NATIVE_ENTITY_DATA_BUDGET_EXCEEDED')
+    if (this.entityDataBytes + delta > ENTITY_LIMITS.totalDataBytes) throw Error('NATIVE_ENTITY_TOTAL_DATA_BUDGET_EXCEEDED')
+    sizes.entries.set(key, bytes); sizes.total += delta; this.entityDataBytes += delta; this.entityEntrySizes.set(id, sizes)
+  }
+
+  entitySnapshot (bounds = null) {
+    // One bounded cache, never one entry per camera position. Physics ticks and
+    // native mutations change entityRevision; repeated HTTP/SSE clients reuse
+    // the same immutable wire snapshot without cloning/stringifying the table.
+    const boundsKey = bounds === null ? '' : ['minX','maxX','minY','maxY','minZ','maxZ'].map(key => bounds[key]).join(':')
+    if (this.entitySnapshotCache?.revision === this.entityRevision && this.entitySnapshotCache.boundsKey === boundsKey) return this.entitySnapshotCache.value
+    const base = { available: false, source: 'received_native_entity_packets', registrySha256: this.entityRegistrySha256, revision: this.entityRevision, epoch: this.epoch,
+      rotationUnit: 'minecraft_degrees', limits: ENTITY_LIMITS, entities: Object.freeze([]) }
+    const finish = value => { this.entitySnapshotCache = { revision: this.entityRevision, boundsKey, value: Object.freeze(value) }; return this.entitySnapshotCache.value }
+    if (this.error || this.entityError || !this.entityRegistry) return finish({ ...base, reason: this.error || this.entityError || 'NATIVE_ENTITY_REGISTRY_UNAVAILABLE',
+      ...(!this.error && this.entityErrorDetails ? { errorDetails: this.entityErrorDetails } : {}) })
+    if (bounds && (!['minX','maxX','minY','maxY','minZ','maxZ'].every(key => Number.isFinite(bounds[key])) ||
+        bounds.minX > bounds.maxX || bounds.minY > bounds.maxY || bounds.minZ > bounds.maxZ)) return finish({ ...base, reason: 'NATIVE_ENTITY_BOUNDS_INVALID' })
+    const entities = []
+    let snapshotBytes = Buffer.byteLength(JSON.stringify({ ...base, available: true }))
+    for (const entity of this.entities.values()) {
+      const p = entity.position
+      if (bounds && (p.x < bounds.minX || p.x > bounds.maxX + 1 || p.y < bounds.minY || p.y > bounds.maxY + 1 || p.z < bounds.minZ || p.z > bounds.maxZ + 1)) continue
+      let collections = this.entityCollections.get(entity.entityId)
+      if (!collections) {
+        const metadata = Object.freeze([...entity.metadata.values()]), equipment = Object.freeze([...entity.equipment.values()]), cues = Object.freeze([...entity.cues])
+        // These heavy arrays are invariant during ordinary interpolation ticks.
+        // Cache their exact encoded byte cost; [] contributes two bytes each.
+        collections = { metadata, equipment, cues, bytes: [metadata,equipment,cues].reduce((sum, value) => sum + Buffer.byteLength(JSON.stringify(value)) - 2, 0) }
+        this.entityCollections.set(entity.entityId, collections)
+      }
+      const { metadata, equipment, cues, ...scalar } = entity
+      const row = { ...scalar, position: Object.freeze({ ...entity.position }), velocity: Object.freeze({ ...entity.velocity }),
+        metadata: collections.metadata, equipment: collections.equipment, cues: collections.cues,
+        // current() returns a detached copy: never freeze tracker internals.
+        motion: freezeEntityJSON(this.entityMotions.get(entity.entityId)?.current() ?? null) }
+      snapshotBytes += Buffer.byteLength(JSON.stringify({ ...row, metadata: [], equipment: [], cues: [] })) + collections.bytes + (entities.length ? 1 : 0)
+      if (snapshotBytes > ENTITY_LIMITS.snapshotBytes) return finish({ ...base, reason: 'NATIVE_ENTITY_SNAPSHOT_BUDGET_EXCEEDED' })
+      entities.push(Object.freeze(row))
+    }
+    return finish({ ...base, available: true, entities: Object.freeze(entities) })
+  }
+
+  tickEntities () {
+    if(this.error||this.entityError)return
+    try {
+      const now = this.now()
+      for(const [id,motion] of this.entityMotions){const entity=this.entities.get(id);if(entity)motion.tick(entity,now)}
+      if(this.entityMotions.size){this.entityRevision++;this.emit('entities')}
+    } catch(error) { this.entityError = error.message; this.clearEntities(); this.entityRevision++; this.emit('entities') }
   }
 
   setBiomeRegistry (packet) {
@@ -299,6 +498,7 @@ export class NativeWorldState extends EventEmitter {
     return { type: 'snapshot', schemaVersion: 1, mode: 'live_same_player_connection', minecraftVersion: '1.21.1', registrySha256: this.registrySha256,
       epoch: this.epoch, revision: this.revision, packetSequence: this.lastSequence, dimension: this.dimension, pose: this.pose, time: this.time, bounds,
       states: [...definitions.values()], groups: [...groups].map(([stateId, positions]) => ({ stateId, positions })), kinetic, cuttingBoards, missingColumns: [...missingColumns],
+      entityState: this.entitySnapshot(bounds),
       neighbors, biomeSeed: this.biomeSeed, biomeGrid, biomes: [...usedBiomes].map(id => this.biomes.get(id)).filter(Boolean),
       viewCoverage: { source: 'received_native_chunks', policy: 'complete_bounded_volume', receivedColumns, missingColumns: [...missingColumns],
         scannedVoxels, nonAirBlocks, fluidNeighborVoxels: neighbors.length / 4, neighborCoverage: 'fluid_stencil_only',
@@ -315,10 +515,12 @@ export function attachNativeWorld ({ bot, nativeStream, world, intervalMs = 100 
   nativeStream.events.on('packet', packet); nativeStream.events.on('unavailable', unavailable)
   const registry = packet => world.setBiomeRegistry(packet)
   bot._client?.on('registry_data', registry)
+  const entityTick=()=>world.tickEntities()
+  bot.on?.('physicsTick',entityTick)
   const timer = setInterval(() => {
     if (!bot.entity) return
     world.setPose({ ...bot.entity.position, yaw: bot.entity.yaw, pitch: bot.entity.pitch, eyeHeight: bot.entity.eyeHeight })
   }, intervalMs)
   timer.unref()
-  return () => { clearInterval(timer); nativeStream.events.off('packet', packet); nativeStream.events.off('unavailable', unavailable); bot._client?.off('registry_data', registry) }
+  return () => { clearInterval(timer); nativeStream.events.off('packet', packet); nativeStream.events.off('unavailable', unavailable); bot._client?.off('registry_data', registry); bot.off?.('physicsTick',entityTick) }
 }

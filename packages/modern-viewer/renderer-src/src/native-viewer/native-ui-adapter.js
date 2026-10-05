@@ -17,6 +17,108 @@ const uuid = value => typeof value === 'string' && UUID.test(value) ? value.toLo
 const unavailable = reason => ({ available: false, reason, self: null, inventory: null,
   nativeMenu: null, skills: null, gameMessages: [], title: null, actionbar: null })
 
+// Locked CraftingScreen fpg / CraftingMenu cqm, Minecraft 1.21.1. Coordinates
+// are actual Slot item origins in GUI pixels, not an inferred container grid.
+// Source class SHA256: fpg 2bdae8d835d46754180fda2459b04b477ab4acceb62b381f8d2b5521416af4eb;
+// cqm 68025666eea6290a718ab8ff10ec17722ea741e54717e66a14428e25d5cb0551.
+export const NATIVE_CRAFTING_GUI = Object.freeze({
+  clientJarSha256: '499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99',
+  path: 'assets/minecraft/textures/gui/container/crafting_table.png',
+  sha256: 'baf65a599d8bb380b1b03efa1862c20fd29e936b43110d7438b9fe00086075b0',
+  bytes: 404, width: 176, height: 166
+})
+// ContainerScreen fpe / ChestMenu cqc and AbstractFurnaceScreen fou /
+// AbstractFurnaceMenu cpv from the same locked client. Texture crops and Slot
+// origins are Java GUI pixels; all images still pass the reader's priority guard.
+export const NATIVE_CHEST_GUI = Object.freeze({
+  clientJarSha256: NATIVE_CRAFTING_GUI.clientJarSha256,
+  path: 'assets/minecraft/textures/gui/container/generic_54.png',
+  sha256: '1ca0500b1be97ba0dda9290bc16b554829b63de691cefe7dcbfd3078cae8c268',
+  bytes: 348, width: 176
+})
+export const NATIVE_FURNACE_GUIS = Object.freeze(Object.fromEntries(['furnace', 'smoker', 'blast_furnace'].map(kind =>
+  [`minecraft:${kind}`, Object.freeze({
+    clientJarSha256: NATIVE_CRAFTING_GUI.clientJarSha256,
+    path: `assets/minecraft/textures/gui/container/${kind}.png`,
+    sha256: 'd700c1af4175a204e9e403c31dea2afdee575dac2bb23493f208b9f0bf3b2dc8',
+    bytes: 452, width: 176, height: 166,
+    lit: Object.freeze({ path: `assets/minecraft/textures/gui/sprites/container/${kind}/lit_progress.png`,
+      sha256: '32f69838e8fbf0b980ec3f8b205d0ddb5f477fcf6202feddbd1b6a0b4524b6eb', bytes: 175, width: 14, height: 14 }),
+    burn: Object.freeze({ path: `assets/minecraft/textures/gui/sprites/container/${kind}/burn_progress.png`,
+      sha256: '9e042d39afe20bbdd4a0cfbb66be1c24f30327d460a48042d3a38cba7851c018', bytes: 143, width: 24, height: 16 })
+  })])))
+function verifiedMenuRows (menu, expectedUuid, typeMatches, count, kind) {
+  if (!uuid(expectedUuid) || uuid(menu?.playerUuid) !== uuid(expectedUuid)) throw Error(`NATIVE_${kind}_MENU_IDENTITY_MISMATCH`)
+  if (!typeMatches || !Number.isSafeInteger(menu.windowId) || menu.windowId <= 0 ||
+      !Number.isSafeInteger(menu.stateId) || menu.stateId < 0) throw Error(`NATIVE_${kind}_MENU_STATE_UNVERIFIED`)
+  const rows = nativeSlotRows(menu.slots)
+  if (!rows || rows.length !== count || rows.some((row, i) => row.slot !== i)) throw Error(`NATIVE_${kind}_MENU_SLOTS_UNVERIFIED`)
+  return rows
+}
+export function nativeCraftingMenuLayout (menu, expectedUuid) {
+  const rows = verifiedMenuRows(menu, expectedUuid, menu?.menuType === 'minecraft:crafting', 46, 'CRAFTING')
+  return rows.map(row => {
+    const i = row.slot
+    if (i === 0) return { row, x: 124, y: 35, role: 'result' }
+    if (i < 10) return { row, x: 30 + ((i - 1) % 3) * 18, y: 17 + Math.floor((i - 1) / 3) * 18, role: 'crafting' }
+    if (i < 37) return { row, x: 8 + ((i - 10) % 9) * 18, y: 84 + Math.floor((i - 10) / 9) * 18, role: 'inventory' }
+    return { row, x: 8 + (i - 37) * 18, y: 142, role: 'hotbar' }
+  })
+}
+export function nativeChestMenuLayout (menu, expectedUuid) {
+  const match = /^minecraft:generic_9x([1-6])$/.exec(menu?.menuType ?? ''), rowsCount = match ? Number(match[1]) : 0
+  const rows = verifiedMenuRows(menu, expectedUuid, Boolean(match), rowsCount * 9 + 36, 'CHEST')
+  const offset = (rowsCount - 4) * 18, containerSize = rowsCount * 9
+  return { info: NATIVE_CHEST_GUI, width: 176, height: 114 + rowsCount * 18, rowsCount,
+    // Original Java blits cover one less pixel than imageHeight; retain it.
+    blits: [{ x: 0, y: 0, sourceX: 0, sourceY: 0, width: 176, height: rowsCount * 18 + 17 },
+      { x: 0, y: rowsCount * 18 + 17, sourceX: 0, sourceY: 126, width: 176, height: 96 }],
+    slots: rows.map(row => {
+      const i = row.slot
+      if (i < containerSize) return { row, x: 8 + (i % 9) * 18, y: 18 + Math.floor(i / 9) * 18, role: 'container' }
+      if (i < containerSize + 27) return { row, x: 8 + ((i - containerSize) % 9) * 18,
+        y: 103 + Math.floor((i - containerSize) / 9) * 18 + offset, role: 'inventory' }
+      return { row, x: 8 + (i - containerSize - 27) * 18, y: 161 + offset, role: 'hotbar' }
+    }) }
+}
+export function nativeFurnaceMenuLayout (menu, expectedUuid) {
+  const info = Object.hasOwn(NATIVE_FURNACE_GUIS, menu?.menuType) ? NATIVE_FURNACE_GUIS[menu.menuType] : null
+  const rows = verifiedMenuRows(menu, expectedUuid, Boolean(info), 39, 'FURNACE')
+  return { info, width: info.width, height: info.height, slots: rows.map(row => {
+    const i = row.slot
+    if (i < 3) return { row, x: [56, 56, 116][i], y: [17, 53, 35][i], role: ['input', 'fuel', 'result'][i] }
+    if (i < 30) return { row, x: 8 + ((i - 3) % 9) * 18, y: 84 + Math.floor((i - 3) / 9) * 18, role: 'inventory' }
+    return { row, x: 8 + (i - 30) * 18, y: 142, role: 'hotbar' }
+  }) }
+}
+export function nativeFurnaceProgress (menu, expectedUuid) {
+  nativeFurnaceMenuLayout(menu, expectedUuid)
+  const values = menu.dataValues
+  if (values === undefined || values === null) return { available: false, reason: 'NATIVE_FURNACE_DATA_UNAVAILABLE' }
+  if (!Array.isArray(values) || values.length !== 4 || Array.from(values).some(value => !Number.isInteger(value) ||
+      value < -2147483648 || value > 2147483647)) return { available: false, reason: 'NATIVE_FURNACE_DATA_UNVERIFIED' }
+  // AbstractFurnaceMenu indices 0..3: litTime, litDuration, cookingProgress,
+  // cookingTotalTime. Cast ints, divide and multiply as Java float32; Mth.ceil
+  // is used by the original screen, including the litDuration==0 -> 200 rule.
+  const ratio = (a, b) => clamp(Math.fround(Math.fround(a) / Math.fround(b)), 0, 1)
+  const litRatio = ratio(values[0], values[1] === 0 ? 200 : values[1])
+  const cookRatio = values[2] === 0 || values[3] === 0 ? 0 : ratio(values[2], values[3])
+  const litPixels = values[0] > 0 ? Math.ceil(Math.fround(litRatio * 13)) + 1 : 0
+  const burnPixels = Math.ceil(Math.fround(cookRatio * 24))
+  return { available: true, values: values.slice(), litPixels, burnPixels,
+    lit: { x: 56, y: 50 - litPixels, sourceX: 0, sourceY: 14 - litPixels, width: 14, height: litPixels },
+    burn: { x: 79, y: 34, sourceX: 0, sourceY: 0, width: burnPixels, height: 16 } }
+}
+function verifyGuiSource (reader, info, kind) {
+  const manifest = reader.manifest
+  const sources = manifest?.sources?.filter(source => source.name === 'minecraft-1.21.1-client.jar')
+  if (manifest?.minecraftVersion !== '1.21.1' || manifest.assetIntegrityVerified !== true ||
+      manifest.clientJarSha256 !== info.clientJarSha256 || sources?.length !== 1 ||
+      sources[0].sha256 !== info.clientJarSha256 || sources[0].explicitOverride) throw Error(`NATIVE_${kind}_GUI_CLIENT_UNVERIFIED`)
+  const entry = manifest.assets?.[info.path]
+  if (entry?.sha256 !== info.sha256 || entry.bytes !== info.bytes) throw Error(`NATIVE_${kind}_GUI_TEXTURE_UNVERIFIED`)
+}
+
 export function nativeSlotRows (rows) {
   if (!Array.isArray(rows) || rows.length > 256) return null
   const seen = new Set(), result = []
@@ -66,6 +168,12 @@ export class NativeUiAssets {
   constructor (reader, { createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url) } = {}) {
     this.reader = reader; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.urls = new Map(); this.pending = new Map(); this.errors = new Map(); this.disposed = false
+    this.craftingReason = 'NATIVE_CRAFTING_GUI_LOADING'
+    this.chestReason = 'NATIVE_CHEST_GUI_LOADING'; this.furnaceReasons = new Map(); this.furnaceProgressReasons = new Map()
+    for (const type of Object.keys(NATIVE_FURNACE_GUIS)) {
+      this.furnaceReasons.set(type, 'NATIVE_FURNACE_GUI_LOADING')
+      this.furnaceProgressReasons.set(type, 'NATIVE_FURNACE_GUI_LOADING')
+    }
   }
   async texture (path) {
     if (this.disposed) throw Error('NATIVE_UI_ASSETS_DISPOSED')
@@ -84,6 +192,18 @@ export class NativeUiAssets {
   async prepare () {
     await Promise.allSettled([...HUD_SPRITES.map(name => `assets/minecraft/textures/gui/sprites/hud/${name}.png`),
       'assets/minecraft/textures/gui/container/inventory.png'].map(path => this.texture(path)))
+    const prepare = async (info, kind) => {
+      try { verifyGuiSource(this.reader, info, kind); await this.texture(info.path); return null } catch (error) { return error.message }
+    }
+    await Promise.all([
+      prepare(NATIVE_CRAFTING_GUI, 'CRAFTING').then(reason => { this.craftingReason = reason }),
+      prepare(NATIVE_CHEST_GUI, 'CHEST').then(reason => { this.chestReason = reason }),
+      ...Object.entries(NATIVE_FURNACE_GUIS).map(async ([type, info]) => {
+        this.furnaceReasons.set(type, await prepare(info, 'FURNACE'))
+        const reasons = await Promise.all([info.lit, info.burn].map(sprite => prepare({ ...sprite, clientJarSha256: info.clientJarSha256 }, 'FURNACE')))
+        this.furnaceProgressReasons.set(type, reasons.find(Boolean) ?? null)
+      })
+    ])
     return { available: this.errors.size === 0, failures: [...this.errors.keys()] }
   }
   dispose () {
@@ -103,24 +223,39 @@ function node (document, tag, className, content) {
 
 // An optional future icon resolver must consume the complete native item.
 // Absence means a truthful text label, never /icons/<basename>.png.
-export function renderNativeItemSlot (document, slot, item, { label = '', resolveItemIcon } = {}) {
+export function renderNativeItemSlot (document, slot, item, { label = '', resolveItemIcon, resolveItemIconReason } = {}) {
   slot.replaceChildren()
   slot.dataset.state = 'available'
   slot.dataset.itemName = item?.name ?? ''
   slot.dataset.modelState = item ? 'unavailable' : 'empty'
-  slot.title = item ? `${item.name} × ${item.count} · 原生物品模型未支持` : `${label}：空`
+  delete slot.dataset.modelReason
+  // displayName is the same-player server's getHoverName().getString(). Never
+  // infer a translated name from a registry basename or a guessed component.
+  const displayName = text(item?.displayName, 256) || item?.name
+  const identity = item ? `${displayName}${displayName !== item.name ? `\n${item.name}` : ''} × ${item.count}` : ''
+  slot.title = item ? `${identity} · 原生物品模型未支持` : `${label}：空`
   slot.setAttribute('aria-label', slot.title)
   if (!item) return
   const icon = resolveItemIcon?.(item)
   if (record(icon) && icon.verified === true && typeof icon.url === 'string' && icon.url.startsWith('blob:')) {
-    const image = node(document, 'img'); image.alt = item.name; image.src = icon.url
-    slot.dataset.modelState = 'verified'; slot.title = `${item.name} × ${item.count}`
+    const image = node(document, 'img'); image.alt = displayName; image.src = icon.url
+    slot.dataset.modelState = 'verified'; slot.title = identity
     image.addEventListener('error', () => {
+      if (image.parentNode !== slot) return // Late error belongs to a retired item/image.
       image.remove(); slot.dataset.modelState = 'unavailable'
-      slot.prepend(node(document, 'span', 'corti-item-fallback', item.name))
+      slot.dataset.modelReason = 'NATIVE_ITEM_ICON_IMAGE_DECODE_FAILED'
+      slot.title = `${identity} · 原生物品图标解码失败（${slot.dataset.modelReason}）`; slot.setAttribute('aria-label', slot.title)
+      slot.prepend(node(document, 'span', 'corti-item-fallback', displayName))
     }, { once: true })
     slot.append(image)
-  } else slot.append(node(document, 'span', 'corti-item-fallback', item.name))
+  } else {
+    const reason = text(resolveItemIconReason?.(item), 512)
+    if (reason) slot.dataset.modelReason = reason
+    const loading = reason === 'loading' || reason === 'not_requested'
+    if (loading) slot.dataset.modelState = 'loading'
+    slot.title = `${identity} · ${loading ? '原生物品图标加载中' : `原生物品模型未支持${reason ? `（${reason}）` : ''}`}`
+    slot.append(node(document, 'span', 'corti-item-fallback', displayName))
+  }
   if (item.count > 1) slot.append(node(document, 'span', 'corti-slot-count', String(item.count)))
   slot.setAttribute('aria-label', slot.title)
 }
@@ -143,13 +278,15 @@ export class NativeFishingCatchHud extends FishingCatchHud {
     const document = this.root.ownerDocument
     const icon = node(document, 'div', 'viewer-fishing-catch-icon corti-slot')
     icon.setAttribute('aria-hidden', 'true')
-    this.renderIcon?.(icon, this.nativeItems.get(caught.seq) ?? caught.item)
+    const actualItem=this.nativeItems.get(caught.seq) ?? caught.item
+    const actualLabel=text(actualItem?.displayName,256)||actualItem?.name||caught.label
+    this.renderIcon?.(icon, actualItem)
     const copy = node(document, 'div', 'viewer-fishing-catch-copy')
-    const name = node(document, 'strong', '', caught.label); name.title = caught.label
+    const name = node(document, 'strong', '', actualLabel); name.title = actualItem?.name ? `${actualLabel}\n${actualItem.name}` : actualLabel
     copy.append(node(document, 'small', '', '钓获'), name)
     this.root.replaceChildren(icon, copy, node(document, 'span', 'viewer-fishing-catch-count', `×${caught.count}`))
     this.root.hidden = false
-    this.root.setAttribute('aria-label', `钓获 ${caught.label}，${caught.count} 个`)
+    this.root.setAttribute('aria-label', `钓获 ${actualLabel}，${caught.count} 个`)
     this.timer = this.schedule(() => this.advance(), 4500)
   }
   reset () { super.reset(); this.nativeItems?.clear() }
@@ -157,12 +294,14 @@ export class NativeFishingCatchHud extends FishingCatchHud {
 
 export function createNativeInterface ({ document = globalThis.document,
   previewFactory = options => new InventoryPlayerPreview(options), now = Date.now,
-  setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon } = {}) {
+  setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason } = {}) {
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   let expectedUuid = null, actor = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
   let hudSignature = null, skillsSignature = null
   const resolveIcon = item => typeof resolveItemIcon === 'function' ? resolveItemIcon(item) : itemIcons?.resolve(item)
+  const resolveIconReason = item => typeof resolveItemIconReason === 'function' ? resolveItemIconReason(item)
+    : typeof resolveItemIcon === 'function' ? null : itemIcons?.reason(item)
   let presentation = unavailable('等待本人状态'), manualOpen = false, idleOpen = false,
     idleTimer = null, dismissedMenu = null, preview = null, disposed = false, lastMenuSignature = null
   let combatUntil = 0
@@ -226,12 +365,12 @@ export function createNativeInterface ({ document = globalThis.document,
         const index = inventory.hotbarStart + i, slot = node(document, 'div', 'corti-slot')
         slot.dataset.slot = String(index)
         if (!slotMap.has(index)) note(slot, '槽未同步')
-        else renderNativeItemSlot(document, slot, slotMap.get(index), { label: `快捷栏 ${i + 1}`, resolveItemIcon: resolveIcon })
+        else renderNativeItemSlot(document, slot, slotMap.get(index), { label: `快捷栏 ${i + 1}`, resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason })
         bar.append(slot)
       }
     }
     if (offhand) {
-      if (inventory && Number.isInteger(inventory.offhandSlot) && slotMap.has(inventory.offhandSlot)) renderNativeItemSlot(document, offhand, slotMap.get(inventory.offhandSlot), { label: '副手', resolveItemIcon: resolveIcon })
+      if (inventory && Number.isInteger(inventory.offhandSlot) && slotMap.has(inventory.offhandSlot)) renderNativeItemSlot(document, offhand, slotMap.get(inventory.offhandSlot), { label: '副手', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason })
       else note(offhand, '副手未同步')
     }
     if (selection) {
@@ -244,7 +383,8 @@ export function createNativeInterface ({ document = globalThis.document,
     const element = node(document, 'div', 'corti-menu-slot')
     element.dataset.slot = String(row.slot)
     if (x !== undefined) { element.style.left = `${x * 2}px`; element.style.top = `${y * 2}px` }
-    renderNativeItemSlot(document, element, row.item, { label, resolveItemIcon: resolveIcon }); body.append(element)
+    renderNativeItemSlot(document, element, row.item, { label, resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason }); body.append(element)
+    return element
   }
   const actorSource = () => {
     if (!expectedUuid || uuid(actor?.assetInfo?.uuid ?? actor?.root?.userData?.playerUuid) !== expectedUuid || !actor.root?.playerObject) return null
@@ -301,9 +441,76 @@ export function createNativeInterface ({ document = globalThis.document,
       menu.dataset.inventorySource = 'container'
       if (heading) heading.textContent = text(window.title) || text(window.menuType) || '本人原生菜单'
       if (source) source.textContent = '真实游戏窗口 · 只读'
-      const panel = node(document, 'div', 'corti-menu-generic'), grid = node(document, 'div', 'corti-menu-grid')
-      for (const row of window.slots) slot(grid, row, undefined, undefined, `原生槽 ${row.slot}`)
-      panel.append(grid, node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId ?? '未同步'} · state ${window.stateId ?? '未同步'}；原生菜单布局未支持`)); body.append(panel)
+      let layout = null, kind = null, reason = null
+      try {
+        if (window.menuType === 'minecraft:crafting') {
+          kind = 'crafting'
+          layout = { info: NATIVE_CRAFTING_GUI, width: 176, height: 166, slots: nativeCraftingMenuLayout(window, expectedUuid) }
+          reason = assets ? assets.craftingReason : 'NATIVE_CRAFTING_GUI_LOADING'
+        } else if (/^minecraft:generic_9x[1-6]$/.test(window.menuType)) {
+          kind = 'chest'; layout = nativeChestMenuLayout(window, expectedUuid)
+          reason = assets ? assets.chestReason : 'NATIVE_CHEST_GUI_LOADING'
+        } else if (Object.hasOwn(NATIVE_FURNACE_GUIS, window.menuType)) {
+          kind = 'furnace'; layout = nativeFurnaceMenuLayout(window, expectedUuid)
+          reason = assets ? assets.furnaceReasons.get(window.menuType) : 'NATIVE_FURNACE_GUI_LOADING'
+        }
+        if (reason || (layout && !assets?.urls.get(layout.info.path))) layout = null
+      } catch (error) { reason = error.message; layout = null }
+      if (layout) {
+        const { info } = layout, background = assets.urls.get(info.path)
+        const panel = node(document, 'div', `corti-menu-body corti-menu-vanilla native-menu-${kind}`)
+        panel.style.width = `${layout.width * 2}px`; panel.style.height = `${layout.height * 2}px`
+        panel.style.position = 'relative'
+        panel.dataset.nativeGuiSource = info.path; panel.dataset.nativeGuiSha256 = info.sha256
+        panel.dataset.windowId = String(window.windowId); panel.dataset.stateId = String(window.stateId)
+        const blit = (image, imageWidth, imageHeight, crop, className) => {
+          if (crop.width <= 0 || crop.height <= 0) return
+          const part = node(document, 'div', className)
+          part.style.position = 'absolute'; part.style.pointerEvents = 'none'
+          part.style.left = `${crop.x * 2}px`; part.style.top = `${crop.y * 2}px`
+          part.style.width = `${crop.width * 2}px`; part.style.height = `${crop.height * 2}px`
+          part.style.backgroundImage = `url("${image}")`; part.style.backgroundRepeat = 'no-repeat'
+          part.style.backgroundSize = `${imageWidth * 2}px ${imageHeight * 2}px`
+          part.style.backgroundPosition = `${-crop.sourceX * 2}px ${-crop.sourceY * 2}px`
+          part.style.imageRendering = 'pixelated'
+          part.dataset.nativeSourceX = String(crop.sourceX); part.dataset.nativeSourceY = String(crop.sourceY)
+          part.dataset.nativeBlitWidth = String(crop.width); part.dataset.nativeBlitHeight = String(crop.height)
+          panel.append(part)
+        }
+        if (layout.blits) {
+          panel.style.backgroundImage = 'none'
+          for (const crop of layout.blits) blit(background, 256, 256, crop, 'native-menu-background-blit')
+        } else panel.style.backgroundImage = `url("${background}")`
+        let progress = null
+        if (kind === 'furnace') {
+          progress = nativeFurnaceProgress(window, expectedUuid)
+          const spriteReason = assets.furnaceProgressReasons.get(window.menuType)
+          if (progress.available && spriteReason) progress = { available: false, reason: spriteReason }
+          panel.dataset.progressState = progress.available ? 'available' : 'unknown'
+          if (progress.available) {
+            if (progress.litPixels > 0) blit(assets.urls.get(info.lit.path), 14, 14, progress.lit, 'native-menu-progress-lit')
+            blit(assets.urls.get(info.burn.path), 24, 16, progress.burn, 'native-menu-progress-burn')
+          } else panel.dataset.progressReason = progress.reason
+        }
+        for (const { row, x, y, role } of layout.slots) {
+          // Original Slot coords address the 16px item; existing CSS draws its
+          // 32px image 2px inside this 36px div, so place the div one GUI pixel back.
+          const itemSlot = slot(panel, row, x - 1, y - 1, `原生${role}槽 ${row.slot}`)
+          itemSlot.dataset.nativeSlotX = String(x); itemSlot.dataset.nativeSlotY = String(y); itemSlot.dataset.slotRole = role
+        }
+        body.append(panel)
+        const label = kind === 'crafting' ? '原版 3×3 工作台与玩家背包布局'
+          : kind === 'chest' ? `原版 9×${layout.rowsCount} 容器与玩家背包布局` : '原版炉输入、燃料、结果与玩家背包布局'
+        const missing = kind === 'chest' ? '原生标题未接入' : '配方书与原生标题未接入'
+        const progressText = progress ? `；${progress.available ? '火焰与烧炼进度来自本人原生 dataValues'
+          : `火焰与烧炼进度未知（${progress.reason}）`}` : ''
+        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId} · state ${window.stateId}；${label} · 只读；${missing}${progressText}`))
+      } else {
+        const panel = node(document, 'div', 'corti-menu-generic'), grid = node(document, 'div', 'corti-menu-grid')
+        for (const row of window.slots) slot(grid, row, undefined, undefined, `原生槽 ${row.slot}`)
+        panel.append(grid); body.append(panel)
+        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId ?? '未同步'} · state ${window.stateId ?? '未同步'}；原生菜单布局未支持${reason ? `（${reason}）` : ''}`))
+      }
       if (window.carried) body.append(node(document, 'p', 'corti-menu-note', `光标：${window.carried.name} × ${window.carried.count}`))
     } else {
       menu.dataset.inventorySource = manualOpen ? 'manual' : 'idle'
@@ -384,7 +591,7 @@ export function createNativeInterface ({ document = globalThis.document,
   const fishingRoot = el('viewer-fishing-catch')
   const fishing = fishingRoot ? new NativeFishingCatchHud({ root: fishingRoot, now,
     schedule: later, cancel: timer => { clearTimer(timer); timers.delete(timer) },
-    renderIcon: (target, item) => renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon }) }) : null
+    renderIcon: (target, item) => renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason }) }) : null
   const reset = () => {
     current = null; actor = null; presentation = unavailable('本人状态不可用')
     manualOpen = false; cancelIdle(); dismissedMenu = null; lastMenuSignature = null; hudSignature = null; skillsSignature = null

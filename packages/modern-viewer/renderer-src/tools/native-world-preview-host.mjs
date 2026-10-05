@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { build } from 'esbuild'
-import { NativeWorldState, loadNativeStateRegistry, attachNativeWorld } from './native-world-host.mjs'
+import { NativeWorldState, loadNativeStateRegistry, loadNativeEntityRegistry, attachNativeWorld } from './native-world-host.mjs'
 import { NativeSnapshotCadence } from './native-snapshot-cadence.mjs'
 import { createNativePlayerMotionTracker } from '../src/native-viewer/native-player-motion.js'
 import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
@@ -65,7 +65,14 @@ function injectedPresentation (provider, uuid) {
     own(copy)
     // Only these private game fields belong in the presentation stream. Runtime
     // configuration, model journals and arbitrary provider fields do not.
-    return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null, nativeState: { available: true } }
+    // A server observation may supplement missing native attribute packets.
+    // Select only actual body/HUD fields; it cannot replace identity or pose.
+    const ownSelf = copy.self && copy.self.playerUuid === uuid ? Object.fromEntries(
+      ['health', 'maxHealth', 'absorption', 'armor', 'food', 'saturation', 'oxygen', 'airSupply', 'maxAirSupply',
+        'inWater', 'experienceLevel', 'experienceProgress', 'experiencePoints', 'equipment', 'mainArm', 'usingItem',
+        'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'pose'].filter(key => Object.hasOwn(copy.self, key)).map(key => [key, copy.self[key]])) : null
+    return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
+      nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null, nativeState: { available: true } }
   } catch (error) {
     const reason = ['PRESENTATION_INVALID', 'PRESENTATION_TOO_LARGE', 'PRESENTATION_IDENTITY_MISMATCH'].includes(error?.message) ? error.message : 'PRESENTATION_UNAVAILABLE'
     return unavailable(reason)
@@ -102,10 +109,27 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
   const nativeItem = item => {
     if (item === null) return null
     if (!item || typeof item.id !== 'string' || !/^[a-z0-9_.-]+:[a-z0-9/._-]+$/.test(item.id) || !Number.isSafeInteger(item.count) || item.count <= 0 || typeof item.snbt !== 'string') throw Error('PRESENTATION_NATIVE_ITEM_INVALID')
-    return { name: item.id, count: item.count, snbt: item.snbt }
+    return { name: item.id, count: item.count, snbt: item.snbt,
+      ...(typeof item.displayName === 'string' && item.displayName.length <= 512 ? { displayName: item.displayName } : {}),
+      ...(typeof item.descriptionId === 'string' && item.descriptionId.length <= 512 ? { descriptionId: item.descriptionId } : {}) }
   }
-  let nativeMenu = null, inventory = null, skills = null
+  let nativeMenu = null, inventory = null, skills = null, self = null, renderRegistries = null
   if (own(menu) && Number.isSafeInteger(menu.windowId) && menu.windowId >= 0 && Array.isArray(menu.slots)) {
+    if (own(menu.renderRegistries) && menu.renderRegistries.source === 'server_builtin_registries') {
+      const registry = rows => {
+        if (!Array.isArray(rows) || rows.length < 1 || rows.length > 128) return null
+        const ids = new Set(), names = new Set()
+        for (const row of rows) {
+          if (!Number.isSafeInteger(row?.id) || row.id < 0 || row.id > 65535 ||
+              typeof row.name !== 'string' || !/^[a-z0-9_.-]+:[a-z0-9/._-]+$/.test(row.name) ||
+              ids.has(row.id) || names.has(row.name)) return null
+          ids.add(row.id); names.add(row.name)
+        }
+        return rows.map(row => ({ id: row.id, name: row.name }))
+      }
+      const villagerTypes = registry(menu.renderRegistries.villagerTypes), villagerProfessions = registry(menu.renderRegistries.villagerProfessions)
+      if (villagerTypes && villagerProfessions) renderRegistries = { playerUuid: uuid, source: 'server_builtin_registries', villagerTypes, villagerProfessions }
+    }
     const slots = menu.slots.map((item, slot) => ({ slot, item: nativeItem(item) }))
     const selectedHotbarSlot = Number.isInteger(menu.selectedHotbarSlot) && menu.selectedHotbarSlot >= 0 && menu.selectedHotbarSlot <= 8 ? menu.selectedHotbarSlot : null
     nativeMenu = { playerUuid: uuid, windowId: menu.windowId, stateId: Number.isSafeInteger(menu.stateId) ? menu.stateId : null,
@@ -115,6 +139,34 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
     // subset. Keep its original layout, rather than guessing from slot count.
     if (menu.windowId === 0 && menu.menuType === 'minecraft:inventory' && slots.length === 46) inventory = {
       playerUuid: uuid, windowId: 0, slots, selectedHotbarSlot, hotbarStart: 36, inventoryStart: 9, offhandSlot: 45
+    }
+    else if (Array.isArray(menu.playerInventory) && menu.playerInventory.length === 46) inventory = {
+      playerUuid: uuid, windowId: 0, slots: menu.playerInventory.map((item, slot) => ({ slot, item: nativeItem(item) })),
+      selectedHotbarSlot, hotbarStart: 36, inventoryStart: 9, offhandSlot: 45
+    }
+    if (own(menu.self)) {
+      const source = menu.self
+      const number = (key, min, max) => Number.isFinite(source[key]) && source[key] >= min && source[key] <= max ? source[key] : null
+      const airSupply = number('airSupply', -32768, 2147483647), maxAirSupply = number('maxAirSupply', 1, 2147483647)
+      self = { playerUuid: uuid, health: number('health', 0, 1024), maxHealth: number('maxHealth', 1, 1024),
+        absorption: number('absorption', 0, 1024), armor: number('armor', 0, 1024), food: number('food', 0, 20),
+        saturation: number('saturation', 0, 20), airSupply, maxAirSupply,
+        oxygen: airSupply !== null && maxAirSupply !== null ? Math.max(0, Math.min(20, airSupply * 20 / maxAirSupply)) : null,
+        inWater: typeof source.inWater === 'boolean' ? source.inWater : null,
+        experienceLevel: number('experienceLevel', 0, 2147483647), experienceProgress: number('experienceProgress', 0, 1),
+        experiencePoints: number('experiencePoints', 0, 2147483647),
+        mainArm: ['left', 'right'].includes(source.mainArm) ? source.mainArm : null,
+        usingItem: typeof source.usingItem === 'boolean' ? source.usingItem : null,
+        useItemRemainingTicks: number('useItemRemainingTicks', 0, 2147483647),
+        crouching: typeof source.crouching === 'boolean' ? source.crouching : null,
+        isPassenger: typeof source.isPassenger === 'boolean' ? source.isPassenger : null,
+        swimAmount: number('swimAmount', 0, 1), fallFlying: typeof source.fallFlying === 'boolean' ? source.fallFlying : null,
+        spinAttack: typeof source.spinAttack === 'boolean' ? source.spinAttack : null,
+        swinging: typeof source.swinging === 'boolean' ? source.swinging : null,
+        attackAnim: number('attackAnim', 0, 1), attackStrengthScale: number('attackStrengthScale', 0, 1),
+        pose: typeof source.pose === 'string' && /^[a-z_]{1,64}$/.test(source.pose) ? source.pose : null,
+        equipment: source.equipment && typeof source.equipment === 'object' && !Array.isArray(source.equipment)
+          ? Object.fromEntries(['mainhand', 'offhand', 'feet', 'legs', 'chest', 'head'].filter(key => Object.hasOwn(source.equipment, key)).map(key => [key, nativeItem(source.equipment[key])])) : null }
     }
   }
   if (own(spellState)) {
@@ -129,7 +181,8 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
       })) : [], cooldown: spellState.cooldown ?? null, source: 'ars_nouveau_receipt', observedAt: finiteNumber(spellObservedAt),
       stale: !sameHeld || !Number.isFinite(spellObservedAt) || now - spellObservedAt > 5000 }
   }
-  return { schemaVersion: 1, playerUuid: uuid, inventory, nativeMenu, skills }
+  return { schemaVersion: 1, playerUuid: uuid, inventory, nativeMenu, skills, ...(self ? { self } : {}),
+    ...(renderRegistries ? { renderRegistries } : {}) }
 }
 
 // A native console and its skin preview must share one Three module, including
@@ -236,6 +289,9 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   const hash = manifest.registryHashes['block-states.jsonl']
   if (!SHA256.test(hash || '')) throw Error('NATIVE_WORLD_REGISTRY_HASH_INVALID')
   const states = loadNativeStateRegistry(await fs.readFile(path.join(root, 'registry/block-states.jsonl')), hash)
+  const entityRegistrySha256 = manifest.registryHashes['entities.tsv'] ?? null
+  const entityRegistry = entityRegistrySha256 === null ? null
+    : loadNativeEntityRegistry(await fs.readFile(path.join(root, 'registry/entities.tsv')), entityRegistrySha256)
   const [bundle, consoleBundle, diagnosticsPage] = await Promise.all([
     browserBundle(path.join(SOURCE, 'world-preview.js')),
     browserBundle(path.join(SOURCE, 'native-console.js')),
@@ -255,7 +311,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       if (expectedUsername !== undefined && (!/^[A-Za-z0-9_]{1,16}$/.test(expectedUsername) || (bot.username && bot.username !== expectedUsername))) throw Error('NATIVE_WORLD_ATTACHMENT_IDENTITY_MISMATCH')
       if (getAgentStatus !== null && typeof getAgentStatus !== 'function') throw Error('AGENT_STATUS_PROVIDER_INVALID')
       if (getPresentationState !== null && typeof getPresentationState !== 'function') throw Error('PRESENTATION_PROVIDER_INVALID')
-      const world = new NativeWorldState({ states, registrySha256: hash, simplifyNBT, now,
+      const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry, entityRegistrySha256, simplifyNBT, now,
         resolveDimension: resolveDimension || (p => {
           const type = typeof p.dimension === 'number' ? bot.registry.dimensionsArray[p.dimension] : bot.registry.dimensionsByName[String(p.dimension).replace('minecraft:', '')]
           return type && { name: p.name || p.worldName || type.name, minY: type.minY, height: type.height }
@@ -313,12 +369,16 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         // Armor modifiers are not yet resolved; expose a value only when the
         // packet contains the unmodified effective base, never a fabricated 0.
         const armor = armorAttribute && !(armorAttribute.modifiers?.length) ? finiteNumber(armorAttribute.value) : null
+        const injected = injectedPresentation(getPresentationState, player.uuid)
         const value = { schemaVersion: 1, playerUuid: player.uuid, available: true, source: 'same_player_connection', sampledAt: now(),
           self: { ...player, saturation: finiteNumber(bot.foodSaturation), oxygen: finiteNumber(bot.oxygenLevel), armor,
             inWater: typeof bot.entity?.isInWater === 'boolean' ? bot.entity.isInWater : null,
             experienceLevel: finiteNumber(bot.experience?.level), experienceProgress: finiteNumber(bot.experience?.progress), experiencePoints: finiteNumber(bot.experience?.points),
-            quickBarSlot: Number.isInteger(bot.quickBarSlot) && bot.quickBarSlot >= 0 && bot.quickBarSlot <= 8 ? bot.quickBarSlot : null },
-          ...injectedPresentation(getPresentationState, player.uuid), gameMessages: gameMessages.map(message => ({ ...message })),
+            quickBarSlot: Number.isInteger(bot.quickBarSlot) && bot.quickBarSlot >= 0 && bot.quickBarSlot <= 8 ? bot.quickBarSlot : null,
+            ...(injected.nativeSelf ?? {}) },
+          inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, nativeState: injected.nativeState,
+          renderRegistries: injected.renderRegistries,
+          gameMessages: gameMessages.map(message => ({ ...message })),
           title: currentTitle && { ...currentTitle }, actionbar: currentActionbar && { ...currentActionbar }, time: world.time && { ...world.time },
           weather: { raining: typeof bot.isRaining === 'boolean' ? bot.isRaining : null, thunder: finiteNumber(bot.thunderState), rain: finiteNumber(bot.rainState) } }
         if (Buffer.byteLength(JSON.stringify(value)) > MAX_PRESENTATION_BYTES) return unavailable('PRESENTATION_TOO_LARGE')
@@ -332,6 +392,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           packetSequence: world.lastSequence, packetCount: world.packetCount, loadedColumns: world.columns.size,
           terrain: { coverage: cachedSnapshot?.viewCoverage ?? null, bounds: cachedSnapshot?.bounds ?? null,
             snapshotBuildCount, snapshotBuildMs, minimumIntervalMs: cadence.minimumIntervalMs, recenterDistance: cadence.recenterDistance },
+          entityDataAvailable: world.entitySnapshot().available, entityDataReason: world.entitySnapshot().reason ?? null,
+          entityRegistrySha256,
           entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false },
         agent: injectedAgentStatus(getAgentStatus, now) })
       const headers = type => ({ 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': CSP })
@@ -476,8 +538,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             if (!sendIdentity(client) || client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
             if (snapshot || client.needsSnapshot) {
               const value = snapshot || cachedSnapshot
-              if (value && sendNativeWorldEvent(client, { ...value, pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
-            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: playerPose(player), motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation, time: world.time, packetSequence: world.lastSequence })
+              if (value && sendNativeWorldEvent(client, { ...value, entityState: { ...world.entitySnapshot(value.bounds), renderRegistries: ownPresentation.renderRegistries ?? null }, pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
+            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: playerPose(player), motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation, entityState: { ...world.entitySnapshot(cachedSnapshot?.bounds), renderRegistries: ownPresentation.renderRegistries ?? null }, time: world.time, packetSequence: world.lastSequence })
           }
         } catch (error) { world.unavailable(error) }
       }, 200)

@@ -2,9 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
 import { NativeItemIcons, nativeItemIconEligible } from '../../src/native-viewer/native-item-icons.js'
+import { STATIC_ITEM_SOURCES } from '../../src/native-viewer/native-static-item-providers.js'
 import { BLOCK_ICON_CLIENT_SHA256, BLOCK_ICON_SHADER_HASHES, NATIVE_GUI_BLOCK_ITEMS,
   NativeBlockItemIconRenderer, prepareNativeBlockItemIcon, nativeGuiItemTransform, nativeGuiLight,
-  buildNativeBlockItemObject, disposeNativeBlockItemObject, resolveNativeBlockItemModel
+  buildNativeBlockItemObject, disposeNativeBlockItemObject, resolveNativeBlockItemModel, nativeGuiFaceCulling
 } from '../../src/native-viewer/native-block-item-icons.js'
 
 // These JSON shapes/UVs are from the locked minecraft-1.21.1-client.jar, not
@@ -21,10 +22,18 @@ const models = {
   'block/cobblestone': { parent: 'minecraft:block/cube_all', textures: { all: 'minecraft:block/cobblestone' } },
   'block/oak_log': { parent: 'minecraft:block/cube_column', textures: { end: 'minecraft:block/oak_log_top', side: 'minecraft:block/oak_log' } }
 }
+models['block/crafting_table']={parent:'minecraft:block/cube',textures:{down:'minecraft:block/oak_planks',
+  east:'minecraft:block/crafting_table_side',north:'minecraft:block/crafting_table_front',south:'minecraft:block/crafting_table_side',
+  up:'minecraft:block/crafting_table_top',west:'minecraft:block/crafting_table_front',particle:'minecraft:block/crafting_table_front'}}
+models['block/slab']={parent:'minecraft:block/block',elements:[{from:[0,0,0],to:[16,8,16],
+  faces:Object.fromEntries(faceNames.map(face=>[face,{texture:face==='down'?'#bottom':face==='up'?'#top':'#side',cullface:face}]))}]}
+models['block/stone_slab']={parent:'minecraft:block/slab',textures:{bottom:'minecraft:block/stone',side:'minecraft:block/stone',top:'minecraft:block/stone'}}
+for(const name of ['crafting_table','stone_slab'])models[`item/${name}`]={parent:`minecraft:block/${name}`}
 for (const name of ['dirt', 'cobblestone', 'oak_log']) models[`item/${name}`] = { parent: `minecraft:block/${name}` }
-const texturePaths = ['dirt', 'cobblestone', 'oak_log', 'oak_log_top'].map(name => `assets/minecraft/textures/block/${name}.png`)
+const texturePaths = ['dirt', 'cobblestone', 'oak_log', 'oak_log_top','oak_planks','crafting_table_side','crafting_table_front','crafting_table_top','stone'].map(name => `assets/minecraft/textures/block/${name}.png`)
+const fixtureBlocks=['minecraft:dirt','minecraft:oak_log','minecraft:cobblestone']
 function reader(patch = {}) {
-  return { manifest: { clientJarSha256: BLOCK_ICON_CLIENT_SHA256, assets: {
+  return { manifest: { minecraftVersion:'1.21.1',assetIntegrityVerified:true,clientJarSha256: BLOCK_ICON_CLIENT_SHA256, sources:[STATIC_ITEM_SOURCES.minecraft], assets: {
     ...Object.fromEntries(Object.entries(BLOCK_ICON_SHADER_HASHES).map(([path, sha256]) => [path, { sha256, bytes: 1 }])),
     ...Object.fromEntries(texturePaths.map(path => [path, { bytes: 200 }]))
   } }, json: async path => {
@@ -45,7 +54,7 @@ function testRendererOptions(observe = () => {}) {
 }
 
 test('three audited BlockItems inherit actual six-face models, distinct log ends and original GUI transform', async () => {
-  for (const name of NATIVE_GUI_BLOCK_ITEMS) {
+  for (const name of fixtureBlocks) {
     assert.equal(nativeItemIconEligible(stack(name)), true)
     const plan = await prepareNativeBlockItemIcon(reader(), name)
     assert.equal(plan.faces.length, 6); assert.deepEqual(plan.transform, { ...gui, translation: [0, 0, 0] })
@@ -71,7 +80,7 @@ test('native GUI uses ItemTransform XYZ ordering and /16 translation clamp rathe
   assert.ok(Math.abs(point.x + 0.625 / Math.sqrt(2)) < 1e-7)
   assert.ok(Math.abs(point.y - 0.3125 * Math.cos(Math.PI / 6)) < 1e-7)
   assert.ok(Math.abs(point.z - 0.3125 * Math.sin(Math.PI / 6)) < 1e-7)
-  assert.equal(object.children.length, 6)
+  assert.equal(plan.faces.length,6);assert.equal(object.children.length,3)
   assert.equal(object.children[0].material.type, 'ShaderMaterial')
   assert.match(object.children[0].material.vertexShader, /n\.y = -n\.y/)
   const shades = faceNames.map(direction => nativeGuiLight(({ down: [0,-1,0], up: [0,1,0], north: [0,0,-1],
@@ -115,10 +124,10 @@ test('dynamic, tinted, animated, foreign, excessive and unported shader sources 
   await assert.rejects(prepareNativeBlockItemIcon(reader(), 'ars_nouveau:novice_spell_book'), /PROVIDER_UNSUPPORTED/)
 })
 
-test('icon cache encodes a real six-mesh orthographic GUI render, verifies source provenance and serializes one reusable renderer', async () => {
+test('icon cache retains all six native faces and encodes the three FrontSide GUI faces using one reusable renderer', async () => {
   let renders = 0, changes = 0, creates = 0, encodings = 0, rendererCreates = 0
   const released = [], options = testRendererOptions((scene, camera) => {
-    renders++; assert.equal(scene.children[0].children.length, 6)
+    renders++; assert.equal(scene.children[0].children.length, 3)
     assert.deepEqual([camera.left, camera.right, camera.top, camera.bottom], [-0.5, 0.5, 0.5, -0.5])
     assert.equal(camera.position.z, 10)
   })
@@ -126,9 +135,9 @@ test('icon cache encodes a real six-mesh orthographic GUI render, verifies sourc
   options.encode = async () => { encodings++; await settled(); return imageBlob() }
   const icons = new NativeItemIcons(reader(), { blockRendererOptions: options, onChange: () => changes++,
     createUrl: () => `blob:cube-${++creates}`, revokeUrl: url => released.push(url) })
-  for (const name of NATIVE_GUI_BLOCK_ITEMS) { icons.resolve(stack(name)); icons.resolve(stack(name)) }
+  for (const name of fixtureBlocks) { icons.resolve(stack(name)); icons.resolve(stack(name)) }
   for (let i = 0; i < 8; i++) await settled()
-  for (const name of NATIVE_GUI_BLOCK_ITEMS) {
+  for (const name of fixtureBlocks) {
     const icon = icons.resolve(stack(name)); assert.equal(icon.verified, true)
     assert.equal(icon.kind, 'native-block-gui'); assert.equal(icon.pixelParityVerified, false)
     assert.ok(icon.sourcePaths.includes(`assets/minecraft/models/item/${name.split(':')[1]}.json`))
@@ -138,12 +147,46 @@ test('icon cache encodes a real six-mesh orthographic GUI render, verifies sourc
   icons.dispose(); icons.dispose(); assert.deepEqual(released, ['blob:cube-1', 'blob:cube-2', 'blob:cube-3'])
 })
 
+test('working table and half-slab use original six-sided JSON/UV; slab height and visible tabletop remain native',async()=>{
+  assert.ok(NATIVE_GUI_BLOCK_ITEMS.includes('minecraft:crafting_table'));assert.ok(NATIVE_GUI_BLOCK_ITEMS.includes('minecraft:stone_slab'))
+  const table=await prepareNativeBlockItemIcon(reader(),'minecraft:crafting_table')
+  assert.equal(table.faces.length,6);assert.equal(table.renderFaces.length,3)
+  assert.equal(table.faces.find(face=>face.direction==='down').texture,'minecraft:block/oak_planks')
+  assert.ok(table.texturePaths.includes('assets/minecraft/textures/block/crafting_table_top.png'))
+  assert.ok(!table.texturePaths.includes('assets/minecraft/textures/block/oak_planks.png'))
+  assert.equal(table.culling.context,'GUI');assert.equal(table.culling.materialSide,'FrontSide')
+  const down=table.culling.culled.find(face=>face.direction==='down')
+  assert.equal(down.resourcePath,'assets/minecraft/textures/block/oak_planks.png');assert.equal(down.resourceRequested,false)
+  assert.equal(down.resourceVerified,false);assert.ok(down.normalZ<-.49);assert.equal(down.reason,'native_gui_frontside_backface')
+  const slab=await prepareNativeBlockItemIcon(reader(),'minecraft:stone_slab')
+  assert.equal(slab.faces.length,6);assert.ok(slab.faces.every(face=>face.position.every((n,i)=>i%3!==1||n===-.5||n===0)))
+  assert.deepEqual(slab.faces.find(face=>face.direction==='north').uv,[0,.5,0,0,1,0,1,.5])
+})
+
+test('GUI culling proves zero-pixel resource omission; rotating the same native face visible still rejects its priority conflict',async()=>{
+  let requested=[]
+  const source=reader(),bytes=source.bytes
+  source.bytes=async path=>{requested.push(path);if(path.endsWith('/oak_planks.png'))throw Error('NATIVE_RESOURCE_PRIORITY_UNRESOLVED');return bytes(path)}
+  const renderer=new NativeBlockItemIconRenderer(source,testRendererOptions())
+  const icon=await renderer.render('minecraft:crafting_table')
+  assert.equal(icon.guiCulling.context,'GUI');assert.ok(!requested.some(path=>path.endsWith('/oak_planks.png')));renderer.dispose()
+  const rotated=reader({'item/crafting_table':{parent:'minecraft:block/crafting_table',display:{gui:{...gui,rotation:[-30,225,0]}}}})
+  const rotatedBytes=rotated.bytes;rotated.bytes=async path=>{if(path.endsWith('/oak_planks.png'))throw Error('NATIVE_RESOURCE_PRIORITY_UNRESOLVED');return rotatedBytes(path)}
+  const shown=await prepareNativeBlockItemIcon(rotated,'minecraft:crafting_table')
+  assert.ok(shown.renderFaces.some(face=>face.direction==='down'));assert.ok(shown.texturePaths.some(path=>path.endsWith('/oak_planks.png')))
+  const fail=new NativeBlockItemIconRenderer(rotated,testRendererOptions());await assert.rejects(fail.render('minecraft:crafting_table'),/PRIORITY_UNRESOLVED/);fail.dispose()
+  // Reflected contexts have different raster winding and cannot borrow this
+  // right-hand/positive-scale proof or silently suppress their resource guard.
+  assert.throws(()=>nativeGuiFaceCulling(shown.faces,{...shown.transform,scale:[.625,-.625,.625]}),/REFLECTED_GUI_UNSUPPORTED/)
+  await assert.rejects(prepareNativeBlockItemIcon(reader({'item/crafting_table':{parent:'minecraft:block/crafting_table',display:{gui:{...gui,scale:[.625,-.625,.625]}}}}),'minecraft:crafting_table'),/REFLECTED_GUI_UNSUPPORTED/)
+})
+
 test('source failure and reset during texture decoding create no URL, dispose late texture, and never use a flat substitute', async () => {
   const bad = reader(); bad.bytes = async path => { if (path.endsWith('.png')) throw Error('NATIVE_ASSET_HASH_MISMATCH'); return new Uint8Array([1]) }
   let created = 0, rendered = 0
   const icons = new NativeItemIcons(bad, { blockRendererOptions: testRendererOptions(() => rendered++), createUrl: () => { created++; return 'blob:wrong' } })
   icons.resolve(stack('minecraft:dirt')); await settled(); assert.equal(created, 0); assert.equal(rendered, 0)
-  assert.match(icons.entries.get('minecraft:dirt').reason, /HASH_MISMATCH/); icons.dispose()
+  assert.match(icons.reason(stack('minecraft:dirt')), /HASH_MISMATCH/); icons.dispose()
   let finish, disposed = 0
   const texture = new THREE.Texture({ width: 16, height: 16 }); texture.addEventListener('dispose', () => disposed++)
   const renderer = new NativeBlockItemIconRenderer(reader(), { ...testRendererOptions(() => rendered++), loadTexture: () => new Promise(resolve => { finish = resolve }) })
@@ -152,8 +195,10 @@ test('source failure and reset during texture decoding create no URL, dispose la
   await assert.rejects(renderer.render('minecraft:oak_log'), /DISPOSED/)
 })
 
-test('quoted or escaped components and mismatched identity cannot borrow generic block icons', () => {
-  for (const snbt of ['{id:"minecraft:dirt",count:1,"components":{}}', '{id:"minecraft:dirt",count:1,\'components\':{}}',
+test('complete SNBT handles quoted empty patches but visual components and mismatched identity cannot borrow generic block icons', () => {
+  for(const snbt of ['{id:"minecraft:dirt",count:1,"components":{}}','{id:"minecraft:dirt",count:1,\'components\':{}}'])
+    assert.equal(nativeItemIconEligible({...stack('minecraft:dirt'),snbt}),true)
+  for (const snbt of ['{id:"minecraft:dirt",count:1,"components":{"minecraft:custom_model_data":1}}',
     '{id:"minecraft:dirt",count:1,"\\u0063omponents":{}}', '{id:"minecraft:cobblestone",count:1}', '{id:"minecraft:dirt",count:2}'])
     assert.equal(nativeItemIconEligible({ ...stack('minecraft:dirt'), snbt }), false)
   assert.equal(nativeItemIconEligible({ ...stack('minecraft:dirt'), snbt: '{"count":1,"id":"minecraft:dirt"}' }), true)

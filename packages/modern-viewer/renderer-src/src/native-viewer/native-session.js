@@ -5,8 +5,9 @@ const ownConnection = 'live_same_player_connection'
 // The browser is a passive observer of one caller-owned game connection.
 // A disconnect invalidates the old world, and frames cannot establish identity
 // or resurrect an old epoch. This also protects inventory/player HUD consumers.
-export function createNativeSession(registrySha256) {
+export function createNativeSession(registrySha256, { entityRegistrySha256 = null } = {}) {
   if (!SHA.test(registrySha256 || '')) throw Error('NATIVE_WORLD_REGISTRY_HASH_INVALID')
+  if (entityRegistrySha256 !== null && !SHA.test(entityRegistrySha256)) throw Error('NATIVE_ENTITY_REGISTRY_HASH_INVALID')
   let identity = null, epoch = null, ready = false
   return {
     receive(value) {
@@ -32,6 +33,10 @@ export function createNativeSession(registrySha256) {
       if (value.type === 'motion' && (!identity.playerUuid || value.playerUuid?.toLowerCase() !== identity.playerUuid || value.motion?.epoch !== epoch)) throw Error('NATIVE_WORLD_MOTION_IDENTITY_MISMATCH')
       if (value.selfPlayer && (!identity.playerUuid || value.selfPlayer.uuid?.toLowerCase() !== identity.playerUuid || value.selfPlayer.name !== identity.player)) throw Error('NATIVE_WORLD_SELF_PLAYER_MISMATCH')
       if (value.presentation?.available && (!identity.playerUuid || value.presentation.playerUuid?.toLowerCase() !== identity.playerUuid)) throw Error('NATIVE_WORLD_PRESENTATION_IDENTITY_MISMATCH')
+      if (value.entityState?.available && (entityRegistrySha256 === null || value.entityState.source !== 'received_native_entity_packets' ||
+          value.entityState.registrySha256 !== entityRegistrySha256 || value.entityState.epoch !== value.epoch ||
+          value.entityState.rotationUnit !== 'minecraft_degrees' || !Array.isArray(value.entityState.entities) ||
+          value.entityState.entities.length > 512)) throw Error('NATIVE_ENTITY_STREAM_BINDING_MISMATCH')
       const reset = value.type === 'snapshot' && epoch !== value.epoch
       epoch = value.epoch; ready = true
       return { kind: value.type, value, reset }
