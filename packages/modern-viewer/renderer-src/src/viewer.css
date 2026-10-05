@@ -338,11 +338,14 @@ to{opacity:1;transform:translateX(0)}
 @media(prefers-reduced-motion:reduce){.corti-presentation-toast{animation:none}
 }
 .corti-status-vignette{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0;transition:opacity .35s ease;background:radial-gradient(ellipse at center,transparent 40%,#407b2466 77%,#245810aa 100%),radial-gradient(circle at 11% 83%,#98db5b66 0 1.2%,transparent 2.5%),radial-gradient(circle at 85% 19%,#97d85980 0 .8%,transparent 2%);box-shadow:inset 0 0 34px #416b30;mix-blend-mode:screen}
-.corti-status-vignette.is-poisoned{opacity:1;animation:corti-poison-breathe 2.4s ease-in-out infinite}
-@keyframes corti-poison-breathe{0%,100%{filter:saturate(.8)}
-50%{filter:saturate(1.5) brightness(1.12)}
+.corti-status-vignette.is-nauseated{opacity:calc(var(--mc-viewer-nausea-strength,0) * .55)}
+.corti-has-nausea #viewer-canvas{transform-origin:50% 50%;animation:mc-viewer-nausea 3.6s ease-in-out infinite;will-change:transform}
+@keyframes mc-viewer-nausea{0%,100%{transform:scale(calc(1 + var(--mc-viewer-nausea-strength) * .08),calc(1 + var(--mc-viewer-nausea-strength) * .05)) rotate(calc(var(--mc-viewer-nausea-strength) * -1.5deg)) skewX(calc(var(--mc-viewer-nausea-strength) * -2.5deg))}
+25%{transform:scale(calc(1 + var(--mc-viewer-nausea-strength) * .05),calc(1 + var(--mc-viewer-nausea-strength) * .08)) rotate(calc(var(--mc-viewer-nausea-strength) * 1.5deg)) skewX(calc(var(--mc-viewer-nausea-strength) * 2.5deg))}
+50%{transform:scale(calc(1 + var(--mc-viewer-nausea-strength) * .08),calc(1 + var(--mc-viewer-nausea-strength) * .05)) rotate(calc(var(--mc-viewer-nausea-strength) * 1.5deg)) skewX(calc(var(--mc-viewer-nausea-strength) * -2.5deg))}
+75%{transform:scale(calc(1 + var(--mc-viewer-nausea-strength) * .05),calc(1 + var(--mc-viewer-nausea-strength) * .08)) rotate(calc(var(--mc-viewer-nausea-strength) * -1.5deg)) skewX(calc(var(--mc-viewer-nausea-strength) * 2.5deg))}
 }
-@media(prefers-reduced-motion:reduce){.corti-status-vignette.is-poisoned{animation:none}
+@media(prefers-reduced-motion:reduce){.corti-has-nausea #viewer-canvas{animation:none;will-change:auto}
 }
 .corti-minimap,.corti-skills,.corti-menu{background:var(--mc-viewer-ui-bg);border-color:var(--mc-viewer-ui-border);color:var(--mc-viewer-ui-text)}
 .corti-night-vision-toggle,.corti-sound-toggle,.corti-music-toggle,.corti-inventory-toggle{border-color:var(--mc-viewer-ui-border);color:var(--mc-viewer-ui-text)}

@@ -214,6 +214,8 @@ socket.emit('presentationEvent', {
 socket.emit('presentationEvent', { kind: 'effect', id: effectId, active: false });
 ```
 
+`name` 使用原版效果键，支持 `minecraft:poison`、`Poison` 和 `poison` 等形式；激活时必须提供，移除时只需 `id`。中毒显示绿色生命心，反胃 `nausea` 显示状态图标、倒计时及游戏画面扭曲，字幕和 HUD 保持稳定。效果在到期、移除、断开连接或 `viewerReset` 时清除；新连接需重发当前有效效果。`durationTicks: -1` 表示无限时长。系统启用减少动态效果时，反胃保留绿色边缘提示与图标，关闭画面扭曲。
+
 钓获与声音有独立的通用 Mineflayer 桥接示例，见 [host/README.md](host/README.md)。钓获来源同时核对本人的鱼漂、上钩、真实收竿、向施法者飞来的掉落实体、本人的 collect 包和对应背包增量。宝藏、杂物和自定义物品使用同一逻辑，不维护鱼种白名单；新浏览器连接不重放过去的钓获。
 
 原版也在客户端生成部分声音。`presentationEvent` 的 pickup 应带 `self`、`entityId`、`collectorId` 和 `entityName`，自捡物品或经验才能播放本地拾取音。脚步使用 avatarState 的实际位置、onGround 与 surfaceBlock；digProgress 可以带真实 blockName。前端读取从本机 1.20.6 客户端导出的 block-sounds.json，区分草地、木头、雪等声音。没有已加载的方块或对应资源时保持安静，不猜材质、不声称操作成功。客户端声音会与近期同名服务端声音去重。

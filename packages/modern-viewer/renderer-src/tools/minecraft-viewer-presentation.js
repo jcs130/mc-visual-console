@@ -4,6 +4,7 @@ const cortiPresentationEffects = new Map();
 const cortiPresentationCooldowns = new Map();
 const cortiPresentationRoot = document.getElementById('corti-presentation-toasts');
 const cortiEffectsRoot = document.getElementById('corti-effects');
+const cortiStatusVignette = document.getElementById('corti-status-vignette');
 const cortiScoreboardRoot = document.getElementById('corti-scoreboard');
 const cortiPresentationThemes = new Map([['vanilla-bright', {}], ['corti-arcane', {}]]);
 const cortiThemeTokens = new Set(['--mc-viewer-vfx-fire', '--mc-viewer-vfx-arcane', '--mc-viewer-vfx-life',
@@ -42,13 +43,17 @@ function cortiPresentationToast(event) {
 }
 
 function cortiPresentationEffectsRender() {
-  if (!cortiEffectsRoot) return;
-  cortiEffectsRoot.replaceChildren();
+  cortiEffectsRoot?.replaceChildren();
   const now = Date.now();
   let poisoned = false;
+  let nauseaStrength = 0;
   for (const [id, effect] of cortiPresentationEffects) {
     if (effect.until <= now) { cortiPresentationEffects.delete(id); continue; }
     if (effect.name === 'poison') poisoned = true;
+    if (effect.name === 'nausea') {
+      nauseaStrength = Math.min(1, (now - effect.startedAt) / 1500, (effect.until - now) / 1500);
+    }
+    if (!cortiEffectsRoot) continue;
     const row = document.createElement('div');
     row.className = 'corti-effect';
     row.dataset.type = effect.type === 'bad' ? 'bad' : 'good';
@@ -62,7 +67,8 @@ function cortiPresentationEffectsRender() {
     icon.src = `/textures/mob_effect/${effect.name}.png`;
     icon.onerror = () => { icon.hidden = true; };
     const label = document.createElement('span');
-    label.textContent = `${effect.name === 'poison' ? '中毒' : effect.title}${effect.amplifier > 0 ? ` ${effect.amplifier + 1}` : ''}`;
+    const title = effect.name === 'poison' ? '中毒' : effect.name === 'nausea' ? '反胃（眩晕）' : effect.title;
+    label.textContent = `${title}${effect.amplifier > 0 ? ` ${effect.amplifier + 1}` : ''}`;
     const time = document.createElement('small');
     const left = Math.ceil((effect.until - now) / 1000);
     time.textContent = left > 3600 ? '∞' : `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
@@ -70,6 +76,9 @@ function cortiPresentationEffectsRender() {
     cortiEffectsRoot.append(row);
   }
   cortiSetHudPoisoned(poisoned);
+  document.body.classList.toggle('corti-has-nausea', nauseaStrength > 0);
+  document.body.style.setProperty('--mc-viewer-nausea-strength', String(nauseaStrength));
+  cortiStatusVignette?.classList.toggle('is-nauseated', nauseaStrength > 0);
 }
 
 function cortiPresentationCooldownsRender() {
@@ -116,15 +125,21 @@ function cortiPresentationScoreboard(event) {
 function cortiPresentationEvent(event) {
   if (!event || typeof event.kind !== 'string') return;
   if (event.kind === 'effect') {
-    if (!Number.isInteger(event.id) || typeof event.name !== 'string') return;
+    if (!Number.isInteger(event.id) || (event.active !== false && typeof event.name !== 'string')) return;
     if (event.self === false) return;
     if (event.active === false) cortiPresentationEffects.delete(event.id);
-    else cortiPresentationEffects.set(event.id, {
-      name: event.name.replace(/^minecraft:/, '').replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase(),
-      title: event.title || event.name, type: event.type,
-      amplifier: Number(event.amplifier) || 0,
-      until: Date.now() + Math.max(0, Math.min(3600, Number(event.durationTicks) / 20 || 0)) * 1000,
-    });
+    else {
+      const now = Date.now();
+      const name = event.name.replace(/^minecraft:/, '').replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+      const previous = cortiPresentationEffects.get(event.id);
+      cortiPresentationEffects.set(event.id, {
+        name, title: event.title || event.name, type: event.type,
+        amplifier: Number(event.amplifier) || 0,
+        startedAt: previous?.name === name ? previous.startedAt : now,
+        until: event.durationTicks === -1 ? Infinity :
+          now + Math.max(0, Math.min(3600, Number(event.durationTicks) / 20 || 0)) * 1000,
+      });
+    }
     cortiPresentationEffectsRender();
   } else if (event.kind === 'cooldown') {
     const duration = Math.max(0, Math.min(60_000, Number(event.durationTicks) * 50 || 0));
@@ -174,5 +189,13 @@ socket.on('position', packet => {
   }
   cortiLastTeleportPosition = { x: pos.x, y: pos.y, z: pos.z };
 });
-socket.on('viewerReset', () => { cortiLastTeleportPosition = null; });
+function cortiPresentationReset() {
+  cortiLastTeleportPosition = null;
+  cortiPresentationEffects.clear();
+  cortiPresentationCooldowns.clear();
+  cortiPresentationEffectsRender();
+  cortiPresentationCooldownsRender();
+}
+socket.on('viewerReset', cortiPresentationReset);
+socket.on('disconnect', cortiPresentationReset);
 setInterval(() => { cortiPresentationEffectsRender(); cortiPresentationCooldownsRender(); }, 250);
