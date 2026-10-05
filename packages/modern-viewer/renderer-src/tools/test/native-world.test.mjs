@@ -16,7 +16,8 @@ const rows = [
   { stateId: 70002, name: 'create:shaft', properties: { axis: 'y' }, renderShape: 'MODEL', hasBlockEntity: true },
   { stateId: 70003, name: 'farmersdelight:cutting_board', properties: { facing: 'west', waterlogged: 'false' }, renderShape: 'MODEL', hasBlockEntity: true },
   { stateId: 70004, name: 'minecraft:water', properties: { level: '0' }, renderShape: 'INVISIBLE', hasBlockEntity: false,
-    fluid: { empty: false, name: 'minecraft:water', height: 8 / 9 }, solid: false, blocksMotion: false, canOcclude: false, dynamicShape: false, occlusionBoxes: [] }
+    fluid: { empty: false, name: 'minecraft:water', height: 8 / 9 }, solid: false, blocksMotion: false, canOcclude: false, dynamicShape: false, occlusionBoxes: [] },
+  { stateId: 70190, name: 'create:millstone', properties: {}, renderShape: 'MODEL', hasBlockEntity: true }
 ]
 const bytes = Buffer.from(rows.map(r => JSON.stringify(r)).join('\n'))
 const hash = createHash('sha256').update(bytes).digest('hex')
@@ -345,6 +346,22 @@ test('real serialized chunk keeps large native IDs, negative coordinates and blo
   assert.equal(snapshot.dimension.name, 'mod:actual_dimension')
   assert.equal(snapshot.mode, 'live_same_player_connection')
   assert.equal(snapshot.completeSceneParityVerified, false)
+})
+
+test('millstone speed follows native block-entity packets and missing speed is not invented', () => {
+  const { world, packet, chunk } = worldFixture()
+  const position = { x: -2, y: 64, z: -1 }
+  chunk.setBlockStateId(new Vec3(14, 64, 15), 70190)
+  packet('map_chunk', { x: -1, z: -1, chunkData: chunk.dump(), blockEntities: [] })
+  world.setPose(pose)
+  const row = () => world.snapshot({ halfExtent: 1, below: 0, above: 0 }).kinetic[0]
+  assert.deepEqual(row(), { position, stateId: 70190, speed: null, overstressed: null })
+  packet('tile_entity_data', { location: position, nbtData: { Speed: 32, Overstressed: 0 } })
+  assert.deepEqual(row(), { position, stateId: 70190, speed: 32, overstressed: 0 })
+  packet('tile_entity_data', { location: position, nbtData: { Speed: 0 } })
+  assert.equal(row().speed, 0)
+  packet('block_change', { location: position, type: 70001 })
+  assert.deepEqual(world.snapshot({ halfExtent: 1, below: 0, above: 0 }).kinetic, [])
 })
 
 test('single and packed multi-block changes use absolute coordinates and clear stale machine NBT', () => {

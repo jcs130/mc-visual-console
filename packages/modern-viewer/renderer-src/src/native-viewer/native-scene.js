@@ -10,6 +10,8 @@ import { playerCamera } from './player-camera.js'
 import { createNativeSession } from './native-session.js'
 import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
 import { NativeEntityLayer } from './native-entity-layer.js'
+import { MILLSTONE_ID, prepareNativeMillstoneModel, NativeKineticRenderClock, nativeKineticTimeStatus } from './native-millstone.js'
+import { stageNativeKineticActors } from './native-kinetic-layer.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
@@ -19,10 +21,21 @@ if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)
 const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
 const templates = new Map(), actors = new Map(), bedTemplates = new Set()
-let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], drawn = 0, tickAge = null
+let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfActorKey = null, cameraCollisionAt = 0, cameraDistance = null, entityLayer
 const cameraRay = new THREE.Raycaster(), labelPoint = new THREE.Vector3()
+const kineticClock = new NativeKineticRenderClock()
+let kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
+const kineticVisibility = () => {
+  if (disposed) return
+  if (document.hidden) {
+    kineticClock.pause(performance.now()); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_RENDER_CLOCK_PAUSED' }
+    for (const actor of actors.values()) actor.setClockAvailable?.(false, kineticClockState.reason)
+  } else kineticClock.resume(performance.now())
+  publishDiagnostics()
+}
+document.addEventListener('visibilitychange', kineticVisibility)
 async function start () {
   const response = await fetch('/manifest.json')
   if (!response.ok) throw Error('NATIVE_WORLD_MANIFEST_UNAVAILABLE')
@@ -75,15 +88,26 @@ async function start () {
           selfActor.applyMotion(current.selfPlayer?.onGround === true && crouching === false ? current.motion : null, Date.now())
           selfActor.root.visible = viewMode !== 'first' && (cameraDistance === null || cameraDistance > 0.9)
         }
-        // The game's absolute clock supplies the shaft phase; crank chase is
-        // integrated once per tick, independently of browser frame rate.
-        if (current.time) {
-          const renderTicks = current.time.age + Math.max(0, Date.now() - current.time.receivedAt) / 50
-          const whole = Math.floor(renderTicks)
+        // Create's AnimationTickHolder uses a CLIENT clock. Native server time
+        // is a freshness guard, never substituted for its absolute phase.
+        const timeStatus = nativeKineticTimeStatus(current.time, Date.now(), { paused: document.hidden })
+        const clockNow = performance.now() // Never mix RAF's earlier timestamp with visibility-event timestamps.
+        const oldReason = kineticClockState.reason
+        if (!timeStatus.available) {
+          kineticClock.pause(clockNow); kineticClockState = timeStatus
+          for (const actor of actors.values()) actor.setClockAvailable?.(false, timeStatus.reason)
+        } else {
+          kineticClock.resume(clockNow)
+          const clock = kineticClock.sample(clockNow), whole = clock.elapsedTicks
+          kineticClockState = { available: true, ...clock }
           if (tickAge === null || whole < tickAge || whole - tickAge > 100) tickAge = whole
           while (tickAge < whole) { for (const actor of actors.values()) actor.tick(); tickAge++ }
-          for (const actor of actors.values()) actor.frame(renderTicks, renderTicks - whole)
+          for (const actor of actors.values()) {
+            try { actor.frame(clock.renderTicks, clock.partialTick); actor.setClockAvailable?.(true) }
+            catch (error) { actor.setClockAvailable?.(false, error.message) }
+          }
         }
+        if (oldReason !== kineticClockState.reason) publishDiagnostics()
       }
       entityLayer.frame(Date.now())
       renderer.render(scene, camera)
@@ -199,9 +223,13 @@ function publishFrame(now) {
 }
 function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
-    drawn: drawn + actors.size, issues: [...unknown,...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
+    drawn: drawn + [...actors.values()].filter(actor => !actor.staticBodyRenderedSeparately && actor.root.visible).length,
+    issues: [...unknown, ...(actors.size && !kineticClockState.available ? [kineticClockState.reason] : []),
+      ...[...actors.values()].map(actor => actor.root.userData.nativeClockReason).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
     heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,
     kinetics: current?.kinetic?.map(n => n.speed) || [], environment: current?.biomes?.map(b => b.name) || [],
+    kineticClock: kineticClockState,
+    deviceVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeDevice).map(actor => ({ position: actor.position, stateId: actor.state.stateId, ...actor.root.userData.nativeDevice })),
     skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
 function clearStatics () {
@@ -215,12 +243,13 @@ function clearScene () {
   actors.clear()
   entityLayer?.reset()
   if (selfActor) { worldRoot.remove(selfActor.root); selfActor.dispose(); selfActor = null }
-  selfActorKey = null; cameraDistance = null; skinState = null; drawn = 0; unknown = []; tickAge = null
+  selfActorKey = null; cameraDistance = null; skinState = null; drawn = 0; unknown = []; staticIssues = []; tickAge = null
+  kineticClock.reset(); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
   onActor(null); publishDiagnostics()
   camera?.position.set(0, 0, 0)
 }
 function removeActor (actor) {
-  worldRoot.remove(actor.root); loader.releaseModel(actor.root)
+  worldRoot.remove(actor.root); if (actor.dispose) actor.dispose(); else loader.releaseModel(actor.root)
 }
 async function template (state, variants) {
   const key = `${state.stateId}:${JSON.stringify(variants)}`
@@ -229,6 +258,13 @@ async function template (state, variants) {
       const bed = await createNativeBedTemplate(assetReader,state)
       if(disposed){bed.dispose();throw Error('NATIVE_SCENE_DISPOSED')}
       bedTemplates.add(bed); return bed.root
+    }
+    if (state.name === MILLSTONE_ID) {
+      const plan = await prepareNativeMillstoneModel(assetReader, state, 'body')
+      const model = await loader.model(plan.modelId)
+      if (disposed) { loader.releaseModel(model); throw Error('NATIVE_SCENE_DISPOSED') }
+      model.userData.nativeDevice = { part: 'body', sourcePaths: plan.sourcePaths, pixelParityVerified: false }
+      model.updateMatrixWorld(true); return model
     }
     // The exact empty-board entity guard is checked per position before this
     // shared template is used. Other entity-backed blocks remain unsupported.
@@ -251,25 +287,11 @@ async function rebuildLatest () {
       const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
       const cuttingBoards = new Map((snapshot.cuttingBoards || []).map(board => [pointKey(board.position), board]))
       const signature = JSON.stringify([snapshot.groups, snapshot.neighbors, snapshot.biomeGrid?.ids, snapshot.biomes, snapshot.biomeSeed, snapshot.cuttingBoards])
-      const nextIssues = [], existing = new Set()
-      for (const node of snapshot.kinetic) {
-        const key = pointKey(node.position); existing.add(key)
-        if (!Number.isFinite(node.speed)) {
-          const stale = actors.get(key)
-          if (stale) { removeActor(stale); actors.delete(key) }
-          nextIssues.push(`${definitions.get(node.stateId)?.name} @ ${key}：未收到原生转速`); continue
-        }
-        let actor = actors.get(key)
-        if (actor && actor.state.stateId !== node.stateId) { removeActor(actor); actors.delete(key); actor = null }
-        if (!actor) {
-          actor = await createKineticActor(loader, definitions.get(node.stateId), node.position)
-          if (run !== generation) { loader.releaseModel(actor.root); break }
-          actors.set(key, actor); worldRoot.add(actor.root)
-        }
-        actor.setSpeed(node.speed)
-      }
-      if (run !== generation) continue
-      for (const [key, actor] of actors) if (!existing.has(key)) { removeActor(actor); actors.delete(key) }
+      const staged = await stageNativeKineticActors({nodes:snapshot.kinetic,definitions,actors,
+        createActor:(state,position)=>createKineticActor(loader,state,position),attach:actor=>worldRoot.add(actor.root),remove:removeActor,
+        isCurrent:()=>run===generation&&!disposed})
+      if (!staged.current) continue
+      const nextIssues = staged.issues, nextStaticIssues = []
       if (signature !== lastGroupSignature) {
         const next = new THREE.Group(), tintCache = new Map(); let count = 0
         let workStarted = performance.now()
@@ -286,9 +308,9 @@ async function rebuildLatest () {
             const result = await waterMeshes(snapshot, group, definitions)
             if (run !== generation) { for (const mesh of result.meshes) mesh.geometry.dispose(); break }
             for (const mesh of result.meshes) next.add(mesh)
-            count += result.count; nextIssues.push(...result.issues); continue
+            count += result.count; nextStaticIssues.push(...result.issues); continue
           }
-          if (state.fluid && !state.fluid.empty) nextIssues.push(`${state.name}：${state.fluid.name === 'minecraft:water' || state.fluid.name === 'minecraft:flowing_water' ? '原生含水方块的液体面未适配' : '原生液体渲染提供器未适配'}`)
+          if (state.fluid && !state.fluid.empty) nextStaticIssues.push(`${state.name}：${state.fluid.name === 'minecraft:water' || state.fluid.name === 'minecraft:flowing_water' ? '原生含水方块的液体面未适配' : '原生液体渲染提供器未适配'}`)
           try {
             const positions = []
             for (let i = 0; i < group.positions.length; i += 3) {
@@ -296,7 +318,7 @@ async function rebuildLatest () {
               if (state.name === CUTTING_BOARD_ID) {
                 const support = cuttingBoardStaticModelStatus(state, cuttingBoards.get(pointKey(position)), loader.reader.manifest)
                 if (!support.available) {
-                  nextIssues.push(`${state.name} @ ${pointKey(position)}：${support.reason}${support.storedItem ? ` (${support.storedItem.id} × ${support.storedItem.count})` : ''}`)
+                  nextStaticIssues.push(`${state.name} @ ${pointKey(position)}：${support.reason}${support.storedItem ? ` (${support.storedItem.id} × ${support.storedItem.count})` : ''}`)
                   continue
                 }
               }
@@ -339,12 +361,13 @@ async function rebuildLatest () {
               for (const mesh of meshes) next.add(mesh)
               count += instanceCount
             }
-          } catch (error) { nextIssues.push(`${state.name}：${error.message}`) }
+          } catch (error) { nextStaticIssues.push(`${state.name}：${error.message}`) }
         }
         if (run !== generation) { for (const mesh of next.children) { mesh.dispose?.(); if (mesh.userData.nativeFluid) mesh.geometry.dispose() } continue }
         clearStatics(); for (const mesh of [...next.children]) statics.add(mesh)
-        drawn = count; lastGroupSignature = signature; unknown = nextIssues
-      } else nextIssues.push(...unknown.filter(x => !x.includes('原生转速')))
+        drawn = count; lastGroupSignature = signature; staticIssues = nextStaticIssues
+      }
+      unknown = [...nextIssues, ...staticIssues]
       if (run !== generation) continue
       if (!current) continue
       publishDiagnostics()
@@ -397,6 +420,7 @@ function fail (error) {
 function dispose () {
   if (disposed) return
   disposed = true; events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
+  document.removeEventListener('visibilitychange', kineticVisibility)
   controls?.dispose(); clearScene(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }

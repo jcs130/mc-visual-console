@@ -487,7 +487,7 @@ export class NativeWorldState extends EventEmitter {
         }
       }
       const be = this.blockEntities.get(key(p))
-      if (['create:shaft', 'create:hand_crank'].includes(state.name)) kinetic.push({ position: p, stateId: id, speed: Number.isFinite(be?.data.Speed) ? be.data.Speed : null, overstressed: be?.data.Overstressed ?? null })
+      if (['create:shaft', 'create:hand_crank', 'create:millstone'].includes(state.name)) kinetic.push({ position: p, stateId: id, speed: Number.isFinite(be?.data.Speed) ? be.data.Speed : null, overstressed: be?.data.Overstressed ?? null })
       if (state.name === CUTTING_BOARD_ID) cuttingBoards.push({ position: p, stateId: id, ...cuttingBoardContent(be?.data) })
     }
     // Every get used by native-fluid.js is within this 3×3×3 stencil (including
