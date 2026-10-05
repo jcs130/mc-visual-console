@@ -3,7 +3,7 @@ export const NATIVE_YSM_SOURCE = 'same_player_native_attachment'
 export const NATIVE_YSM_VERSION = '2.6.5'
 export const NATIVE_YSM_JAR_SHA256 = 'b285c73d4ec010d9a9be3c53c1bee890cf269645be5f1bcf1c27a2e8e82807cb'
 export const NATIVE_YSM_MODEL_ID = 'misc/3_default_boy'
-export const NATIVE_YSM_NOTICE = 'YSM 原模型静态展示，眼神/完整动画/装备未适配'
+export const NATIVE_YSM_NOTICE = 'YSM 原模型预览；装备与第一人称未适配'
 
 // Keep an invalid observation explicitly unavailable. Dropping it would allow
 // a previously enabled YSM body to turn into a Minecraft skin silently.

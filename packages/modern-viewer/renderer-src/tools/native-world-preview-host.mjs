@@ -9,6 +9,7 @@ import { NativeWorldState, loadNativeStateRegistry, loadNativeEntityRegistry, at
 import { NativeSnapshotCadence } from './native-snapshot-cadence.mjs'
 import { createNativePlayerMotionTracker } from '../src/native-viewer/native-player-motion.js'
 import { projectNativeYsmState } from '../src/native-viewer/native-ysm-state.js'
+import { projectNativePlayerRenderState } from '../src/native-viewer/native-player-render-state.js'
 import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
@@ -66,7 +67,7 @@ function injectedPresentation (provider, uuid) {
       for (const [key, child] of Object.entries(part)) {
         // A foreign/malformed YSM row becomes an explicit unavailable binding,
         // never an absent field that permits a Minecraft replacement body.
-        if (part === copy.self && key === 'ysm') continue
+        if (part === copy.self && ['ysm', 'motion'].includes(key)) continue
         own(child)
       }
     }
@@ -79,8 +80,9 @@ function injectedPresentation (provider, uuid) {
     const ownSelf = copy.self && copy.self.playerUuid === uuid ? Object.fromEntries(
       ['health', 'maxHealth', 'absorption', 'armor', 'food', 'saturation', 'oxygen', 'airSupply', 'maxAirSupply',
         'inWater', 'experienceLevel', 'experienceProgress', 'experiencePoints', 'equipment', 'mainArm', 'usingItem',
-        'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'pose', 'ysm']
-        .filter(key => Object.hasOwn(copy.self, key)).map(key => [key, key === 'ysm' ? projectNativeYsmState(copy.self.ysm, uuid) : copy.self[key]])) : null
+        'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'pose', 'ysm', 'motion']
+        .filter(key => Object.hasOwn(copy.self, key)).map(key => [key, key === 'ysm' ? projectNativeYsmState(copy.self.ysm, uuid)
+          : key === 'motion' ? projectNativePlayerRenderState(copy.self.motion, uuid) : copy.self[key]])) : null
     return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
       nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null,
       entityRenderStates: copy.entityRenderStates ?? null, nativeState: { available: true } }
@@ -186,6 +188,7 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
         attackAnim: number('attackAnim', 0, 1), attackStrengthScale: number('attackStrengthScale', 0, 1),
         pose: typeof source.pose === 'string' && /^[a-z_]{1,64}$/.test(source.pose) ? source.pose : null,
         ...(Object.hasOwn(source, 'ysm') ? { ysm: projectNativeYsmState(source.ysm, uuid) } : {}),
+        ...(Object.hasOwn(source, 'motion') ? { motion: projectNativePlayerRenderState(source.motion, uuid) } : {}),
         equipment: source.equipment && typeof source.equipment === 'object' && !Array.isArray(source.equipment)
           ? Object.fromEntries(['mainhand', 'offhand', 'feet', 'legs', 'chest', 'head'].filter(key => Object.hasOwn(source.equipment, key)).map(key => [key, nativeItem(source.equipment[key])])) : null }
     }

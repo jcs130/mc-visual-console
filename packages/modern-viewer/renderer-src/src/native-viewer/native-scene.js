@@ -5,7 +5,7 @@ import { createKineticActor } from './create-kinetics.js'
 import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
 import { waterGeometry } from './native-fluid.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
-import { NativeSelfPlayerController } from './native-self-player.js'
+import { NativeSelfPlayerController, applyNativeSelfPlayerMotion } from './native-self-player.js'
 import { playerCamera } from './player-camera.js'
 import { createNativeSession } from './native-session.js'
 import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
@@ -25,12 +25,14 @@ const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
+let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null
 const cameraRay = new THREE.Raycaster(), labelPoint = new THREE.Vector3()
 const kineticClock = new NativeKineticRenderClock()
 let kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
 const kineticVisibility = () => {
   if (disposed) return
   if (document.hidden) {
+    lastPlayerFrameTime = null
     kineticClock.pause(performance.now()); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_RENDER_CLOCK_PAUSED' }
     for (const actor of actors.values()) actor.setClockAvailable?.(false, kineticClockState.reason)
   } else kineticClock.resume(performance.now())
@@ -60,6 +62,7 @@ async function start () {
   worldRoot = new THREE.Group(); statics = new THREE.Group(); worldRoot.add(statics); scene.add(worldRoot)
   selfController = new NativeSelfPlayerController(reader, { onChange (actor, status) {
     selfActor = actor; skinState = status
+    selfMotionState = null; selfMotionSignature = null; lastPlayerFrameTime = null
     if (actor) {
       worldRoot.add(actor.root)
       if (actor.firstPersonRoot) firstPersonScene.add(actor.firstPersonRoot)
@@ -91,11 +94,17 @@ async function start () {
       if (disposed || document.hidden) return
       loader.animateTextures((now - textureStart) / 50)
       if (current?.pose) {
+        const dt = lastPlayerFrameTime === null ? 0 : (now - lastPlayerFrameTime) / 1000
+        lastPlayerFrameTime = now
         updatePlayerCamera(now)
         if (selfActor) {
           selfActor.applyPose(current.pose)
-          const crouching=current.presentation?.self?.crouching ?? current.selfPlayer?.sneaking
-          selfActor.applyMotion(current.selfPlayer?.onGround === true && crouching === false ? current.motion : null, Date.now())
+          selfMotionState = applyNativeSelfPlayerMotion(selfActor, current, { dt, now: Date.now() })
+          if (selfActor.assetInfo?.kind === 'ysm') {
+            const signature = JSON.stringify([selfMotionState?.available, selfMotionState?.reason, selfMotionState?.clip, selfMotionState?.selectedNativeState,
+              selfMotionState?.state, selfMotionState?.mode, selfMotionState?.notice])
+            if (signature !== selfMotionSignature) { selfMotionSignature = signature; publishDiagnostics() }
+          }
           selfActor.root.visible = viewMode !== 'first' && (cameraDistance === null || cameraDistance > 0.9)
         }
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
@@ -218,7 +227,8 @@ function publishDiagnostics() {
     drawn: drawn + [...actors.values()].filter(actor => !actor.staticBodyRenderedSeparately && actor.root.visible).length,
     issues: [...unknown, ...(actors.size && !kineticClockState.available ? [kineticClockState.reason] : []),
       ...[...actors.values()].map(actor => actor.root.userData.nativeClockReason).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
-    selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture } : null,
+    selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture,
+      support: selfActor.assetInfo.support ?? null, notice: selfActor.assetInfo.notice, motion: selfMotionState ?? selfActor.root.userData.motion ?? null } : null,
     heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,
     kinetics: current?.kinetic?.map(n => n.speed) || [], environment: current?.biomes?.map(b => b.name) || [],
     kineticClock: kineticClockState,
@@ -236,6 +246,7 @@ function clearScene () {
   actors.clear()
   entityLayer?.reset()
   selfController?.clear(); selfActor = null
+  lastPlayerFrameTime = null; selfMotionState = null; selfMotionSignature = null
   cameraDistance = null; skinState = null; drawn = 0; unknown = []; staticIssues = []; tickAge = null
   kineticClock.reset(); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
   onActor(null); publishDiagnostics()

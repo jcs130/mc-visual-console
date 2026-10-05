@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import * as THREE from 'three'
+import { mirrorInventoryPlayer, poseInventoryPlayer, releaseInventoryMirror } from '../../src/modern-viewer/inventory-player-preview.js'
 import { createNativeInterface, nativePresentationView, nativeSlotRows, NativeUiAssets,
   renderNativeItemSlot, NATIVE_CRAFTING_GUI, nativeCraftingMenuLayout } from '../../src/native-viewer/native-ui-adapter.js'
 import { NATIVE_CHEST_GUI, NATIVE_FURNACE_GUIS, nativeChestMenuLayout, nativeFurnaceMenuLayout,
@@ -107,19 +109,66 @@ test('inventory preview reuses real actor only, has no fallback, and closing doe
   h.ui.dispose(); assert.equal(h.previews[0].disposed, true)
 })
 
-test('YSM static actor keeps native inventory usable and explicitly withholds the vanilla preview', () => {
-  const h = harness()
-  h.ui.setActor({ root: { userData: { playerUuid: UUID } }, assetInfo: { uuid: UUID, kind: 'ysm' } })
+test('YSM inventory mirrors only the actual own rig without fallback or disposing shared assets', async t => {
+  const h = harness(), world = new THREE.Group(), root = new THREE.Group(), orientation = new THREE.Group(), content = new THREE.Group()
+  const body = new THREE.Bone(), head = new THREE.Bone(), geometry = new THREE.BoxGeometry(.4, .7, .2)
+  const map = new THREE.Texture(), material = new THREE.MeshLambertMaterial({ map }), mesh = new THREE.Mesh(geometry, material)
+  const disposed = { geometry: 0, material: 0, map: 0 }
+  for (const [key, asset] of Object.entries({ geometry, material, map })) asset.addEventListener('dispose', () => disposed[key]++)
+  t.after(() => { h.ui.dispose(); geometry.dispose(); material.dispose(); map.dispose() })
+  root.userData.playerUuid = UUID; root.position.set(7, 64, -3); root.rotation.set(.1, .6, 0); root.visible = false
+  orientation.scale.set(-1, -1, 1); orientation.position.y = .01; content.position.y = -1.5
+  body.name = 'body'; body.position.set(0, 1.1, 0); body.rotation.set(.1, 0, .2)
+  head.name = 'head'; head.position.set(0, .4, 0); head.rotation.set(0, -.3, .1)
+  world.add(root); root.add(orientation); orientation.add(content); content.add(body); body.add(head, mesh)
+  const sourceNodes = [root, orientation, content, body, head, mesh]
+  const transforms = sourceNodes.map(node => ({ position: node.position.toArray(), quaternion: node.quaternion.toArray(),
+    scale: node.scale.toArray(), visible: node.visible, parent: node.parent }))
+  const ownYsm = { root, assetInfo: { uuid: UUID, kind: 'ysm', inventoryPreviewAvailable: true } }
+  await h.ui.setAssets({ bytes: async () => new Uint8Array([137,80,78,71]) })
+  h.ui.setActor(ownYsm)
   h.document.getElementById('corti-inventory-toggle').dispatch('click')
-  assert.equal(h.previews.length, 1); assert.equal(h.previews[0].options.resolveSource(), null)
+  assert.equal(h.previews.length, 1); assert.equal(h.previews[0].options.resolveSource(), root)
   assert.equal(h.previews[0].options.createFallback, undefined)
-  assert.match(h.document.querySelector('[data-menu-body]').textContent, /YSM 背包人物预览未适配/)
+  assert.equal(h.document.querySelector('[data-inventory-player-preview]').getAttribute('aria-label'), '本人 YSM 原模型预览；装备渲染未支持')
+  assert.match(h.document.querySelector('[data-menu-body]').textContent, /YSM 背包人物沿用本人原模型与当前姿态；装备未适配/)
   assert.match(h.document.querySelector('[data-menu-body]').textContent, /ars_nouveau:apprentice_spell_book/)
+
+  const mirror = mirrorInventoryPlayer(THREE, h.previews[0].options.resolveSource()), stage = new THREE.Group()
+  stage.add(mirror.root); poseInventoryPlayer(mirror, .31, .2)
+  assert.notStrictEqual(mirror.root, root); assert.equal(mirror.root.visible, true)
+  assert.deepEqual(mirror.nodes.get(orientation).scale.toArray(), [-1, -1, 1])
+  assert.notStrictEqual(mirror.nodes.get(body), body); assert.equal(mirror.nodes.get(body).isBone, true)
+  assert.deepEqual(mirror.nodes.get(head).quaternion.toArray(), head.quaternion.toArray())
+  assert.strictEqual(mirror.nodes.get(mesh).geometry, geometry); assert.strictEqual(mirror.nodes.get(mesh).material, material)
+  assert.strictEqual(mirror.nodes.get(mesh).material.map, map)
+  h.document.querySelector('[data-menu-close]').dispatch('click'); releaseInventoryMirror(mirror)
+  assert.equal(h.previews[0].visible, false); assert.equal(mirror.root.parent, null)
+  assert.equal(mirror.nodes.size, 0); assert.deepEqual(disposed, { geometry: 0, material: 0, map: 0 })
+  sourceNodes.forEach((node, i) => {
+    assert.deepEqual(node.position.toArray(), transforms[i].position); assert.deepEqual(node.quaternion.toArray(), transforms[i].quaternion)
+    assert.deepEqual(node.scale.toArray(), transforms[i].scale); assert.equal(node.visible, transforms[i].visible)
+    assert.strictEqual(node.parent, transforms[i].parent)
+  })
+  assert.strictEqual(mesh.geometry, geometry); assert.strictEqual(mesh.material, material); assert.strictEqual(material.map, map)
+
+  root.userData.playerUuid = OTHER; h.ui.setActor(ownYsm)
+  assert.equal(h.previews[0].options.resolveSource(), null)
+  root.userData.playerUuid = UUID
+  h.ui.setActor({ root, assetInfo: { ...ownYsm.assetInfo, uuid: OTHER } })
+  assert.equal(h.previews[0].options.resolveSource(), null)
+  h.ui.setActor({ root, assetInfo: { ...ownYsm.assetInfo, uuid: undefined } })
+  assert.equal(h.previews[0].options.resolveSource(), null)
+  h.ui.setActor({ root, assetInfo: { ...ownYsm.assetInfo, inventoryPreviewAvailable: false } })
+  assert.equal(h.previews[0].options.resolveSource(), null)
+  h.ui.setActor({ root: { userData: { playerUuid: UUID } }, assetInfo: ownYsm.assetInfo })
+  assert.equal(h.previews[0].options.resolveSource(), null)
+  h.ui.setActor(ownYsm); h.document.getElementById('corti-inventory-toggle').dispatch('click')
   const original = { playerObject: {}, userData: { playerUuid: UUID } }
   h.ui.setActor({ root: original, assetInfo: { uuid: UUID } })
   assert.equal(h.previews[0].options.resolveSource(), original)
-  assert.doesNotMatch(h.document.querySelector('[data-menu-body]').textContent, /YSM 背包人物预览未适配/)
-  h.ui.dispose()
+  assert.doesNotMatch(h.document.querySelector('[data-menu-body]').textContent, /YSM 背包人物/)
+  h.ui.dispose(); assert.deepEqual(disposed, { geometry: 0, material: 0, map: 0 })
 })
 test('idle preview expires, manual takeover persists, native menus and combat cancel idle without actions', () => {
   const h = harness(), event = { type: 'inventoryPreview', playerUuid: UUID, open: true, ttlMs: 60000 }

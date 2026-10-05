@@ -97,18 +97,18 @@ const decode = async bytes => {
   return new THREE.Texture({ width: data.getUint32(16), height: data.getUint32(20) })
 }
 
-test('locked original YSM blue/red assets construct all bones/cubes and expose only static pose APIs', actual, async () => {
+test('locked original YSM blue/red assets construct all bones/cubes and wait for verified motion inputs', actual, async () => {
   for (const color of ['blue', 'red']) {
     const reader = await actualReader(), actor = await createNativeYsmPlayerActor(reader, { uuid: UUID, ysm: ysm({ texture: color }), loadTexture: decode })
     assert.equal(actor.assetInfo.kind, 'ysm'); assert.equal(actor.assetInfo.modelId, 'misc/3_default_boy')
     assert.equal(actor.assetInfo.texture, color); assert.equal(actor.assetInfo.modJarSha256, NATIVE_YSM_JAR_SHA256)
     assert.equal(actor.assetInfo.boneCount, 58); assert.equal(actor.assetInfo.cubeCount, 156); assert.equal(actor.assetInfo.faceCount, 936)
     assert.equal(actor.root.playerObject, undefined); assert.equal(actor.firstPersonRoot, undefined)
-    assert.equal(actor.assetInfo.inventoryPreviewAvailable, false); assert.equal(actor.assetInfo.rendererParityVerified, false)
+    assert.equal(actor.assetInfo.inventoryPreviewAvailable, true); assert.equal(actor.assetInfo.rendererParityVerified, false)
     const geometry = (await reader.json(NATIVE_YSM_ASSETS.model))['minecraft:geometry'][0]
     assert.deepEqual([...actor.model.bones.keys()], geometry.bones.map(bone => bone.name))
     actor.applyPose({ x: 4, y: 64, z: -8, yaw: .25, pitch: .5 })
-    assert.deepEqual(actor.root.position.toArray(), [4, 64, -8]); assert.equal(actor.root.rotation.y, .25)
+    assert.deepEqual(actor.root.position.toArray(), [4, 64, -8]); assert.equal(actor.root.rotation.y, 0, 'camera yaw does not replace native body yaw')
     const head = actor.model.bones.get('Head'), initial = actor.model.initial.get('Head').rotation.x
     head.rotation.x = 9; assert.equal(actor.applyMotion().available, false); assert.equal(head.rotation.x, initial)
     assert.equal(actor.applyHeldItems({}).available, false); assert.equal(actor.firstPersonItemsState().available, false)

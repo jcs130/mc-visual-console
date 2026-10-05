@@ -28,7 +28,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const viewport = el('viewer-canvas') ?? append(document, document.body, 'div', 'native-console-viewport')
   viewport.id = 'viewer-canvas'; viewport.setAttribute('aria-label', '同一 Agent 本人及原生世界')
   const label = append(document, viewport, 'div', 'native-player-label'); label.hidden = true
-  const ysmNotice = append(document, viewport, 'div', 'native-ysm-preview-notice', 'YSM 外形预览 · 动画与装备暂未显示'); ysmNotice.hidden = true
+  const ysmNotice = append(document, viewport, 'div', 'native-ysm-preview-notice'); ysmNotice.hidden = true
   const boot = q('.boot') ?? append(document, document.body, 'div', 'boot', '正在载入原生世界…')
   const stateBar = append(document, document.body, 'aside', 'native-agent-status')
   stateBar.setAttribute('aria-label', '实际 Agent 状态')
@@ -64,6 +64,16 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const updateDiagnosticText = () => {
     const d = lastDiagnostics
     ysmNotice.hidden = d?.selfModel?.kind !== 'ysm'
+    if (!ysmNotice.hidden) {
+      const model = d.selfModel, motion = model.motion
+      const notice = model.support?.notice || model.notice || 'YSM 原模型预览；装备与第一人称未适配'
+      const clips = { idle: '站立', walk: '行走', run: '跑步', jump: '跳跃' }
+      const heldPose = motion?.available === false && motion.frozen === true && motion.reason === 'NATIVE_YSM_PHYSICS_WINDOW_FINISHED' && Object.hasOwn(clips, motion.clip)
+      const state = heldPose ? `已知${clips[motion.clip]}姿态`
+        : motion?.available === false ? (motion.reason?.includes('UNSUPPORTED') ? '当前动作未适配' : '当前动作未同步')
+        : motion?.available === true && Object.hasOwn(clips, motion.clip) ? `当前${clips[motion.clip]}` : ''
+      ysmNotice.textContent = `${notice}${state ? ` · ${state}` : ''}`
+    }
     const presentation = ui.getState().presentation
     diagnostics.textContent = [identity ? `玩家：${identity.player} (${identity.playerUuid || 'UUID未同步'})` : '玩家身份未同步',
       d ? `原生模型：${d.drawn}/${d.total}；缺列 ${d.missingColumns ?? '未同步'}` : '原生模型数据未同步',

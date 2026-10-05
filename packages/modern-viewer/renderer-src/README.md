@@ -4,7 +4,9 @@
 可以在其他 Mineflayer 项目复用，无需本机 Cortico 目录。
 1.20.6 的独立构建与 Socket.IO 接入保留；1.21.1 模组实验通过原生资源、同账号包流和独立场景后端接入同一套页面。
 
-2026-10-05：新增 YSM 2.6.5 `misc/3_default_boy` 蓝/红原资产静态外形预览。选择依据是同一账号 `maw_agent:menu_state` 的 `self.ysm`（本人 UUID、模型、贴图、enabled/mandatory、版本与 JAR SHA），未知或缺失状态明确不可用，只有明确禁用才恢复原皮肤。原几何、PNG 与恒定 idle 均验证来源；眼神、完整动作、装备、第一人称和背包人物预览未适配，不能称 Java 客户端 1:1。页面常显未适配提示。隔离服已实际蓝→红无刷新切换、禁用恢复；常驻 MawExplorer 已实际蓝款。使用 `NATIVE_YSM_ASSET_DIR` 指向实际原生导出目录可运行锁定资源测试。
+2026-10-05：YSM 2.6.5 `misc/3_default_boy` 蓝/红有限原资产动画预览已实现，已在隔离服实际验收并部署常驻实验服。选择依据是同一账号 `maw_agent:menu_state` 的 `self.ysm`（本人 UUID、模型、贴图、enabled/mandatory、版本与 JAR SHA），未知或缺失状态明确不可用，只有明确禁用或未安装才恢复原皮肤。原几何、PNG 与 `main.animation.json` 的 `idle/walk/run/jump` 关键帧、body/head/eyes 和本人实际 actor 的背包镜像预览已接入；原 `self.motion` 每250ms提供同UUID、`same_player_server_tick`的真实服务器观测。身体使用 `180-bodyYaw` 基线，与相对头角分开；动画只在已收到的50ms physics tick窗口内有界推进，窗口结束冻结，未知/过期动作和生命周期中断明确不可用。
+
+此范围不能称 Java 客户端完整一致：原0.1秒主动作过渡仅保留新clip时间为零的规则，过渡混合/打断/骨骼恢复未实现；JSON-to-runtime通道、几何/材质、客户端头部及眨眼相位未验，`channelTransformParityVerified`、`transitionRenderingAvailable`、`headPhaseParityVerified`、`blinkPhaseParityVerified`、`animationParityVerified`、`completeEntityParityVerified`均为`false`。装备、YSM第一人称及其他优先姿势未实现，页面常显范围提示。此前v10隔离服蓝→红无刷新切换、禁用恢复与常驻蓝款属于静态外形历史，不能用来证明本轮动画；桥`12f68471235ace812aab4608212f69c97ece3580d48252be9f6ae02738624ebb`配套目标资产`native-20261005-v11-ysm-motion`共39767文件，隔离脚本实见walk/run/jump与本人YSM背包预览，main本人原UUID/蓝款及fresh motion读回通过；414原资源回归无skip。已知physics窗口结束保持姿态提示，与过期/断流分开；装备、第一人称及Java完整一致性仍未验收。使用 `NATIVE_YSM_ASSET_DIR` 指向实际原生导出目录可运行锁定资源测试。宿主现存导航unknown及自主暂停不因外形维护而解除或重投。
 
 ## 目录
 

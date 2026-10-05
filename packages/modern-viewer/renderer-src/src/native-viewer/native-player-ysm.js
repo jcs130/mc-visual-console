@@ -3,6 +3,7 @@ import { NativeAssetReader } from './model-loader.js'
 import { PLAYER_CLIENT_JAR_SHA256 } from './native-player.js'
 import { createNativeBedrockModel } from './native-entity-model-bedrock.js'
 import { nativeSelfPlayerBinding, NATIVE_YSM_VERSION, NATIVE_YSM_JAR_SHA256, NATIVE_YSM_MODEL_ID, NATIVE_YSM_NOTICE } from './native-ysm-state.js'
+import { createNativeYsmAnimation, NATIVE_YSM_ANIMATION_SUPPORT } from './native-ysm-animation.js'
 
 const PREFIX = 'assets/yes_steve_model/builtin/misc/3_default_boy/'
 export const NATIVE_YSM_ASSETS = Object.freeze({ definition: PREFIX + 'ysm.json', model: PREFIX + 'models/main.json',
@@ -15,9 +16,9 @@ export const NATIVE_YSM_ASSET_HASHES = Object.freeze({
   red: '5a667b5fae29820c86646e01d7197b0db99c491ce7127ce0bcbe082fef28f4d6'
 })
 
-// The selected original "idle" is a constant reset pose. Parallel eye/look
-// controllers are deliberately unavailable; this is an asset pose preview,
-// not the complete YSM client idle animation or a TLM animation substitute.
+// The original idle is the reset pose used while verified motion is absent.
+// The bounded animation port below consumes original clips and live inputs;
+// neither it nor the raw geometry establishes full YSM client parity.
 export function applyNativeYsmStaticIdle (model, animation) {
   const idle = animation?.animations?.idle
   if (animation?.format_version !== '1.8.0' || idle?.animation_length !== 0.375 ||
@@ -76,25 +77,35 @@ export async function createNativeYsmPlayerActor (reader, { uuid, ysm, loadTextu
     model = createNativeBedrockModel(await reader.json(NATIVE_YSM_ASSETS.model), material)
     if (model.bones.size !== 58 || model.cubeCount !== 156 || model.faceCount !== 936) throw Error('NATIVE_YSM_GEOMETRY_SOURCE_MISMATCH')
     applyNativeYsmStaticIdle(model, animation); content.add(model.root)
+    const animationController = createNativeYsmAnimation(model, animation, binding.uuid)
     const assetInfo = Object.freeze({ kind: 'ysm', uuid: binding.uuid, name: 'Default Boy', modelId: NATIVE_YSM_MODEL_ID, texture: binding.ysm.texture,
       ysmVersion: NATIVE_YSM_VERSION, modJarSha256: NATIVE_YSM_JAR_SHA256, clientJarSha256: reader.manifest.clientJarSha256,
       source: binding.ysm.source, selectionSource: 'same_player_native_attachment', sourcePaths: paths.map(kind => NATIVE_YSM_ASSETS[kind]),
       sourceHashes: Object.fromEntries(paths.map(kind => [kind, NATIVE_YSM_ASSET_HASHES[kind]])),
-      boneCount: model.bones.size, cubeCount: model.cubeCount, faceCount: model.faceCount, notice: NATIVE_YSM_NOTICE,
-      geometrySource: 'YSM_2.6.5_original_misc_3_default_boy_Bedrock', poseSource: 'original_main_idle_constant_pose',
-      eyesRenderingAvailable: false, headPoseRenderingAvailable: false, animationRenderingAvailable: false, equipmentRenderingAvailable: false,
-      firstPersonRenderingAvailable: false, inventoryPreviewAvailable: false, geometryParityVerified: false,
+      boneCount: model.bones.size, cubeCount: model.cubeCount, faceCount: model.faceCount, notice: NATIVE_YSM_ANIMATION_SUPPORT.notice,
+      support: NATIVE_YSM_ANIMATION_SUPPORT,
+      geometrySource: 'YSM_2.6.5_original_misc_3_default_boy_Bedrock', poseSource: 'original_main_animation_keyframes_bounded_browser_port',
+      eyesRenderingAvailable: true, headPoseRenderingAvailable: true, animationRenderingAvailable: true, equipmentRenderingAvailable: false,
+      firstPersonRenderingAvailable: false, inventoryPreviewAvailable: true, geometryParityVerified: false, channelTransformParityVerified: false,
       rendererParityVerified: false, animationParityVerified: false, completeEntityParityVerified: false })
-    const unavailable = reason => ({ available: false, reason, scope: 'ysm_original_static_model', animationParityVerified: false })
-    root.userData = { playerUuid: binding.uuid, assetInfo, motion: unavailable('NATIVE_YSM_STATIC_ANIMATION_ONLY') }
+    const unavailable = reason => ({ available: false, reason, scope: 'ysm_original_model', animationParityVerified: false })
+    root.userData = { playerUuid: binding.uuid, assetInfo, motion: animationController.current() }
     const guard = () => { if (disposed) throw Error('NATIVE_YSM_ACTOR_DISPOSED') }
     return { root, model, assetInfo,
       applyPose (pose) {
         guard()
         if (!pose || ![pose.x, pose.y, pose.z, pose.yaw, pose.pitch].every(Number.isFinite)) throw Error('NATIVE_YSM_POSE_UNAVAILABLE')
-        root.position.set(pose.x, pose.y, pose.z); root.rotation.y = pose.yaw; root.visible = true
+        // Camera/entity yaw is the head direction, not the body's rotation.
+        // The original renderer's Ry(180-bodyYaw) is applied only from verified
+        // own motion below. Unknown motion keeps the last observed body pose.
+        root.position.set(pose.x, pose.y, pose.z); root.visible = true
       },
-      applyMotion () { guard(); applyNativeYsmStaticIdle(model, animation); return root.userData.motion },
+      applyMotion (input) {
+        guard(); root.userData.motion = animationController.apply(input)
+        if (Number.isFinite(root.userData.motion.bodyRotationRadians)) root.rotation.y = root.userData.motion.bodyRotationRadians
+        return root.userData.motion
+      },
+      motionState: () => root.userData.motion,
       applyHeldItems () { guard(); return unavailable('NATIVE_YSM_EQUIPMENT_UNSUPPORTED') },
       heldItemsState: () => unavailable('NATIVE_YSM_EQUIPMENT_UNSUPPORTED'),
       firstPersonItemsState: () => unavailable('NATIVE_YSM_FIRST_PERSON_UNSUPPORTED'),
