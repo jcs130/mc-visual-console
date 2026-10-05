@@ -26,7 +26,7 @@ function cortiAlignAvatarArmor(entity) {
     if (!String(child.name).startsWith('geometry_armor_')) continue;
     // The skinview3d wrapper faces 180 degrees from renderer armor roots.
     child.rotation.y = skin.rotation.y + Math.PI;
-    child.frustumCulled = false;
+    child.traverse((part) => { if (part.isMesh) part.frustumCulled = false; });
   }
   // The renderer has a second, special self mesh for its own third-person
   // implementation. This viewer streams the avatar as a normal world entity.

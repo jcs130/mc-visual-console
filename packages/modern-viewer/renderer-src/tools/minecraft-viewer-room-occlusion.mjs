@@ -81,7 +81,7 @@ export function patchRoomOcclusion(source) {
     ['function scheduleDungeonOcclusionCheck() {\n  if (!isDungeonView || !rendererReady || document.hidden) return;',
       'function scheduleDungeonOcclusionCheck() {\n  if (!usesWorldAvatar || !rendererReady || document.hidden) return;'],
     ['function runDungeonOcclusionCheck() {\n  if (!isDungeonView || !rendererReady || !latestPosition || document.hidden) return;',
-      `${hasRoomCeiling.toString()}\n\n${roomCutoffWorldY.toString()}\n\n${shouldHideUpperEntity.toString()}\n\nconst dungeonUpperEntityVisibility = new Map();\nfunction updateDungeonUpperEntities(avatarY) {\n  if (!isDungeonView) return;\n  const entities = globalThis.world?.entities?.entities || {};\n  const hiddenNow = new Set();\n  for (const [id, entity] of entityCache) {\n    const sceneEntity = entities[id];\n    const entityY = Number(entity?.pos?.y ?? entity?.position?.y);\n    if (!sceneEntity || !shouldHideUpperEntity(entityY, avatarY, id === String(pendingAvatarState?.entity?.id ?? ''))) continue;\n    hiddenNow.add(id);\n    const previous = dungeonUpperEntityVisibility.get(id);\n    if (previous?.object !== sceneEntity) {\n      if (previous) previous.object.visible = previous.visible;\n      dungeonUpperEntityVisibility.set(id, { object: sceneEntity, visible: sceneEntity.visible });\n    }\n    sceneEntity.visible = false;\n  }\n  for (const [id, previous] of dungeonUpperEntityVisibility) {\n    if (hiddenNow.has(id)) continue;\n    previous.object.visible = previous.visible;\n    dungeonUpperEntityVisibility.delete(id);\n  }\n}\n\nfunction runDungeonOcclusionCheck() {\n  if (!usesWorldAvatar || !rendererReady || !latestPosition || document.hidden) return;`],
+      `${hasRoomCeiling.toString()}\n\n${roomCutoffWorldY.toString()}\n\n${shouldHideUpperEntity.toString()}\n\nfunction runDungeonOcclusionCheck() {\n  if (!usesWorldAvatar || !rendererReady || !latestPosition || document.hidden) return;`],
     ['function refreshDungeonCutawayMaterials() {\n  if (!isDungeonView) return;',
       'function refreshDungeonCutawayMaterials() {\n  if (!usesWorldAvatar) return;'],
     ['  if (isDungeonView && !document.hidden) scheduleDungeonOcclusionCheck();',
@@ -92,8 +92,6 @@ export function patchRoomOcclusion(source) {
       '  const collisionReady = typeof collisionCache?.isSolidBlock === "function";\n  const roomCeiling = collisionReady && hasRoomCeiling(avatar, collisionCache);\n  const deepRoof = collisionReady && hasDeepRoof(avatar, collisionCache);\n  dungeonOcclusionState = updateOcclusionHysteresis(\n    dungeonOcclusionState,\n    deepRoof || trace.occluded || roomCeiling,'],
     ['      cutoffWorldY: avatar.y + DUNGEON_OCCLUSION_CUT_HEIGHT,',
       '      cutoffWorldY: roomCutoffWorldY(avatar.y, isDungeonView),\n      hardCutaway: isDungeonView,'],
-    ['  if (!wasActive && dungeonOcclusionState.active) viewerPerformanceCounters.cutawayActivations += 1;',
-      '  if (isDungeonView) updateDungeonUpperEntities(avatar.y, dungeonOcclusionState.active);\n  if (!wasActive && dungeonOcclusionState.active) viewerPerformanceCounters.cutawayActivations += 1;'],
     ['    setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");',
       '    setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");\n    setElementDataset(canvas, "roomCeiling", roomCeiling ? "yes" : "no");\n    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");'],
     ['    detected: dungeonOcclusionState.active,',
@@ -102,8 +100,6 @@ export function patchRoomOcclusion(source) {
       boundedCutawayShaderBlock],
   ]) result = replaceOnce(result, before, after)
   result = replaceOnce(result, hasRoomCeiling.toString(), `${hasRoomCeiling.toString()}\n\n${hasDeepRoof.toString()}`)
-  result = replaceOnce(result, 'function updateDungeonUpperEntities(avatarY) {', 'function updateDungeonUpperEntities(avatarY, hardCutaway) {')
-  result = replaceOnce(result, 'if (!sceneEntity || !shouldHideUpperEntity(entityY, avatarY,', 'if (!hardCutaway || !sceneEntity || !shouldHideUpperEntity(entityY, avatarY,')
   result = replaceOnce(result, 'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {',
     'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction, hardCutaway }) {')
   result = replaceOnce(result,

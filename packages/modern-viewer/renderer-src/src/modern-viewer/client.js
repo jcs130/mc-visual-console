@@ -51,6 +51,7 @@ import {
 } from "./npc-portraits.js";
 import { normalizeMotionFrame } from "./avatar-motion.js";
 import { rendererEntityEquipment } from "./renderer-equipment.js";
+import { installSelfAvatarCameraVisibility } from "./self-avatar-camera-visibility.js";
 import { villagerIdentityConceptColors, NPC_NAMED_ROLE_LABELS, NPC_NAMED_DIALOGUE_LINES, NPC_NAMED_QUEST_TEMPLATES } from "./presets/qiandengji/npc-copy.js";
 import { AvatarRigRegistry } from "./avatar-rig-registry.js";
 import { resolveCharacterVisualProfile } from "./character-visual-profiles.js";
@@ -398,6 +399,7 @@ let viewer = null;
 let worldView = null;
 let viewerEffectSystem = null;
 let fishingVisuals = null;
+let selfAvatarCameraVisibility = null;
 let rendererReady = false;
 let initializing = false;
 let selectedPlayerSkin = resolvePlayerSkin(DEFAULT_PLAYER_SKIN_ID);
@@ -851,6 +853,13 @@ async function initializeRenderer(version) {
       firstPerson: isFirstPersonView,
       onAction: playFishingAction,
     });
+    if (usesWorldAvatar) {
+      selfAvatarCameraVisibility = installSelfAvatarCameraVisibility(
+        globalThis.world,
+        () => pendingAvatarState?.entity?.id,
+        { getUpperCutawayY: () => isDungeonView && dungeonOcclusionState.active ? latestPosition?.pos?.y : null },
+      );
+    }
     for (const entity of entityCache.values()) fishingVisuals.updateEntity(entity, { historical: true });
     for (const effect of pendingViewerEffects.splice(0)) deliverViewerEffect(effect);
     viewerEffectSystem.ingestChat(npcWorldContext.chat);
@@ -5419,6 +5428,8 @@ function installVisibilityHandling() {
     viewerEffectSystem = null;
     fishingVisuals?.dispose();
     fishingVisuals = null;
+    selfAvatarCameraVisibility?.dispose();
+    selfAvatarCameraVisibility = null;
     pendingViewerEffects.length = 0;
     disposeAllPaintingEntities();
     removeSelectedPlayerModel({ restoreNative: false, restoreRig: false });
@@ -5470,6 +5481,9 @@ function publishDiagnostics(version) {
     dungeonOcclusionArchitecture: "bounded-supercover-multiray-local-shader-sight-corridor",
     viewerEffectsArchitecture: "bounded-authoritative-events-plus-labelled-chat-inference",
     observerControlsCharacter: false,
+    get selfAvatarCameraVisibility() {
+      return selfAvatarCameraVisibility?.diagnostics ?? null;
+    },
     maximumOrbitDistance,
     maximumObserverOffset,
     get timeOfDay() {
