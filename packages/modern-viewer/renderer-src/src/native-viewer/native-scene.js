@@ -12,6 +12,7 @@ import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
 import { NativeEntityLayer } from './native-entity-layer.js'
 import { MILLSTONE_ID, prepareNativeMillstoneModel, NativeKineticRenderClock, nativeKineticTimeStatus } from './native-millstone.js'
 import { stageNativeKineticActors } from './native-kinetic-layer.js'
+import { nativeColonyHutEligible, prepareNativeColonyHutModel } from './native-colony-huts.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
@@ -264,6 +265,14 @@ async function template (state, variants) {
       const model = await loader.model(plan.modelId)
       if (disposed) { loader.releaseModel(model); throw Error('NATIVE_SCENE_DISPOSED') }
       model.userData.nativeDevice = { part: 'body', sourcePaths: plan.sourcePaths, pixelParityVerified: false }
+      model.updateMatrixWorld(true); return model
+    }
+    if (nativeColonyHutEligible(state)) {
+      const plan = await prepareNativeColonyHutModel(assetReader, state)
+      const model = await loader.models(plan.variants)
+      if (disposed) { loader.releaseModel(model); throw Error('NATIVE_SCENE_DISPOSED') }
+      model.userData.nativeColonyHut = { sourcePaths: plan.sourcePaths, blockClass: plan.blockClass,
+        blockEntityRendererEmpty: true, blueprintPreviewAvailable: false, pixelParityVerified: false }
       model.updateMatrixWorld(true); return model
     }
     // The exact empty-board entity guard is checked per position before this

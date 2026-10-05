@@ -75,3 +75,70 @@ node --test tools/test/native-millstone.test.mjs tools/test/native-create.test.m
 真实资产测试也接受 `NATIVE_GUIDE_ASSET_DIR`；未提供资产目录时该项跳过，不宣称原资源已验证。离线测试使用真实 SHA/JSON/PNG 和 Three 几何，但不建立 WebGL或游戏连接。
 
 运行验收另记录同账号同连接的实际磨石/crank位置、Speed来源、原外壳与inner图像、正转/零/反转回执及相应动画、明确未适配诊断。确认 static body 不转且 null/断流不沿用旧 RPM；随后独立核对真实材料输入、加工与产物拾取。浏览器截图和匹配 Java 客户端比较由运行方另行记录，本页不提前声明通过。
+
+## MineColonies 建设链路审计与有限 hut 修复
+
+本次后续审计针对本人采集、制造、装备、建城、施工与居民请求链路。它没有执行游戏动作、运行模型或部署；以下区分已有查询、网页呈现与离线原资源验载，不宣称完整模组画面或原 GUI 已完成。
+
+锁定 `minecolonies-1.1.1319-1.21.1.jar` SHA 为 `ab97c0eec45c3f2539ec31428e3c836bb30ba1c537af0c86f5ab4e38754f6a4d`。`structurize-1.0.832-1.21.1.jar` SHA 为 `b6ede7635c63a80bd3d034c1ad3e74c648b8478f341f883d7d29c3dcf90b79ce`；`blockui-1.0.209-1.21.1.jar` SHA 为 `eec023231b21a606306cac6c588b5b07f51741f5e5bc831dba709d52332b82ab`。源码/JAR/PNG、私有 manifest 和调查记录均保持在 Git 外。
+
+[native-colony-huts.js](src/native-viewer/native-colony-huts.js) 枚举 48 个实际普通 `BlockHut*` 类及各 class/model/blockstate SHA，来自以下闭合注册链，未使用 `blockhut` 前缀通配或仅凭 JSON 存在开放实体方块：
+
+| 原 class，省略 `com/minecolonies/` | SHA-256 | 依据 |
+| --- | --- | --- |
+| `apiimp/initializer/ModBlocksInitializer.class` | `521234bef656371832f6c0b04983a636433c7a0341d8e6a6286833abd2122852` | 原具体类注册到对应 ModBlocks 字段 |
+| `api/blocks/ModBlocks.class` | `0652d0a9b7576dd54657e8e48e22391f746d66854bf552e795df36ffed17411c` | `getHuts()` 的实际集合 |
+| `api/blocks/AbstractColonyBlock.class` | `0042c6fad819afb10b63502684b9f8d109a702465f3de4fcd76e129c64ccfd75` | 未重写的 `newBlockEntity` 创建 BUILDING；原状态定义仅 facing |
+| `apiimp/initializer/TileEntityInitializer.class` | `7a552dc58d818baecf4b676526b70fdc1fe881f407bd661eac1ef3f2f6d71350` | BUILDING 注册为 `minecolonies:colonybuilding` |
+| `core/event/ClientRegistryHandler.class` | `92adc81eb7c02d1cadd3e2755bd196f757d59570269a9abdca2a92997b0e51ca` | BUILDING 注册 EmptyTileEntitySpecialRenderer；原 hut 使用 solid/cutout |
+| `core/client/render/EmptyTileEntitySpecialRenderer.class` | `23a1667034217577e6dd7d8d1bf7ab49b0d3f1fe6209d5b4085dd064c757d5f1` | 原 `render` 方法为空，未丢弃一个已知动态层 |
+
+`BlockHutEnchanter`、`BlockHutWareHouse` 虽出现在 `getHuts()`，却重写 `newBlockEntity`，因此继续排除；postbox、stash、quarry、旗帜、装饰控制器与其他实体方块也未借用此许可。居民是 `RenderBipedCitizen` 的动态专用模型，网页现有实体 dispatcher 未支持，不能替换成原版 villager、本人 PlayerObject 或任意默认皮肤。
+
+场景原先一概拒绝普通 hut 的 `hasBlockEntity`；现在仅上述证据范围进入原 blockstate/facing/JSON/UV/PNG 管线。每个 provider 仍要求唯一锁定 client/MineColonies 来源、原 model/blockstate 指纹、实际 MODEL/实体方块/stateId/facing、原父模型来源和资源优先级。任何未知 model loader、tint、加权种子或优先级冲突仍明确拒绝。
+
+实际 v5 私有资源的 48 类定向结果为：**10 类完整原 JSON/PNG 可验载，38 类拒绝**。10 类为 baker、blacksmith、crusher、mechanic、plantation、sifter、smeltery、stable、stonemason、tavern。它们只是离线 asset-ready，还未称 Java 客户端或浏览器像素验收。
+
+| 拒绝分类 | 类数 | 当前原始原因 |
+| --- | ---: | --- |
+| 资源优先级冲突 | 18 | 14 类 `minecraft:oak_planks`，4 类 `minecraft:dark_oak_planks`；不选最高/最低排序 |
+| 自定义模型 loader | 17 | 原模型声明尚未实现的 loader；未按普通 JSON 忽略 |
+| 缺少原路径 | 2 | 模型引用 `assets/minecraft/textures/map/map_icons.png`，当前 1.21.1 导出中不存在；未用新 atlas 或别的图片冒充 |
+| 加权模型种子未证 | 1 | `blockhutcitizen` 每 facing 有 5 个加权模型，未任选第一个 |
+
+城镇大厅 `blockhuttownhall` 的原 block 模型为 60 面（SHA `cc4ab84d5303492c0909a309a8d0f975803542e3e328bd65f9f8ae03cae85315`）；建筑工人 `blockhutbuilder` 为 200 面（SHA `886c1947dbd709c0924ef8e54e331455cde1eca81d05e31841ebb8525a979a7a`）。两者原 blockstate 的 facing 旋转不同，均保留原值。当前两者的确切拒绝均为 `NATIVE_RESOURCE_PRIORITY_UNRESOLVED:assets/minecraft/textures/block/oak_planks.png`；其他各 5/10 张纹理 SHA 可读。该路径有 Minecraft client（`3a33db67a3ba30537d0890a5cb37c8087ca336be89cbb1393a71c23224e361a8`）与 Domum Ornamentum（`3b00412fec87bd07b83825b86de49bcb6c186ca7799f41721a36b04e5d8ed161`）两份不同字节，匹配 Java 客户端资源栈尚未提供，不能为了画出建城界面忽略 guard。
+
+### 菜单、工单与 Agent 可用性
+
+`PlayerColonyBridge` 已从本人 ServerPlayer 查询附近或本人拥有的 colony、权限、citizens、buildings、建设资源、requests、workOrders；Agent `modStates.colony` 使用同一 UUID 的查询回执，具备受限 `found/placeBuilder/requestBuild/deliver/stockResource` 动作接口。每次查询最多 24 条居民/建筑/请求/工单、最多 12 条建设资源，各 count/truncated 信息应随展示保留；缺字段不能当作 0 或已完成。材料 `availableReported` 是原模组报告量，交货成功与 worker 取用、工单完成仍需要后续状态分别核验。
+
+网页当前 `presentation` 只接本人 self/inventory/nativeMenu/skills/message/time/weather，未接实时 colony 视图；Agent 紧凑状态栏只呈现目标、最后动作及回执。当前原生容器布局支持本人 inventory、crafting、generic_9x1..6、furnace/smoker/blast_furnace 和 FD cooking_pot，没有 MineColonies/Structurize BlockUI 页。
+
+原 hut `useItemOn` 和 Structurize `ItemBuildTool.use/useOn` 在 client 分支打开窗口；普通 Mineflayer 没有这些 Java 客户端窗口对象。BlockUI XML/BuildingView、结构包选择、蓝图坐标/旋转/镜像/预览、权限页和嵌套请求树不能由 AbstractContainerMenu 槽或网页通用 5×9 网格推断。真实后端动作不等于原界面已被打开。
+
+以下原 UI/纹理在当前资产中存在，并已通过 NativeAssetReader SHA/bytes/priority 验读，但本轮未移植它们：
+
+| 原路径 | SHA-256 | 实际界面结构 |
+| --- | --- | --- |
+| `assets/minecolonies/gui/townhall/windowtownhall.xml` | `ebe23b6b8852a6bc39ac6cb77f0da88b77df1ce0e37e88236d17ca587345c1a6` | 524×290，本体与 actions/info/permissions/citizens/stats/alliance/settings 页 |
+| `assets/minecolonies/gui/layouthuts/layoutbuilderres.xml` | `79b0e39c70aa1a52da98b04b989615f7188c727b1eb70fa7a6568505bf9092c3` | 190×244，constructionName/step/progress、资源列表及原 itemicon |
+| `assets/minecolonies/gui/layouthuts/layoutworkorders.xml` | `4f045d9438f2d0257c20c830b5122daf7d5afbe029e1fff7b05d438cbf24bf78` | 190×244，workOrders 列表、位置及 manage 控件 |
+| `assets/minecolonies/gui/citizen/requests.xml` | `dfe5a527b7520eb0a996a834c70a6f96fa7e4728fa998136b70983166eca9836` | citizen/nav include；RequestTreeWindowModule 动态挂载，并非完整静态请求页 |
+| `assets/structurize/gui/windowbuildtool.xml` | `f5e2835e1aa080f66bd4dbaed7e847d075115f863a942c2df164c017fe901cfd` | 420×240，包/类别/级别/蓝图列表与 manipulation include |
+| `assets/minecolonies/textures/gui/townhall_book.png` | `7341381f400acc93745105f193046a4e5e8350ed1e05ba1a62fb7b07e7488efc` | 原 townhall 背景 |
+| `assets/minecolonies/textures/gui/builderhut/builder_paper.png` | `792d9d72a32220f930e64fcb5687c379796116e4aa735bf617b2c973270d4964` | 原 builder 页背景 |
+
+当前 hut 物品和 Structurize buildtool 图标/持物 provider 也未开放，返回 `NATIVE_ITEM_STATIC_PROVIDER_UNVERIFIED`；原素材存在不代表未知视觉组件或客户端 hooks 可以忽略。居民原 renderer 还需 modelType、性别、baby、customTexture、装备、持物、动作/骑乘等实际输入；`citizens` 查询的名字/lastPosition/jobStatus 不能生成准确居民模型。`RenderBipedCitizen.class` SHA 为 `4a551f47877e643085cec804e18863dab9a749c7b75df72c70e912083237505e`。
+
+### 有限验收建议
+
+先以本人规范 inventory 的完整 SNBT 证明采集、制造和装备结果；已支持的物品显示原图标，hut/buildtool 未支持原因保持可见。建城/放 builder/请求施工分别核对真实 colonyId、建筑坐标/level/built/constructionPending、工单 ID/claimed 与当前 worker AI；供应材料再独立核对本人库存减少、建筑库存增加、requestState、施工资源和工单变化。不要把一次 `ok:true`、claim 成功、存入材料或齿轮转动当作任务已完成。
+
+网页运行验收应记录同账号、连接 epoch、采样时间、当前 visible bounds、原 hut 资源/模型诊断和动作后置状态；工单/请求面板尚未接入时显著记为未支持，不能截通用槽网格称原 UI。后续 UI 数据接线要附 playerUuid/epoch/source/observedAt 与 truncate 边界，窗口状态/布局需来自原 BlockUI 和真实客户端或对应服务端 view API。建筑蓝图 ghost、殖民地边界和完整居民模型仍未支持；只看 terrain 中已放出的实际方块也不能证明蓝图预览一致。
+
+```powershell
+$env:NATIVE_COLONY_ASSET_DIR = "<native-assets-dir>"
+node --test tools/test/native-colony-huts.test.mjs
+```
+
+真实资源测试使用当前原 manifest 和原 block-state registry，审计全部 48 类，并验证已支持 baker 的 107 原面/PNG 载入及 geometry 释放。提供目录时不跳过；缺目录时这一个原资产案例跳过，不能称已完成源资产验证。本轮不关闭完整 scene parity guard。
