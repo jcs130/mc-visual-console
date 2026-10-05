@@ -202,7 +202,7 @@ export class NativeWorldState extends EventEmitter {
         case 'update_time': this.time = { age: longNumber(p.age), day: longNumber(p.time), receivedAt: this.now() }; this.emit('time'); break
         case 'spawn_entity': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
         case 'rel_entity_move': case 'entity_move_look': case 'entity_look': case 'entity_teleport':
-        case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation':
+        case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation':
           this.handleEntity(body); break
       }
     } catch (error) { this.unavailable(error) }
@@ -251,6 +251,15 @@ export class NativeWorldState extends EventEmitter {
             this.accountEntityEntry(p.entityId, `equipment:${entry.slot}`, Buffer.byteLength(JSON.stringify(row)))
             entity.equipment.set(entry.slot, row); this.entityCollections.delete(p.entityId)
           }
+        } else if (body.name === 'maid_animation') {
+          if (!Number.isSafeInteger(p.animationId) || p.animationId < 0 ||
+              p.sourceChannel !== 'touhou_little_maid:maid_animation' || entity.name !== 'touhou_little_maid:maid') throw Error('NATIVE_MAID_ANIMATION_INVALID')
+          entity.cues.push(Object.freeze({ kind: body.name, code: p.animationId, at: timestamp, sequence: body.sequence })); entity.cues = entity.cues.slice(-8)
+          this.entityCollections.delete(p.entityId)
+        } else if (body.name === 'hurt_animation') {
+          if (!Number.isFinite(p.yaw)) throw Error('NATIVE_ENTITY_HURT_ANIMATION_INVALID')
+          entity.cues.push(Object.freeze({ kind: body.name, yaw: p.yaw, at: timestamp, sequence: body.sequence })); entity.cues = entity.cues.slice(-8)
+          this.entityCollections.delete(p.entityId)
         } else if (body.name === 'entity_status' || body.name === 'animation') {
           const code = p.entityStatus ?? p.animation
           if (!Number.isInteger(code)) throw Error('NATIVE_ENTITY_CUE_INVALID')

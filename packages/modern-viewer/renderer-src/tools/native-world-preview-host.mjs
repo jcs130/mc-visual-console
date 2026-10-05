@@ -72,7 +72,8 @@ function injectedPresentation (provider, uuid) {
         'inWater', 'experienceLevel', 'experienceProgress', 'experiencePoints', 'equipment', 'mainArm', 'usingItem',
         'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'pose'].filter(key => Object.hasOwn(copy.self, key)).map(key => [key, copy.self[key]])) : null
     return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
-      nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null, nativeState: { available: true } }
+      nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null,
+      entityRenderStates: copy.entityRenderStates ?? null, nativeState: { available: true } }
   } catch (error) {
     const reason = ['PRESENTATION_INVALID', 'PRESENTATION_TOO_LARGE', 'PRESENTATION_IDENTITY_MISMATCH'].includes(error?.message) ? error.message : 'PRESENTATION_UNAVAILABLE'
     return unavailable(reason)
@@ -110,6 +111,7 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
     if (item === null) return null
     if (!item || typeof item.id !== 'string' || !/^[a-z0-9_.-]+:[a-z0-9/._-]+$/.test(item.id) || !Number.isSafeInteger(item.count) || item.count <= 0 || typeof item.snbt !== 'string') throw Error('PRESENTATION_NATIVE_ITEM_INVALID')
     return { name: item.id, count: item.count, snbt: item.snbt,
+      ...(Object.hasOwn(item, 'food') ? { food: item.food } : {}),
       ...(typeof item.displayName === 'string' && item.displayName.length <= 512 ? { displayName: item.displayName } : {}),
       ...(typeof item.descriptionId === 'string' && item.descriptionId.length <= 512 ? { descriptionId: item.descriptionId } : {}) }
   }
@@ -135,6 +137,14 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
     nativeMenu = { playerUuid: uuid, windowId: menu.windowId, stateId: Number.isSafeInteger(menu.stateId) ? menu.stateId : null,
       menuType: typeof menu.menuType === 'string' ? menu.menuType : null, title: null, selectedHotbarSlot, slots,
       carried: nativeItem(menu.carried ?? null), mayPickup: menu.mayPickup ?? null, slotRoles: menu.slotRoles ?? null }
+    for (const key of ['dataValues', 'dataValuesSource', 'dataValuesError', 'slotLayout']) {
+      if (Object.hasOwn(menu, key)) nativeMenu[key] = menu[key]
+    }
+    if (own(menu.cookingPot) && menu.cookingPot.source === 'native_cooking_pot_menu') {
+      nativeMenu.cookingPot = { playerUuid: uuid, source: menu.cookingPot.source,
+        isHeated: typeof menu.cookingPot.isHeated === 'boolean' ? menu.cookingPot.isHeated : null,
+        container: nativeItem(menu.cookingPot.container ?? null) }
+    }
     // The server's generic container does not identify the player inventory
     // subset. Keep its original layout, rather than guessing from slot count.
     if (menu.windowId === 0 && menu.menuType === 'minecraft:inventory' && slots.length === 46) inventory = {
@@ -182,7 +192,28 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
       stale: !sameHeld || !Number.isFinite(spellObservedAt) || now - spellObservedAt > 5000 }
   }
   return { schemaVersion: 1, playerUuid: uuid, inventory, nativeMenu, skills, ...(self ? { self } : {}),
-    ...(renderRegistries ? { renderRegistries } : {}) }
+    ...(renderRegistries ? { renderRegistries } : {}),
+    ...(own(menu) && Array.isArray(menu.entityRenderStates) && menu.entityRenderStates.length <= 16
+      ? { entityRenderStates: menu.entityRenderStates } : {}) }
+}
+
+// Supplement only identities already present in this connection's native
+// snapshot. A private bridge row cannot create an entity or cross a dimension.
+export function injectTrackedMaidPresentation (entityState, presentation, dimension, playerUuid) {
+  const rows = Array.isArray(presentation?.entityRenderStates) ? presentation.entityRenderStates : []
+  const byId = new Map()
+  for (const row of rows) {
+    if (row?.source !== 'same_player_tracked_entity' || row.playerUuid !== playerUuid ||
+        row.dimension !== dimension || !Number.isSafeInteger(row.entityId) || !UUID.test(row.uuid || '')) continue
+    if (byId.has(row.entityId)) { byId.set(row.entityId, null); continue }
+    byId.set(row.entityId, row)
+  }
+  return { ...entityState, renderRegistries: presentation?.renderRegistries ?? null,
+    entities: (entityState.entities || []).map(entity => {
+      const row = byId.get(entity.entityId)
+      return entity.name === 'touhou_little_maid:maid' && row?.uuid === entity.uuid
+        ? { ...entity, maidRenderState: { ...row, epoch: entityState.epoch } } : entity
+    }) }
 }
 
 // A native console and its skin preview must share one Three module, including
@@ -378,6 +409,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             ...(injected.nativeSelf ?? {}) },
           inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, nativeState: injected.nativeState,
           renderRegistries: injected.renderRegistries,
+          entityRenderStates: injected.entityRenderStates,
           gameMessages: gameMessages.map(message => ({ ...message })),
           title: currentTitle && { ...currentTitle }, actionbar: currentActionbar && { ...currentActionbar }, time: world.time && { ...world.time },
           weather: { raining: typeof bot.isRaining === 'boolean' ? bot.isRaining : null, thunder: finiteNumber(bot.thunderState), rain: finiteNumber(bot.rainState) } }
@@ -538,8 +570,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             if (!sendIdentity(client) || client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
             if (snapshot || client.needsSnapshot) {
               const value = snapshot || cachedSnapshot
-              if (value && sendNativeWorldEvent(client, { ...value, entityState: { ...world.entitySnapshot(value.bounds), renderRegistries: ownPresentation.renderRegistries ?? null }, pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
-            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: playerPose(player), motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation, entityState: { ...world.entitySnapshot(cachedSnapshot?.bounds), renderRegistries: ownPresentation.renderRegistries ?? null }, time: world.time, packetSequence: world.lastSequence })
+              if (value && sendNativeWorldEvent(client, { ...value, entityState: injectTrackedMaidPresentation(world.entitySnapshot(value.bounds), ownPresentation, world.dimension?.name, player?.uuid), pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
+            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: playerPose(player), motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation, entityState: injectTrackedMaidPresentation(world.entitySnapshot(cachedSnapshot?.bounds), ownPresentation, world.dimension?.name, player?.uuid), time: world.time, packetSequence: world.lastSequence })
           }
         } catch (error) { world.unavailable(error) }
       }, 200)

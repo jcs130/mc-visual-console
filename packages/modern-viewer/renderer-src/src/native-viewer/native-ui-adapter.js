@@ -47,6 +47,19 @@ export const NATIVE_FURNACE_GUIS = Object.freeze(Object.fromEntries(['furnace', 
     burn: Object.freeze({ path: `assets/minecraft/textures/gui/sprites/container/${kind}/burn_progress.png`,
       sha256: '9e042d39afe20bbdd4a0cfbb66be1c24f30327d460a48042d3a38cba7851c018', bytes: 143, width: 24, height: 16 })
   })])))
+// Farmer's Delight 1.21.1-1.3.4: CookingPotScreen, CookingPotMenu and
+// CookingPotBlockEntity.createIntArray(). The server exposes TWO data slots;
+// its client's SimpleContainerData(4) constructor is only a client placeholder.
+export const NATIVE_COOKING_POT_GUI = Object.freeze({
+  clientJarSha256: NATIVE_CRAFTING_GUI.clientJarSha256,
+  sourceName: 'FarmersDelight-1.21.1-1.3.4.jar',
+  sourceSha256: '139ad7696462c89c03eea463f805abffa552526c5dadaadae221dd9624cb197c',
+  path: 'assets/farmersdelight/textures/gui/cooking_pot.png',
+  sha256: '52ac5d706ff3d49213d7a664bd2ce0bb04b5fc707f38d0762ae9a01722f8e514',
+  bytes: 3595, width: 176, height: 166,
+  emptyContainer: Object.freeze({ path: 'assets/farmersdelight/textures/item/empty_container_slot_bowl.png',
+    sha256: '69a633cb92a2b0062ac979df80a66fac078546ff6944c9edd79c41794b7d65eb', bytes: 143 })
+})
 function verifiedMenuRows (menu, expectedUuid, typeMatches, count, kind) {
   if (!uuid(expectedUuid) || uuid(menu?.playerUuid) !== uuid(expectedUuid)) throw Error(`NATIVE_${kind}_MENU_IDENTITY_MISMATCH`)
   if (!typeMatches || !Number.isSafeInteger(menu.windowId) || menu.windowId <= 0 ||
@@ -94,7 +107,7 @@ export function nativeFurnaceMenuLayout (menu, expectedUuid) {
 export function nativeFurnaceProgress (menu, expectedUuid) {
   nativeFurnaceMenuLayout(menu, expectedUuid)
   const values = menu.dataValues
-  if (values === undefined || values === null) return { available: false, reason: 'NATIVE_FURNACE_DATA_UNAVAILABLE' }
+  if (values === undefined || values === null) return { available: false, reason: text(menu.dataValuesError, 512) || 'NATIVE_FURNACE_DATA_UNAVAILABLE' }
   if (!Array.isArray(values) || values.length !== 4 || Array.from(values).some(value => !Number.isInteger(value) ||
       value < -2147483648 || value > 2147483647)) return { available: false, reason: 'NATIVE_FURNACE_DATA_UNVERIFIED' }
   // AbstractFurnaceMenu indices 0..3: litTime, litDuration, cookingProgress,
@@ -109,14 +122,60 @@ export function nativeFurnaceProgress (menu, expectedUuid) {
     lit: { x: 56, y: 50 - litPixels, sourceX: 0, sourceY: 14 - litPixels, width: 14, height: litPixels },
     burn: { x: 79, y: 34, sourceX: 0, sourceY: 0, width: burnPixels, height: 16 } }
 }
+export function nativeCookingPotMenuLayout (menu, expectedUuid) {
+  const rows = verifiedMenuRows(menu, expectedUuid, menu?.menuType === 'farmersdelight:cooking_pot', 45, 'COOKING_POT')
+  const slots = rows.map(row => {
+    const i = row.slot
+    if (i < 6) return { row, x: 30 + (i % 3) * 18, y: 17 + Math.floor(i / 3) * 18, role: 'ingredient' }
+    if (i < 9) return { row, x: [124,92,124][i - 6], y: [26,55,55][i - 6],
+      role: ['cooked_meal_buffer','serving_container','served_output'][i - 6] }
+    if (i < 36) return { row, x: 8 + ((i - 9) % 9) * 18, y: 84 + Math.floor((i - 9) / 9) * 18, role: 'inventory' }
+    return { row, x: 8 + (i - 36) * 18, y: 142, role: 'hotbar' }
+  })
+  // An explicit server layout, when supplied, must corroborate this original
+  // screen; do not force a different mod's runtime menu into an original PNG.
+  if (menu.slotLayout !== undefined && menu.slotLayout !== null) {
+    if (!Array.isArray(menu.slotLayout) || menu.slotLayout.length !== 45 ||
+        Array.from(menu.slotLayout).some((value, i) => !record(value) || value.slot !== i ||
+          value.x !== slots[i].x || value.y !== slots[i].y)) throw Error('NATIVE_COOKING_POT_SLOT_LAYOUT_MISMATCH')
+  }
+  return { info: NATIVE_COOKING_POT_GUI, width: 176, height: 166, slots }
+}
+export function nativeCookingPotState (menu, expectedUuid) {
+  nativeCookingPotMenuLayout(menu, expectedUuid)
+  const values = menu.dataValues
+  let progress
+  if (values === undefined || values === null) progress = { available: false, reason: text(menu.dataValuesError, 512) || 'NATIVE_COOKING_POT_DATA_UNAVAILABLE' }
+  else if (!Array.isArray(values) || values.length !== 2 || Array.from(values).some(value => !Number.isInteger(value) || value < 0 || value > 2147483647))
+    progress = { available: false, reason: 'NATIVE_COOKING_POT_DATA_UNVERIFIED' }
+  else {
+    // getCookProgressionScaled() uses Java int multiplication/division, NOT
+    // the vanilla furnace's float32/ceil rule. Preserve int32 overflow first.
+    const scaled = values[0] !== 0 && values[1] !== 0 ? (Math.trunc(Math.imul(values[0], 24) / values[1]) | 0) : 0
+    const width = scaled + 1
+    progress = width >= 1 && width <= 25
+      ? { available: true, values: values.slice(), scaled, arrow: { x: 89, y: 25, sourceX: 176, sourceY: 15, width, height: 17 } }
+      : { available: false, reason: 'NATIVE_COOKING_POT_PROGRESS_RANGE_UNSUPPORTED' }
+  }
+  const native = menu.cookingPot
+  const heat = record(native) && uuid(native.playerUuid) === uuid(expectedUuid) && native.source === 'native_cooking_pot_menu' && typeof native.isHeated === 'boolean'
+    ? { available: true, isHeated: native.isHeated, icon: { x: 47, y: 55, sourceX: 176, sourceY: 0, width: 17, height: 15 } }
+    : { available: false, reason: 'NATIVE_COOKING_POT_HEAT_UNAVAILABLE' }
+  const containerRows = heat.available && Object.hasOwn(native, 'container') ? nativeSlotRows([{ slot: 0, item: native.container }]) : null
+  return { progress, heat, container: containerRows ? { available: true, item: containerRows[0].item } : { available: false } }
+}
 function verifyGuiSource (reader, info, kind) {
   const manifest = reader.manifest
   const sources = manifest?.sources?.filter(source => source.name === 'minecraft-1.21.1-client.jar')
   if (manifest?.minecraftVersion !== '1.21.1' || manifest.assetIntegrityVerified !== true ||
       manifest.clientJarSha256 !== info.clientJarSha256 || sources?.length !== 1 ||
       sources[0].sha256 !== info.clientJarSha256 || sources[0].explicitOverride) throw Error(`NATIVE_${kind}_GUI_CLIENT_UNVERIFIED`)
+  if (info.sourceName) {
+    const mod = manifest.sources.filter(source => source.name === info.sourceName)
+    if (mod.length !== 1 || mod[0].sha256 !== info.sourceSha256 || mod[0].explicitOverride) throw Error(`NATIVE_${kind}_GUI_MOD_UNVERIFIED`)
+  }
   const entry = manifest.assets?.[info.path]
-  if (entry?.sha256 !== info.sha256 || entry.bytes !== info.bytes) throw Error(`NATIVE_${kind}_GUI_TEXTURE_UNVERIFIED`)
+  if (entry?.sha256 !== info.sha256 || entry.bytes !== info.bytes || (info.sourceName && entry.source !== info.sourceName)) throw Error(`NATIVE_${kind}_GUI_TEXTURE_UNVERIFIED`)
 }
 
 export function nativeSlotRows (rows) {
@@ -169,6 +228,7 @@ export class NativeUiAssets {
     this.reader = reader; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.urls = new Map(); this.pending = new Map(); this.errors = new Map(); this.disposed = false
     this.craftingReason = 'NATIVE_CRAFTING_GUI_LOADING'
+    this.cookingPotReason = 'NATIVE_COOKING_POT_GUI_LOADING'; this.cookingPotPlaceholderReason = 'NATIVE_COOKING_POT_GUI_LOADING'
     this.chestReason = 'NATIVE_CHEST_GUI_LOADING'; this.furnaceReasons = new Map(); this.furnaceProgressReasons = new Map()
     for (const type of Object.keys(NATIVE_FURNACE_GUIS)) {
       this.furnaceReasons.set(type, 'NATIVE_FURNACE_GUI_LOADING')
@@ -198,6 +258,8 @@ export class NativeUiAssets {
     await Promise.all([
       prepare(NATIVE_CRAFTING_GUI, 'CRAFTING').then(reason => { this.craftingReason = reason }),
       prepare(NATIVE_CHEST_GUI, 'CHEST').then(reason => { this.chestReason = reason }),
+      prepare(NATIVE_COOKING_POT_GUI, 'COOKING_POT').then(reason => { this.cookingPotReason = reason }),
+      prepare({ ...NATIVE_COOKING_POT_GUI, ...NATIVE_COOKING_POT_GUI.emptyContainer }, 'COOKING_POT').then(reason => { this.cookingPotPlaceholderReason = reason }),
       ...Object.entries(NATIVE_FURNACE_GUIS).map(async ([type, info]) => {
         this.furnaceReasons.set(type, await prepare(info, 'FURNACE'))
         const reasons = await Promise.all([info.lit, info.burn].map(sprite => prepare({ ...sprite, clientJarSha256: info.clientJarSha256 }, 'FURNACE')))
@@ -232,7 +294,11 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
   // displayName is the same-player server's getHoverName().getString(). Never
   // infer a translated name from a registry basename or a guessed component.
   const displayName = text(item?.displayName, 256) || item?.name
-  const identity = item ? `${displayName}${displayName !== item.name ? `\n${item.name}` : ''} × ${item.count}` : ''
+  const food = item?.food
+  const foodText = record(food) && Number.isSafeInteger(food.nutrition) && food.nutrition >= 0 &&
+    finite(food.saturation) && food.saturation >= 0 && typeof food.canAlwaysEat === 'boolean' && finite(food.eatSeconds) && food.eatSeconds >= 0
+    ? `\n原生营养 ${food.nutrition} · 饱和度 ${food.saturation} · 食用 ${food.eatSeconds} 秒${food.canAlwaysEat ? ' · 可饱食食用' : ''}` : ''
+  const identity = item ? `${displayName}${displayName !== item.name ? `\n${item.name}` : ''} × ${item.count}${foodText}` : ''
   slot.title = item ? `${identity} · 原生物品模型未支持` : `${label}：空`
   slot.setAttribute('aria-label', slot.title)
   if (!item) return
@@ -453,6 +519,9 @@ export function createNativeInterface ({ document = globalThis.document,
         } else if (Object.hasOwn(NATIVE_FURNACE_GUIS, window.menuType)) {
           kind = 'furnace'; layout = nativeFurnaceMenuLayout(window, expectedUuid)
           reason = assets ? assets.furnaceReasons.get(window.menuType) : 'NATIVE_FURNACE_GUI_LOADING'
+        } else if (window.menuType === 'farmersdelight:cooking_pot') {
+          kind = 'cooking-pot'; layout = nativeCookingPotMenuLayout(window, expectedUuid)
+          reason = assets ? assets.cookingPotReason : 'NATIVE_COOKING_POT_GUI_LOADING'
         }
         if (reason || (layout && !assets?.urls.get(layout.info.path))) layout = null
       } catch (error) { reason = error.message; layout = null }
@@ -481,7 +550,7 @@ export function createNativeInterface ({ document = globalThis.document,
           panel.style.backgroundImage = 'none'
           for (const crop of layout.blits) blit(background, 256, 256, crop, 'native-menu-background-blit')
         } else panel.style.backgroundImage = `url("${background}")`
-        let progress = null
+        let progress = null, cookingPot = null
         if (kind === 'furnace') {
           progress = nativeFurnaceProgress(window, expectedUuid)
           const spriteReason = assets.furnaceProgressReasons.get(window.menuType)
@@ -491,20 +560,52 @@ export function createNativeInterface ({ document = globalThis.document,
             if (progress.litPixels > 0) blit(assets.urls.get(info.lit.path), 14, 14, progress.lit, 'native-menu-progress-lit')
             blit(assets.urls.get(info.burn.path), 24, 16, progress.burn, 'native-menu-progress-burn')
           } else panel.dataset.progressReason = progress.reason
+        } else if (kind === 'cooking-pot') {
+          cookingPot = nativeCookingPotState(window, expectedUuid)
+          panel.dataset.progressState = cookingPot.progress.available ? 'available' : 'unknown'
+          panel.dataset.heatState = cookingPot.heat.available ? (cookingPot.heat.isHeated ? 'heated' : 'not_heated') : 'unknown'
+          if (cookingPot.progress.available) blit(background, 256, 256, cookingPot.progress.arrow, 'native-menu-cooking-pot-progress')
+          else panel.dataset.progressReason = cookingPot.progress.reason
+          if (cookingPot.heat.available && cookingPot.heat.isHeated) blit(background, 256, 256, cookingPot.heat.icon, 'native-menu-cooking-pot-heat')
+          else if (!cookingPot.heat.available) panel.dataset.heatReason = cookingPot.heat.reason
         }
         for (const { row, x, y, role } of layout.slots) {
           // Original Slot coords address the 16px item; existing CSS draws its
           // 32px image 2px inside this 36px div, so place the div one GUI pixel back.
           const itemSlot = slot(panel, row, x - 1, y - 1, `原生${role}槽 ${row.slot}`)
           itemSlot.dataset.nativeSlotX = String(x); itemSlot.dataset.nativeSlotY = String(y); itemSlot.dataset.slotRole = role
+          if (typeof window.mayPickup?.[row.slot] === 'boolean') itemSlot.dataset.mayPickup = String(window.mayPickup[row.slot])
+          if (kind === 'cooking-pot' && row.slot === 7 && row.item === null) {
+            const placeholder = assets.urls.get(NATIVE_COOKING_POT_GUI.emptyContainer.path)
+            if (!assets.cookingPotPlaceholderReason && placeholder) {
+              const image = node(document, 'img'); image.src = placeholder; image.alt = '原模组空容器槽提示；当前槽没有物品'
+              image.dataset.nativePlaceholderSource = NATIVE_COOKING_POT_GUI.emptyContainer.path
+              image.addEventListener('error', () => {
+                if (image.parentNode !== itemSlot) return
+                image.remove(); itemSlot.dataset.placeholderState = 'unavailable'
+                itemSlot.dataset.placeholderReason = 'NATIVE_COOKING_POT_EMPTY_ICON_DECODE_FAILED'
+                itemSlot.title += ` · 空容器槽图标解码失败（${itemSlot.dataset.placeholderReason}）`
+                itemSlot.setAttribute('aria-label', itemSlot.title)
+              }, { once: true })
+              itemSlot.append(image); itemSlot.dataset.placeholderState = 'verified'
+            } else { itemSlot.dataset.placeholderState = 'unavailable'; itemSlot.dataset.placeholderReason = assets.cookingPotPlaceholderReason }
+          }
+          if (kind === 'cooking-pot' && row.slot === 6) {
+            const container = cookingPot.container
+            const item = container.item
+            itemSlot.title += `\n熟食缓冲槽；原模组禁止直接取出；盛装容器：${container.available ? (item ? `${text(item.displayName,256) || item.name} (${item.name})` : '原回执为空') : '未同步'}`
+            itemSlot.setAttribute('aria-label', itemSlot.title)
+          }
         }
         body.append(panel)
         const label = kind === 'crafting' ? '原版 3×3 工作台与玩家背包布局'
-          : kind === 'chest' ? `原版 9×${layout.rowsCount} 容器与玩家背包布局` : '原版炉输入、燃料、结果与玩家背包布局'
+          : kind === 'chest' ? `原版 9×${layout.rowsCount} 容器与玩家背包布局`
+          : kind === 'cooking-pot' ? 'Farmer’s Delight 原 3×2 原料、熟食缓冲、容器、成品与玩家背包布局' : '原版炉输入、燃料、结果与玩家背包布局'
         const missing = kind === 'chest' ? '原生标题未接入' : '配方书与原生标题未接入'
         const progressText = progress ? `；${progress.available ? '火焰与烧炼进度来自本人原生 dataValues'
-          : `火焰与烧炼进度未知（${progress.reason}）`}` : ''
-        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId} · state ${window.stateId}；${label} · 只读；${missing}${progressText}`))
+          : `火焰与烧炼进度未知（${progress.reason}）`}` : cookingPot ? `；热源${cookingPot.heat.available ? (cookingPot.heat.isHeated ? '已加热' : '未加热') : `未知（${cookingPot.heat.reason}）`}；烹饪进度${cookingPot.progress.available ? '来自本人原生 dataValues' : `未知（${cookingPot.progress.reason}）`}` : ''
+        const placeholderText = kind === 'cooking-pot' && assets.cookingPotPlaceholderReason ? `；空槽图标未支持（${assets.cookingPotPlaceholderReason}）` : ''
+        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId} · state ${window.stateId}；${label} · 只读；${missing}${progressText}${placeholderText}`))
       } else {
         const panel = node(document, 'div', 'corti-menu-generic'), grid = node(document, 'div', 'corti-menu-grid')
         for (const row of window.slots) slot(grid, row, undefined, undefined, `原生槽 ${row.slot}`)

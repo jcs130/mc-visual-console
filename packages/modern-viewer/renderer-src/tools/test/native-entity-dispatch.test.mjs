@@ -48,7 +48,7 @@ test('all six locked mobs build with original manifest-verified assets and real 
   const directory=process.env.NATIVE_ENTITY_ASSET_DIR,manifest=JSON.parse(await fs.readFile(path.join(directory,'native-assets.json'),'utf8'))
   const reader=new NativeAssetReader(manifest,filename=>fs.readFile(path.join(directory,filename)))
   const decode=async bytes=>{const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);return new THREE.Texture({width:view.getUint32(16),height:view.getUint32(20)})}
-  for(const name of NATIVE_ENTITY_RENDER_TYPES){
+  for(const name of NATIVE_ENTITY_RENDER_TYPES.filter(name=>name.startsWith('minecraft:'))){
     const e=entity(name),actor=await createNativeEntityActor(reader,e,{loadTexture:decode})
     assert.equal(actor.assetInfo.type,name)
     assert.equal(actor.root.visible,true)

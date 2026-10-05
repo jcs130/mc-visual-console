@@ -44,8 +44,8 @@ try {
   if (process.env.NATIVE_METADATA_CODEC_MODULE || error.code !== 'MODULE_NOT_FOUND') throw error
 }
 
-function entityFixture () {
-  const registryBytes = Buffer.from('minecraft:slime\t93\nexample:actual_mob\t300\n')
+function entityFixture (extraRegistry = '') {
+  const registryBytes = Buffer.from('minecraft:slime\t93\nexample:actual_mob\t300\n' + extraRegistry)
   const entityRegistrySha256 = createHash('sha256').update(registryBytes).digest('hex')
   const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry: loadNativeEntityRegistry(registryBytes, entityRegistrySha256), entityRegistrySha256,
     resolveDimension: () => ({ name: 'minecraft:overworld', minY: 0, height: 256 }), simplifyNBT: value => value, now: () => 1000 })
@@ -55,6 +55,22 @@ function entityFixture () {
   const spawn = (entityId = 12, type = 93) => packet('spawn_entity', { entityId, type, objectUUID: '12345678-1234-5678-1234-567812345678', x: -10.25, y: 64, z: 5.5, yaw: -64, pitch: 16, headPitch: 32, velocity: { x: 800, y: -400, z: 0 } })
   return { world, packet, spawn, registryBytes, entityRegistrySha256 }
 }
+
+test('actual hurt and TLM animation cues only attach to already received identities', () => {
+  const { world, packet, spawn } = entityFixture('touhou_little_maid:maid\t131\n')
+  packet('maid_animation', { entityId: 99, animationId: 1, sourceChannel: 'touhou_little_maid:maid_animation' })
+  assert.equal(world.entities.size, 0)
+  spawn(12, 131)
+  packet('hurt_animation', { entityId: 12, yaw: 38.25 })
+  packet('maid_animation', { entityId: 12, animationId: 1, sourceChannel: 'touhou_little_maid:maid_animation' })
+  const result = world.entitySnapshot()
+  assert.equal(result.available, true)
+  assert.deepEqual(result.entities[0].cues.map(cue => cue.kind), ['hurt_animation', 'maid_animation'])
+  assert.equal(result.entities[0].cues[0].yaw, 38.25)
+  packet('hurt_animation', { entityId: 12, yaw: NaN })
+  assert.equal(world.entitySnapshot().reason, 'NATIVE_ENTITY_HURT_ANIMATION_INVALID')
+  assert.equal(world.error, null)
+})
 
 test('native entity registry is hash anchored with no proxy fallback or duplicate names', () => {
   const { registryBytes, entityRegistrySha256 } = entityFixture()

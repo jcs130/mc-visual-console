@@ -5,7 +5,7 @@ const F=Math.fround, clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 const wrap=v=>((v+180)%360+360)%360-180
 const relative=(a,b,max)=>F(b-clamp(wrap(b-a),-max,max))
 export const NATIVE_MOB_MOTION_SOURCE='same_connection_entity_ticks'
-export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager'])
+export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid'])
 const types=new Set(NATIVE_MOB_TYPES)
 
 export function createNativeEntityMotion(entity) {
@@ -15,11 +15,32 @@ export function createNativeEntityMotion(entity) {
   let walk={speedOld:0,speed:0,position:0},ticks=0,headStable=0,lastStableHead=headYaw,lastCue=0
   let squish=0,oSquish=0,targetSquish=0,wasOnGround=false,flap=0,oFlap=0,flapSpeed=0,oFlapSpeed=0,flapVelocity=1,eatCounter=0
   let sampledAt=entity.spawnedAt,previous={position:{...position},yaw,pitch,headYaw,bodyYaw}
+  const isMaid=entity.name==='touhou_little_maid:maid'
+  let hurtTime=0,hurtPending=false,health=null,swingPending=false,maidCue=0,swimAmount=0,swimAmountOld=0,maidAnimationId=0
+  const observeMaid=(next,kind)=>{
+    if(!isMaid)return
+    // 1.21.1 ClientboundHurtAnimationPacket calls animateHurt; legacy status 2
+    // is not a substitute for this packet in the locked client.
+    if(kind==='hurt_animation'){hurtTime=10;hurtPending=false}
+    if(kind==='entity_metadata'){
+      const current=next.metadata?.get?.(9)?.value??next.metadata?.find?.(entry=>entry.key===9)?.value
+      if(Number.isFinite(current)){if(health!==null&&current<health&&hurtTime===0)hurtPending=true;health=current}
+    }
+    for(const cue of next.cues||[]){
+      if(cue.sequence<=maidCue)continue
+      if(cue.kind==='hurt_animation'){hurtTime=10;hurtPending=false}
+      if(cue.kind==='maid_animation')maidAnimationId=cue.code
+      if(cue.kind==='animation'&&[0,3].includes(cue.code))swingPending=true
+      maidCue=Math.max(maidCue,cue.sequence)
+    }
+  }
   function snapshot(){return {source:NATIVE_MOB_MOTION_SOURCE,tickMs:50,tick:ticks,sampledAt,position:{...position},yaw,pitch,headYaw,bodyYaw,
     previous:{...previous,position:{...previous.position}},walk:{...walk},slime:{squish,oSquish,targetSquish},chicken:{flap,oFlap,flapSpeed,oFlapSpeed},eatCounter,
+    ...(isMaid?{maid:{hurtTime,hurtPending,swingPending,attackAnim:0,swingTime:0,swimAmount,swimAmountOld,animationId:maidAnimationId,source:'Minecraft_1.21.1_client_constructor_and_received_cues'}}:{}),
     initialDefaultsSource:'Minecraft_1.21.1_client_constructor',animationParityVerified:false}}
   return {
     observe(next,kind){
+      observeMaid(next,kind)
       if(['rel_entity_move','entity_move_look','entity_look','entity_teleport'].includes(kind)){
         target={...next.position};targetYaw=next.yaw;targetPitch=next.pitch;lerpSteps=3
       }
@@ -28,6 +49,11 @@ export function createNativeEntityMotion(entity) {
     tick(next,now){
       if(!Number.isFinite(now)||now<sampledAt)throw Error('NATIVE_ENTITY_MOTION_CLOCK_INVALID')
       previous={position:{...position},yaw,pitch,headYaw,bodyYaw};sampledAt=now;ticks++
+      if(isMaid){
+        observeMaid(next,'tick');hurtTime=Math.max(0,hurtTime-1);swimAmountOld=swimAmount
+        const flags=next.metadata?.get?.(0)?.value??next.metadata?.find?.(entry=>entry.key===0)?.value??0
+        swimAmount=flags&16?Math.min(1,F(swimAmount+F(.09))):Math.max(0,F(swimAmount-F(.09)))
+      }
       if(lerpSteps>0){for(const axis of ['x','y','z'])position[axis]+=(target[axis]-position[axis])/lerpSteps;yaw=F(yaw+wrap(targetYaw-yaw)/lerpSteps);pitch=F(pitch+(targetPitch-pitch)/lerpSteps);lerpSteps--}
       if(headSteps>0){headYaw=F(headYaw+wrap(targetHead-headYaw)/headSteps);headSteps--}
       const dx=position.x-previous.position.x,dz=position.z-previous.position.z

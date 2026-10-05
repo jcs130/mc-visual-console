@@ -9,8 +9,13 @@ import { parseNativeItemStack, nativeNumericValue } from './native-item-stack.js
 // ItemProperties 0d0e77d78780c9dfedf86514d29cfec312459062f5a90175dda479006aa32f24.
 // Items.CUT_STANDSTONE_SLAB is a misspelled Java field, not a registry ID:
 // cut.eh registers dga.jG (Blocks.CUT_SANDSTONE_SLAB), native ID cut_sandstone_slab.
-// Farmer's Delight 1.3.4 ModItems registers these exact base Item/BlockItem
-// constructors. All JAR class references to color/model/client-extension hooks
+// Farmer's Delight 1.3.4 ModItems registers these exact Item/BlockItem and
+// ConsumableItem constructors (no subclasses or anonymous implementations).
+// ConsumableItem only changes consumption/remainders/tooltips, not rendering.
+// ModItems class SHA256: 3b4917565f8d6f5f3ced18846f43dfdf92bc474313a19264db16ef9d4cfc9fbd;
+// ConsumableItem: 8af6c2428e80b5d321794c39a18e07cf0603a635c51bee9a49e416f5d295cbdd;
+// ClientSetupEvents: 0d3085ae62f7725d30882fcd1e1b49564fc3a50c32528a212e1d0202271543a7.
+// All JAR class references to color/model/client-extension hooks
 // were checked: ClientSetupEvents registers custom renderer + property only
 // for SKILLET (excluded). No mod ItemColors/ModelEvent registration is present.
 export const STATIC_ITEM_SOURCES = Object.freeze({
@@ -182,6 +187,13 @@ minced_beef beef_patty chicken_cuts cooked_chicken_cuts bacon cooked_bacon cod_s
 cooked_salmon_slice mutton_chops cooked_mutton_chops ham smoked_ham pie_crust sweet_berry_cookie honey_cookie
 barbecue_stick egg_sandwich chicken_sandwich hamburger bacon_sandwich mutton_wrap dumplings stuffed_potato
 cabbage_rolls salmon_roll cod_roll kelp_roll kelp_roll_slice
+`)
+add('farmersdelight','flat','vectorwing.farmersdelight.common.item.ConsumableItem',`
+tomato_sauce cake_slice apple_pie_slice sweet_berry_cheesecake_slice chocolate_pie_slice pumpkin_pie_slice
+glow_berry_custard fruit_salad mixed_salad nether_salad cooked_rice beef_stew chicken_soup vegetable_soup fish_stew
+fried_rice pumpkin_soup baked_cod_stew noodle_soup onion_soup bacon_and_eggs pasta_with_meatballs
+pasta_with_mutton_chop mushroom_rice roasted_mutton_chops vegetable_noodles steak_and_potatoes ratatouille
+squid_ink_pasta grilled_salmon roast_chicken stuffed_pumpkin honey_glazed_ham shepherds_pie gleaming_salad
 `)
 
 add('minecraft','json','net.minecraft.world.item.StandingAndWallBlockItem',`

@@ -6,7 +6,7 @@ import os from 'node:os'
 import http from 'node:http'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, sendNativeWorldEvent, createNativePlayerPresentation } from '../native-world-preview-host.mjs'
+import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, sendNativeWorldEvent, createNativePlayerPresentation, injectTrackedMaidPresentation } from '../native-world-preview-host.mjs'
 import { createNativeSession } from '../../src/native-viewer/native-session.js'
 
 let directory, prepared, registryHash
@@ -14,6 +14,38 @@ const assetPath = 'assets/test/models/native.json'
 const assetBytes = Buffer.from('{"parent":"test:original"}')
 const defaultSkinNames = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri']
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
+
+test('tracked maid supplement cannot create, replace or cross-bind an identity', () => {
+  const player = '01234567-89ab-cdef-0123-456789abcdef', maid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  const state = { epoch: 5, entities: [{ entityId: 91, uuid: maid, name: 'touhou_little_maid:maid' }] }
+  const row = { source: 'same_player_tracked_entity', playerUuid: player, entityId: 91, uuid: maid,
+    dimension: 'minecraft:overworld', passenger: false, backItem: null, bannerItem: null }
+  const apply = rows => injectTrackedMaidPresentation(state, { entityRenderStates: rows }, 'minecraft:overworld', player)
+  assert.equal(apply([row]).entities[0].maidRenderState.epoch, 5)
+  assert.equal(state.entities[0].maidRenderState, undefined)
+  for (const bad of [{ ...row, playerUuid: maid }, { ...row, uuid: player },
+    { ...row, dimension: 'minecraft:the_nether' }, { ...row, entityId: 92 }]) {
+    assert.equal(apply([bad]).entities[0].maidRenderState, undefined)
+    assert.equal(apply([bad]).entities.length, 1)
+  }
+  assert.equal(apply([row, row]).entities[0].maidRenderState, undefined)
+})
+
+test('native presentation preserves real cooking-pot progress, slots and FOOD', () => {
+  const playerUuid = '01234567-89ab-cdef-0123-456789abcdef'
+  const meal = { id: 'farmersdelight:beef_stew', count: 1, snbt: '{id:"farmersdelight:beef_stew",count:1}',
+    food: { nutrition: 12, saturation: 9.6, canAlwaysEat: false, eatSeconds: 1.6 } }
+  const menu = { playerUuid, windowId: 3, stateId: 7, menuType: 'farmersdelight:cooking_pot', slots: Array(45).fill(null),
+    dataValues: [123, 200], dataValuesSource: 'server_menu_data_slots', slotLayout: [{ slot: 0, x: 30, y: 17 }],
+    cookingPot: { playerUuid, source: 'native_cooking_pot_menu', isHeated: true, container: null } }
+  menu.slots[8] = meal
+  const projection = createNativePlayerPresentation({ playerUuid, menu })
+  assert.deepEqual(projection.nativeMenu.dataValues, [123, 200])
+  assert.deepEqual(projection.nativeMenu.slotLayout, menu.slotLayout)
+  assert.equal(projection.nativeMenu.cookingPot.isHeated, true)
+  assert.equal(projection.nativeMenu.cookingPot.container, null)
+  assert.deepEqual(projection.nativeMenu.slots[8].item.food, meal.food)
+})
 
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'native-viewer-host-test-'))
@@ -596,10 +628,15 @@ test('same-player private presentation rejects foreign, asynchronous, cyclic and
   Object.defineProperty(bot, 'inventory', { get () { assert.fail('never read vanilla proxy inventory') } })
   bot._client.write = () => assert.fail('presentation must not write to the game connection')
   supplied = { ...createNativePlayerPresentation({ playerUuid: bot._client.uuid, menu: nativeInventory(bot._client.uuid) }), runtimeSecret: 'private-auth-secret' }
+  supplied.entityRenderStates = [{ playerUuid: bot._client.uuid, source: 'same_player_tracked_entity', entityId: 5,
+    uuid: '11111111-1111-1111-1111-111111111111', dimension: 'minecraft:overworld', backpackType: 'touhou_little_maid:empty',
+    backItem: null, bannerItem: null, passenger: false, inSwimFluid: false, swimAmount: 0 }]
   const current = host.status().presentation
   assert.equal(current.playerUuid, bot._client.uuid); assert.equal(current.available, true)
   assert.equal(current.source, 'same_player_connection'); assert.equal(current.nativeState.available, true)
   assert.equal(current.inventory.slots[36].item.name, 'farmersdelight:iron_knife')
+  assert.deepEqual(current.entityRenderStates, supplied.entityRenderStates)
+  assert.notEqual(current.entityRenderStates, supplied.entityRenderStates)
   assert(!JSON.stringify(current).includes('private-auth-secret'))
   const original = supplied
   for (const value of [null, [], Promise.resolve(original), { ...original, playerUuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff' },

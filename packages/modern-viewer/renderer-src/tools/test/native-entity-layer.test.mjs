@@ -34,3 +34,27 @@ test('foreign registries never bind; unsupported failures stay explicit without 
   layer.stage(state([{...entity(),metadata:[{key:0,value:32}]}]));await finish(layer);assert.equal(seen.length,2)
   layer.dispose();assert.equal(layer.failures.size,0)
 })
+
+test('maid required bridge and original dynamic availability changes retry once and recover after NONE or hurt countdown',async()=>{
+  let attempts=0,disposed=0
+  const row=(patch={},maidRenderState={backItem:null})=>({...entity(),name:'touhou_little_maid:maid',maidRenderState,
+    motion:{tick:1,maid:{hurtTime:0,hurtPending:false,swingPending:false,animationId:0,swimAmount:0,swimAmountOld:0,...patch}}})
+  const layer=new NativeEntityLayer(null,{createActor:async(reader,e)=>{
+    attempts++
+    if(!e.maidRenderState)throw Error('NATIVE_TLM_TRACKED_RENDER_STATE_UNAVAILABLE')
+    if(e.motion.maid.animationId!==0)throw Error('NATIVE_TLM_SPECIAL_ANIMATION_UNSUPPORTED')
+    if(e.motion.maid.hurtTime>0)throw Error('NATIVE_TLM_HURT_OVERLAY_UNSUPPORTED')
+    return{root:new THREE.Group(),update(){},dispose(){this.root.removeFromParent();disposed++}}
+  }})
+  layer.stage(state([row({},null)]));await finish(layer);assert.equal(attempts,1)
+  layer.stage(state([row({},null)]));await finish(layer);assert.equal(attempts,1)
+  layer.stage(state([row()]));await finish(layer);assert.equal(attempts,2);assert.equal(layer.actors.size,1)
+  layer.stage(state([{...row(),motion:{...row().motion,tick:50}}]));await finish(layer);assert.equal(attempts,2,'ordinary native ticks reuse the geometry')
+  layer.stage(state([row({animationId:4})]));await finish(layer);assert.equal(disposed,1);assert.equal(layer.actors.size,0)
+  layer.stage(state([row({animationId:4})]));await finish(layer);assert.equal(attempts,3)
+  layer.stage(state([row()]));await finish(layer);assert.equal(attempts,4);assert.equal(layer.actors.size,1)
+  layer.stage(state([row({hurtTime:10})]));await finish(layer);assert.equal(attempts,5);assert.equal(layer.actors.size,0)
+  layer.stage(state([row({hurtTime:9})]));await finish(layer);assert.equal(attempts,5,'unsupported countdown does not reload every tick')
+  layer.stage(state([row()]));await finish(layer);assert.equal(attempts,6);assert.equal(layer.actors.size,1)
+  layer.dispose();assert.equal(disposed,3)
+})

@@ -18,7 +18,8 @@ export class NativeEntityLayer {
     this.pending={entities,registries,generation:this.generation};void this.drain()
   }
   signature(entity,registries) {
-    return JSON.stringify([entity.uuid,entity.name,entity.metadata,entity.equipment,Boolean(entity.motion),entity.name==='minecraft:villager'?registries:null])
+    return JSON.stringify([entity.uuid,entity.name,entity.metadata,entity.equipment,Boolean(entity.motion),entity.name==='minecraft:villager'?registries:null,
+      entity.name==='touhou_little_maid:maid'?[entity.maidRenderState,entity.motion?.maid?.hurtTime>0,entity.motion?.maid?.hurtPending,entity.motion?.maid?.swingPending,entity.motion?.maid?.animationId,entity.motion?.maid?.swimAmount>0||entity.motion?.maid?.swimAmountOld>0]:null])
   }
   async drain() {
     if(this.running||this.disposed)return

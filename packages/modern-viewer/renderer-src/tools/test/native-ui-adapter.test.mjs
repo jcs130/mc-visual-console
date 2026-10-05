@@ -3,7 +3,8 @@ import { test } from 'node:test'
 import { createNativeInterface, nativePresentationView, nativeSlotRows, NativeUiAssets,
   renderNativeItemSlot, NATIVE_CRAFTING_GUI, nativeCraftingMenuLayout } from '../../src/native-viewer/native-ui-adapter.js'
 import { NATIVE_CHEST_GUI, NATIVE_FURNACE_GUIS, nativeChestMenuLayout, nativeFurnaceMenuLayout,
-  nativeFurnaceProgress } from '../../src/native-viewer/native-ui-adapter.js'
+  nativeFurnaceProgress, NATIVE_COOKING_POT_GUI, nativeCookingPotMenuLayout,
+  nativeCookingPotState } from '../../src/native-viewer/native-ui-adapter.js'
 
 const UUID = 'e371227c-09fa-3722-84f4-f3228a552c3c'
 const OTHER = '1231227c-09fa-3722-84f4-f3228a552c3c'
@@ -208,6 +209,13 @@ const containerReader = () => {
     reader.manifest.assets[info.path] = { sha256: info.sha256, bytes: info.bytes }
   return reader
 }
+const cookingPotMenu = (overrides = {}) => containerMenu('farmersdelight:cooking_pot',45,overrides)
+const cookingPotReader = () => {
+  const reader = containerReader(), info = NATIVE_COOKING_POT_GUI
+  reader.manifest.sources.push({ name:info.sourceName,sha256:info.sourceSha256,explicitOverride:false })
+  for(const image of [info,info.emptyContainer]) reader.manifest.assets[image.path] = { sha256:image.sha256,bytes:image.bytes,source:info.sourceName }
+  return reader
+}
 
 test('locked CraftingMenu slot origins cover the original result, 3x3 inputs and exact player inventory indices', () => {
   const menu = craftingMenu(), layout = nativeCraftingMenuLayout(menu, UUID)
@@ -296,6 +304,13 @@ test('private locked client crafting PNG is read through SHA and priority valida
         assert.equal(view.getUint32(16), image === info ? 256 : image.width)
         assert.equal(view.getUint32(20), image === info ? 256 : image.height)
       }
+    }
+    assert.equal(assets.cookingPotReason,null);assert.equal(assets.cookingPotPlaceholderReason,null)
+    for(const image of [NATIVE_COOKING_POT_GUI,NATIVE_COOKING_POT_GUI.emptyContainer]){
+      assert.ok(assets.urls.has(image.path))
+      const bytes=await readFile(join(directory,image.path)),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
+      assert.equal(view.getUint32(16),image===NATIVE_COOKING_POT_GUI?256:16)
+      assert.equal(view.getUint32(20),image===NATIVE_COOKING_POT_GUI?256:16)
     }
     assets.dispose()
   })
@@ -403,4 +418,151 @@ test('container background and furnace sprite SHA/priority failures remain expli
   x.ui.update({epoch:1,presentation:presentation({nativeMenu:containerMenu('minecraft:smoker',39)})})
   assert.equal(x.document.querySelector('.native-menu-furnace'),null);assert.match(x.document.querySelector('[data-menu-body]').textContent,/NATIVE_FURNACE_GUI_TEXTURE_UNVERIFIED/)
   x.ui.dispose()
+})
+
+test('CookingPot original 45-slot layout keeps meal/container/output distinct and checks real server slot coordinates',()=>{
+  const menu=cookingPotMenu(),layout=nativeCookingPotMenuLayout(menu,UUID),point=i=>[layout.slots[i].x,layout.slots[i].y,layout.slots[i].role]
+  assert.equal(layout.slots.length,45)
+  assert.deepEqual(point(0),[30,17,'ingredient']);assert.deepEqual(point(5),[66,35,'ingredient'])
+  assert.deepEqual(point(6),[124,26,'cooked_meal_buffer']);assert.deepEqual(point(7),[92,55,'serving_container']);assert.deepEqual(point(8),[124,55,'served_output'])
+  assert.deepEqual(point(9),[8,84,'inventory']);assert.deepEqual(point(35),[152,120,'inventory'])
+  assert.deepEqual(point(36),[8,142,'hotbar']);assert.deepEqual(point(44),[152,142,'hotbar'])
+  const slotLayout=layout.slots.map(({row,x,y})=>({slot:row.slot,x,y}))
+  assert.equal(nativeCookingPotMenuLayout({...menu,slotLayout},UUID).slots.length,45)
+  slotLayout[6].y=35;assert.throws(()=>nativeCookingPotMenuLayout({...menu,slotLayout},UUID),/SLOT_LAYOUT_MISMATCH/)
+  for(const patch of [{playerUuid:OTHER},{windowId:0},{stateId:null},{menuType:'minecraft:crafting'},{slots:menu.slots.slice(1)}])
+    assert.throws(()=>nativeCookingPotMenuLayout({...menu,...patch},UUID),/NATIVE_COOKING_POT_MENU_/)
+})
+
+test('CookingPot server has two actual progress ints, Java integer division and separate same-player heated/container inputs',()=>{
+  const menu=cookingPotMenu(),native={playerUuid:UUID,source:'native_cooking_pot_menu',isHeated:false,container:null}
+  assert.equal(nativeCookingPotState(menu,UUID).progress.reason,'NATIVE_COOKING_POT_DATA_UNAVAILABLE')
+  assert.equal(nativeCookingPotState(menu,UUID).heat.reason,'NATIVE_COOKING_POT_HEAT_UNAVAILABLE')
+  for(const [values,scaled,width]of [[[0,0],0,1],[[1,3],8,9],[[7,13],12,13],[[1,200],0,1],[[100,100],24,25],[[2147483647,2147483647],0,1]]){
+    const state=nativeCookingPotState({...menu,dataValues:values,cookingPot:native},UUID)
+    assert.equal(state.progress.available,true);assert.equal(state.progress.scaled,scaled);assert.equal(state.progress.arrow.width,width)
+    assert.deepEqual([state.progress.arrow.x,state.progress.arrow.y,state.progress.arrow.sourceX,state.progress.arrow.sourceY,state.progress.arrow.height],[89,25,176,15,17])
+    assert.equal(state.heat.available,true);assert.equal(state.heat.isHeated,false);assert.equal(state.container.available,true);assert.equal(state.container.item,null)
+  }
+  for(const values of [[1,2,0,0],[],[1],[1,2,3],['1',2],[1,NaN],[-1,200],[1,-2],[1.5,20],Array(2),[2147483648,1]])
+    assert.equal(nativeCookingPotState({...menu,dataValues:values},UUID).progress.reason,'NATIVE_COOKING_POT_DATA_UNVERIFIED')
+  assert.equal(nativeCookingPotState({...menu,dataValues:[200,100]},UUID).progress.reason,'NATIVE_COOKING_POT_PROGRESS_RANGE_UNSUPPORTED')
+  assert.equal(nativeCookingPotState({...menu,dataValues:null,dataValuesError:'MENU_DATA_UNAVAILABLE'},UUID).progress.reason,'MENU_DATA_UNAVAILABLE')
+  for(const invalid of [{...native,playerUuid:OTHER},{...native,source:'proxy'},{...native,isHeated:1}])
+    assert.equal(nativeCookingPotState({...menu,cookingPot:invalid},UUID).heat.available,false)
+  const actual={name:'minecraft:glass_bottle',count:1,snbt:'{id:"minecraft:glass_bottle",count:1}'}
+  assert.strictEqual(nativeCookingPotState({...menu,cookingPot:{...native,isHeated:true,container:actual}},UUID).container.item,actual)
+  assert.equal(nativeCookingPotState({...menu,cookingPot:{...native,container:{name:'bowl',count:1}}},UUID).container.available,false)
+})
+
+test('real mod CookingPot uses its original PNG/45 slots/empty atlas icon and complete component-sensitive items without vanilla layout',async()=>{
+  const received=[],h=harness({resolveItemIcon:item=>{received.push(item);return{verified:true,url:'blob:actual-native-item'}}})
+  await h.ui.setAssets(cookingPotReader())
+  const meal={name:'farmersdelight:tomato_sauce',count:2,displayName:'本人原番茄酱',snbt:'{id:"farmersdelight:tomato_sauce",count:2,components:{"minecraft:custom_name":"本人原番茄酱"}}'}
+  const bottle={name:'minecraft:glass_bottle',count:1,snbt:'{id:"minecraft:glass_bottle",count:1}'}
+  const menu=cookingPotMenu({mayPickup:Array.from({length:45},(_,i)=>i!==6),cookingPot:{playerUuid:UUID,source:'native_cooking_pot_menu',isHeated:true,container:bottle},dataValues:[50,100]})
+  menu.slots[6].item=meal
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:menu})})
+  const body=h.document.querySelector('[data-menu-body]'),panel=body.querySelector('.native-menu-cooking-pot'),slots=panel.querySelectorAll('.corti-menu-slot')
+  assert.equal(panel.dataset.nativeGuiSource,NATIVE_COOKING_POT_GUI.path);assert.equal(panel.dataset.nativeGuiSha256,NATIVE_COOKING_POT_GUI.sha256)
+  assert.equal(panel.style.width,'352px');assert.equal(panel.style.height,'332px');assert.equal(slots.length,45)
+  assert.equal(slots[6].dataset.mayPickup,'false');assert.equal(slots[6].style.left,'246px');assert.equal(slots[6].style.top,'50px')
+  assert.match(slots[6].title,/minecraft:glass_bottle/);assert.match(slots[6].title,/原模组禁止直接取出/);assert.ok(received.includes(meal));assert.equal(received.find(item=>item===meal).snbt,meal.snbt)
+  assert.equal(slots[7].dataset.itemName,'');assert.equal(slots[7].dataset.modelState,'empty');assert.equal(slots[7].dataset.placeholderState,'verified')
+  assert.equal(slots[7].querySelector('img').dataset.nativePlaceholderSource,NATIVE_COOKING_POT_GUI.emptyContainer.path)
+  assert.match(slots[7].querySelector('img').alt,/当前槽没有物品/)
+  assert.equal(panel.dataset.heatState,'heated');assert.equal(panel.dataset.progressState,'available')
+  const heat=panel.querySelector('.native-menu-cooking-pot-heat'),progress=panel.querySelector('.native-menu-cooking-pot-progress')
+  assert.deepEqual([heat.style.left,heat.style.top,heat.style.width,heat.style.height,heat.style.backgroundPosition],['94px','110px','34px','30px','-352px 0px'])
+  assert.deepEqual([progress.style.left,progress.style.top,progress.style.width,progress.style.height,progress.style.backgroundPosition],['178px','50px','26px','34px','-352px -30px'])
+  assert.equal(heat.style.backgroundSize,'512px 512px');assert.equal(progress.style.backgroundSize,'512px 512px')
+  assert.equal(h.previews.length,0);assert.match(body.textContent,/只读/)
+  for(const row of slots)assert.equal(row.listeners.size,0)
+  const next=cookingPotMenu({stateId:18,cookingPot:{...menu.cookingPot,isHeated:false},dataValues:null});next.slots[7].item=bottle
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:next})})
+  const current=body.querySelector('.native-menu-cooking-pot')
+  assert.equal(current.dataset.heatState,'not_heated');assert.equal(current.dataset.progressState,'unknown')
+  assert.equal(current.querySelector('.native-menu-cooking-pot-heat'),null);assert.equal(current.querySelector('.native-menu-cooking-pot-progress'),null)
+  const container=current.querySelectorAll('.corti-menu-slot')[7];assert.equal(container.dataset.itemName,bottle.name);assert.equal(container.dataset.placeholderState,undefined)
+  assert.match(body.textContent,/NATIVE_COOKING_POT_DATA_UNAVAILABLE/)
+  h.ui.dispose()
+})
+
+test('CookingPot source/SHA/priority/layout failures are explicit; missing heat never becomes unheated or inferred from progress',async()=>{
+  const info=NATIVE_COOKING_POT_GUI
+  for(const alter of [r=>{r.manifest.sources.push(r.manifest.sources.at(-1))},r=>{r.manifest.sources.at(-1).explicitOverride=true},
+    r=>{r.manifest.sources.at(-1).sha256='other'},r=>{r.manifest.assets[info.path].source='other.jar'},r=>{r.manifest.assets[info.path].sha256='wrong'},
+    r=>{r.bytes=async path=>{if(path===info.path)throw Error('NATIVE_RESOURCE_PRIORITY_UNRESOLVED:actual-pot');return new Uint8Array([137,80,78,71])}}]){
+    const h=harness(),reader=cookingPotReader();alter(reader);await h.ui.setAssets(reader)
+    h.ui.update({epoch:1,presentation:presentation({nativeMenu:cookingPotMenu()})})
+    assert.equal(h.document.querySelector('.native-menu-cooking-pot'),null);assert.match(h.document.querySelector('[data-menu-body]').textContent,/NATIVE_COOKING_POT_GUI_(MOD|TEXTURE)_UNVERIFIED|NATIVE_RESOURCE_PRIORITY_UNRESOLVED:actual-pot/)
+    h.ui.dispose()
+  }
+  const h=harness();await h.ui.setAssets(cookingPotReader())
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:cookingPotMenu({dataValues:[100,100]})})})
+  assert.equal(h.document.querySelector('.native-menu-cooking-pot').dataset.heatState,'unknown')
+  assert.equal(h.document.querySelector('.native-menu-cooking-pot-heat'),null);assert.match(h.document.querySelector('[data-menu-body]').textContent,/HEAT_UNAVAILABLE/)
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:cookingPotMenu({slotLayout:[]})})})
+  assert.equal(h.document.querySelector('.native-menu-cooking-pot'),null);assert.match(h.document.querySelector('[data-menu-body]').textContent,/SLOT_LAYOUT_MISMATCH/)
+  h.ui.dispose()
+})
+
+test('actual FOOD summaries enrich readonly text while the complete SNBT and registry name remain resolver inputs',()=>{
+  const document=shell(),slot=document.createElement('div'),item={name:'minecraft:beef',count:1,snbt:'{id:"minecraft:beef",count:1}',
+    food:{nutrition:3,saturation:1.8,canAlwaysEat:false,eatSeconds:1.6}}
+  let seen
+  renderNativeItemSlot(document,slot,item,{resolveItemIcon:value=>{seen=value;return null}})
+  assert.strictEqual(seen,item);assert.equal(slot.dataset.itemName,'minecraft:beef');assert.equal(seen.snbt,item.snbt)
+  assert.match(slot.title,/原生营养 3/);assert.match(slot.title,/食用 1.6 秒/)
+  renderNativeItemSlot(document,slot,{...item,food:{nutrition:'full'}})
+  assert.doesNotMatch(slot.title,/原生营养/)
+})
+
+test('furnace bridge read failures are retained and do not turn a missing data array into a full fire',()=>{
+  const state=nativeFurnaceProgress(containerMenu('minecraft:furnace',39,{dataValues:null,dataValuesError:'MENU_DATA_REFLECTION_UNAVAILABLE'}),UUID)
+  assert.deepEqual(state,{available:false,reason:'MENU_DATA_REFLECTION_UNAVAILABLE'})
+})
+
+test('native receipt projection preserves actual cooking data, meal FOOD and separate player inventory through the readonly UI',async()=>{
+  const {createNativePlayerPresentation}=await import('../native-world-preview-host.mjs')
+  const rice={id:'farmersdelight:cooked_rice',count:1,displayName:'实际米饭',
+    snbt:'{id:"farmersdelight:cooked_rice",count:1,components:{"minecraft:food":{nutrition:4,saturation:2.4f}}}',
+    food:{nutrition:4,saturation:2.4,canAlwaysEat:false,eatSeconds:1.6}}
+  const bowl={id:'minecraft:bowl',count:1,snbt:'{id:"minecraft:bowl",count:1}'}
+  const menu=cookingPotMenu(),receipt={...menu,slots:menu.slots.map(()=>null),
+    playerInventory:Array(46).fill(null),dataValues:[37,100],dataValuesSource:'server_menu_data_slots',
+    slotLayout:nativeCookingPotMenuLayout(menu,UUID).slots.map(({row,x,y})=>({slot:row.slot,x,y})),
+    cookingPot:{playerUuid:UUID,source:'native_cooking_pot_menu',isHeated:true,container:bowl},
+    mayPickup:Array.from({length:45},(_,slot)=>slot!==6)}
+  receipt.slots[8]=rice;receipt.playerInventory[36]=bowl
+  const projected=createNativePlayerPresentation({playerUuid:UUID,menu:receipt})
+  assert.deepEqual(projected.nativeMenu.dataValues,[37,100]);assert.equal(projected.nativeMenu.dataValuesSource,'server_menu_data_slots')
+  assert.equal(projected.nativeMenu.slots[8].item.snbt,rice.snbt);assert.deepEqual(projected.nativeMenu.slots[8].item.food,rice.food)
+  assert.equal(projected.inventory.slots.length,46);assert.equal(projected.inventory.slots[36].item.name,'minecraft:bowl')
+  const h=harness({resolveItemIcon:()=>null});await h.ui.setAssets(cookingPotReader())
+  h.ui.update({epoch:1,presentation:presentation(projected)})
+  const panel=h.document.querySelector('.native-menu-cooking-pot'),slots=panel.querySelectorAll('.corti-menu-slot')
+  assert.equal(panel.dataset.heatState,'heated');assert.equal(panel.dataset.progressState,'available')
+  assert.equal(slots[8].dataset.itemName,rice.id);assert.match(slots[8].title,/实际米饭/);assert.match(slots[8].title,/原生营养 4/)
+  assert.equal(slots[8].style.left,'246px');assert.equal(slots[8].style.top,'108px');assert.equal(slots[6].dataset.mayPickup,'false')
+  const foreign=createNativePlayerPresentation({playerUuid:UUID,menu:{...receipt,cookingPot:{...receipt.cookingPot,playerUuid:OTHER}}})
+  assert.equal(foreign.nativeMenu.cookingPot,undefined)
+  h.ui.update({epoch:1,presentation:presentation(foreign)})
+  assert.equal(h.document.querySelector('.native-menu-cooking-pot').dataset.heatState,'unknown')
+  assert.equal(h.document.querySelector('.native-menu-cooking-pot-heat'),null);h.ui.dispose()
+})
+
+test('original cooking-pot empty-container icon decode failure remains a literal empty slot and cannot damage a replacement window',async()=>{
+  const h=harness();await h.ui.setAssets(cookingPotReader())
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:cookingPotMenu()})})
+  const oldSlot=h.document.querySelector('.native-menu-cooking-pot').querySelectorAll('.corti-menu-slot')[7],image=oldSlot.querySelector('img')
+  image.dispatch('error')
+  assert.equal(oldSlot.dataset.itemName,'');assert.equal(oldSlot.dataset.modelState,'empty')
+  assert.equal(oldSlot.dataset.placeholderState,'unavailable');assert.match(oldSlot.title,/NATIVE_COOKING_POT_EMPTY_ICON_DECODE_FAILED/)
+  assert.equal(oldSlot.querySelector('img'),null)
+  const next=cookingPotMenu({stateId:19});next.slots[7].item={name:'minecraft:bowl',count:1,snbt:'{id:"minecraft:bowl",count:1}'}
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:next})});image.dispatch('error')
+  const current=h.document.querySelector('.native-menu-cooking-pot').querySelectorAll('.corti-menu-slot')[7]
+  assert.equal(current.dataset.itemName,'minecraft:bowl');assert.equal(current.dataset.placeholderReason,undefined)
+  assert.doesNotMatch(current.title,/EMPTY_ICON_DECODE_FAILED/);h.ui.dispose()
 })

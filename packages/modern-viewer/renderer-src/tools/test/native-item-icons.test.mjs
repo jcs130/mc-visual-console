@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { NativeItemIcons, nativeItemIconEligible } from '../../src/native-viewer/native-item-icons.js'
-import { STATIC_ITEM_SOURCES, nativeStaticItemEvidence, nativeStaticItemState, verifyNativeStaticItemEvidence } from '../../src/native-viewer/native-static-item-providers.js'
+import { STATIC_ITEM_SOURCES, NATIVE_STATIC_ITEM_NAMES, nativeStaticItemEvidence, nativeStaticItemState, verifyNativeStaticItemEvidence } from '../../src/native-viewer/native-static-item-providers.js'
 const item = { name: 'minecraft:wheat_seeds', count: 3, snbt: '{id:"minecraft:wheat_seeds",count:3}' }
 const reader = (overrides = {}) => ({ manifest: { minecraftVersion:'1.21.1',assetIntegrityVerified:true,clientJarSha256:STATIC_ITEM_SOURCES.minecraft.sha256,
   sources:[STATIC_ITEM_SOURCES.minecraft], assets: {'assets/minecraft/textures/item/wheat_seeds.png':{bytes:3}} }, json: async path => {
@@ -124,5 +124,71 @@ test('flat generated material, finite texture bounds and inherited dynamic state
   for(const bytes of [-1,0,16777217]){
     const source=reader();source.manifest.assets['assets/minecraft/textures/item/wheat_seeds.png'].bytes=bytes
     const icons=new NativeItemIcons(source);icons.resolve(item);await settled();assert.match(icons.reason(item),/TEXTURE_LIMIT/);icons.dispose()
+  }
+})
+
+const consumableNames=`tomato_sauce cake_slice apple_pie_slice sweet_berry_cheesecake_slice chocolate_pie_slice pumpkin_pie_slice
+glow_berry_custard fruit_salad mixed_salad nether_salad cooked_rice beef_stew chicken_soup vegetable_soup fish_stew
+fried_rice pumpkin_soup baked_cod_stew noodle_soup onion_soup bacon_and_eggs pasta_with_meatballs
+pasta_with_mutton_chop mushroom_rice roasted_mutton_chops vegetable_noodles steak_and_potatoes ratatouille
+squid_ink_pasta grilled_salmon roast_chicken stuffed_pumpkin honey_glazed_ham shepherds_pie gleaming_salad`
+  .split(/\s+/).map(name=>`farmersdelight:${name}`)
+
+test('FD positive evidence adds exactly 35 direct ConsumableItem registrations, never subclasses or renderer-backed items',()=>{
+  assert.equal(consumableNames.length,35)
+  const actual=NATIVE_STATIC_ITEM_NAMES.filter(name=>nativeStaticItemEvidence(name).itemClass==='vectorwing.farmersdelight.common.item.ConsumableItem')
+  assert.deepEqual(new Set(actual),new Set(consumableNames))
+  for(const name of actual){
+    const evidence=nativeStaticItemEvidence(name)
+    assert.equal(evidence.kind,'flat');assert.strictEqual(evidence.source,STATIC_ITEM_SOURCES.farmersdelight)
+    assert.equal(nativeItemIconEligible(raw(name)),true)
+  }
+  for(const name of ['bone_broth','hot_cocoa','apple_cider','dog_food','horse_feed','roast_chicken_block','skillet','debug_pumpkin_pie'])
+    assert.equal(nativeStaticItemEvidence(`farmersdelight:${name}`),null,'unaudited food subclasses and dynamic providers stay unavailable')
+})
+
+test('cooked rice uses its original flat texture with complete FOOD patches and separate typed component cache identities',async()=>{
+  const name='farmersdelight:cooked_rice',source=genericReader(name),released=[];let created=0
+  const icons=new NativeItemIcons(source,{createUrl:()=>`blob:rice-${++created}`,revokeUrl:url=>released.push(url)})
+  const a=raw(name,'"minecraft:food":{nutrition:4,saturation:2.4f,can_always_eat:false,eat_seconds:1.6f,effects:[]},"minecraft:custom_name":"实际饭碗"')
+  const b=raw(name,'"minecraft:food":{nutrition:4,saturation:2.4d,can_always_eat:false,eat_seconds:1.6f,effects:[]},"minecraft:custom_name":"实际饭碗"')
+  const stack=nativeStaticItemState(a).stack
+  assert.equal(stack.components['minecraft:food'].saturation.type,'float');assert.equal(stack.components['minecraft:custom_name'],'实际饭碗')
+  assert.equal(nativeItemIconEligible(raw(name,'"!minecraft:food":{}')),true)
+  assert.equal(icons.resolve(a),null);assert.equal(icons.resolve(b),null);assert.equal(icons.reason(a),'loading');await settled()
+  for(const value of [a,b]){
+    const icon=icons.resolve(value);assert.equal(icon.sourcePath,'assets/farmersdelight/textures/item/cooked_rice.png')
+    assert.equal(icon.kind,'native-json-flat');assert.equal(icon.providerEvidence.itemClass,'vectorwing.farmersdelight.common.item.ConsumableItem')
+    assert.equal(icon.pixelParityVerified,false);assert.equal(icons.reason(value),null)
+  }
+  assert.notEqual(icons.resolve(a).url,icons.resolve(b).url);assert.equal(created,2)
+  assert.equal(icons.resolve({...a,food:{nutrition:99},displayName:'原服务端显示名'}).url,icons.resolve(a).url,'summary and name never replace full SNBT')
+  for(const components of ['"minecraft:custom_model_data":1','"minecraft:dyed_color":{rgb:1}',
+    '"farmersdelight:unknown_visual_input":{}','"minecraft:enchantment_glint_override":true']){
+    const unsupported=raw(name,components);assert.equal(icons.resolve(unsupported),null);assert.match(icons.reason(unsupported),/UNSUPPORTED/)
+  }
+  icons.dispose();assert.equal(released.length,2)
+})
+
+test('private locked native assets resolve every approved FD consumable to its actual original generated model and PNG',{
+  skip:!(process.env.NATIVE_ITEM_ASSET_DIR||process.env.NATIVE_GUIDE_ASSET_DIR)
+},async()=>{
+  const {readFile}=await import('node:fs/promises'),{join}=await import('node:path')
+  const {NativeAssetReader}=await import('../../src/native-viewer/model-loader.js')
+  const {resolveNativeFlatItemTexture}=await import('../../src/native-viewer/native-item-icons.js')
+  const {inspectNativeItemPng}=await import('../audit-native-item-gui.mjs')
+  const directory=process.env.NATIVE_ITEM_ASSET_DIR||process.env.NATIVE_GUIDE_ASSET_DIR
+  const manifest=JSON.parse(await readFile(join(directory,'native-assets.json'),'utf8'))
+  const reader=new NativeAssetReader(manifest,path=>readFile(join(directory,path)))
+  for(const name of consumableNames){
+    const evidence=verifyNativeStaticItemEvidence(reader,name),leaf=name.split(':')[1]
+    assert.equal(evidence.itemClass,'vectorwing.farmersdelight.common.item.ConsumableItem')
+    const model=await resolveNativeFlatItemTexture(reader,`farmersdelight:item/${leaf}`)
+    assert.deepEqual(model.textures,{layer0:`farmersdelight:item/${leaf}`})
+    const path=`assets/farmersdelight/textures/item/${leaf}.png`
+    assert.equal(manifest.assets[path].source,STATIC_ITEM_SOURCES.farmersdelight.name)
+    assert.equal(manifest.assets[`${path}.mcmeta`],undefined)
+    const image=inspectNativeItemPng(await reader.bytes(path))
+    assert.equal(image.width,16);assert.equal(image.height,16)
   }
 })
