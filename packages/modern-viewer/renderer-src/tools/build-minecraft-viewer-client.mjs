@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { buildBiomeMesherWorker } from './build-minecraft-viewer-biome-worker.mjs'
 import { patchAvatarMotion, patchRendererAvatar } from './minecraft-viewer-avatar-patch.mjs'
+import { patchRendererEntityVisibility, patchRendererEntityDamage } from './minecraft-viewer-entity-visibility.mjs'
 import { patchRoomOcclusion } from './minecraft-viewer-room-occlusion.mjs'
 import { assertMinimapArrowOrientation } from './minecraft-viewer-bundle-check.mjs'
 import { writeViewerPages } from '../src/viewer-page.mjs'
@@ -314,7 +315,7 @@ const buildResult = await build({
           .replace(itemFallbackAnchor, 'let l=a=>a?.top??a;')
           .replace(itemUnknownAnchor,
             'return o??(o=l(e.currentResources.itemsRenderer.getItemTexture("unknown"))),o??={type:"gui",slice:[0,0,16,16]},"type"in o?')))
-        return { contents: corrected, loader: 'js', resolveDir: path.dirname(file) }
+        return { contents: patchRendererEntityDamage(patchRendererEntityVisibility(corrected)), loader: 'js', resolveDir: path.dirname(file) }
       })
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]painting-variants\.js$/ }, () => ({ contents: changedPaintings, loader: 'js', resolveDir: path.dirname(paintingFile) }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]player-skins\.js$/ }, () => ({
