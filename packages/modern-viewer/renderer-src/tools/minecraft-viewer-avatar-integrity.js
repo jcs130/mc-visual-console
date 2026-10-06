@@ -1,13 +1,31 @@
 /** Keep only the current local avatar after reconnects and match armor to the skin. */
+const cortiRetiredSelfIds = new Set();
+
 function cortiPruneSelfEntities(entity) {
-  if (entity?.isSelf !== true || entity.id === undefined) return;
-  const currentId = String(entity.id);
-  if (String(pendingAvatarState?.entity?.id ?? '') !== currentId) return;
+  const current = pendingAvatarState?.entity;
+  if (current?.id === undefined || current?.id === null) return false;
+  const currentId = String(current.id);
+  const incomingId = String(entity.id);
+  cortiRetiredSelfIds.delete(currentId);
+  const sameOwner = (candidate) => {
+    if (canonicalEntityName(candidate?.name) !== 'player') return false;
+    if (candidate.isSelf === true) return true;
+    if (candidate.uuid && current.uuid) return candidate.uuid === current.uuid;
+    return Boolean(candidate.username && current.username && candidate.username === current.username);
+  };
+  if (incomingId !== currentId && (cortiRetiredSelfIds.has(incomingId) || sameOwner(entity))) {
+    cortiRetiredSelfIds.add(incomingId);
+    handleEntity({ id: entity.id, delete: true }, false);
+    return true;
+  }
+  if (incomingId !== currentId) return false;
   for (const [id, previous] of entityCache) {
-    if (id !== currentId && previous?.isSelf === true) {
+    if (id !== currentId && sameOwner(previous)) {
+      cortiRetiredSelfIds.add(id);
       handleEntity({ id: previous.id, delete: true }, false);
     }
   }
+  return false;
 }
 
 function cortiAlignAvatarArmor(entity) {
@@ -31,5 +49,5 @@ function cortiAlignAvatarArmor(entity) {
   // The renderer has a second, special self mesh for its own third-person
   // implementation. This viewer streams the avatar as a normal world entity.
   const special = globalThis.world?.entities?.playerEntity;
-  if (special?.originalEntity?.id === entity.id) special.visible = false;
+  if (special && String(pendingAvatarState?.entity?.id) === String(entity.id)) special.visible = false;
 }

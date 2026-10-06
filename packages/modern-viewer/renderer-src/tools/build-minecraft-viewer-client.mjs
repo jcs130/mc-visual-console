@@ -174,7 +174,7 @@ const adaptedClient = clientSource
   .replace('if (usesWorldAvatar) handleEntity(entity, entityCache.has(String(entity.id)));',
     'if (usesWorldAvatar) handleEntity(entity, !cortiOwnEquipmentChanged(entity) && entityCache.has(String(entity.id)));')
   .replace('  entityCache.set(id, normalized);',
-    '  entityCache.set(id, normalized);\n  cortiPruneSelfEntities(normalized);')
+    '  if (cortiPruneSelfEntities(normalized)) return;\n  entityCache.set(id, normalized);')
   .replace(potionRenderAnchor,
     '  const renderEntity = normalized.name === "potion"\n' +
     '    ? { ...normalized, name: "splash_potion", type: "projectile" } : normalized;\n' +
@@ -244,7 +244,7 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('socket.on("biome"')
     || !changedClient.includes('Array.isArray(state.hotbar) ? selectedHotbarItem(state) : equipment?.[0]')
     || !changedClient.includes('cortiOwnEquipmentChanged(entity)')
-    || !changedClient.includes('  cortiPruneSelfEntities(normalized);')
+    || !changedClient.includes('  if (cortiPruneSelfEntities(normalized)) return;\n  entityCache.set(id, normalized);')
     || !changedClient.includes('  cortiAlignAvatarArmor(state.entity);\n  cortiSyncAvatarShield(state.entity, state.offhand ?? equipment?.[1]);')
     || !changedClient.includes('const DUNGEON_OCCLUSION_CUT_HEIGHT = 1.65;')
     || !changedClient.includes('cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),')

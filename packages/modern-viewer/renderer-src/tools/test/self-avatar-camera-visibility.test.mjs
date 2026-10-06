@@ -112,6 +112,22 @@ test('tracked self remains visible through transient section-culling rejection',
   controller.dispose();
 });
 
+test('the special local mesh stays suppressed when its respawn ID is stale or missing', () => {
+  for (const originalEntity of [{ id: 6 }, {}]) {
+    const { world, camera, avatar, other, special } = fixture();
+    camera.position.z = 4;
+    special.originalEntity = originalEntity;
+    const controller = installSelfAvatarCameraVisibility(world, () => 7);
+    for (let frame = 0; frame < 120; frame++) {
+      world.entities.render();
+      assert.equal(avatar.visible, true);
+      assert.equal(special.visible, false);
+      assert.equal(other.visible, true);
+    }
+    controller.dispose();
+  }
+});
+
 test('cutaway hides upper-floor models on every draw and restores native visibility when it clears', () => {
   const { world, camera, avatar, other } = fixture();
   camera.position.z = 4;

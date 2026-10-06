@@ -43,7 +43,9 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
     // sets visible=true every frame, even though this viewer streams the
     // player as a normal entity. Suppress the duplicate on the same frame.
     const special = entities.playerEntity;
-    if (selfId !== null && special && String(special.originalEntity?.id) === selfId) {
+    // This controller is installed only for the normal world-avatar pipeline.
+    // The special local mesh may still carry the previous respawn ID.
+    if (selfId !== null && special) {
       special.visible = false;
     }
     const avatar = id === undefined || id === null
