@@ -52,6 +52,7 @@ import {
 import { normalizeMotionFrame } from "./avatar-motion.js";
 import { rendererEntityEquipment } from "./renderer-equipment.js";
 import { installSelfAvatarCameraVisibility } from "./self-avatar-camera-visibility.js";
+import { installEntityRenderBounds } from "./entity-render-bounds.js";
 import { villagerIdentityConceptColors, NPC_NAMED_ROLE_LABELS, NPC_NAMED_DIALOGUE_LINES, NPC_NAMED_QUEST_TEMPLATES } from "./presets/qiandengji/npc-copy.js";
 import { AvatarRigRegistry } from "./avatar-rig-registry.js";
 import { resolveCharacterVisualProfile } from "./character-visual-profiles.js";
@@ -838,6 +839,7 @@ async function initializeRenderer(version) {
     // emptyWorld, so a full worldView.init() would wait forever. Publish the
     // render distance before replaying those chunks so they can be meshed.
     worldView.updateViewDistance(renderDistance);
+    installEntityRenderBounds(globalThis.world?.entities);
     installChunkLoadingGuards();
     rendererReady = true;
     viewerEffectSystem = new ViewerEffectSystem({

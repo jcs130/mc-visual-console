@@ -4,8 +4,7 @@ import { Vector3 } from "three";
 // after that pass so a wall-squeezed camera cannot render inside the local
 // player's skin, armor, or held items. Leave terrain and camera collision alone.
 export function installSelfAvatarCameraVisibility(world, getSelfId, {
-  hideDistance = 1.75,
-  showDistance = 2.2,
+  cameraBodyMargin = 0.04,
   getUpperCutawayY = () => null,
 } = {}) {
   const entities = world?.entities;
@@ -61,8 +60,19 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
     avatar.getWorldPosition(avatarPosition);
     distance = cameraPosition.distanceTo(avatarPosition);
     if (!Number.isFinite(distance)) return;
-    hiddenForNearCamera = distance < (hiddenForNearCamera ? showDistance : hideDistance);
     const entity = avatar.originalEntity;
+    // A collision-shortened third-person orbit still shows the body unless
+    // the near plane enters it. Distance to the feet alone hides a standing
+    // player even when the camera is outside the skin and has a clear view.
+    const width = Number(entity?.width) || 0.6;
+    const height = Number(entity?.height) || 1.8;
+    const margin = Math.max(0, Number(world.camera.near) || 0) + cameraBodyMargin
+      + (hiddenForNearCamera ? 0.03 : 0);
+    const halfWidth = width / 2 + margin;
+    hiddenForNearCamera = Math.abs(cameraPosition.x - avatarPosition.x) < halfWidth
+      && Math.abs(cameraPosition.z - avatarPosition.z) < halfWidth
+      && cameraPosition.y > avatarPosition.y - margin
+      && cameraPosition.y < avatarPosition.y + height + margin;
     const flags = Number(entity?.metadata?.[0]) || 0;
     const invisible = entity?.invisible === true || entity?.isInvisible === true || (flags & 0x20) !== 0;
     // Section occlusion follows the game camera and may be stale while the

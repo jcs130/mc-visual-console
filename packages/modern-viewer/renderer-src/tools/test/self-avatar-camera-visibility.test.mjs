@@ -51,7 +51,7 @@ test('close third-person camera hides whole self hierarchy after renderer reset,
   controller.dispose();
 });
 
-test('normal distance restores renderer visibility, with hysteresis and 2.5D parent rotation', () => {
+test('a camera outside the body restores visibility with a rotated floating origin', () => {
   const { world, camera, avatar, special } = fixture();
   const scene = avatar.parent;
   const shiftedOrigin = new Group();
@@ -69,13 +69,30 @@ test('normal distance restores renderer visibility, with hysteresis and 2.5D par
   assert.equal(avatar.visible, false);
   camera.position.z = 1.95;
   world.entities.render();
-  assert.equal(avatar.visible, false);
+  assert.equal(avatar.visible, true);
   camera.position.z = 2.3;
   world.entities.render();
   assert.equal(avatar.visible, true);
   assert.equal(special.visible, false);
   assert.ok(Math.abs(controller.diagnostics.distance - 2.3) < 1e-9);
   assert.equal(controller.diagnostics.hiddenForNearCamera, false);
+  controller.dispose();
+});
+
+test('wall collision does not blink the player when an outside camera crosses the old feet-distance threshold', () => {
+  const { world, camera, avatar } = fixture();
+  const controller = installSelfAvatarCameraVisibility(world, () => 7);
+  for (let frame = 0; frame < 240; frame++) {
+    camera.position.set(0, 1.6, 0.5 + 1.05 * (1 + Math.sin(frame / 8)) / 2);
+    world.entities.render();
+    assert.equal(avatar.visible, true, `outside body, frame ${frame}`);
+  }
+  camera.position.set(0, 1.6, 0.2);
+  world.entities.render();
+  assert.equal(avatar.visible, false);
+  camera.position.set(0, 1.6, 0.5);
+  world.entities.render();
+  assert.equal(avatar.visible, true);
   controller.dispose();
 });
 
