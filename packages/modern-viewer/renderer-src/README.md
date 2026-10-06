@@ -20,6 +20,15 @@
 前端不执行这些服务端机制。历史 `corti-*` DOM 名称保留以兼容浏览器增强组件，
 无需使用 Cortico 或 CortiLan 账号。
 
+第三人称和 2.5D 的模型可见性由 `self-avatar-camera-visibility.js` 在每次实体绘制前处理。
+自身模型不受区块遮挡缓存的瞬时变化影响；相机贴近时仍隐藏全身，协议隐身仍生效。
+2.5D 削顶期间逐帧隐藏上层实体，遮挡解除后采用渲染器当前的可见性判断。
+护甲各网格随人物骨骼动画显示，避免静态包围盒裁掉移动中的部件。
+
+实体距离和区块遮挡查询统一使用 SceneOrigin 跟踪的世界坐标，避免镜头移动时
+把近处人物、动物和怪物误判为远处模型、依赖正在重建的区块而闪烁。
+受伤染色跳过没有颜色属性的着色器材质，保留附魔光效并避免中断事件处理。
+
 ## 独立构建
 
 准备 Node.js 22 或更新版本、Python 3，以及自己持有的官方 **Java 1.20.6 客户端 JAR**。
@@ -67,7 +76,37 @@ node tools/export-minecraft-viewer-sounds.mjs "<versions/1.20.6/1.20.6.json>" "<
 宿主用 [通用观察器](host/README.md) 转发原始位置、实体及停止声音包，避免与 Mineflayer 派生事件重复播放。
 浏览器点击音效/音乐按钮或与页面交互后才能播放音频。两个开关独立，声音设置中分别控制总音量、音效和音乐。
 音乐按钮显示播放、等待倒数或静音状态；声音设置提供“试听音效”和“立即播放音乐”。后者可跳过当前等待，不会叠加正在播放的曲目或打断唱片。自动音乐仍保留原版的曲间间隔。
-背景音乐根据已知维度/群系选择，曲目之间保留原版式间隔，不连续循环。
+原版背景音乐根据已知维度/群系选择，曲目之间保留原版式间隔，不连续循环。
+
+#### 可选原创 BGM 与前景音频
+
+部署可以另行提供 `public/sounds/custom-bgm.json`，不修改原版 `manifest.json` 或其来源哈希：
+
+```json
+{"version":1,"tracks":[{"id":"river-at-dusk","title":"暮色河畔","file":"custom-bgm/river-at-dusk-20261005.ogg"}]}
+```
+
+`file` 相对于 `/sounds/`，仅接受由小写字母、数字、下划线、连字符组成的路径段和 `.ogg` 后缀；
+绝对路径、空路径段、点路径段、反斜杠、URL、编码字符和查询参数均拒绝。
+目录最多 500 首，`id` 唯一且为 1–160 个小写字母、数字、点、下划线或连字符，
+`title` 为不含控制符的非空文本，最多 300 字符；目录及曲目不接受额外字段。
+声音设置新增原版、原创、关闭三个来源和“刷新音乐目录”。
+也可调用 `window.cortiWorldAudio.setMusicSource('custom')` 与 `await window.cortiWorldAudio.reloadCatalog()`。
+刷新使用浏览器缓存重验证；网络、JSON 或校验失败保留上一份有效目录，并发刷新只接受最后一次请求。
+原创音乐首次等待 1–3 秒，曲目结束后等待 3–8 秒自动续播；演唱期间仍阻止新曲启动。
+原版首次等待 10–30 秒、曲间等待 5–10 分钟，保持原有行为。
+缺少原创目录时不会回退播放原版。音频仍流式播放，更新音频内容时应使用新的文件名以避开旧缓存。
+
+`window.cortiWorldAudio.setForegroundAudio({speech:true,music:false})` 将背景音乐降至用户音量的 20%；
+`music:true` 将背景音乐静音并阻止新曲启动。清除两项状态后恢复当前用户音量；临时状态不写入浏览器偏好，
+音效和唱片不受影响。直接调用此接口的宿主负责在前景音频结束时清除状态。
+跨窗口宿主可以从当前页面内的 iframe 每秒发送
+`{type:'mc-viewer.foreground-audio',detail:{speech:boolean,music:boolean}}`，
+明确指定从 `document.referrer` 获得的父页面 origin 为 `postMessage` 的 `targetOrigin`。
+播放器同时核对发送窗口与当前 DOM iframe 的 `contentWindow`、当前 `src` 的 origin；
+未收到有效消息达 3.5 秒自动解除临时状态。协议不依赖特定宿主、iframe ID 或端口。
+实际来源、曲名和前景状态可从声音面板、`state()` 或声音状态 output 的
+`data-audio-music-source`、`data-audio-music-track`、`data-audio-foreground-speech`、`data-audio-foreground-music` 查看。
 
 1.20.6 的服务器编号音效必须使用准确的原版注册表；依赖库沿用的 1.20.4 编号会播出错误声音。以下工具同时导出声音编号和脚步、挖掘所需的方块声音类型：
 

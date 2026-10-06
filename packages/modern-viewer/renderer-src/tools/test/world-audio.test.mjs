@@ -19,12 +19,22 @@ const sampleManifest = () => ({ minecraftVersion: '1.20.6', assetIndexSha1: 'a'.
   'music.game': [variant('music', { stream: true })], 'music.end': [variant('end', { stream: true })],
   'music_disc.cat': [variant('record', { stream: true })], 'music.nether.warped_forest': [],
 } });
+const customCatalog = (id = 'river', title = '暮色河畔') => ({ version: 1,
+  tracks: [{ id, title, file: `custom-bgm/${id}-20261005.ogg` }] });
+const response = value => ({ ok: true, json: async () => value });
+const musicWorld = view => {
+  view.socket.emit('position', { pos: { x: 0, y: 64, z: 0 } });
+  view.socket.emit('biome', { dimension: 'overworld', name: 'plains' });
+};
+const musicGain = view => view.media.at(-1).source.destination.destination.gain.value;
 class Events {
   constructor() { this.handlers = new Map(); this.dataset = {}; }
   addEventListener(name, fn) { const list = this.handlers.get(name) || []; list.push(fn); this.handlers.set(name, list); }
   removeEventListener(name, fn) { this.handlers.set(name, (this.handlers.get(name) || []).filter(value => value !== fn)); }
   emit(name, value) { for (const fn of this.handlers.get(name) || []) fn(value); }
   setAttribute() {}
+  append(...children) { this.children ??= []; this.children.push(...children); }
+  remove() { this.removed = true; }
 }
 function fixture(options = {}) {
   const starts = []; const contexts = []; const media = []; const panners = []; const requests = [];
@@ -33,10 +43,15 @@ function fixture(options = {}) {
   const timers = new Map(); const intervals = new Map();
   const button = new Events(); const musicButton = new Events(); const output = new Events();
   const testButton = new Events(); const playMusicButton = new Events();
+  const settings = options.audioPanel ? new Events() : null;
+  const frames = options.frames ?? [];
   const document = new Events();
   document.getElementById = id => ({ 'corti-sound-toggle': button, 'corti-music-toggle': musicButton,
     'corti-sound-test': testButton, 'corti-music-play': playMusicButton })[id] ?? null;
-  document.querySelector = () => output; document.querySelectorAll = () => [];
+  document.querySelector = selector => selector === '[data-corti-audio-status]' ? output
+    : selector === '.viewer-audio-settings' ? settings : null;
+  document.querySelectorAll = selector => selector === 'iframe' ? frames : [];
+  document.createElement = () => new Events(); document.baseURI = 'http://viewer.test/';
   const socket = new Events(); socket.connected = true;
   socket.on = socket.addEventListener; socket.off = socket.removeEventListener;
   const window = new Events(); window.dispatchEvent = () => {};
@@ -44,27 +59,30 @@ function fixture(options = {}) {
   class AudioContext {
     constructor() { this.state = 'suspended'; this.destination = {}; this.listener = Object.fromEntries([
       'positionX', 'positionY', 'positionZ', 'forwardX', 'forwardY', 'forwardZ', 'upX', 'upY', 'upZ'].map(key => [key, { value: 0 }])); contexts.push(this); }
-    async resume() { if (!options.denyUnlock) this.state = 'running'; }
+    async resume() { await options.resume?.(); if (!options.denyUnlock) this.state = 'running'; }
     createGain() { return node(); }
     createPanner() { const value = Object.assign(node(), { positionX: { value: 0 }, positionY: { value: 0 }, positionZ: { value: 0 } }); panners.push(value); return value; }
     createBufferSource() { return Object.assign(node(), { playbackRate: { value: 1 }, start() { starts.push(this); }, stop() { this.stopped = true; this.onended?.(); } }); }
-    createMediaElementSource(value) { return Object.assign(node(), { media: value }); }
+    createMediaElementSource(value) { const source = Object.assign(node(), { media: value }); value.source = source; return source; }
     async decodeAudioData(bytes) { return options.decode ? options.decode(bytes) : { bytes, duration: 0.5 }; }
     addEventListener() {} removeEventListener() {}
     async close() { this.state = 'closed'; }
   }
   class Audio extends Events {
     constructor(url) { super(); this.url = url; this.paused = true; media.push(this); }
-    async play() { this.paused = false; }
+    async play() { this.paused = false; await options.mediaPlay?.(this); }
     pause() { this.paused = true; }
     removeAttribute() { this.removed = true; }
     load() {}
   }
   window.AudioContext = AudioContext;
-  const storage = new Map();
-  const vm = createContext({ window, document, socket, Audio, CustomEvent: class {},
+  const storage = new Map(Object.entries(options.storage ?? {}));
+  const vm = createContext({ window, document, socket, Audio, URL, CustomEvent: class {},
     performance: { now: () => clock }, localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
-    fetch: async (url, requestConfig) => { requests.push(url); requestOptions.push(requestConfig); return { ok: true, json: async () => url.endsWith('block-sounds.json')
+    fetch: async (url, requestConfig) => { requests.push(url); requestOptions.push(requestConfig);
+      if (url.endsWith('custom-bgm.json')) return options.customFetch ? options.customFetch()
+        : { ok: Boolean(options.customCatalog), json: async () => options.customCatalog };
+      return { ok: true, json: async () => url.endsWith('block-sounds.json')
       ? { schemaVersion: 1, minecraftVersion: '1.20.6', blocks: { 'minecraft:stone': { step: 'minecraft:block.stone.step', hit: 'minecraft:block.stone.hit', break: 'minecraft:block.stone.break', volume: 1, pitch: 1 } } }
       : options.manifest ?? sampleManifest(), arrayBuffer: async () => {
         if (options.failSoundFetch) throw Error('local test failed audio read'); return new ArrayBuffer(1);
@@ -73,7 +91,7 @@ function fixture(options = {}) {
     setInterval: fn => { const id = ++counter; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id),
   });
   runInContext(script, vm);
-  return { vm, api: window.cortiWorldAudio, button, musicButton, testButton, playMusicButton, document, socket, contexts, media, starts, panners, requests, requestOptions, output, storage,
+  return { vm, api: window.cortiWorldAudio, button, musicButton, testButton, playMusicButton, document, window, frames, settings, socket, contexts, media, starts, panners, requests, requestOptions, output, storage,
     async ready() { await flush(); }, async unlock() { document.emit('pointerdown', {}); await flush(); },
     async advance(ms) { clock += ms; for (const [id, timer] of [...timers]) if (timer.at <= clock) { timers.delete(id); timer.fn(); }
       for (const fn of intervals.values()) fn(); await flush(); },
@@ -390,4 +408,193 @@ test('a local event burst has bounded timers and voices, and reset clears the bu
   await view.advance(100); assert.ok(view.starts.length <= 48); assert.ok(view.api.state().voices <= 48);
   view.socket.emit('viewerReset'); assert.equal(view.api.state().voices, 0); assert.equal(view.api.state().pendingLocalSounds, 0);
   view.close();
+});
+
+test('optional original BGM uses its separate catalog, title and the existing streaming music channel', async () => {
+  const view = fixture({ customCatalog: customCatalog(), audioPanel: true }); await view.ready(); musicWorld(view);
+  assert.equal(view.api.state().musicSource, 'vanilla');
+  assert.equal(view.api.state().customTrackCount, 1);
+  const select = view.settings.children[0].children[0];
+  assert.deepEqual(select.children.map(option => option.value), ['vanilla', 'custom', 'off']);
+  select.value = 'custom'; select.emit('change'); await flush();
+  view.playMusicButton.emit('click'); await flush();
+  assert.equal(view.media.length, 1); assert.equal(view.media[0].url, '/sounds/custom-bgm/river-20261005.ogg');
+  assert.equal(view.api.state().musicTrack, '暮色河畔'); assert.equal(musicGain(view), 0.35);
+  assert.match(view.output.textContent, /原创音乐.*暮色河畔/);
+  assert.equal(view.output.dataset.audioMusicSource, 'custom'); assert.equal(view.output.dataset.audioMusicTrack, '暮色河畔');
+  assert.equal(view.api.state().manifestEventCount, Object.keys(sampleManifest().events).length);
+  assert.equal(view.requestOptions[view.requests.indexOf('/sounds/custom-bgm.json')].cache, 'no-cache');
+  assert.equal(view.requests.filter(url => url.endsWith('.ogg')).length, 0);
+  view.close(); assert.ok(view.settings.children.every(child => child.removed));
+});
+
+test('custom catalog strictly rejects unsafe paths and malformed or duplicate entries', async () => {
+  const view = fixture(); await view.ready();
+  const invalidPaths = ['/song.ogg', '//host/song.ogg', '../song.ogg', 'a/../song.ogg', './song.ogg',
+    'a//song.ogg', 'a\\song.ogg', 'https://host/song.ogg', 'C:/song.ogg', '%2e%2e/song.ogg',
+    'a%2fsong.ogg', 'song.ogg?x=1', 'song.ogg#x', 'song.ogg\0', 'song.mp3', 'song.OGG'];
+  const invalid = invalidPaths.map(file => ({ version: 1, tracks: [{ ...customCatalog().tracks[0], file }] }));
+  invalid.push(null, [], { version: 2, tracks: [] }, { version: 1, tracks: {} },
+    { ...customCatalog(), extra: true }, { version: 1, tracks: [null] },
+    { version: 1, tracks: [customCatalog().tracks[0], customCatalog().tracks[0]] });
+  for (const change of [{ id: '' }, { id: 'unsafe/id' }, { title: '  ' }, { title: 'x'.repeat(301) },
+    { title: 'line\nline' }, { extra: true }, { file: 'x'.repeat(513) }])
+    invalid.push({ version: 1, tracks: [{ ...customCatalog().tracks[0], ...change }] });
+  invalid.push({ version: 1, tracks: Array.from({ length: 501 }, (_, i) => ({ id: `t${i}`, title: '歌', file: 'a.ogg' })) });
+  for (const value of invalid) {
+    view.vm.catalog = value;
+    assert.equal(runInContext('cortiCustomBgmCatalog(catalog)', view.vm), null, JSON.stringify(value).slice(0, 120));
+  }
+  view.vm.catalog = { version: 1, tracks: Array.from({ length: 500 }, (_, i) => ({ id: `t${i}`, title: '歌'.repeat(300), file: 'a.ogg' })) };
+  assert.equal(runInContext('cortiCustomBgmCatalog(catalog).tracks.length', view.vm), 500);
+  view.close();
+});
+
+test('custom BGM starts in 1-3 seconds and resumes 3-8 seconds after media ended, except during foreground singing', async () => {
+  const view = fixture({ customCatalog: customCatalog() }); await view.ready(); await view.unlock(); musicWorld(view);
+  view.api.setMusicSource('custom');
+  assert.ok(view.api.state().musicWaitMs >= 1000 && view.api.state().musicWaitMs <= 3000);
+  await view.advance(999); assert.equal(view.media.length, 0);
+  await view.advance(2002); assert.equal(view.media.length, 1);
+  view.media[0].emit('ended');
+  assert.equal(view.api.state().musicGate, 'scheduled');
+  assert.ok(view.api.state().musicWaitMs >= 3000 && view.api.state().musicWaitMs <= 8000);
+  await view.advance(2999); assert.equal(view.media.length, 1);
+  await view.advance(5002); assert.equal(view.media.length, 2);
+  assert.equal(view.media[1].paused, false); assert.equal(view.media[1].url, '/sounds/custom-bgm/river-20261005.ogg');
+  view.api.setForegroundAudio({ speech: false, music: true }); view.media[1].emit('ended');
+  await view.advance(8001); assert.equal(view.media.length, 2); assert.equal(view.api.state().musicGate, 'foreground-music');
+  view.api.setForegroundAudio({ speech: false, music: false });
+  assert.ok(view.api.state().musicWaitMs >= 1000 && view.api.state().musicWaitMs <= 3000);
+  await view.advance(3001); assert.equal(view.media.length, 3); view.close();
+});
+
+test('catalog reload installs only complete valid data and failures preserve the last valid catalog', async () => {
+  let next = () => response(customCatalog());
+  const view = fixture({ customFetch: () => next() }); await view.ready(); await view.unlock(); musicWorld(view);
+  view.api.setMusicSource('custom'); view.playMusicButton.emit('click'); await flush();
+  for (const failure of [() => Promise.reject(Error('offline')), () => ({ ok: false }),
+    () => ({ ok: true, json: async () => { throw Error('bad JSON'); } }),
+    () => response({ version: 1, tracks: [{ id: 'broken', title: '坏路径', file: '../bad.ogg' }] })]) {
+    next = failure; assert.equal(await view.api.reloadCatalog(), false);
+    assert.equal(view.api.state().customTrackCount, 1); assert.equal(view.api.state().musicTrack, '暮色河畔');
+    assert.equal(view.media[0].paused, false);
+  }
+  view.media[0].emit('ended'); next = () => response(customCatalog('lantern', '夜灯')); assert.equal(await view.api.reloadCatalog(), true);
+  assert.equal(view.api.state().catalogError, null); view.playMusicButton.emit('click'); await flush();
+  assert.equal(view.media[1].url, '/sounds/custom-bgm/lantern-20261005.ogg'); assert.equal(view.api.state().musicTrack, '夜灯');
+  view.close();
+});
+
+test('a stale or disposed catalog request cannot overwrite the latest reload', async () => {
+  let next = () => response(customCatalog());
+  const view = fixture({ customFetch: () => next() }); await view.ready();
+  const pending = [];
+  next = () => new Promise(resolve => pending.push(resolve));
+  const first = view.api.reloadCatalog(); const second = view.api.reloadCatalog();
+  pending[1](response(customCatalog('new', '新曲'))); assert.equal(await second, true);
+  pending[0](response({ version: 1, tracks: [] })); assert.equal(await first, false);
+  assert.equal(view.api.state().customTrackCount, 1);
+  const last = view.api.reloadCatalog(); view.close(); pending[2](response({ version: 1, tracks: [] }));
+  assert.equal(await last, false); assert.equal(view.api.state().customTrackCount, 1);
+});
+
+test('vanilla, custom and off apply to automatic, manual and server music while effects and records stay independent', async () => {
+  const view = fixture({ customCatalog: customCatalog() }); await view.ready(); await view.unlock(); musicWorld(view);
+  view.api.setMusicSource('custom'); await view.advance(31000);
+  assert.equal(view.media[0].url, '/sounds/custom-bgm/river-20261005.ogg');
+  view.socket.emit('worldSound', { name: 'music.end', category: 'music' }); await flush();
+  assert.equal(view.media.length, 1); assert.equal(view.media[0].paused, false);
+  assert.equal(view.api.setMusicSource('unknown'), false);
+  view.api.setMusicSource('off'); assert.equal(view.media[0].paused, true);
+  view.playMusicButton.emit('click'); view.socket.emit('worldSound', { name: 'music.game', category: 'music' });
+  await view.advance(900000); assert.equal(view.media.length, 1); assert.equal(view.api.state().musicGate, 'disabled');
+  assert.equal(await view.api.play({ name: 'entity.item.pickup' }), true);
+  assert.equal(await view.api.play({ name: 'music_disc.cat', category: 'records' }), true);
+  assert.equal(view.media[1].paused, false);
+  view.api.setMusicSource('vanilla'); assert.equal(view.media[1].paused, false);
+  view.media[1].emit('ended'); view.playMusicButton.emit('click'); await flush();
+  assert.equal(view.media[2].url, '/sounds/music.ogg'); view.close();
+  const missing = fixture(); await missing.ready(); await missing.unlock(); musicWorld(missing);
+  missing.api.setMusicSource('custom'); missing.playMusicButton.emit('click'); await missing.advance(900000);
+  assert.equal(missing.media.length, 0); assert.equal(missing.api.state().musicGate, 'catalog-unavailable'); missing.close();
+});
+
+test('foreground speech ducks only music and restores the latest user volume without saving temporary preferences', async () => {
+  const view = fixture(); await view.ready(); await view.unlock(); musicWorld(view);
+  view.playMusicButton.emit('click'); await flush();
+  const preferences = [...view.storage];
+  assert.equal(view.api.setForegroundAudio({ speech: true, music: false }), true);
+  assert.ok(Math.abs(musicGain(view) - 0.07) < 1e-9); assert.match(view.output.textContent, /口播中.*降音/);
+  assert.deepEqual([...view.storage], preferences);
+  assert.equal(await view.api.play({ name: 'entity.zombie.hurt', category: 'hostile', position: { x: 1, y: 64, z: 0 } }), true);
+  assert.equal(view.panners[0].destination.gain.value, 0.8);
+  view.api.setVolume('music', 0.8); const changedPreferences = [...view.storage];
+  assert.ok(Math.abs(musicGain(view) - 0.16) < 1e-9);
+  assert.equal(view.api.setForegroundAudio({ speech: false, music: false }), true); assert.equal(musicGain(view), 0.8);
+  assert.deepEqual([...view.storage], changedPreferences);
+  assert.equal(view.api.setForegroundAudio({ speech: 1, music: false }), false); assert.equal(musicGain(view), 0.8);
+  view.api.setForegroundAudio({ speech: true, music: false }); await view.advance(10000);
+  assert.ok(Math.abs(musicGain(view) - 0.16) < 1e-9); // Direct callers own their release.
+  view.close();
+});
+
+test('foreground singing silences established BGM, blocks every new start and restores an existing track', async () => {
+  const view = fixture(); await view.ready(); await view.unlock(); musicWorld(view);
+  view.playMusicButton.emit('click'); await flush();
+  const preferences = [...view.storage];
+  view.api.setForegroundAudio({ speech: true, music: true }); assert.equal(musicGain(view), 0);
+  assert.equal(view.media[0].paused, false); assert.equal(view.playMusicButton.disabled, true);
+  assert.match(view.output.textContent, /演唱中.*让位/); assert.equal(view.output.dataset.audioForegroundMusic, 'true');
+  view.playMusicButton.emit('click'); view.socket.emit('worldSound', { name: 'music.end', category: 'music' });
+  assert.equal(await view.api.play({ name: 'music.game', category: 'music' }), false);
+  await view.advance(900000); assert.equal(view.media.length, 1); assert.deepEqual([...view.storage], preferences);
+  view.api.setForegroundAudio({ speech: false, music: false }); assert.equal(musicGain(view), 0.35);
+  view.api.setForegroundAudio({ speech: false, music: true }); view.media[0].emit('ended');
+  await view.advance(900000); assert.equal(view.media.length, 1);
+  view.api.setForegroundAudio({ speech: false, music: false }); await view.advance(31000);
+  assert.equal(view.media.length, 2); view.close();
+});
+
+test('pending streamed BGM cannot succeed after foreground singing, source switch, mute or disconnect', async () => {
+  for (const cancel of [view => view.api.setForegroundAudio({ speech: false, music: true }),
+    view => view.api.setMusicSource('off'), view => view.api.setMusicSource('custom'),
+    view => view.api.setVolume('music', 0), view => view.musicButton.emit('click'), view => view.socket.emit('disconnect')]) {
+    let finishPlay;
+    const view = fixture({ customCatalog: customCatalog(), mediaPlay: () => new Promise(resolve => { finishPlay = resolve; }) });
+    await view.ready(); await view.unlock(); musicWorld(view);
+    const pending = view.api.play({ name: 'music.game', category: 'music' }); await flush();
+    assert.equal(view.api.state().musicGate, 'loading'); cancel(view); finishPlay();
+    assert.equal(await pending, false); assert.equal(view.api.state().voices, 0); assert.equal(view.media[0].paused, true); view.close();
+  }
+});
+
+test('a foreground song arriving while browser unlock awaits blocks manual BGM startup', async () => {
+  let finishResume;
+  const view = fixture({ resume: () => new Promise(resolve => { finishResume = resolve; }) }); await view.ready(); musicWorld(view);
+  view.playMusicButton.emit('click'); await flush(); view.api.setForegroundAudio({ speech: false, music: true });
+  finishResume(); await flush(); assert.equal(view.media.length, 0); view.close();
+});
+
+test('foreground iframe messages require current frame and matching origin, expire precisely and renew only when valid', async () => {
+  const source = {}; const frame = { contentWindow: source, src: 'http://overlay.test:7793/overlay' };
+  const view = fixture({ frames: [frame] }); await view.ready(); await view.unlock(); musicWorld(view);
+  view.playMusicButton.emit('click'); await flush();
+  const message = (extra = {}) => ({ source, origin: 'http://overlay.test:7793',
+    data: { type: 'mc-viewer.foreground-audio', detail: { speech: true, music: false } }, ...extra });
+  for (const invalid of [message({ source: {} }), message({ source: null }), message({ origin: 'http://other.test' }),
+    message({ data: { type: 'mc-viewer.foreground-audio', detail: { speech: true, music: 1 } } }),
+    message({ data: { type: 'other', detail: { speech: true, music: false } } })]) view.window.emit('message', invalid);
+  assert.equal(musicGain(view), 0.35);
+  view.window.emit('message', message()); await view.advance(3000);
+  view.window.emit('message', message({ origin: 'http://other.test' })); await view.advance(499);
+  assert.ok(Math.abs(musicGain(view) - 0.07) < 1e-9); await view.advance(1); assert.equal(musicGain(view), 0.35);
+  view.window.emit('message', message()); await view.advance(3000); view.window.emit('message', message());
+  await view.advance(3499); assert.ok(Math.abs(musicGain(view) - 0.07) < 1e-9);
+  await view.advance(1); assert.equal(musicGain(view), 0.35);
+  view.frames.splice(0); view.window.emit('message', message()); assert.equal(musicGain(view), 0.35);
+  view.frames.push(frame); frame.src = 'http://new-overlay.test/overlay'; view.window.emit('message', message()); assert.equal(musicGain(view), 0.35);
+  frame.src = 'http://overlay.test:7793/overlay'; view.window.emit('message', message());
+  view.api.setForegroundAudio({ speech: false, music: true }); await view.advance(3500); assert.equal(musicGain(view), 0);
+  view.close(); assert.equal(view.window.handlers.get('message').length, 0); await view.advance(10000);
 });

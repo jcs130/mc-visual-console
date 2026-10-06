@@ -9,6 +9,7 @@ import { patchAvatarMotion, patchRendererAvatar } from './minecraft-viewer-avata
 import { patchRendererEntityVisibility, patchRendererEntityDamage } from './minecraft-viewer-entity-visibility.mjs'
 import { patchRoomOcclusion } from './minecraft-viewer-room-occlusion.mjs'
 import { assertMinimapArrowOrientation } from './minecraft-viewer-bundle-check.mjs'
+import { normalizeUntintedLeafModels } from './minecraft-viewer-leaf-tints.mjs'
 import { writeViewerPages } from '../src/viewer-page.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
@@ -285,6 +286,10 @@ const buildResult = await build({
         }
         return replacements[file] ? { path: path.join(renderAssets, replacements[file]) } : undefined
       })
+      context.onLoad({ filter: /[\\/]render-assets[\\/]blockStatesModels\.json$/ }, async ({ path: file }) => ({
+        contents: JSON.stringify(normalizeUntintedLeafModels(JSON.parse(await readFile(file, 'utf8')))),
+        loader: 'json',
+      }))
       context.onResolve({ filter: /^valtio\/utils$/ }, () => ({ path: path.join(sourceRoot, 'src', 'modern-viewer', 'valtio-utils-shim.js') }))
       context.onResolve({ filter: /^valtio$/ }, () => ({ path: path.join(sourceRoot, 'node_modules', 'valtio', 'esm', 'vanilla.mjs') }))
       context.onLoad({ filter: /[\\/]presets[\\/]qiandengji[\\/][^\\/]+\.js$/ }, async ({ path: file }) => {

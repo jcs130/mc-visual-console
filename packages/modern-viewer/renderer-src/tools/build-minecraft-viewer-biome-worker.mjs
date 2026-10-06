@@ -15,11 +15,8 @@ const FOLIAGE = {
   ocean: 0x78ad65, mushroom: 0x7ba879, nether: 0x8b7266, end: 0x78ad65,
 }
 
-export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDataAlias) {
-  if (!minecraftDataAlias) throw Error('缺少固定到 1.20.6 的 minecraft-data 别名')
+export async function buildBiomeTintData(sourceRoot) {
   const sourceRequire = createRequire(path.join(sourceRoot, 'package.json'))
-  const { build } = sourceRequire('esbuild')
-  const { polyfillNode } = sourceRequire('esbuild-plugin-polyfill-node')
   const mcData = sourceRequire('minecraft-data')('1.20.6')
   const styleSource = await readFile(new URL('./minecraft-viewer-biome-style.js', import.meta.url), 'utf8')
   const resolveStyle = runInNewContext(`${styleSource}\ncortiResolveBiomeStyle`, { globalThis: {} })
@@ -37,6 +34,15 @@ export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDa
   if (names.length < 50 || Object.values(tints).some(entry => !Number.isInteger(entry.default))) {
     throw Error('1.20.6 群系着色数据不完整')
   }
+  return tints
+}
+
+export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDataAlias) {
+  if (!minecraftDataAlias) throw Error('缺少固定到 1.20.6 的 minecraft-data 别名')
+  const sourceRequire = createRequire(path.join(sourceRoot, 'package.json'))
+  const { build } = sourceRequire('esbuild')
+  const { polyfillNode } = sourceRequire('esbuild-plugin-polyfill-node')
+  const tints = await buildBiomeTintData(sourceRoot)
   const workerEntry = path.join(sourceRoot, 'node_modules', 'minecraft-renderer', 'src', 'mesher-legacy', 'mesher.ts')
   const outputFile = path.join(outputRoot, 'public', 'mesher.js')
   const tintsModule = `module.exports = { tints: ${JSON.stringify(tints)} };`
@@ -55,5 +61,5 @@ export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDa
     ],
   })
   if ((await stat(outputFile)).size > 8 * 1024 * 1024) throw Error('群系网格 worker 异常膨胀，请检查版本别名')
-  return { biomeCount: names.length, outputFile }
+  return { biomeCount: tints.grass.data.length, outputFile }
 }

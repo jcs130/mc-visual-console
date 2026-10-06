@@ -1,4 +1,4 @@
-/** Vanilla 1.20.6 audio mixer. No game commands or inferred successful actions. */
+/** World audio mixer with optional local BGM. No inferred successful actions. */
 const cortiAudioCategories = ['music', 'records', 'weather', 'blocks', 'hostile', 'neutral', 'players', 'ambient', 'voice'];
 function cortiAudioName(value) {
   const name = typeof value === 'string' ? value.replace(/^minecraft:/, '') : '';
@@ -49,6 +49,24 @@ function cortiMusicEvent(state, events) {
   return events?.[fallback]?.length ? fallback : null;
 }
 
+function cortiCustomBgmCatalog(value) {
+  const object = value => value && typeof value === 'object' && !Array.isArray(value);
+  if (!object(value) || value.version !== 1 || Object.keys(value).some(key => !['version', 'tracks'].includes(key))
+    || !Array.isArray(value.tracks) || value.tracks.length > 500) return null;
+  const ids = new Set();
+  const tracks = [];
+  for (const track of value.tracks) {
+    if (!object(track) || Object.keys(track).some(key => !['id', 'title', 'file'].includes(key))
+      || typeof track.id !== 'string' || !/^[a-z0-9_.-]{1,160}$/.test(track.id) || ids.has(track.id)
+      || typeof track.title !== 'string' || !track.title.trim() || track.title.length > 300
+      || /[\u0000-\u001f\u007f-\u009f]/.test(track.title)
+      || typeof track.file !== 'string' || track.file.length > 512
+      || !/^[a-z0-9_-]+(?:\/[a-z0-9_-]+)*\.ogg$/.test(track.file)) return null;
+    ids.add(track.id); tracks.push({ id: track.id, title: track.title, file: track.file });
+  }
+  return { version: 1, tracks };
+}
+
 function cortiAudioWaitLabel(milliseconds) {
   const seconds = Math.max(0, Math.ceil((milliseconds || 0) / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -65,11 +83,17 @@ function cortiAudioStatus(snapshot) {
     disabled: '背景音乐已关闭', muted: '背景音乐已静音',
     'listener-unknown': '背景音乐等待角色位置', 'context-unavailable': '当前区域没有背景音乐',
     'record-playing': '正在播放唱片，背景音乐暂候', loading: '背景音乐正在加载',
+    'foreground-music': '前景歌曲播放中，背景音乐暂候',
+    'catalog-unavailable': '原创音乐目录尚未就绪',
+    'resources-unavailable': '背景音乐资源尚未就绪',
     playing: `正在播放：${snapshot.musicTrack || '背景音乐'}`,
     scheduled: `背景音乐将在 ${cortiAudioWaitLabel(snapshot.musicWaitMs)} 后播放`,
     'awaiting-schedule': '正在安排背景音乐',
   }[snapshot.musicGate] || '背景音乐等待就绪';
-  return `${effects} · ${music}`;
+  const source = { vanilla: '原版音乐', custom: '原创音乐', off: '音乐来源已关闭' }[snapshot.musicSource] || '原版音乐';
+  const foreground = snapshot.foregroundAudio?.music ? '演唱中，背景音乐让位'
+    : snapshot.foregroundAudio?.speech ? '口播中，背景音乐降音' : null;
+  return [effects, source, music, foreground, snapshot.musicSource === 'custom' ? snapshot.catalogError : null].filter(Boolean).join(' · ');
 }
 
 function cortiInstallWorldSound(socket) {
@@ -78,11 +102,31 @@ function cortiInstallWorldSound(socket) {
   const testButton = document.getElementById('corti-sound-test');
   const playMusicButton = document.getElementById('corti-music-play');
   if (!button && !musicButton) return null;
+  // Install into both current templates and already deployed audio panels.
+  let sourceSelect = document.querySelector('[data-mc-bgm-source]');
+  let reloadButton = document.querySelector('[data-mc-bgm-reload]');
+  const settings = document.querySelector('.viewer-audio-settings');
+  const installedControls = [];
+  if (settings && document.createElement && !sourceSelect) {
+    const label = document.createElement('label'); label.textContent = '音乐来源';
+    sourceSelect = document.createElement('select'); sourceSelect.dataset.mcBgmSource = '';
+    for (const [value, title] of [['vanilla', '原版'], ['custom', '原创'], ['off', '关闭']]) {
+      const option = document.createElement('option'); option.value = value; option.textContent = title; sourceSelect.append(option);
+    }
+    label.append(sourceSelect); settings.append(label); installedControls.push(label);
+  }
+  if (settings && document.createElement && !reloadButton) {
+    reloadButton = document.createElement('button'); reloadButton.type = 'button';
+    reloadButton.dataset.mcBgmReload = ''; reloadButton.textContent = '刷新音乐目录';
+    settings.append(reloadButton); installedControls.push(reloadButton);
+  }
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   const loadPreference = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
   const savePreference = (key, value) => { try { localStorage.setItem(key, value); } catch { /* session only */ } };
   let enabled = loadPreference('corti-viewer-sound', 'on') !== 'off';
   let musicEnabled = loadPreference('corti-viewer-music', 'on') !== 'off';
+  let musicSource = loadPreference('mc-viewer-music-source', 'vanilla');
+  if (!['vanilla', 'custom', 'off'].includes(musicSource)) musicSource = 'vanilla';
   const volumes = { master: 0.7, effects: 0.8, music: 0.35, records: 1, weather: 0.75,
     blocks: 1, hostile: 1, neutral: 1, players: 1, ambient: 0.85, voice: 1 };
   try {
@@ -92,6 +136,11 @@ function cortiInstallWorldSound(socket) {
   let context = null;
   let master = null;
   let manifest = null;
+  let customCatalog = null;
+  let catalogError = null;
+  let catalogRequest = 0;
+  let foreground = { speech: false, music: false };
+  let foregroundTimer = null;
   let blockSounds = null;
   let disposed = false;
   let connected = socket.connected !== false;
@@ -130,13 +179,16 @@ function cortiInstallWorldSound(socket) {
   const bindings = [];
   const localTimers = new Map();
   const now = () => performance.now();
-  const musicCandidate = () => explicitMusic ?? cortiMusicEvent(musicState, manifest?.events);
+  const musicAvailable = () => musicSource === 'custom' ? Boolean(customCatalog) : Boolean(manifest);
+  const musicCandidate = () => musicSource === 'off' ? null : musicSource === 'custom'
+    ? customCatalog?.tracks.length ? 'music.custom' : null : explicitMusic ?? cortiMusicEvent(musicState, manifest?.events);
   const musicGate = () => {
     if (disposed) return 'disposed';
-    if (!manifest) return 'resources-unavailable';
-    if (!musicEnabled) return 'disabled';
+    if (!musicEnabled || musicSource === 'off') return 'disabled';
+    if (!musicAvailable()) return musicSource === 'custom' ? 'catalog-unavailable' : 'resources-unavailable';
     if (!connected) return 'disconnected';
     if (context?.state !== 'running') return 'browser-locked';
+    if (foreground.music) return 'foreground-music';
     if (!origin) return 'listener-unknown';
     if (!musicCandidate()) return 'context-unavailable';
     if (!volumes.master || !volumes.music) return 'muted';
@@ -145,10 +197,12 @@ function cortiInstallWorldSound(socket) {
     if (music) return music.started ? 'playing' : 'loading';
     return Number.isFinite(nextMusicAt) ? 'scheduled' : 'awaiting-schedule';
   };
-  const state = () => ({ available: Boolean(AudioContextClass && manifest), unlocked: context?.state === 'running',
+  const state = () => ({ available: Boolean(AudioContextClass && (manifest || customCatalog)), unlocked: context?.state === 'running',
     blockSoundsAvailable: Boolean(blockSounds),
     manifestEventCount: manifest?.events ? Object.keys(manifest.events).length : 0,
-    soundEnabled: enabled, musicEnabled, volumes: { ...volumes }, voices: voices.size, pendingLocalSounds: localTimers.size,
+    soundEnabled: enabled, musicEnabled, musicSource, volumes: { ...volumes }, voices: voices.size, pendingLocalSounds: localTimers.size,
+    customCatalogAvailable: Boolean(customCatalog), customTrackCount: customCatalog?.tracks.length ?? 0,
+    catalogError, foregroundAudio: { ...foreground },
     music: [...voices.values()].find(voice => voice.category === 'music')?.name ?? null,
     musicTrack: [...voices.values()].find(voice => voice.category === 'music')?.track ?? null,
     error: lastAudioError, connected, originKnown: Boolean(origin), dimension: musicState.dimension,
@@ -161,6 +215,7 @@ function cortiInstallWorldSound(socket) {
     if (serialized === lastUiState) return;
     lastUiState = serialized;
     const available = AudioContextClass && manifest;
+    const bgmAvailable = AudioContextClass && musicAvailable();
     if (button) {
       button.textContent = !AudioContextClass ? '音效 不支持' : !manifest ? '音效 资源未就绪'
         : !enabled ? '音效 关闭' : snapshot.unlocked ? '音效 开启' : '音效 点击开启';
@@ -168,19 +223,21 @@ function cortiInstallWorldSound(socket) {
       button.setAttribute('aria-pressed', String(enabled));
     }
     if (musicButton) {
-      musicButton.textContent = !musicEnabled ? '音乐 关闭' : !manifest ? '音乐 资源未就绪'
+      musicButton.textContent = !musicEnabled || musicSource === 'off' ? '音乐 关闭' : !bgmAvailable ? '音乐 资源未就绪'
         : !snapshot.unlocked ? '音乐 点击开启'
+          : snapshot.musicGate === 'foreground-music' ? '音乐 暂候'
           : snapshot.musicGate === 'muted' ? '音乐 静音'
             : snapshot.musicGate === 'playing' ? '音乐 播放中'
               : snapshot.musicGate === 'loading' ? '音乐 加载中'
                 : snapshot.musicGate === 'scheduled' ? `音乐 ${cortiAudioWaitLabel(snapshot.musicWaitMs)}` : '音乐 等待';
-      musicButton.dataset.active = String(musicEnabled && snapshot.unlocked && available);
+      musicButton.dataset.active = String(musicEnabled && musicSource !== 'off' && snapshot.unlocked && bgmAvailable);
       musicButton.setAttribute('aria-pressed', String(musicEnabled));
       musicButton.title = cortiAudioStatus(snapshot);
     }
     if (testButton) testButton.disabled = !available || !connected || !enabled || !volumes.master || !volumes.effects;
-    if (playMusicButton) playMusicButton.disabled = !available || !connected || !origin || !musicCandidate()
+    if (playMusicButton) playMusicButton.disabled = !bgmAvailable || !connected || !origin || !musicCandidate() || foreground.music
       || !volumes.master || !volumes.music || [...voices.values()].some(voice => ['music', 'records'].includes(voice.category));
+    if (sourceSelect) sourceSelect.value = musicSource;
     const output = document.querySelector('[data-corti-audio-status]');
     if (output) {
       output.textContent = cortiAudioStatus(snapshot);
@@ -188,13 +245,16 @@ function cortiInstallWorldSound(socket) {
         audioDimension: snapshot.dimension ?? '', audioBiome: snapshot.biome ?? '',
         audioManifestEvents: String(snapshot.manifestEventCount),
         audioMusicCandidate: snapshot.musicCandidate ?? '', audioMusicGate: snapshot.musicGate,
+        audioMusicSource: snapshot.musicSource, audioMusicTrack: snapshot.musicTrack ?? '',
+        audioForegroundSpeech: String(snapshot.foregroundAudio.speech), audioForegroundMusic: String(snapshot.foregroundAudio.music),
         audioMusicWaitMs: snapshot.musicWaitMs === null ? '' : String(snapshot.musicWaitMs),
       };
       for (const [key, value] of Object.entries(diagnostics)) if (output.dataset[key] !== value) output.dataset[key] = value;
     }
     window.dispatchEvent(new CustomEvent('mc-viewer-audio-state', { detail: snapshot }));
   };
-  const channelVolume = category => category === 'music' ? (musicEnabled ? volumes.music : 0)
+  const channelVolume = category => category === 'music'
+    ? (musicEnabled && musicSource !== 'off' ? volumes.music * (foreground.music ? 0 : foreground.speech ? 0.2 : 1) : 0)
     : enabled ? volumes.effects * (volumes[category] ?? 1) : 0;
   const mixer = () => {
     if (master) master.gain.value = volumes.master;
@@ -224,7 +284,11 @@ function cortiInstallWorldSound(socket) {
     if (node.positionX) { node.positionX.value = position.x; node.positionY.value = position.y; node.positionZ.value = position.z; }
     else node.setPosition(position.x, position.y, position.z);
   };
-  const scheduleMusic = (first = false) => { nextMusicAt = now() + (first ? 10_000 + Math.random() * 20_000 : 300_000 + Math.random() * 300_000); };
+  const scheduleMusic = (first = false) => {
+    const delay = musicSource === 'custom' ? (first ? 1000 + Math.random() * 2000 : 3000 + Math.random() * 5000)
+      : (first ? 10_000 + Math.random() * 20_000 : 300_000 + Math.random() * 300_000);
+    nextMusicAt = now() + delay;
+  };
   const finish = voice => {
     if (voice.finished) return;
     voice.finished = true;
@@ -256,6 +320,53 @@ function cortiInstallWorldSound(socket) {
       && (!filter.position || (voice.position && Math.hypot(voice.position.x - filter.position.x,
         voice.position.y - filter.position.y, voice.position.z - filter.position.z) <= 1))) stopVoice(voice);
   };
+  const setForegroundAudio = value => {
+    if (disposed || typeof value?.speech !== 'boolean' || typeof value?.music !== 'boolean') return false;
+    clearTimeout(foregroundTimer); foregroundTimer = null;
+    const wasMusic = foreground.music;
+    foreground = { speech: value.speech, music: value.music };
+    // An awaiting media.play() has not become an established background track.
+    if (foreground.music) for (const voice of [...voices.values()])
+      if (voice.category === 'music' && !voice.started) stopVoice(voice);
+    if (wasMusic && !foreground.music && ![...voices.values()].some(voice => voice.category === 'music')) scheduleMusic(true);
+    mixer(); return true;
+  };
+  const foregroundMessage = event => {
+    if (disposed || event?.data?.type !== 'mc-viewer.foreground-audio'
+      || typeof event.data.detail?.speech !== 'boolean' || typeof event.data.detail?.music !== 'boolean'
+      || !event.source) return;
+    const frame = [...document.querySelectorAll('iframe')].find(frame => {
+      if (frame.contentWindow !== event.source || !frame.src) return false;
+      try { const origin = new URL(frame.src, document.baseURI).origin; return origin !== 'null' && origin === event.origin; }
+      catch { return false; }
+    });
+    if (!frame || !setForegroundAudio(event.data.detail)) return;
+    foregroundTimer = setTimeout(() => { foregroundTimer = null; setForegroundAudio({ speech: false, music: false }); }, 3500);
+  };
+  window.addEventListener('message', foregroundMessage);
+  const setMusicSource = value => {
+    if (disposed || !['vanilla', 'custom', 'off'].includes(value)) return false;
+    if (musicSource === value) return true;
+    musicSource = value; savePreference('mc-viewer-music-source', value);
+    stop({ category: 'music' }); musicContextKey = null; scheduleMusic(true); mixer(); return true;
+  };
+  const reloadCatalog = async () => {
+    if (disposed) return false;
+    const request = ++catalogRequest;
+    try {
+      const response = await fetch('/sounds/custom-bgm.json', { cache: 'no-cache' });
+      if (!response.ok) throw Error('Missing custom BGM catalog');
+      const value = cortiCustomBgmCatalog(await response.json());
+      if (!value) throw Error('Invalid custom BGM catalog');
+      if (disposed || request !== catalogRequest) return false;
+      customCatalog = value; catalogError = null;
+      if (musicSource === 'custom' && ![...voices.values()].some(voice => voice.category === 'music')) scheduleMusic(true);
+      update(); return true;
+    } catch {
+      if (!disposed && request === catalogRequest) { catalogError = '无法更新原创音乐目录，保留上次有效目录'; update(); }
+      return false;
+    }
+  };
   const reset = () => {
     generation += 1; stop();
     for (const timer of localTimers.keys()) clearTimeout(timer);
@@ -268,6 +379,7 @@ function cortiInstallWorldSound(socket) {
     musicState.dimension = null; musicState.biome = null; musicState.underwater = false; musicState.gameMode = null;
     weatherState.raining = false; weatherState.sky = null; weatherState.precipitation = null; nextRainAt = 0;
     nextMusicAt = Infinity;
+    clearTimeout(foregroundTimer); foregroundTimer = null; foreground = { speech: false, music: false }; mixer();
   };
   const resume = async () => {
     if (disposed || !AudioContextClass || !hasGesture || (!enabled && !musicEnabled)) return;
@@ -288,11 +400,14 @@ function cortiInstallWorldSound(socket) {
   const serverKey = event => `${event.name}|${event.entityId ?? ''}`;
   const play = async (raw, local = false) => {
     const name = cortiAudioName(raw?.name);
-    if (disposed || !name || !manifest || !connected || context?.state !== 'running') return false;
+    if (disposed || !name || !connected || context?.state !== 'running') return false;
     const event = { ...raw, name };
     const category = cortiAudioCategory(event);
+    const custom = local && category === 'music' && musicSource === 'custom' && name === 'music.custom';
+    if ((!manifest && !custom) || (category === 'music' && (musicSource === 'off' || foreground.music
+      || (musicSource === 'custom' && !custom)))) return false;
     if (!channelVolume(category) || !volumes.master) return false;
-    const variants = manifest.events?.[name];
+    const variants = custom ? customCatalog?.tracks : manifest?.events?.[name];
     const random = typeof event.seed === 'string' || Number.isFinite(event.seed)
       ? [...String(event.seed)].reduce((hash, character) => (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0, 2166136261) / 4294967296
       : Math.random();
@@ -310,7 +425,8 @@ function cortiInstallWorldSound(socket) {
       if (recentServerSounds.size > 256) recentServerSounds.delete(recentServerSounds.keys().next().value);
     }
     const voice = { id: ++sequence, name, category, streaming: isStream, entityId: event.entityId,
-      started: false, track: variant.file.split('/').at(-1).replace(/\.ogg$/, '').replace(/_/g, ' ').replace(/\b[a-z]/g, letter => letter.toUpperCase()),
+      started: false, track: custom ? variant.title
+        : variant.file.split('/').at(-1).replace(/\.ogg$/, '').replace(/_/g, ' ').replace(/\b[a-z]/g, letter => letter.toUpperCase()),
       position: position ? { ...position } : null, managedWeather: local && event.clientWeather === true,
       managedBurning: local && event.clientBurning === true,
       managedMusic: local && category === 'music', generation, createdAt: now(), cancelled: false, finished: false };
@@ -354,7 +470,8 @@ function cortiInstallWorldSound(socket) {
         const source = context.createBufferSource(); source.buffer = buffer; source.playbackRate.value = rate;
         attach(source); source.onended = () => finish(voice); source.start();
       }
-      if (voice.cancelled || voice.generation !== generation || disposed || !connected) { stopVoice(voice); return false; }
+      if (voice.cancelled || voice.generation !== generation || disposed || !connected
+        || context.state !== 'running' || !channelVolume(category) || !volumes.master) { stopVoice(voice); return false; }
       voice.started = true; update(); return true;
     } catch {
       if (!voice.cancelled && voice.generation === generation && !disposed && connected)
@@ -469,7 +586,7 @@ function cortiInstallWorldSound(socket) {
     }
   };
   const tickMusic = () => {
-    if (disposed || !manifest || !musicEnabled || !connected || !origin || context?.state !== 'running'
+    if (disposed || !musicAvailable() || !musicEnabled || musicSource === 'off' || foreground.music || !connected || !origin || context?.state !== 'running'
       || !volumes.master || !volumes.music) return;
     const key = musicCandidate();
     if (key !== musicContextKey) { musicContextKey = key; musicContextSince = now(); }
@@ -509,6 +626,7 @@ function cortiInstallWorldSound(socket) {
   };
   on('worldSound', event => {
     const category = cortiAudioCategory(event || {});
+    if (category === 'music' && (musicSource !== 'vanilla' || foreground.music)) return;
     if ((category === 'records' || category === 'music') && channelVolume(category)) stop({ category: 'music' });
     void play(event);
   });
@@ -578,6 +696,7 @@ function cortiInstallWorldSound(socket) {
     mixer(); if (enabled) void resume();
   };
   const toggleMusic = () => {
+    if (musicSource === 'off') { setMusicSource('vanilla'); musicEnabled = false; }
     hasGesture = true; musicEnabled = !musicEnabled || context?.state !== 'running';
     savePreference('corti-viewer-music', musicEnabled ? 'on' : 'off');
     if (!musicEnabled) stop({ category: 'music' }); else scheduleMusic(true);
@@ -590,10 +709,11 @@ function cortiInstallWorldSound(socket) {
     return play({ name: 'ui.button.click', category: 'players', position: null, volume: 0.5, pitch: 1 }, true);
   };
   const playMusicNow = async () => {
+    if (disposed || musicSource === 'off' || foreground.music) return false;
     hasGesture = true; musicEnabled = true;
     savePreference('corti-viewer-music', 'on'); mixer(); await resume();
     const key = musicCandidate();
-    if (!key || !origin || !volumes.master || !volumes.music
+    if (!key || !origin || !volumes.master || !volumes.music || foreground.music
       || [...voices.values()].some(voice => ['music', 'records'].includes(voice.category))) return false;
     nextMusicAt = Infinity;
     const played = await play({ name: key, category: 'music', position: null, volume: 1, pitch: 1 }, true);
@@ -602,7 +722,10 @@ function cortiInstallWorldSound(socket) {
   };
   const onTestSound = () => { void testSound(); };
   const onPlayMusic = () => { void playMusicNow(); };
+  const onSource = () => { setMusicSource(sourceSelect.value); gesture(); };
+  const onReload = () => { void reloadCatalog(); };
   testButton?.addEventListener('click', onTestSound); playMusicButton?.addEventListener('click', onPlayMusic);
+  sourceSelect?.addEventListener('change', onSource); reloadButton?.addEventListener('click', onReload);
   const inputs = [...document.querySelectorAll('[data-corti-audio-volume]')];
   const setVolume = (key, value) => {
     if (!Object.hasOwn(volumes, key) || !Number.isFinite(value)) return false;
@@ -616,19 +739,23 @@ function cortiInstallWorldSound(socket) {
     input.addEventListener('input', handler); return [input, handler];
   });
   const timer = setInterval(() => { tickMusic(); tickWeather(); tickBurning(); update(); }, 1000);
-  const controller = { state, setVolume, play, stop, reset, unlock: gesture,
+  const controller = { state, setVolume, setMusicSource, reloadCatalog, setForegroundAudio, play, stop, reset, unlock: gesture,
     dispose() {
       if (disposed) return; disposed = true; reset(); clearInterval(timer);
       for (const [name, handler] of bindings) socket.off?.(name, handler);
       document.removeEventListener('pointerdown', pageGesture); document.removeEventListener('keydown', pageGesture);
       document.removeEventListener('click', uiClick);
+      window.removeEventListener('message', foregroundMessage);
       button?.removeEventListener('click', toggleEffects); musicButton?.removeEventListener('click', toggleMusic);
       testButton?.removeEventListener('click', onTestSound); playMusicButton?.removeEventListener('click', onPlayMusic);
+      sourceSelect?.removeEventListener('change', onSource); reloadButton?.removeEventListener('click', onReload);
+      for (const control of installedControls) control.remove();
       for (const [input, handler] of inputHandlers) input.removeEventListener('input', handler);
       context?.removeEventListener?.('statechange', update); void context?.close(); buffers.clear();
     } };
   window.addEventListener('pagehide', () => controller.dispose(), { once: true });
   window.cortiWorldAudio = controller;
+  void reloadCatalog(); // Optional; failure never changes vanilla resource metadata.
   // Metadata keeps the same URL across rebuilds. Revalidate it instead of
   // retaining a previous partial sound catalogue for the HTTP cache lifetime.
   void fetch('/sounds/manifest.json', { cache: 'no-cache' }).then(response => response.ok ? response.json() : null).then(value => {
