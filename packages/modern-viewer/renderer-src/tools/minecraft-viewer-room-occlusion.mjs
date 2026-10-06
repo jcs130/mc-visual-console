@@ -30,11 +30,17 @@ export function hasDeepRoof(avatar, collisionCache) {
   return solids >= 5
 }
 
-/** @param {number} avatarY @param {boolean} isDungeonView */
-export function roomCutoffWorldY(avatarY, isDungeonView) {
+/** @param {number} avatarY @param {boolean} hardCutaway */
+export function roomCutoffWorldY(avatarY, hardCutaway) {
   // A two-block-high room's ceiling starts at floor+2. Cut just below that
   // face; cutting above it leaves the underside visible over the avatar.
-  return Math.floor(avatarY) + (isDungeonView ? 1.95 : -0.25)
+  return hardCutaway ? Math.floor(avatarY) + 1.95 : avatarY + 0.05
+}
+
+/** Thin roofs and walls stay translucent; only thick underground cover is cut. */
+/** @param {boolean} isDungeonView @param {boolean} deepRoof */
+export function roomOcclusionMode(isDungeonView, deepRoof) {
+  return isDungeonView && deepRoof ? 'cutaway' : 'translucent'
 }
 
 /** @param {number} entityY @param {number} avatarY @param {boolean} isSelf */
@@ -50,7 +56,7 @@ function replaceOnce(source, before, after) {
 }
 
 const boundedCutawayShaderBlock = [
-  '    bool lanternBeyondFirstHit = lanternAlongRaw >= max(0.0, u_lanternCutawayHitAlong - u_lanternCutawayHalfSpan) && lanternAlongRaw <= 1.0;',
+  '    bool lanternBeyondFirstHit = lanternAlongRaw >= max(0.0, u_lanternCutawayHitAlong - u_lanternCutawayHalfSpan) && lanternAlongRaw <= 1.0 + u_lanternCutawayHalfSpan;',
   '    bool lanternInSightCorridor = distance(v_lanternCutawayPosition.xz, lanternClosest) < lanternRadius;',
   '    bool lanternCutawayRegion = lanternBeyondFirstHit && lanternInSightCorridor;',
   '    if (u_lanternCutawayEnabled > 1.5 && lanternCutawayRegion && v_lanternCutawayPosition.y > u_lanternCutawayY) {',
@@ -65,7 +71,9 @@ const boundedCutawayShaderBlock = [
   '      vec2 lanternHigh = floor(lanternPixel * 0.5);',
   '      float lanternLowRank = lanternLow.y < 0.5 ? (lanternLow.x < 0.5 ? 0.0 : 2.0) : (lanternLow.x < 0.5 ? 3.0 : 1.0);',
   '      float lanternHighRank = lanternHigh.y < 0.5 ? (lanternHigh.x < 0.5 ? 0.0 : 2.0) : (lanternHigh.x < 0.5 ? 3.0 : 1.0);',
-  '      if (4.0 * lanternLowRank + lanternHighRank >= 8.0) discard;',
+  '      float lanternEdge = lanternRadius - distance(v_lanternCutawayPosition.xz, lanternClosest);',
+  '      float lanternCoverage = mix(16.0, 4.0, smoothstep(0.0, 0.75, lanternEdge));',
+  '      if (4.0 * lanternLowRank + lanternHighRank >= lanternCoverage) discard;',
   '    }',
 ].join('\\n')
 
@@ -81,7 +89,7 @@ export function patchRoomOcclusion(source) {
     ['function scheduleDungeonOcclusionCheck() {\n  if (!isDungeonView || !rendererReady || document.hidden) return;',
       'function scheduleDungeonOcclusionCheck() {\n  if (!usesWorldAvatar || !rendererReady || document.hidden) return;'],
     ['function runDungeonOcclusionCheck() {\n  if (!isDungeonView || !rendererReady || !latestPosition || document.hidden) return;',
-      `${hasRoomCeiling.toString()}\n\n${roomCutoffWorldY.toString()}\n\n${shouldHideUpperEntity.toString()}\n\nfunction runDungeonOcclusionCheck() {\n  if (!usesWorldAvatar || !rendererReady || !latestPosition || document.hidden) return;`],
+      `${hasRoomCeiling.toString()}\n\n${roomCutoffWorldY.toString()}\n\n${roomOcclusionMode.toString()}\n\n${shouldHideUpperEntity.toString()}\n\nfunction runDungeonOcclusionCheck() {\n  if (!usesWorldAvatar || !rendererReady || !latestPosition || document.hidden) return;`],
     ['function refreshDungeonCutawayMaterials() {\n  if (!isDungeonView) return;',
       'function refreshDungeonCutawayMaterials() {\n  if (!usesWorldAvatar) return;'],
     ['  if (isDungeonView && !document.hidden) scheduleDungeonOcclusionCheck();',
@@ -91,14 +99,27 @@ export function patchRoomOcclusion(source) {
     ['  dungeonOcclusionState = updateOcclusionHysteresis(\n    dungeonOcclusionState,\n    trace.occluded,',
       '  const collisionReady = typeof collisionCache?.isSolidBlock === "function";\n  const roomCeiling = collisionReady && hasRoomCeiling(avatar, collisionCache);\n  const deepRoof = collisionReady && hasDeepRoof(avatar, collisionCache);\n  dungeonOcclusionState = updateOcclusionHysteresis(\n    dungeonOcclusionState,\n    deepRoof || trace.occluded || roomCeiling,'],
     ['      cutoffWorldY: avatar.y + DUNGEON_OCCLUSION_CUT_HEIGHT,',
-      '      cutoffWorldY: roomCutoffWorldY(avatar.y, isDungeonView),\n      hardCutaway: isDungeonView,'],
+      '      cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),\n      hardCutaway,'],
     ['    setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");',
       '    setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");\n    setElementDataset(canvas, "roomCeiling", roomCeiling ? "yes" : "no");\n    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");'],
     ['    detected: dungeonOcclusionState.active,',
-      '    detected: dungeonOcclusionState.active,\n    roomCeiling,\n    deepRoof,'],
+      '    detected: dungeonOcclusionState.active,\n    roomCeiling,\n    deepRoof,\n    mode: dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, deepRoof) : "clear",'],
     ['    bool lanternBeyondFirstHit = lanternAlongRaw >= max(0.0, u_lanternCutawayHitAlong - u_lanternCutawayHalfSpan) && lanternAlongRaw <= 1.0;\\n    bool lanternInSightCorridor = distance(v_lanternCutawayPosition.xz, lanternClosest) < lanternRadius;\\n    if (u_lanternCutawayEnabled > 0.5 && lanternBeyondFirstHit && lanternInSightCorridor && v_lanternCutawayPosition.y > u_lanternCutawayY) discard;',
       boundedCutawayShaderBlock],
   ]) result = replaceOnce(result, before, after)
+  result = replaceOnce(result, '  const wasActive = dungeonOcclusionState.active;',
+    '  // Prepare late terrain materials while the corridor is still clear.\n  // First entering a house must not trigger shader compilation.\n  refreshDungeonCutawayMaterials();\n  const wasActive = dungeonOcclusionState.active;')
+  result = replaceOnce(result,
+    'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {\n  refreshDungeonCutawayMaterials();',
+    'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {')
+  result = replaceOnce(result, '  if (dungeonOcclusionState.active) {\n    applyDungeonCutaway({',
+    '  const hardCutaway = roomOcclusionMode(isDungeonView, deepRoof) === "cutaway";\n  if (dungeonOcclusionState.active) {\n    applyDungeonCutaway({')
+  result = replaceOnce(result,
+    'getUpperCutawayY: () => isDungeonView && dungeonOcclusionState.active ? latestPosition?.pos?.y : null',
+    'getUpperCutawayY: () => isDungeonView && dungeonOcclusionDiagnostics.active && dungeonOcclusionDiagnostics.mode === "cutaway" ? latestPosition?.pos?.y : null')
+  result = replaceOnce(result,
+    '    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");',
+    '    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");\n    setElementDataset(canvas, "occlusionMode", dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, deepRoof) : "clear");')
   result = replaceOnce(result, hasRoomCeiling.toString(), `${hasRoomCeiling.toString()}\n\n${hasDeepRoof.toString()}`)
   result = replaceOnce(result, 'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {',
     'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction, hardCutaway }) {')

@@ -1,4 +1,4 @@
-/** Smooth remote first-person camera samples while keeping game state authoritative. */
+/** Smooth remote camera samples in every view without changing game state. */
 let cortiCameraState = null;
 let cortiCameraFrame = 0;
 
@@ -7,13 +7,13 @@ function cortiAngleDelta(target, current) {
 }
 
 function cortiCameraPose(packet, instant) {
-  if (!isFirstPersonView) return { ...packet, settled: true };
   const now = performance.now();
   const target = packet.pos;
+  const targetKey = packet.cameraTarget ?? (isFirstPersonView ? "first" : "observer");
   const last = cortiCameraState;
   const distance = last ? Math.hypot(target.x - last.x, target.y - last.y, target.z - last.z) : 0;
-  if (!last || instant || packet.teleport || distance > 8 || now - last.at > 1500) {
-    cortiCameraState = { x: target.x, y: target.y, z: target.z, yaw: packet.yaw, pitch: packet.pitch, at: now };
+  if (!last || instant || packet.teleport || last.targetKey !== targetKey || distance > 8 || now - last.at > 1500) {
+    cortiCameraState = { x: target.x, y: target.y, z: target.z, yaw: packet.yaw, pitch: packet.pitch, at: now, targetKey };
     return { pos: target, yaw: packet.yaw, pitch: packet.pitch, settled: true };
   }
 
@@ -40,7 +40,7 @@ function cortiCameraPose(packet, instant) {
 }
 
 function scheduleCortiCameraFrame() {
-  if (cortiCameraFrame) return;
+  if (cortiCameraFrame || document.hidden) return;
   cortiCameraFrame = requestAnimationFrame(() => {
     cortiCameraFrame = 0;
     if (rendererReady && latestPosition) applyPosition(false, true);
