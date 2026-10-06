@@ -11,6 +11,7 @@ import { createNativePlayerMotionTracker } from '../src/native-viewer/native-pla
 import { projectNativeYsmState } from '../src/native-viewer/native-ysm-state.js'
 import { projectNativePlayerRenderState } from '../src/native-viewer/native-player-render-state.js'
 import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
+import { nativePreviewAccess } from './native-preview-access.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
@@ -326,8 +327,9 @@ function injectedAgentStatus (getAgentStatus, now) {
 
 // Prepare before createBot(), then attach synchronously before login packets.
 // Preparation creates no Minecraft client, listening socket or signal handler.
-export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983 }) {
+export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null }) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('NATIVE_WORLD_PORT_INVALID')
+  const access = nativePreviewAccess(lanAddress)
   const root = await fs.realpath(assetDirectory)
   const manifest = JSON.parse(await fs.readFile(path.join(root, 'native-assets.json'), 'utf8'))
   if (manifest.minecraftVersion !== '1.21.1' || manifest.assetIntegrityVerified !== true || !manifest.assets || !manifest.registryHashes) throw Error('NATIVE_WORLD_ASSETS_INVALID')
@@ -447,8 +449,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       const headers = type => ({ 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': CSP })
       const server = http.createServer(async (request, response) => {
         try {
-          if (![`127.0.0.1:${currentPort}`, `localhost:${currentPort}`].includes(request.headers.host) ||
-              (request.headers.origin && ![`http://127.0.0.1:${currentPort}`, `http://localhost:${currentPort}`].includes(request.headers.origin))) { response.writeHead(403); response.end(); return }
+          if (!access.allowsRequest(request, currentPort)) { response.writeHead(403); response.end(); return }
           if (request.method !== 'GET') { response.writeHead(405, { Allow: 'GET' }); response.end(); return }
           const requestPath = decodeURIComponent(new URL(request.url, `http://127.0.0.1:${currentPort}`).pathname).slice(1)
           if (requestPath === 'events') {
@@ -601,7 +602,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           listening ||= new Promise((resolve, reject) => {
             const failed = error => { server.off('listening', ready); reject(error) }
             const ready = () => { server.off('error', failed); currentPort = server.address().port; resolve(this) }
-            server.once('error', failed); server.once('listening', ready); server.listen(port, '127.0.0.1')
+            server.once('error', failed); server.once('listening', ready); server.listen(port, access.listenHost)
           })
           return listening
         },
