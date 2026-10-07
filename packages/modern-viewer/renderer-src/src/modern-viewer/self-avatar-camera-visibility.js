@@ -1,4 +1,4 @@
-import { Vector3 } from "three";
+import { Plane, Vector3 } from "three";
 
 // The renderer recomputes entity visibility immediately before each draw. Run
 // after that pass so a wall-squeezed camera cannot render inside the local
@@ -16,6 +16,15 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
   let distance = null;
   let selfId = null;
   let hiddenUpperEntities = 0;
+  const upperLayerPlane = new Plane(new Vector3(0, -1, 0), 0);
+  let cutawayWorldY = null;
+
+  function removeUpperLayerPlane() {
+    const renderer = world.renderer;
+    if (renderer?.clippingPlanes?.includes(upperLayerPlane)) {
+      renderer.clippingPlanes = renderer.clippingPlanes.filter(plane => plane !== upperLayerPlane);
+    }
+  }
 
   function update() {
     const id = getSelfId?.();
@@ -23,6 +32,17 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
     // The native renderer resets visibility on every draw. Applying the roof
     // policy on its slower terrain-check timer lets upper-floor mobs reappear.
     const cutawayY = getUpperCutawayY();
+    cutawayWorldY = Number.isFinite(cutawayY) ? Math.floor(cutawayY) + 1.95 : null;
+    if (cutawayWorldY !== null && world.renderer) {
+      // Standard materials cover signs, banners, models and held items. Terrain
+      // uses its own height uniform; both planes follow floating-origin shifts.
+      upperLayerPlane.constant = world.sceneOrigin?.toSceneY?.(cutawayWorldY) ?? cutawayWorldY;
+      if (!world.renderer.clippingPlanes?.includes(upperLayerPlane)) {
+        world.renderer.clippingPlanes = [...(world.renderer.clippingPlanes ?? []), upperLayerPlane];
+      }
+    } else {
+      removeUpperLayerPlane();
+    }
     hiddenUpperEntities = 0;
     if (Number.isFinite(cutawayY)) {
       for (const [entityId, object] of Object.entries(entities.entities ?? {})) {
@@ -89,9 +109,10 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
 
   return {
     get diagnostics() {
-      return { selfId, distance, hiddenForNearCamera, hiddenUpperEntities };
+      return { selfId, distance, hiddenForNearCamera, hiddenUpperEntities, cutawayWorldY };
     },
     dispose() {
+      removeUpperLayerPlane();
       if (entities.render === wrappedRender) entities.render = originalRender;
     },
   };

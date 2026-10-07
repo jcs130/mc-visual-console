@@ -46,6 +46,8 @@ export function patchRendererAvatar(source) {
 
 /** @param {string} source @param {string} swordOverlay */
 export function patchAvatarMotion(source, swordOverlay) {
+  source = source.replace(/\r\n/g, '\n');
+  swordOverlay = swordOverlay.replace(/\r\n/g, '\n');
   if (!swordOverlay.includes('function applySwingOverlay(')) throw Error('第三人称挥砍动作缺失');
   const start = source.indexOf('function applySwingOverlay(');
   const end = source.indexOf('function applyUseOverlay(', start);

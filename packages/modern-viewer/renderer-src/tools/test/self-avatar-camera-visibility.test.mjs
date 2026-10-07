@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { installSelfAvatarCameraVisibility } from '../../src/modern-viewer/self-avatar-camera-visibility.js';
 
 function fixture() {
@@ -194,4 +194,31 @@ test('cutaway follows current tracked height instead of the stale creation packe
   world.entities.render();
   assert.equal(other.visible, false);
   controller.dispose();
+});
+
+test('upper-layer clipping covers standard decoration materials and follows origin rebasing', () => {
+  const { world, camera } = fixture();
+  camera.position.z = 4;
+  const otherPlane = {};
+  world.renderer = { clippingPlanes: [otherPlane] };
+  let originY = 64;
+  world.sceneOrigin = { toSceneY: y => y - originY };
+  let cutawayY = 64.3;
+  const controller = installSelfAvatarCameraVisibility(world, () => 7, { getUpperCutawayY: () => cutawayY });
+  world.entities.render();
+  const plane = world.renderer.clippingPlanes[1];
+  assert.equal(world.renderer.clippingPlanes[0], otherPlane);
+  assert.ok(plane.distanceToPoint(new Vector3(80, 2, -50)) < 0, 'upper decoration outside the camera corridor is clipped');
+  assert.ok(plane.distanceToPoint(new Vector3(80, 0, -50)) > 0, 'floor remains visible');
+  originY = 32;
+  world.entities.render();
+  assert.equal(world.renderer.clippingPlanes.length, 2, 'the same plane is reused each frame');
+  assert.equal(plane.constant, 33.95);
+  cutawayY = null;
+  world.entities.render();
+  assert.deepEqual(world.renderer.clippingPlanes, [otherPlane]);
+  cutawayY = 70;
+  world.entities.render();
+  controller.dispose();
+  assert.deepEqual(world.renderer.clippingPlanes, [otherPlane], 'disposal removes only this controller\'s plane');
 });
