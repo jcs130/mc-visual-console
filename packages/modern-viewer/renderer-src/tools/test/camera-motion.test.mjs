@@ -48,7 +48,7 @@ test('first-person rotation takes the short path across the yaw boundary', () =>
 });
 
 test('built observer camera continues between packets without re-streaming chunks or refreshing panels', () => {
-  const clientSource = readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8');
+  const clientSource = readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const builder = readFileSync(new URL('../build-minecraft-viewer-client.mjs', import.meta.url), 'utf8');
   const adaptation = builder.slice(builder.indexOf('const adaptedClient ='), builder.indexOf('const changedClient ='));
   const potionRenderAnchor = '  worldView.emit(isMove ? "entityMoved" : "entity",\n    isMove ? normalized : rendererEntityEquipment(normalized, globalThis.mcData?.itemsByName));';

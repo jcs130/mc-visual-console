@@ -382,3 +382,12 @@ to{opacity:1;transform:translateX(0)}
 @media(max-width:720px){.corti-skills header{gap:3px;font-size:11px}
 .corti-skills [data-mana]{font-size:11px}
 }
+/* Observer controls share the HUD's compact, high contrast surface. */
+.dungeon-camera-controls { position: fixed; z-index: 24; top: 54px; right: 14px; display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid #adc5ba85; border-radius: 10px; background: #102e39df; box-shadow: 0 3px 14px #0004; }
+.dungeon-camera-controls button { min-width: 32px; height: 30px; padding: 0 8px; border: 0; border-radius: 6px; color: #edf7f1; background: transparent; font: 600 13px/1 system-ui, sans-serif; cursor: pointer; touch-action: manipulation; }
+.dungeon-camera-controls button:nth-child(-n+4) { font-size: 21px; }
+.dungeon-camera-controls button:hover, .dungeon-camera-controls button[aria-pressed="true"] { background: #496f78; }
+.dungeon-camera-controls button:focus-visible { outline: 2px solid #bde8df; outline-offset: 1px; }
+.dungeon-camera-controls button:disabled { opacity: .35; cursor: default; }
+@media (max-width: 900px) { .dungeon-camera-controls { top: 52px; } }
+@media (max-width: 600px) { .dungeon-camera-controls { left: auto; right: 10px; transform: none; gap: 0; } .dungeon-camera-controls button { min-width: 30px; padding: 0 5px; } }

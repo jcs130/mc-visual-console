@@ -20,7 +20,7 @@ import {
   MeshBasicMaterial,
   NearestFilter,
   NoColorSpace,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   PlaneGeometry,
   Raycaster,
   RepeatWrapping,
@@ -51,6 +51,8 @@ import {
 } from "./npc-portraits.js";
 import { normalizeMotionFrame } from "./avatar-motion.js";
 import { rendererEntityEquipment } from "./renderer-equipment.js";
+import { hasRoomCeiling, hasDeepRoof, roomCutoffWorldY, roomOcclusionMode, createCutawayUniforms, patchCutawayMaterial, advanceReveal } from "./room-visibility.js";
+import { installDungeonObserverControls } from "./dungeon-observer-controls.js";
 import { installSelfAvatarCameraVisibility } from "./self-avatar-camera-visibility.js";
 import { installEntityRenderBounds } from "./entity-render-bounds.js";
 import { villagerIdentityConceptColors, NPC_NAMED_ROLE_LABELS, NPC_NAMED_DIALOGUE_LINES, NPC_NAMED_QUEST_TEMPLATES } from "./presets/qiandengji/npc-copy.js";
@@ -155,8 +157,6 @@ const DUNGEON_DEFAULT_DISTANCE = Math.min(16, DUNGEON_MAX_DISTANCE);
 const DUNGEON_HOVER_INTERVAL_MS = 80;
 const DUNGEON_OCCLUSION_INTERVAL_MS = 180;
 const DUNGEON_OCCLUSION_RELEASE_SAMPLES = 3;
-const DUNGEON_OCCLUSION_CUT_HEIGHT = 0.28;
-const DUNGEON_OCCLUSION_CORRIDOR_RADIUS = 1.85;
 const NPC_PANEL_INTERVAL_MS = 200;
 const PERFORMANCE_SAMPLE_INTERVAL_MS = 1_000;
 const TRUSTED_NPC_AVATAR_REBALANCE_MS = 250;
@@ -356,6 +356,10 @@ const dungeonHoverAnchorBox = new Box3();
 const dungeonHoverAnchor = new Vector3();
 const dungeonOcclusionCameraScene = new Vector3();
 const dungeonOcclusionTargetScene = new Vector3();
+const dungeonVisibilityUniforms = createCutawayUniforms();
+let dungeonRevealTarget = false;
+let dungeonRevealLastFrameAt = null;
+let dungeonObserverControls = null;
 const dungeonCutawayMaterials = new Map();
 const dungeonPointerProjectionInput = {
   origin: { x: 0, y: 0, z: 0 },
@@ -509,6 +513,7 @@ let dungeonOcclusionCheckFrame = null;
 let dungeonOcclusionCheckTimer = null;
 let dungeonOcclusionLastCheckAt = 0;
 let dungeonOcclusionState = { active: false, clearSamples: 0 };
+let dungeonRoofState = { active: false, clearSamples: 0 };
 let dungeonCutawayApplied = false;
 let dungeonCutawayMaterialScanCursor = 0;
 let dungeonOcclusionDiagnostics = {
@@ -859,7 +864,8 @@ async function initializeRenderer(version) {
       selfAvatarCameraVisibility = installSelfAvatarCameraVisibility(
         globalThis.world,
         () => pendingAvatarState?.entity?.id,
-        { getUpperCutawayY: () => isDungeonView && dungeonOcclusionState.active ? latestPosition?.pos?.y : null },
+        { getUpperCutawayY: () => dungeonUpperCutawayY,
+          getUpperCutawayRegion: () => dungeonUpperCutawayRegion },
       );
     }
     for (const entity of entityCache.values()) fishingVisuals.updateEntity(entity, { historical: true });
@@ -2057,6 +2063,18 @@ function installDungeonCameraControls() {
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", "地牢 2.5D 视角；悬停识别对象，接管后点击地面移动，右键或长按目标选择详情、走近、攻击或使用，滚轮缩放");
   canvas.style.touchAction = "none";
+  dungeonObserverControls?.dispose();
+  dungeonObserverControls = installDungeonObserverControls({
+    getPose: () => ({ yaw: orbitYaw, pitch: orbitPitch, distance: orbitDistance }),
+    setPose: pose => {
+      orbitYaw = pose.yaw;
+      orbitPitch = pose.pitch;
+      orbitDistance = pose.distance;
+      applyPosition(true, true);
+    },
+    limits: { min: DUNGEON_MIN_DISTANCE, max: DUNGEON_MAX_DISTANCE,
+      yaw: DUNGEON_CAMERA_YAW, pitch: DUNGEON_CAMERA_PITCH, distance: DUNGEON_DEFAULT_DISTANCE },
+  });
   canvas.addEventListener(
     "wheel",
     (event) => {
@@ -2068,6 +2086,7 @@ function installDungeonCameraControls() {
         DUNGEON_MAX_DISTANCE,
         DUNGEON_DEFAULT_DISTANCE,
       );
+      dungeonObserverControls?.refresh();
       applyPosition(true);
     },
     { passive: false },
@@ -2078,18 +2097,29 @@ function installDungeonCameraControls() {
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
+let dungeonUpperCutawayY = null;
+let dungeonUpperCutawayRegion = null;
+
 function installDungeonOcclusion() {
-  if (!isDungeonView) return;
+  if (!usesWorldAvatar) return;
   const canvas = document.getElementById("viewer-canvas");
   if (canvas) setElementDataset(canvas, "dungeonOcclusion", "ready");
   // Patch the handful of shared terrain shaders once at startup. Runtime
   // checks only flip uniforms, avoiding material clones and shader churn.
   refreshDungeonCutawayMaterials();
+  const scene = globalThis.world?.scene;
+  if (scene) {
+    const previous = scene.onBeforeRender;
+    scene.onBeforeRender = function (...args) {
+      previous?.apply(this, args);
+      updateDungeonVisibilityFrame();
+    };
+  }
   scheduleDungeonOcclusionCheck();
 }
 
 function scheduleDungeonOcclusionCheck() {
-  if (!isDungeonView || !rendererReady || document.hidden) return;
+  if (!usesWorldAvatar || !rendererReady || document.hidden) return;
   if (dungeonOcclusionCheckFrame !== null || dungeonOcclusionCheckTimer !== null) return;
   const queueFrame = () => {
     dungeonOcclusionCheckFrame = requestAnimationFrame((now) => {
@@ -2121,7 +2151,7 @@ function cancelDungeonOcclusionCheck() {
 }
 
 function runDungeonOcclusionCheck() {
-  if (!isDungeonView || !rendererReady || !latestPosition || document.hidden) return;
+  if (!usesWorldAvatar || !rendererReady || !latestPosition || document.hidden) return;
   const startedAt = performance.now();
   const world = globalThis.world;
   const camera = world?.camera;
@@ -2137,6 +2167,9 @@ function runDungeonOcclusionCheck() {
       lastDurationMs: Math.round((performance.now() - startedAt) * 100) / 100,
     };
     dungeonOcclusionState = { active: false, clearSamples: 0 };
+    dungeonRoofState = { active: false, clearSamples: 0 };
+    dungeonUpperCutawayY = null;
+    dungeonUpperCutawayRegion = null;
     restoreDungeonCutaway();
     return;
   }
@@ -2151,8 +2184,10 @@ function runDungeonOcclusionCheck() {
     y: sceneOrigin.toWorldY(dungeonOcclusionCameraScene.y),
     z: sceneOrigin.toWorldZ(dungeonOcclusionCameraScene.z),
   };
-  let trace;
+  let trace, roomCeiling = false, deepRoof = false;
   try {
+    roomCeiling = hasRoomCeiling(avatar, collisionCache);
+    deepRoof = hasDeepRoof(avatar, collisionCache);
     trace = traceVisibilityCorridor({
       start: cameraWorld,
       target: { x: avatar.x, y: avatar.y, z: avatar.z },
@@ -2162,34 +2197,43 @@ function runDungeonOcclusionCheck() {
       maximumSamples: 320,
     });
   } catch {
+    roomCeiling = false;
+    deepRoof = false;
     trace = { occluded: false, hit: null, samples: 0, reason: "collision-cache-error", ray: null };
   }
 
   viewerPerformanceCounters.occlusionChecks += 1;
   viewerPerformanceCounters.occlusionVoxelSamples += trace.samples;
+  // Prepare late terrain materials while the corridor is still clear.
+  // First entering a house must not trigger shader compilation.
+  refreshDungeonCutawayMaterials();
   const wasActive = dungeonOcclusionState.active;
   dungeonOcclusionState = updateOcclusionHysteresis(
     dungeonOcclusionState,
-    trace.occluded,
+    deepRoof || trace.occluded || roomCeiling,
     DUNGEON_OCCLUSION_RELEASE_SAMPLES,
   );
-  if (dungeonOcclusionState.active) {
-    applyDungeonCutaway({
-      targetWorld: avatar,
-      cameraWorld,
-      cameraScene: dungeonOcclusionCameraScene,
-      obstruction: trace.hit,
-      cutoffWorldY: avatar.y + DUNGEON_OCCLUSION_CUT_HEIGHT,
-    });
-  } else {
-    restoreDungeonCutaway();
-  }
+  dungeonRoofState = updateOcclusionHysteresis(dungeonRoofState, roomCeiling || deepRoof, DUNGEON_OCCLUSION_RELEASE_SAMPLES);
+  const hardCutaway = isDungeonView && dungeonRoofState.active;
+  dungeonUpperCutawayY = hardCutaway && dungeonOcclusionState.active ? avatar.y : null;
+  if (dungeonUpperCutawayY === null) dungeonUpperCutawayRegion = null;
+  // Collision caches omit some visible surfaces. The fragment mask handles
+  // the body aperture even when the sparse CPU rays report a clear view.
+  applyDungeonCutaway({
+    targetWorld: avatar,
+    cameraWorld,
+    cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
+    hardCutaway,
+  });
   if (!wasActive && dungeonOcclusionState.active) viewerPerformanceCounters.cutawayActivations += 1;
   if (wasActive && !dungeonOcclusionState.active) viewerPerformanceCounters.cutawayRestores += 1;
 
   const canvas = document.getElementById("viewer-canvas");
   if (canvas) {
     setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");
+    setElementDataset(canvas, "roomCeiling", roomCeiling ? "yes" : "no");
+    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");
+    setElementDataset(canvas, "occlusionMode", roomOcclusionMode(isDungeonView, hardCutaway));
     setElementDataset(canvas, "occlusionCutaway", dungeonCutawayApplied ? "active" : dungeonOcclusionState.active ? "unavailable" : "clear");
     setElementDataset(canvas, "occlusionSamples", trace.samples);
     setElementDataset(canvas, "occlusionTarget", resolvedTarget?.mode || "self");
@@ -2199,6 +2243,12 @@ function runDungeonOcclusionCheck() {
     supported: true,
     active: dungeonCutawayApplied,
     detected: dungeonOcclusionState.active,
+    roomCeiling,
+    deepRoof,
+    mode: roomOcclusionMode(isDungeonView, hardCutaway),
+    cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
+    cutScope: hardCutaway ? "room-and-aperture" : "aperture",
+    maskVersion: 2,
     applied: dungeonCutawayApplied,
     checks: dungeonOcclusionDiagnostics.checks + 1,
     samples: dungeonOcclusionDiagnostics.samples + trace.samples,
@@ -2213,12 +2263,12 @@ function runDungeonOcclusionCheck() {
     clearSamples: dungeonOcclusionState.clearSamples,
     intervalMs: DUNGEON_OCCLUSION_INTERVAL_MS,
     releaseSamples: DUNGEON_OCCLUSION_RELEASE_SAMPLES,
-    cutHeight: DUNGEON_OCCLUSION_CUT_HEIGHT,
+    cutHeight: 2,
   };
 }
 
 function refreshDungeonCutawayMaterials() {
-  if (!isDungeonView) return;
+  if (!usesWorldAvatar) return;
   const world = globalThis.world;
   const manager = world?.chunkMeshManager;
   const candidates = [
@@ -2262,101 +2312,74 @@ function registerDungeonCutawayMaterial(material) {
   // across the whole world, creating large visible holes. Only materials
   // whose shader supports the bounded corridor may participate.
   dungeonCutawayMaterials.set(material, record);
+  material.addEventListener?.("dispose", () => dungeonCutawayMaterials.delete(material));
   dungeonOcclusionDiagnostics.materials = dungeonCutawayMaterials.size;
   if (record.mode === "uniform") dungeonOcclusionDiagnostics.patchedShaderMaterials += 1;
   if (record.mode === "unsupported") dungeonOcclusionDiagnostics.unsupportedMaterials += 1;
 }
 
 function patchDungeonCutawayShader(material) {
-  material.userData ||= {};
-  if (material.userData.__lanternDungeonCutawayPatched === true) {
-    material.uniforms ||= {};
-    material.uniforms.u_lanternCutawayEnabled ||= { value: 0 };
-    material.uniforms.u_lanternCutawayY ||= { value: 0 };
-    material.uniforms.u_lanternCutawayCamera ||= { value: new Vector3() };
-    material.uniforms.u_lanternCutawayTarget ||= { value: new Vector3() };
-    material.uniforms.u_lanternCutawayRadius ||= { value: DUNGEON_OCCLUSION_CORRIDOR_RADIUS };
-    material.uniforms.u_lanternCutawayHitAlong ||= { value: 1 };
-    material.uniforms.u_lanternCutawayHalfSpan ||= { value: 0.1 };
-    return true;
-  }
-  const vertex = String(material.vertexShader || "");
-  const fragment = String(material.fragmentShader || "");
-  const relativePosition = /(vec3\s+relativePos\s*=\s*[^;]+;)/u;
-  if (!relativePosition.test(vertex) || !vertex.includes("void main() {") || !fragment.includes("void main() {")) return false;
-
-  material.vertexShader = vertex
-    .replace(
-      "void main() {",
-      "uniform float u_lanternCutawayY;\nuniform float u_lanternCutawayEnabled;\nout vec3 v_lanternCutawayPosition;\n\nvoid main() {",
-    )
-    .replace(relativePosition, "$1\n    v_lanternCutawayPosition = relativePos;");
-  material.fragmentShader = fragment.replace(
-    "void main() {",
-    "uniform float u_lanternCutawayY;\nuniform float u_lanternCutawayEnabled;\nuniform vec3 u_lanternCutawayCamera;\nuniform vec3 u_lanternCutawayTarget;\nuniform float u_lanternCutawayRadius;\nuniform float u_lanternCutawayHitAlong;\nuniform float u_lanternCutawayHalfSpan;\nin vec3 v_lanternCutawayPosition;\n\nvoid main() {\n    vec2 lanternSegment = u_lanternCutawayTarget.xz - u_lanternCutawayCamera.xz;\n    float lanternLengthSq = max(dot(lanternSegment, lanternSegment), 0.0001);\n    float lanternAlongRaw = dot(v_lanternCutawayPosition.xz - u_lanternCutawayCamera.xz, lanternSegment) / lanternLengthSq;\n    float lanternAlong = clamp(lanternAlongRaw, 0.0, 1.0);\n    vec2 lanternClosest = u_lanternCutawayCamera.xz + lanternSegment * lanternAlong;\n    float lanternRadius = mix(u_lanternCutawayRadius * 0.42, u_lanternCutawayRadius, lanternAlong);\n    bool lanternBeyondFirstHit = lanternAlongRaw >= max(0.0, u_lanternCutawayHitAlong - u_lanternCutawayHalfSpan) && lanternAlongRaw <= 1.0;\n    bool lanternInSightCorridor = distance(v_lanternCutawayPosition.xz, lanternClosest) < lanternRadius;\n    if (u_lanternCutawayEnabled > 0.5 && lanternBeyondFirstHit && lanternInSightCorridor && v_lanternCutawayPosition.y > u_lanternCutawayY) discard;",
-  );
-  material.uniforms ||= {};
-  material.uniforms.u_lanternCutawayEnabled = { value: 0 };
-  material.uniforms.u_lanternCutawayY = { value: 0 };
-  material.uniforms.u_lanternCutawayCamera = { value: new Vector3() };
-  material.uniforms.u_lanternCutawayTarget = { value: new Vector3() };
-  material.uniforms.u_lanternCutawayRadius = { value: DUNGEON_OCCLUSION_CORRIDOR_RADIUS };
-  material.uniforms.u_lanternCutawayHitAlong = { value: 1 };
-  material.uniforms.u_lanternCutawayHalfSpan = { value: 0.1 };
-  material.userData.__lanternDungeonCutawayPatched = true;
-  material.needsUpdate = true;
-  return true;
+  return patchCutawayMaterial(material, dungeonVisibilityUniforms);
 }
 
-function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {
-  refreshDungeonCutawayMaterials();
-  const sceneOrigin = globalThis.world?.sceneOrigin;
-  if (!sceneOrigin) return false;
-  const cutoffSceneY = sceneOrigin.toSceneY(cutoffWorldY);
-  dungeonOcclusionTargetScene.set(
-    cameraScene.x + (targetWorld.x - cameraWorld.x),
-    cameraScene.y + (targetWorld.y - cameraWorld.y),
-    cameraScene.z + (targetWorld.z - cameraWorld.z),
-  );
-  const segmentX = targetWorld.x - cameraWorld.x;
-  const segmentZ = targetWorld.z - cameraWorld.z;
-  const segmentLengthSq = segmentX * segmentX + segmentZ * segmentZ;
-  const hitAlong = obstruction && segmentLengthSq > 0.0001
-    ? clampNumber(((obstruction.x + 0.5 - cameraWorld.x) * segmentX +
-      (obstruction.z + 0.5 - cameraWorld.z) * segmentZ) / segmentLengthSq, 0, 1, 1)
-    : 1;
-  // Start the opening at the first obstruction and carry it through the avatar.
-  // A window around the first hit alone leaves the roof over the avatar intact.
-  const hitHalfSpan = segmentLengthSq > 0.0001
-    ? clampNumber(1.25 / Math.sqrt(segmentLengthSq), 0.025, 0.2, 0.2)
-    : 0.2;
-  let applied = 0;
-  for (const record of dungeonCutawayMaterials.values()) {
-    if (record.mode === "uniform") {
-      record.material.uniforms.u_lanternCutawayY.value = cutoffSceneY;
-      record.material.uniforms.u_lanternCutawayEnabled.value = 1;
-      record.material.uniforms.u_lanternCutawayCamera.value.copy(cameraScene);
-      record.material.uniforms.u_lanternCutawayTarget.value.copy(dungeonOcclusionTargetScene);
-      record.material.uniforms.u_lanternCutawayRadius.value = DUNGEON_OCCLUSION_CORRIDOR_RADIUS;
-      record.material.uniforms.u_lanternCutawayHitAlong.value = hitAlong;
-      record.material.uniforms.u_lanternCutawayHalfSpan.value = hitHalfSpan;
-      applied += 1;
-    }
-  }
-  dungeonCutawayApplied = applied > 0;
+function applyDungeonCutaway({ targetWorld, cameraWorld, hardCutaway }) {
+  dungeonRevealTarget = true;
+  dungeonVisibilityUniforms.u_lanternCutawayEnabled.value = hardCutaway ? 2 : 1;
+  dungeonUpperCutawayRegion = hardCutaway
+    ? { center: targetWorld, camera: cameraWorld, radius: 6, corridorRadius: 0, hitAlong: 1, halfSpan: 0 }
+    : null;
+  dungeonCutawayApplied = [...dungeonCutawayMaterials.values()].some(record => record.mode === "uniform");
+  updateDungeonVisibilityFrame();
   return dungeonCutawayApplied;
 }
 
 function restoreDungeonCutaway() {
-  if (!dungeonCutawayApplied) return;
-  for (const record of dungeonCutawayMaterials.values()) {
-    if (record.mode === "uniform") {
-      if (record.material.uniforms?.u_lanternCutawayEnabled) {
-        record.material.uniforms.u_lanternCutawayEnabled.value = 0;
-      }
-    }
-  }
+  dungeonRevealTarget = false;
   dungeonCutawayApplied = false;
+}
+
+function updateDungeonVisibilityFrame() {
+  if (!rendererReady || !usesWorldAvatar) return;
+  const world = globalThis.world;
+  const camera = world?.camera;
+  const origin = world?.sceneOrigin;
+  if (!camera || !origin || !latestPosition) return;
+  const now = performance.now();
+  const elapsed = dungeonRevealLastFrameAt === null ? 16 : now - dungeonRevealLastFrameAt;
+  dungeonRevealLastFrameAt = now;
+  const uniforms = dungeonVisibilityUniforms;
+  uniforms.u_lanternReveal.value = advanceReveal(uniforms.u_lanternReveal.value, dungeonRevealTarget, elapsed);
+  if (uniforms.u_lanternReveal.value === 0 && !dungeonRevealTarget) {
+    uniforms.u_lanternCutawayEnabled.value = 0;
+    dungeonUpperCutawayY = null;
+    dungeonUpperCutawayRegion = null;
+    return;
+  }
+  // Use the displayed entity and camera, including interpolation and floating
+  // origin changes. A network-rate mask otherwise trails a walking character.
+  const targetId = focusedCharacterId ?? pendingAvatarState?.entity?.id;
+  const root = targetId === undefined ? null : world.entities?.entities?.[String(targetId)];
+  const targetWorld = resolveObserverTargetPosition()?.position || latestPosition.pos;
+  if (root?.getWorldPosition && (focusedCharacterId !== null || Math.hypot(observerOffset.x, observerOffset.y, observerOffset.z) < 0.01)) {
+    root.getWorldPosition(dungeonOcclusionTargetScene);
+  } else {
+    dungeonOcclusionTargetScene.set(origin.toSceneX(targetWorld.x), origin.toSceneY(targetWorld.y), origin.toSceneZ(targetWorld.z));
+  }
+  camera.getWorldPosition(uniforms.u_lanternCutawayCamera.value);
+  uniforms.u_lanternFootY.value = dungeonOcclusionTargetScene.y + 0.05;
+  const feetWorldY = origin.toWorldY(dungeonOcclusionTargetScene.y);
+  uniforms.u_lanternCutawayY.value = origin.toSceneY(roomCutoffWorldY(feetWorldY, true));
+  uniforms.u_lanternCutawayTarget.value.copy(dungeonOcclusionTargetScene);
+  uniforms.u_lanternCutawayTarget.value.y += 1;
+  uniforms.u_lanternCameraRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  uniforms.u_lanternCameraUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  uniforms.u_lanternCameraForward.value.setFromMatrixColumn(camera.matrixWorld, 2).negate().normalize();
+  if (uniforms.u_lanternCutawayEnabled.value > 1.5) {
+    dungeonUpperCutawayY = feetWorldY;
+    dungeonUpperCutawayRegion = { center: {
+      x: origin.toWorldX(dungeonOcclusionTargetScene.x), y: feetWorldY, z: origin.toWorldZ(dungeonOcclusionTargetScene.z),
+    }, camera: targetWorld, radius: 6, corridorRadius: 0, hitAlong: 1, halfSpan: 0 };
+  }
 }
 
 function scheduleDungeonHoverPick(canvas) {
@@ -5328,7 +5351,7 @@ function configureTrustedAvatarLighting() {
   // materials are adapted separately; a restrained fill/rim rig affects lit
   // entity materials while the MeshBasic block atlas remains unchanged.
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.shadowMap.type = PCFShadowMap;
   const sun = world.directionalLight;
   if (sun?.shadow) {
     sun.castShadow = true;
@@ -5382,7 +5405,7 @@ function sampleRendererPerformance() {
   };
   scheduleTrustedNpcAvatarRebalance("quality-sample");
   publishPerformanceDataset();
-  if (isDungeonView && !document.hidden) scheduleDungeonOcclusionCheck();
+  if (usesWorldAvatar && !document.hidden) scheduleDungeonOcclusionCheck();
 }
 
 function applyRendererQuality(quality) {

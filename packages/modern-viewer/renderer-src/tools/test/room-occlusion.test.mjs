@@ -19,47 +19,15 @@ test('dungeon cuts both thin and thick upper layers while third-person keeps cor
   assert.equal(roomCutoffWorldY(avatar.y, true), 65.95);
 });
 
-test('generated terrain shader bounds dungeon cutaway and third-person transparency', () => {
+test('host adaptation preserves the directly imported visibility policy', () => {
   const client = patchRoomOcclusion(readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8'));
-  const start = client.indexOf('function patchDungeonCutawayShader(material) {');
-  const end = client.indexOf('\nfunction applyDungeonCutaway(', start);
-  const patch = runInNewContext(`${client.slice(start, end)}\npatchDungeonCutawayShader`, {
-    Vector3: class {}, DUNGEON_OCCLUSION_CORRIDOR_RADIUS: 1.85,
-  });
-  const material = { vertexShader: 'void main() { vec3 relativePos = vec3(0.0); }', fragmentShader: 'void main() {}' };
-  assert.equal(patch(material), true);
-  const range = material.fragmentShader.match(/bool lanternBeyondFirstHit = ([^;]+);/)[1];
-  const eligible = along => runInNewContext(range, {
-    lanternAlongRaw: along, u_lanternCutawayHitAlong: 0.35,
-    u_lanternCutawayHalfSpan: 0.1, max: Math.max,
-  });
-  assert.equal(eligible(0.2), false);
-  assert.equal(eligible(0.5), true);
-  assert.equal(eligible(1.05), true, 'reveal the far half of the avatar');
-  assert.equal(eligible(1.2), false);
-  assert.ok(material.fragmentShader.includes('mix(16.0, 4.0, smoothstep(0.0, 0.75, lanternEdge))'));
-  const cutCondition = material.fragmentShader.match(/if \((u_lanternCutawayEnabled > 1\.5[^)]*)\) discard/)[1];
-  const cut = (y, along, inRoom = true) => runInNewContext(cutCondition, {
-    u_lanternCutawayEnabled: 2, u_lanternCutawayY: 65.95,
-    v_lanternCutawayPosition: { y }, lanternHardCutawayRegion: inRoom, lanternAlongRaw: along,
-  });
-  for (const along of [-3, 0, 0.5, 1, 5]) {
-    assert.equal(cut(66, along), true, 'local room opening removes its upper floor');
-    assert.equal(cut(65.9, along), false, 'floor and avatar space are retained');
-  }
-  assert.equal(cut(90, 5, false), false, 'distant mountain outside the room and corridor is retained');
-  const checkStart = client.indexOf('function runDungeonOcclusionCheck()');
-  const checkEnd = client.indexOf('function refreshDungeonCutawayMaterials()', checkStart);
-  const check = client.slice(checkStart, checkEnd);
-  assert.ok(check.indexOf('refreshDungeonCutawayMaterials()') < check.indexOf('if (dungeonOcclusionState.active)'));
-  const shader = material.fragmentShader;
-  material.needsUpdate = false;
-  assert.equal(patch(material), true);
-  assert.equal(material.fragmentShader, shader);
-  assert.equal(material.needsUpdate, false, 'repeated visibility checks do not recompile terrain');
+  assert.ok(client.includes('from "./room-visibility.js"'));
+  assert.ok(client.includes('patchCutawayMaterial(material, dungeonVisibilityUniforms)'));
+  assert.ok(!client.includes('record.mode = "plane"'));
+  assert.equal(patchRoomOcclusion(client), client);
 });
 
-test('outdoor mountains remain whole, covered rooms slice, and missing collision data cannot activate slicing', () => {
+test('body aperture covers surfaces missed by collision rays; only covered rooms slice', () => {
   const client = patchRoomOcclusion(readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8'));
   const start = client.indexOf('function runDungeonOcclusionCheck()');
   const end = client.indexOf('function refreshDungeonCutawayMaterials()', start);
@@ -73,7 +41,7 @@ test('outdoor mountains remain whole, covered rooms slice, and missing collision
         sceneOrigin: { toWorldX: x => x, toWorldY: y => y, toWorldZ: z => z } },
       dungeonOcclusionCameraScene: {}, performance, DUNGEON_OCCLUSION_RELEASE_SAMPLES: 3,
       DUNGEON_OCCLUSION_INTERVAL_MS: 250, DUNGEON_OCCLUSION_CUT_HEIGHT: 1.65,
-      dungeonOcclusionState: { active: false, clearSamples: 0 }, dungeonCutawayApplied: false,
+      dungeonOcclusionState: { active: false, clearSamples: 0 }, dungeonRoofState: { active: false, clearSamples: 0 }, dungeonCutawayApplied: false,
       dungeonOcclusionDiagnostics: { checks: 0, samples: 0 }, dungeonCutawayMaterials: new Map(),
       viewerPerformanceCounters: { occlusionChecks: 0, occlusionVoxelSamples: 0, cutawayActivations: 0, cutawayRestores: 0 },
       resolveObserverTargetPosition: () => ({ position: { x: 50, y: 24.3, z: 25 }, mode: 'entity' }), focusedCharacterId: '8',
@@ -85,14 +53,15 @@ test('outdoor mountains remain whole, covered rooms slice, and missing collision
     };
     runInNewContext(`${client.slice(start, end)}\nrunDungeonOcclusionCheck();`, context);
     const covered = situation === 'roof';
-    const active = covered || situation === 'wall';
+    const active = situation !== 'unavailable';
     assert.equal(calls.length, active ? 1 : 0, `${isDungeonView}: ${situation}`);
     if (active) {
       const hard = isDungeonView && covered;
       assert.equal(calls[0].cutoffWorldY, hard ? 25.95 : 24.35);
       assert.equal(calls[0].hardCutaway, hard);
-      assert.equal(context.dungeonOcclusionDiagnostics.cutScope, hard ? 'room-and-corridor' : 'corridor');
+      assert.equal(context.dungeonOcclusionDiagnostics.cutScope, hard ? 'room-and-aperture' : 'aperture');
       assert.equal(context.dungeonUpperCutawayY, hard ? 24.3 : null);
+      assert.equal(context.dungeonOcclusionDiagnostics.detected, covered || situation === 'wall');
     }
     if (situation === 'unavailable') assert.equal(context.dungeonOcclusionDiagnostics.active, false);
   }

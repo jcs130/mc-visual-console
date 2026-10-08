@@ -76,6 +76,9 @@ const boundedCutawayShaderBlock = [
 
 /** @param {string} source */
 export function patchRoomOcclusion(source) {
+  // Current renderer owns its visibility policy directly. Keep the legacy
+  // adaptation only for older external source packages used by existing hosts.
+  if (source.includes('from "./room-visibility.js"')) return source.replace(/\r\n/g, '\n');
   let result = source.replace(/\r\n/g, '\n')
   result = replaceOnce(result,
     'const DUNGEON_OCCLUSION_CUT_HEIGHT = 0.28;',
