@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { installSelfAvatarCameraVisibility, inUpperCutawayRegion } from '../../src/modern-viewer/self-avatar-camera-visibility.js';
+import { createCutawayUniforms } from '../../src/modern-viewer/room-visibility.js';
 
 function fixture() {
   const scene = new Scene();
@@ -264,4 +265,29 @@ test('local roof opening preserves distant uphill players and decorations sharin
   assert.equal(inUpperCutawayRegion({x:12,z:8}, region), false);
   controller.dispose();
   assert.equal(near.material, shared);
+});
+
+test('large decoration geometry uses fragment bounds even when its mesh origin lies outside the opening', () => {
+  const { world, camera, avatar } = fixture();
+  camera.position.z = 16;
+  const material = new MeshBasicMaterial();
+  const roof = new Mesh(new BoxGeometry(80, 1, 80), material);
+  roof.position.set(30, 8, 0);
+  world.scene.add(roof);
+  const uniforms = createCutawayUniforms();
+  const controller = installSelfAvatarCameraVisibility(world, () => 7, {
+    getUpperCutawayY: () => 0,
+    getUpperCutawayRegion: () => ({ center: { x: 0, z: 0 }, camera: { x: 0, z: 16 }, radius: 24, corridorRadius: 0, hitAlong: 1, halfSpan: 0 }),
+    cutawayUniforms: uniforms,
+  });
+  world.entities.render();
+  const patched = roof.material;
+  assert.notEqual(patched, material);
+  assert.equal(patched.userData.lanternVisibilityVersion, 3);
+  assert.equal(patched.clippingPlanes, null, 'only fragments within the live mask are removed');
+  assert.equal(avatar.children[0].material.userData.lanternVisibilityVersion, undefined);
+  world.entities.render();
+  assert.equal(roof.material, patched, 'successive render passes retain the same material');
+  controller.dispose();
+  assert.equal(roof.material, material);
 });

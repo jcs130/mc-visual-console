@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { hasDeepRoof, hasRoomCeiling, patchRoomOcclusion, roomCutoffWorldY, roomOcclusionMode } from '../minecraft-viewer-room-occlusion.mjs';
+import { createCutawayUniforms } from '../../src/modern-viewer/room-visibility.js';
 
 test('dungeon cuts both thin and thick upper layers while third-person keeps corridor transparency', () => {
   const solid = new Set(['0,66,0', '1,66,0', '0,66,1']);
@@ -42,6 +43,7 @@ test('body aperture covers surfaces missed by collision rays; only covered rooms
       dungeonOcclusionCameraScene: {}, performance, DUNGEON_OCCLUSION_RELEASE_SAMPLES: 3,
       DUNGEON_OCCLUSION_INTERVAL_MS: 250, DUNGEON_OCCLUSION_CUT_HEIGHT: 1.65,
       dungeonOcclusionState: { active: false, clearSamples: 0 }, dungeonRoofState: { active: false, clearSamples: 0 }, dungeonCutawayApplied: false,
+      dungeonRoomCoverCache: null, dungeonFloorMask: null, dungeonVisibilityUniforms: createCutawayUniforms(),
       dungeonOcclusionDiagnostics: { checks: 0, samples: 0 }, dungeonCutawayMaterials: new Map(),
       viewerPerformanceCounters: { occlusionChecks: 0, occlusionVoxelSamples: 0, cutawayActivations: 0, cutawayRestores: 0 },
       resolveObserverTargetPosition: () => ({ position: { x: 50, y: 24.3, z: 25 }, mode: 'entity' }), focusedCharacterId: '8',
@@ -59,7 +61,7 @@ test('body aperture covers surfaces missed by collision rays; only covered rooms
       const hard = isDungeonView && covered;
       assert.equal(calls[0].cutoffWorldY, hard ? 25.95 : 24.35);
       assert.equal(calls[0].hardCutaway, hard);
-      assert.equal(context.dungeonOcclusionDiagnostics.cutScope, hard ? 'room-and-aperture' : 'aperture');
+      assert.equal(context.dungeonOcclusionDiagnostics.cutScope, hard ? 'connected-floor-and-aperture' : 'aperture');
       assert.equal(context.dungeonUpperCutawayY, hard ? 24.3 : null);
       assert.equal(context.dungeonOcclusionDiagnostics.detected, covered || situation === 'wall');
     }

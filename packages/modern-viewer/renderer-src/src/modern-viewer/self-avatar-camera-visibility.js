@@ -1,7 +1,9 @@
 import { Plane, Vector3 } from "three";
+import { patchCutawayMaterial } from "./room-visibility.js";
 
 export function inUpperCutawayRegion(position, region) {
   if (!region) return true;
+  if (region.roomMask && !region.roomMask.contains(position)) return false;
   const { center, camera, radius, corridorRadius, hitAlong, halfSpan } = region;
   if (Math.hypot(position.x - center.x, position.z - center.z) < radius) return true;
   const dx = center.x - camera.x, dz = center.z - camera.z;
@@ -20,6 +22,7 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
   cameraBodyMargin = 0.04,
   getUpperCutawayY = () => null,
   getUpperCutawayRegion = () => null,
+  cutawayUniforms = null,
 } = {}) {
   const entities = world?.entities;
   if (typeof entities?.render !== "function") return null;
@@ -69,21 +72,26 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
     const active = new Set();
     const visit = node => {
       if (entityRoots.has(node)) return;
-      if (node.isMesh && inUpperCutawayRegion(worldPosition(node), region)) {
+      if (node.isMesh && (cutawayUniforms || inUpperCutawayRegion(worldPosition(node), region))) {
         const record = clippedObjects.get(node);
         if (record && node.material !== record.applied) {
           restoreDecoration(node, record);
           clippedObjects.delete(node);
         }
         const materials = Array.isArray(node.material) ? node.material : [node.material];
-        if (materials.some(material => material && !material.isShaderMaterial)) {
+        if (clippedObjects.has(node) || materials.some(material => material && !material.isShaderMaterial && material.userData?.lanternVisibilityVersion !== 3)) {
           active.add(node);
           if (!clippedObjects.has(node)) {
             const original = node.material;
             const clones = materials.map(material => {
-              if (!material || material.isShaderMaterial) return material;
+              if (!material || material.isShaderMaterial || material.userData?.lanternVisibilityVersion === 3) return material;
               const clone = material.clone();
-              clone.clippingPlanes = [...(material.clippingPlanes ?? []), upperLayerPlane];
+              if (cutawayUniforms) {
+                clone.onBeforeCompile = material.onBeforeCompile;
+                clone.customProgramCacheKey = material.customProgramCacheKey;
+                patchCutawayMaterial(clone, cutawayUniforms);
+              }
+              else clone.clippingPlanes = [...(material.clippingPlanes ?? []), upperLayerPlane];
               return clone;
             });
             node.material = Array.isArray(original) ? clones : clones[0];

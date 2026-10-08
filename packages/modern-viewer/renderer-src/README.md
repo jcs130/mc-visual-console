@@ -1,4 +1,4 @@
-<!-- Owner: src/modern-viewer/client.js, src/modern-viewer/room-visibility.js, src/modern-viewer/dungeon-observer-controls.js, src/modern-viewer/self-avatar-camera-visibility.js, tools/build-minecraft-viewer-client.mjs -->
+<!-- Owner: src/modern-viewer/client.js, src/modern-viewer/room-visibility.js, src/modern-viewer/room-cover-cache.js, src/modern-viewer/room-floor-mask.js, src/modern-viewer/dungeon-observer-controls.js, src/modern-viewer/self-avatar-camera-visibility.js, tools/build-minecraft-viewer-client.mjs -->
 # Minecraft 1.20.6 现代网页渲染器
 
 此目录提供浏览器源码、页面与样式、HUD/动画/特效增强、离线资源导出与构建工具。
@@ -24,13 +24,19 @@
 第三人称和 2.5D 的模型可见性由 `self-avatar-camera-visibility.js` 在每次实体绘制前处理。
 自身模型不受区块遮挡缓存的瞬时变化影响；相机贴近时仍隐藏全身，协议隐身仍生效。
 2.5D 检测到头顶的屋顶或岩层后，以观察目标脚底所在格向上两格为裁切高度，
-仅移除目标周围 6 格的上层地形、告示牌和旗帜；同一区域的上层实体逐帧隐藏。远处山体和玩家保持完整。
+移除镜头范围内、当前楼层连通活动区域上方的地形、告示牌和旗帜；同一区域的上层实体逐帧隐藏。
+范围随缩放、俯视角度和画面比例更新，最大半径 96 格。
+`room-floor-mask.js` 沿头部无阻挡且脚下两格以内有支撑的方块列展开，厚岩体、隔墙后的房间及悬崖外的空中区域保留。
+不超过两格厚的隔墙可裁去上沿；同一高度、区块版本和镜头范围复用结果，不逐帧重新搜索。
 同层玩家、护甲和持物保持完整，不使用全局裁切平面。裁切随观察目标和浮动原点更新。
 室外及第三人称使用人物投影视线窗口，只移除人物前方且遮挡身体的像素，保留脚下地面、侧面及人物后方的地形。
 视线窗口中心完全打开，边缘使用固定覆盖网点，屋顶范围也有窄过渡边缘；显隐渐变且不改变材质的深度写入或透明排序。
 屋顶与碰撞遮挡检测每 180 毫秒执行，视线窗口随实际绘制的相机和人物逐帧更新，共用着色器参数，不重建区块。
 人物视窗由可见片元确定，不依赖碰撞射线是否命中，覆盖树叶及细小遮挡。
-屋顶检测在向上 2–16 格内采样，兼容挑高房间；连续三次无覆盖后退出，避免门口反复切换。第一人称显示完整场景。
+屋顶检测在向上 2–64 格内采样，兼容挑高房间及楼梯开口；连续三次无覆盖后退出，避免门口反复切换。第一人称显示完整场景。
+`room-cover-cache.js` 从收到的区块保留方块节调色板，按查询解码方块节，卸载区块时释放。
+可见覆盖包含树叶、玻璃和台阶，独立于相机碰撞规则；方块更新与替换区块同步刷新覆盖。
+标准材质和地形着色器共用片元范围，跨越视窗的大网格不依赖网格原点判定，也不使用整片裁切平面。
 2.5D 顶部镜头工具栏支持左右旋转 90 度、缩放、切换俯视角度与复位；镜头操作不控制游戏角色。
 玩家皮肤与臂型来自宿主转发的服务端 player-info，背包预览复用自身外观；
 没有服务端材质时使用默认皮肤。纹理响应过期后不覆盖新皮肤。

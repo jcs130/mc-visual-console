@@ -51,7 +51,9 @@ import {
 } from "./npc-portraits.js";
 import { normalizeMotionFrame } from "./avatar-motion.js";
 import { rendererEntityEquipment } from "./renderer-equipment.js";
-import { hasRoomCeiling, hasDeepRoof, roomCutoffWorldY, roomOcclusionMode, createCutawayUniforms, patchCutawayMaterial, advanceReveal } from "./room-visibility.js";
+import { hasRoomCeiling, hasDeepRoof, roomCutoffWorldY, roomOcclusionMode, createCutawayUniforms, patchCutawayMaterial, advanceReveal, roomRevealRadius, setRoomFloorMask } from "./room-visibility.js";
+import { RoomCoverCache } from "./room-cover-cache.js";
+import { RoomFloorMask } from "./room-floor-mask.js";
 import { installDungeonObserverControls } from "./dungeon-observer-controls.js";
 import { installSelfAvatarCameraVisibility } from "./self-avatar-camera-visibility.js";
 import { installEntityRenderBounds } from "./entity-render-bounds.js";
@@ -514,6 +516,8 @@ let dungeonOcclusionCheckTimer = null;
 let dungeonOcclusionLastCheckAt = 0;
 let dungeonOcclusionState = { active: false, clearSamples: 0 };
 let dungeonRoofState = { active: false, clearSamples: 0 };
+let dungeonRoomCoverCache = null;
+let dungeonFloorMask = null;
 let dungeonCutawayApplied = false;
 let dungeonCutawayMaterialScanCursor = 0;
 let dungeonOcclusionDiagnostics = {
@@ -720,6 +724,7 @@ socket.on("viewerEffect", (event) => {
 socket.on("loadChunk", (data) => {
   if (!data || !Number.isFinite(data.x) || !Number.isFinite(data.z)) return;
   const normalized = normalizeChunk(data);
+  dungeonRoomCoverCache?.ingestColumn(data.x, data.z, normalized.chunk);
   if (rendererReady) {
     worldView.emit("loadChunk", normalized);
     refreshChunkLoadingGuards();
@@ -731,6 +736,7 @@ socket.on("loadChunk", (data) => {
 socket.on("unloadChunk", (data) => {
   if (!data || !Number.isFinite(data.x) || !Number.isFinite(data.z)) return;
   const key = `${data.x},${data.z}`;
+  dungeonRoomCoverCache?.removeColumn(data.x, data.z);
   if (rendererReady) {
     worldView.emit("unloadChunk", data);
     refreshChunkLoadingGuards();
@@ -742,6 +748,7 @@ socket.on("unloadChunk", (data) => {
 socket.on("blockUpdate", (data) => {
   if (!data?.pos || !Number.isFinite(data.stateId)) return;
   const normalized = { ...data, pos: toVec3(data.pos) };
+  dungeonRoomCoverCache?.setBlockStateId(Math.floor(data.pos.x), Math.floor(data.pos.y), Math.floor(data.pos.z), data.stateId);
   if (rendererReady) {
     worldView.emit("blockUpdate", normalized);
     scheduleDungeonOcclusionCheck();
@@ -774,6 +781,10 @@ socket.on("entityMoved", (update) => handleEntity(update, true));
 
 async function initializeRenderer(version) {
   initializing = true;
+  if (isDungeonView) {
+    dungeonRoomCoverCache = new RoomCoverCache(version);
+    dungeonFloorMask = new RoomFloorMask(dungeonRoomCoverCache);
+  }
   setStatus("正在建立现代方块与实体图集…");
   try {
     ensureWebGl2();
@@ -865,7 +876,8 @@ async function initializeRenderer(version) {
         globalThis.world,
         () => pendingAvatarState?.entity?.id,
         { getUpperCutawayY: () => dungeonUpperCutawayY,
-          getUpperCutawayRegion: () => dungeonUpperCutawayRegion },
+          getUpperCutawayRegion: () => dungeonUpperCutawayRegion,
+          cutawayUniforms: dungeonVisibilityUniforms },
       );
     }
     for (const entity of entityCache.values()) fishingVisuals.updateEntity(entity, { historical: true });
@@ -2186,7 +2198,7 @@ function runDungeonOcclusionCheck() {
   };
   let trace, roomCeiling = false, deepRoof = false;
   try {
-    roomCeiling = hasRoomCeiling(avatar, collisionCache);
+    roomCeiling = hasRoomCeiling(avatar, dungeonRoomCoverCache || collisionCache);
     deepRoof = hasDeepRoof(avatar, collisionCache);
     trace = traceVisibilityCorridor({
       start: cameraWorld,
@@ -2247,8 +2259,11 @@ function runDungeonOcclusionCheck() {
     deepRoof,
     mode: roomOcclusionMode(isDungeonView, hardCutaway),
     cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
-    cutScope: hardCutaway ? "room-and-aperture" : "aperture",
-    maskVersion: 2,
+    cutScope: hardCutaway ? "connected-floor-and-aperture" : "aperture",
+    maskVersion: 3,
+    roomRadius: dungeonVisibilityUniforms.u_lanternRoomRadius.value,
+    coverCache: dungeonRoomCoverCache?.diagnostics ?? null,
+    floorMask: dungeonFloorMask?.diagnostics ?? null,
     applied: dungeonCutawayApplied,
     checks: dungeonOcclusionDiagnostics.checks + 1,
     samples: dungeonOcclusionDiagnostics.samples + trace.samples,
@@ -2304,7 +2319,7 @@ function registerDungeonCutawayMaterial(material) {
     material,
     mode: "unsupported",
   };
-  if (material.isShaderMaterial === true) {
+  if (material.isMaterial || material.isShaderMaterial === true) {
     record.mode = patchDungeonCutawayShader(material) ? "uniform" : "unsupported";
   }
   // A scene-wide clipping plane is not a safe fallback for the local
@@ -2326,10 +2341,16 @@ function applyDungeonCutaway({ targetWorld, cameraWorld, hardCutaway }) {
   dungeonRevealTarget = true;
   dungeonVisibilityUniforms.u_lanternCutawayEnabled.value = hardCutaway ? 2 : 1;
   dungeonUpperCutawayRegion = hardCutaway
-    ? { center: targetWorld, camera: cameraWorld, radius: 6, corridorRadius: 0, hitAlong: 1, halfSpan: 0 }
+    ? { center: targetWorld, camera: cameraWorld, radius: dungeonVisibilityUniforms.u_lanternRoomRadius.value, corridorRadius: 0, hitAlong: 1, halfSpan: 0 }
     : null;
   dungeonCutawayApplied = [...dungeonCutawayMaterials.values()].some(record => record.mode === "uniform");
   updateDungeonVisibilityFrame();
+  if (hardCutaway && dungeonFloorMask) {
+    const previous = dungeonFloorMask.current;
+    const mask = dungeonFloorMask.update(targetWorld, dungeonVisibilityUniforms.u_lanternRoomRadius.value);
+    if (mask !== previous) setRoomFloorMask(dungeonVisibilityUniforms, mask);
+    updateDungeonVisibilityFrame();
+  } else dungeonVisibilityUniforms.u_lanternRoomMaskEnabled.value = 0;
   return dungeonCutawayApplied;
 }
 
@@ -2374,11 +2395,14 @@ function updateDungeonVisibilityFrame() {
   uniforms.u_lanternCameraRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
   uniforms.u_lanternCameraUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
   uniforms.u_lanternCameraForward.value.setFromMatrixColumn(camera.matrixWorld, 2).negate().normalize();
+  uniforms.u_lanternRoomRadius.value = roomRevealRadius(camera, dungeonOcclusionTargetScene, dungeonOcclusionTargetScene.y);
+  const roomMask = dungeonFloorMask?.current ?? null;
+  if (roomMask) uniforms.u_lanternRoomMaskOrigin.value.set(origin.toSceneX(roomMask.origin.x), 0, origin.toSceneZ(roomMask.origin.z));
   if (uniforms.u_lanternCutawayEnabled.value > 1.5) {
     dungeonUpperCutawayY = feetWorldY;
     dungeonUpperCutawayRegion = { center: {
       x: origin.toWorldX(dungeonOcclusionTargetScene.x), y: feetWorldY, z: origin.toWorldZ(dungeonOcclusionTargetScene.z),
-    }, camera: targetWorld, radius: 6, corridorRadius: 0, hitAlong: 1, halfSpan: 0 };
+    }, camera: targetWorld, radius: uniforms.u_lanternRoomRadius.value, corridorRadius: 0, hitAlong: 1, halfSpan: 0, roomMask };
   }
 }
 

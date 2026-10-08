@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PerspectiveCamera, Vector3 } from 'three';
+import { MeshBasicMaterial, PerspectiveCamera, ShaderLib, UniformsUtils, Vector3 } from 'three';
 import { Vec3 } from 'vec3';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { advanceReveal, createCutawayUniforms, cutawayMask, patchCutawayMaterial, hasRoomCeiling, CEILING_SCAN_HEIGHT } from '../../src/modern-viewer/room-visibility.js';
+import { advanceReveal, createCutawayUniforms, cutawayMask, patchCutawayMaterial, hasRoomCeiling, CEILING_SCAN_HEIGHT, roomRevealRadius, MAX_ROOM_RADIUS } from '../../src/modern-viewer/room-visibility.js';
 
 const point = (x, y, z) => new Vector3(x, y, z);
 test('tall room ceilings are detected within a bounded vertical scan', () => {
@@ -14,9 +14,14 @@ test('tall room ceilings are detected within a bounded vertical scan', () => {
     assert.equal(hasRoomCeiling({ x: 0.3, y: 64.3, z: 0.3 }, { isSolidBlock(x, y, z) {
       samples++; return ceiling.has(`${x},${y},${z}`);
     } }), true);
-    assert.ok(samples <= CEILING_SCAN_HEIGHT + 4);
+    assert.ok(samples <= CEILING_SCAN_HEIGHT * 5);
   }
   assert.equal(hasRoomCeiling({ x: 0, y: 64, z: 0 }, { isSolidBlock: (_x, y) => y > 64 + CEILING_SCAN_HEIGHT }), false);
+});
+
+test('a ceiling around a stairwell still reveals the floor but a vertical wall does not', () => {
+  assert.equal(hasRoomCeiling(point(0, 64, 0), { isSolidBlock: (x, y, z) => y === 74 && Math.abs(x) + Math.abs(z) === 1 }), true);
+  assert.equal(hasRoomCeiling(point(0, 64, 0), { isSolidBlock: x => x === 1 }), false);
 });
 function fixture(yaw = Math.PI / 4, distance = 16, pitch = 0.82) {
   const target = point(0, 65, 0);
@@ -62,6 +67,25 @@ test('room roof opening keeps a local boundary, the lower floor and a soft rim',
   assert.equal(cutawayMask(point(6.1, 86, 0), settings), 0);
   const rim = cutawayMask(point(5.6, 70, 0), settings);
   assert.ok(rim > 0 && rim < 1);
+});
+
+test('covered tower floors reveal every visible ground corner at each zoom and aspect', () => {
+  for (const distance of [8, 16, 32]) for (const aspect of [0.6, 16 / 9, 2.4]) {
+    const { settings, camera } = fixture(Math.PI / 4, distance);
+    camera.aspect = aspect; camera.updateProjectionMatrix();
+    settings.covered = true;
+    settings.roomRadius = roomRevealRadius(camera, settings.target, 64);
+    for (const x of [-0.95, 0.95]) for (const y of [-0.95, 0.95]) {
+      const direction = point(x, y, 1).unproject(camera).sub(camera.position);
+      const floor = camera.position.clone().addScaledVector(direction, (64 - camera.position.y) / direction.y);
+      assert.equal(cutawayMask(floor.clone().setY(74), settings), 1,
+        `upper floor remains at distance=${distance}, aspect=${aspect}, corner=${x},${y}, radius=${settings.roomRadius}, floor=${floor.toArray()}`);
+      assert.equal(cutawayMask(floor, settings), 0, 'current walkable floor remains');
+    }
+    assert.equal(cutawayMask(point(settings.roomRadius + 1, 74, 0), settings), 0, 'distant high terrain retains its boundary');
+  }
+  const { camera, settings } = fixture(0, 32, 0.02);
+  assert.ok(roomRevealRadius(camera, settings.target, 64) <= MAX_ROOM_RADIUS);
 });
 
 test('floating-origin translation and display aspect do not change the aperture', () => {
@@ -116,6 +140,26 @@ test('all terrain shaders share one live mask without changing transparent/depth
   assert.equal(unsupported.fragmentShader, 'void main() {}');
 });
 
+test('standard leaf and decoration materials use the same bounded fragment mask', () => {
+  const uniforms = createCutawayUniforms();
+  const material = new MeshBasicMaterial({ transparent: true, alphaTest: 0.5 });
+  const originalKey = material.customProgramCacheKey();
+  assert.equal(patchCutawayMaterial(material, uniforms), true);
+  const shader = { vertexShader: ShaderLib.basic.vertexShader, fragmentShader: ShaderLib.basic.fragmentShader,
+    uniforms: UniformsUtils.clone(ShaderLib.basic.uniforms) };
+  material.onBeforeCompile(shader, {});
+  assert.ok(shader.vertexShader.includes('v_lanternCutawayPosition = (modelMatrix * lanternPosition).xyz'));
+  assert.ok(shader.fragmentShader.includes('lanternApplyCutaway();'));
+  assert.equal(shader.uniforms.u_lanternRoomRadius, uniforms.u_lanternRoomRadius);
+  assert.equal(material.transparent, true);
+  assert.equal(material.alphaTest, 0.5);
+  const patched = material.onBeforeCompile;
+  patchCutawayMaterial(material, uniforms);
+  assert.equal(material.onBeforeCompile, patched);
+  assert.equal(material.customProgramCacheKey(), `${originalKey}:lantern-visibility-3`);
+  assert.equal(material.clippingPlanes, null);
+});
+
 test('render-time mask follows interpolated entity and camera between network updates', () => {
   const client = readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8');
   const start = client.indexOf('function updateDungeonVisibilityFrame() {');
@@ -126,7 +170,7 @@ test('render-time mask follows interpolated entity and camera between network up
   const context = { performance, rendererReady: true, usesWorldAvatar: true, dungeonRevealLastFrameAt: null,
     dungeonRevealTarget: true, dungeonVisibilityUniforms: uniforms, latestPosition: { pos: point(0, 64, 0) },
     dungeonOcclusionTargetScene: new Vector3(), focusedCharacterId: null, pendingAvatarState: { entity: { id: 7 } },
-    observerOffset: new Vec3(0, 0, 0), advanceReveal, roomCutoffWorldY: (y) => Math.floor(y) + 1.95,
+    observerOffset: new Vec3(0, 0, 0), dungeonFloorMask: null, advanceReveal, roomRevealRadius, roomCutoffWorldY: (y) => Math.floor(y) + 1.95,
     resolveObserverTargetPosition: () => ({ position: point(0, 64, 0) }),
     world: { camera, sceneOrigin: { toWorldX: x => x + 800, toWorldY: y => y + 64, toWorldZ: z => z - 900,
       toSceneX: x => x - 800, toSceneY: y => y - 64, toSceneZ: z => z + 900 }, entities: { entities: { 7: root } } },
