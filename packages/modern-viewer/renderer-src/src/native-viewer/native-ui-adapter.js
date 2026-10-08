@@ -2,6 +2,10 @@ import * as THREE from 'three'
 import { InventoryPlayerPreview } from '../modern-viewer/inventory-player-preview.js'
 import { FishingCatchHud } from '../modern-viewer/fishing-catch.js'
 import { NativeItemIcons } from './native-item-icons.js'
+import { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
+  nativeCoordinateMenuLayout } from './native-mod-menus.js'
+export { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
+  nativeCoordinateMenuLayout } from './native-mod-menus.js'
 
 // Adapt the original viewer's survival HUD, inventory layout and event panels.
 // Class names and pixel coordinates originate in minecraft-viewer-hud.js and
@@ -230,6 +234,7 @@ export class NativeUiAssets {
     this.craftingReason = 'NATIVE_CRAFTING_GUI_LOADING'
     this.cookingPotReason = 'NATIVE_COOKING_POT_GUI_LOADING'; this.cookingPotPlaceholderReason = 'NATIVE_COOKING_POT_GUI_LOADING'
     this.chestReason = 'NATIVE_CHEST_GUI_LOADING'; this.furnaceReasons = new Map(); this.furnaceProgressReasons = new Map()
+    this.curiosReason = 'NATIVE_CURIOS_GUI_LOADING'; this.domumReason = 'NATIVE_DOMUM_GUI_LOADING'
     for (const type of Object.keys(NATIVE_FURNACE_GUIS)) {
       this.furnaceReasons.set(type, 'NATIVE_FURNACE_GUI_LOADING')
       this.furnaceProgressReasons.set(type, 'NATIVE_FURNACE_GUI_LOADING')
@@ -258,6 +263,10 @@ export class NativeUiAssets {
     await Promise.all([
       prepare(NATIVE_CRAFTING_GUI, 'CRAFTING').then(reason => { this.craftingReason = reason }),
       prepare(NATIVE_CHEST_GUI, 'CHEST').then(reason => { this.chestReason = reason }),
+      Promise.all([NATIVE_CURIOS_GUI, NATIVE_CURIOS_GUI.inventory].map(info => prepare(info, 'CURIOS')))
+        .then(reasons => { this.curiosReason = reasons.find(Boolean) ?? null }),
+      Promise.all(NATIVE_DOMUM_GUIS.map(info => prepare(info, 'DOMUM')))
+        .then(reasons => { this.domumReason = reasons.find(Boolean) ?? null }),
       prepare(NATIVE_COOKING_POT_GUI, 'COOKING_POT').then(reason => { this.cookingPotReason = reason }),
       prepare({ ...NATIVE_COOKING_POT_GUI, ...NATIVE_COOKING_POT_GUI.emptyContainer }, 'COOKING_POT').then(reason => { this.cookingPotPlaceholderReason = reason }),
       ...Object.entries(NATIVE_FURNACE_GUIS).map(async ([type, info]) => {
@@ -363,7 +372,7 @@ export function createNativeInterface ({ document = globalThis.document,
   setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason } = {}) {
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
-  let expectedUuid = null, actor = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
+  let expectedUuid = null, actor = null, actorReason = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
   let hudSignature = null, skillsSignature = null
   const resolveIcon = item => typeof resolveItemIcon === 'function' ? resolveItemIcon(item) : itemIcons?.resolve(item)
   const resolveIconReason = item => typeof resolveItemIconReason === 'function' ? resolveItemIconReason(item)
@@ -462,6 +471,8 @@ export function createNativeInterface ({ document = globalThis.document,
     if (!actor.root.playerObject) return null
     return actor.root
   }
+  const actorUnavailableReason = () => typeof actorReason === 'string' && /^(NATIVE_|PLAYER_)/.test(actorReason)
+    ? `本人模型暂不可用（${actorReason.slice(0, 160)}）` : null
   const actualContainer = () => Number.isInteger(presentation.nativeMenu?.windowId) && presentation.nativeMenu.windowId > 0 ? presentation.nativeMenu : null
   const renderInventory = (body, inventory) => {
     const map = new Map(inventory.slots.map(row => [row.slot, row]))
@@ -482,7 +493,7 @@ export function createNativeInterface ({ document = globalThis.document,
       for (let i = 0; i < 27; i++) if (map.has(9 + i)) slot(panel, map.get(9 + i), 8 + (i % 9) * 18, 84 + Math.floor(i / 9) * 18, '背包')
       for (let i = 0; i < 9; i++) if (map.has(36 + i)) slot(panel, map.get(36 + i), 8 + i * 18, 142, '快捷栏')
       body.append(panel)
-      preview ??= previewFactory({ THREE, document, resolveSource: actorSource }) // Intentionally no createFallback.
+      preview ??= previewFactory({ THREE, document, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason }) // Intentionally no createFallback.
       preview.attach(host)
     } else {
       const host = node(document, 'div', 'native-inventory-preview')
@@ -492,7 +503,7 @@ export function createNativeInterface ({ document = globalThis.document,
       const grid = node(document, 'div', 'corti-menu-grid')
       for (const row of inventory.slots) slot(grid, row, undefined, undefined, `原生槽 ${row.slot}`)
       panel.append(grid); body.append(panel)
-      preview ??= previewFactory({ THREE, document, resolveSource: actorSource })
+      preview ??= previewFactory({ THREE, document, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason })
       preview.attach(host)
     }
     body.append(node(document, 'p', 'corti-menu-note', '本人原生物品与组件 · 只读；已支持图标按原生模型加载，未支持的专用模型及装备明确标注'))
@@ -508,7 +519,7 @@ export function createNativeInterface ({ document = globalThis.document,
     const visible = Boolean(showWindow || manualOpen || idleOpen)
     menu.hidden = !visible
     if (!visible) { preview?.setVisible(false); lastMenuSignature = null; return }
-    const signature = JSON.stringify([showWindow ? window : presentation.inventory, manualOpen, idleOpen, assetsSequence])
+    const signature = JSON.stringify([showWindow ? window : presentation.inventory, presentation.modOperations, manualOpen, idleOpen, assetsSequence])
     if (signature === lastMenuSignature) return
     lastMenuSignature = signature; preview?.setVisible(false); body.replaceChildren()
     const heading = q('[data-menu-title]'), source = q('[data-menu-source]')
@@ -531,6 +542,12 @@ export function createNativeInterface ({ document = globalThis.document,
         } else if (window.menuType === 'farmersdelight:cooking_pot') {
           kind = 'cooking-pot'; layout = nativeCookingPotMenuLayout(window, expectedUuid)
           reason = assets ? assets.cookingPotReason : 'NATIVE_COOKING_POT_GUI_LOADING'
+        } else if (window.menuType === 'curios:curios_container') {
+          kind = 'curios'; layout = nativeCuriosMenuLayout(window, expectedUuid)
+          reason = assets ? assets.curiosReason : 'NATIVE_CURIOS_GUI_LOADING'
+        } else if (window.menuType?.startsWith('domum_ornamentum:') && window.domum) {
+          kind = 'domum'; layout = nativeDomumMenuLayout(window, expectedUuid)
+          reason = assets ? assets.domumReason : 'NATIVE_DOMUM_GUI_LOADING'
         }
         if (reason || (layout && !assets?.urls.get(layout.info.path))) layout = null
       } catch (error) { reason = error.message; layout = null }
@@ -545,7 +562,7 @@ export function createNativeInterface ({ document = globalThis.document,
           if (crop.width <= 0 || crop.height <= 0) return
           const part = node(document, 'div', className)
           part.style.position = 'absolute'; part.style.pointerEvents = 'none'
-          part.style.left = `${crop.x * 2}px`; part.style.top = `${crop.y * 2}px`
+          part.style.left = `${(crop.x + (layout.offsetX ?? 0)) * 2}px`; part.style.top = `${(crop.y + (layout.offsetY ?? 0)) * 2}px`
           part.style.width = `${crop.width * 2}px`; part.style.height = `${crop.height * 2}px`
           part.style.backgroundImage = `url("${image}")`; part.style.backgroundRepeat = 'no-repeat'
           part.style.backgroundSize = `${imageWidth * 2}px ${imageHeight * 2}px`
@@ -557,8 +574,16 @@ export function createNativeInterface ({ document = globalThis.document,
         }
         if (layout.blits) {
           panel.style.backgroundImage = 'none'
-          for (const crop of layout.blits) blit(background, 256, 256, crop, 'native-menu-background-blit')
+          for (const crop of layout.blits) blit(crop.path ? assets.urls.get(crop.path) : background, 256, 256, crop, 'native-menu-background-blit')
         } else panel.style.backgroundImage = `url("${background}")`
+        if (kind === 'curios') {
+          const host = node(document, 'div', 'corti-inventory-player-preview')
+          host.style.left = `${52 + layout.offsetX * 2}px`; host.dataset.previewState = 'waiting'
+          host.setAttribute('role', 'img'); host.setAttribute('aria-label', '本人原模型预览；装备渲染未支持')
+          panel.append(host)
+          preview ??= previewFactory({ THREE, document, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason })
+          preview.attach(host)
+        }
         let progress = null, cookingPot = null
         if (kind === 'furnace') {
           progress = nativeFurnaceProgress(window, expectedUuid)
@@ -581,7 +606,7 @@ export function createNativeInterface ({ document = globalThis.document,
         for (const { row, x, y, role } of layout.slots) {
           // Original Slot coords address the 16px item; existing CSS draws its
           // 32px image 2px inside this 36px div, so place the div one GUI pixel back.
-          const itemSlot = slot(panel, row, x - 1, y - 1, `原生${role}槽 ${row.slot}`)
+          const itemSlot = slot(panel, row, x - 1 + (layout.offsetX ?? 0), y - 1 + (layout.offsetY ?? 0), `原生${role}槽 ${row.slot}`)
           itemSlot.dataset.nativeSlotX = String(x); itemSlot.dataset.nativeSlotY = String(y); itemSlot.dataset.slotRole = role
           if (typeof window.mayPickup?.[row.slot] === 'boolean') itemSlot.dataset.mayPickup = String(window.mayPickup[row.slot])
           if (kind === 'cooking-pot' && row.slot === 7 && row.item === null) {
@@ -609,19 +634,51 @@ export function createNativeInterface ({ document = globalThis.document,
         body.append(panel)
         const label = kind === 'crafting' ? '原版 3×3 工作台与玩家背包布局'
           : kind === 'chest' ? `原版 9×${layout.rowsCount} 容器与玩家背包布局`
+          : kind === 'curios' ? `Curios 原背包与饰品槽布局${layout.page !== null ? ` · 第 ${layout.page + 1}/${layout.totalPages} 页` : ' · 分页状态未同步'}`
+          : kind === 'domum' ? 'Domum Ornamentum 原建筑切割台材料、产物与玩家背包布局'
           : kind === 'cooking-pot' ? 'Farmer’s Delight 原 3×2 原料、熟食缓冲、容器、成品与玩家背包布局' : '原版炉输入、燃料、结果与玩家背包布局'
-        const missing = kind === 'chest' ? '原生标题未接入' : '配方书与原生标题未接入'
+        const missing = kind === 'curios' ? '配方书、饰品按钮与原生标题未接入'
+          : kind === 'domum' ? '分组/款式按钮图标、滚动位置与原生标题未接入'
+            : kind === 'chest' ? '原生标题未接入' : '配方书与原生标题未接入'
         const progressText = progress ? `；${progress.available ? '火焰与烧炼进度来自本人原生 dataValues'
           : `火焰与烧炼进度未知（${progress.reason}）`}` : cookingPot ? `；热源${cookingPot.heat.available ? (cookingPot.heat.isHeated ? '已加热' : '未加热') : `未知（${cookingPot.heat.reason}）`}；烹饪进度${cookingPot.progress.available ? '来自本人原生 dataValues' : `未知（${cookingPot.progress.reason}）`}` : ''
         const placeholderText = kind === 'cooking-pot' && assets.cookingPotPlaceholderReason ? `；空槽图标未支持（${assets.cookingPotPlaceholderReason}）` : ''
         body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId} · state ${window.stateId}；${label} · 只读；${missing}${progressText}${placeholderText}`))
+        if (kind === 'domum') {
+          const state = layout.state, variant = state.currentVariant
+          body.append(node(document, 'p', 'corti-menu-note', `本人原生选择 · 分组：${state.currentGroup ?? '未选择'}；款式：${variant?.displayName || variant?.name || variant?.id || '未选择'}；可用分组：${state.groups.length}；匹配配方：${state.matchingRecipeCount ?? '未同步'}。可选款式是配方预览，不是背包物品。`))
+        }
       } else {
-        const panel = node(document, 'div', 'corti-menu-generic'), grid = node(document, 'div', 'corti-menu-grid')
-        for (const row of window.slots) slot(grid, row, undefined, undefined, `原生槽 ${row.slot}`)
-        panel.append(grid); body.append(panel)
-        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId ?? '未同步'} · state ${window.stateId ?? '未同步'}；原生菜单布局未支持${reason ? `（${reason}）` : ''}`))
+        let coordinates = null
+        try { coordinates = nativeCoordinateMenuLayout(window, expectedUuid) } catch {}
+        const panel = node(document, 'div', coordinates ? 'corti-menu-native-coordinates' : 'corti-menu-generic')
+        if (coordinates) {
+          panel.style.position = 'relative'; panel.style.width = `${coordinates.width * 2}px`; panel.style.height = `${coordinates.height * 2}px`
+          for (const { row, x, y } of coordinates.slots) {
+            const itemSlot = slot(panel, row, x - 1 + coordinates.offsetX, y - 1 + coordinates.offsetY, `原生槽 ${row.slot}`)
+            itemSlot.dataset.nativeSlotX = String(x); itemSlot.dataset.nativeSlotY = String(y)
+            if (typeof window.mayPickup?.[row.slot] === 'boolean') itemSlot.dataset.mayPickup = String(window.mayPickup[row.slot])
+          }
+        } else {
+          const grid = node(document, 'div', 'corti-menu-grid')
+          for (const row of window.slots) slot(grid, row, undefined, undefined, `原生槽 ${row.slot}`)
+          panel.append(grid)
+        }
+        body.append(panel)
+        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId ?? '未同步'} · state ${window.stateId ?? '未同步'}；${coordinates ? '本人原生槽位坐标诊断视图；原模组界面贴图/控件未支持' : '原生菜单布局未支持'}${reason ? `（${reason}）` : ''}`))
       }
-      if (window.carried) body.append(node(document, 'p', 'corti-menu-note', `光标：${window.carried.name} × ${window.carried.count}`))
+      if (window.carried) {
+        const carried = node(document, 'div', 'native-menu-carried'), icon = node(document, 'div', 'corti-menu-slot')
+        renderNativeItemSlot(document, icon, window.carried, { label: '本人光标', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason })
+        carried.append(icon, node(document, 'span', '', `光标：${window.carried.displayName || window.carried.name} × ${window.carried.count}`)); body.append(carried)
+      }
+      const operation = presentation.modOperations?.at(-1)
+      if (operation?.playerUuid === expectedUuid) {
+        const outcome = operation.outcomeUnknown ? '结果未知，需核查；请勿自动重试'
+          : operation.ok === false ? `操作被拒绝（${operation.code || '未提供原因'}）`
+            : operation.ok === true ? (operation.readOnly ? '查询已返回' : operation.changed === true ? '服务端已确认状态变化' : '服务端已接受；实际效果以原生状态为准') : '未确认'
+        body.append(node(document, 'p', 'corti-menu-note native-menu-operation', `${operation.operation} · ${outcome} · request ${operation.requestId || '未提供'}`))
+      }
     } else {
       menu.dataset.inventorySource = manualOpen ? 'manual' : 'idle'
       if (heading) heading.textContent = '本人背包'
@@ -703,7 +760,7 @@ export function createNativeInterface ({ document = globalThis.document,
     schedule: later, cancel: timer => { clearTimer(timer); timers.delete(timer) },
     renderIcon: (target, item) => renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason }) }) : null
   const reset = () => {
-    current = null; actor = null; presentation = unavailable('本人状态不可用')
+    current = null; actor = null; actorReason = null; presentation = unavailable('本人状态不可用')
     manualOpen = false; cancelIdle(); dismissedMenu = null; lastMenuSignature = null; hudSignature = null; skillsSignature = null
     for (const timer of timers) clearTimer(timer)
     timers.clear(); seenMessages.clear(); seenTitles.clear(); fishing?.reset(); preview?.reset()
@@ -716,7 +773,7 @@ export function createNativeInterface ({ document = globalThis.document,
       const next = identity?.confirmed === true ? uuid(identity.playerUuid) : null
       if (expectedUuid !== next) { reset(); expectedUuid = next }
     },
-    setActor (value) { actor = value; lastMenuSignature = null; renderMenu() },
+    setActor (value, reason = null) { actor = value; actorReason = reason; lastMenuSignature = null; renderMenu() },
     async setAssets (reader) {
       const sequence = ++assetsSequence
       assets?.dispose(); itemIcons?.dispose(); assets = new NativeUiAssets(reader)

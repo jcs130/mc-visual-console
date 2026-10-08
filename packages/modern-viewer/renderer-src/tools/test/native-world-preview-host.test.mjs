@@ -660,6 +660,28 @@ test('Ars HUD states are genuine timestamped receipts, unknown cooldowns stay nu
   assert.equal(createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog }).skills, null)
 })
 
+test('mod GUI observations bind to the same player, exact window/state and age; private receipts contain only game fields', () => {
+  const playerUuid='01234567-89ab-cdef-0123-456789abcdef', menu=nativeInventory(playerUuid)
+  Object.assign(menu,{windowId:3,stateId:7,menuType:'curios:curios_container',slotLayout:[{slot:0,x:-25,y:8}]})
+  const curiosReceipt={playerUuid,action:'curios_state',ok:true,state:{menuOpen:true,containerId:3,stateId:7,page:0,totalPages:1,menuSlots:[]}}
+  const options={playerUuid,menu,curiosReceipt,modObservedAt:1000,now:2000,
+    modOperations:[{playerUuid,operation:'menu.click',requestId:'real-click',ok:true,changed:true,readOnly:false,runtimeSecret:'never-render'},
+      {playerUuid:'ffffffff-ffff-ffff-ffff-ffffffffffff',operation:'foreign',ok:true}]}
+  const state=createNativePlayerPresentation(options)
+  assert.equal(state.nativeMenu.curios.page,0); assert.deepEqual(state.nativeMenu.slotLayout,menu.slotLayout)
+  assert.equal(state.modOperations.length,1); assert.equal(state.modOperations[0].changed,true)
+  assert.equal(state.modOperations[0].runtimeSecret,undefined)
+  for(const patch of [{now:7000},{now:500},{curiosReceipt:{...curiosReceipt,playerUuid:'ffffffff-ffff-ffff-ffff-ffffffffffff'}},
+    {curiosReceipt:{...curiosReceipt,state:{...curiosReceipt.state,stateId:8}}}]) {
+    assert.equal(createNativePlayerPresentation({...options,...patch}).nativeMenu.curios,undefined)
+  }
+  menu.menuType='domum_ornamentum:architectscutter'
+  const domumState={playerUuid,source:'same_player_native_architects_cutter',windowId:3,stateId:7,inputs:[],groups:[]}
+  assert.equal(createNativePlayerPresentation({...options,domumState}).nativeMenu.domum.source,domumState.source)
+  domumState.windowId++
+  assert.equal(createNativePlayerPresentation({...options,domumState}).nativeMenu.domum,undefined)
+})
+
 test('same-player private presentation rejects foreign, asynchronous, cyclic and oversized callbacks without exposing unrelated provider data', t => {
   let supplied, throws = false, reads = 0
   const { bot, host, counts } = attachment(t, { getPresentationState: () => { reads++; if (throws) throw Error('private-auth-secret'); return supplied } })

@@ -7,6 +7,8 @@ import { createNativeInterface, nativePresentationView, nativeSlotRows, NativeUi
 import { NATIVE_CHEST_GUI, NATIVE_FURNACE_GUIS, nativeChestMenuLayout, nativeFurnaceMenuLayout,
   nativeFurnaceProgress, NATIVE_COOKING_POT_GUI, nativeCookingPotMenuLayout,
   nativeCookingPotState } from '../../src/native-viewer/native-ui-adapter.js'
+import { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeCoordinateMenuLayout,
+  nativeDomumMenuLayout } from '../../src/native-viewer/native-mod-menus.js'
 
 const UUID = 'e371227c-09fa-3722-84f4-f3228a552c3c'
 const OTHER = '1231227c-09fa-3722-84f4-f3228a552c3c'
@@ -281,6 +283,95 @@ const cookingPotReader = () => {
   return reader
 }
 
+const modMenuReader = () => {
+  const reader = containerReader()
+  for (const info of [NATIVE_CURIOS_GUI, ...NATIVE_DOMUM_GUIS]) {
+    if (!reader.manifest.sources.some(row => row.name === info.sourceName)) reader.manifest.sources.push({ name: info.sourceName, sha256: info.sourceSha256, explicitOverride: false })
+    reader.manifest.assets[info.path] = { sha256: info.sha256, bytes: info.bytes, source: info.sourceName }
+  }
+  const info = NATIVE_CURIOS_GUI.inventory
+  reader.manifest.assets[info.path] = { sha256: info.sha256, bytes: info.bytes, source: 'minecraft-1.21.1-client.jar' }
+  return reader
+}
+const curiosMenu = ({ count = 6, columns = 1, paged = false } = {}) => {
+  const menu = containerMenu('curios:curios_container', 46 + count)
+  menu.slotLayout = menu.slots.map(({ slot: i }) => {
+    const point = i === 0 ? [154,28] : i < 5 ? [98 + ((i-1)%2)*18,18 + Math.floor((i-1)/2)*18]
+      : i < 9 ? [8,8+(i-5)*18] : i < 36 ? [8+((i-9)%9)*18,84+Math.floor((i-9)/9)*18]
+        : i < 45 ? [8+(i-36)*18,142] : i === 45 ? [77,62]
+          : [7-(14+18*columns)+((i-46)%columns)*18,(paged ? 16 : 8)+Math.floor((i-46)/columns)*18]
+    return { slot: i, x: point[0], y: point[1] }
+  })
+  return menu
+}
+
+test('Curios original side panel follows real negative slot origins, dynamic columns and paged rows', () => {
+  const one = nativeCuriosMenuLayout(curiosMenu(), UUID)
+  assert.equal(one.width,209); assert.equal(one.offsetX,33); assert.equal(one.slots[46].x,-25); assert.equal(one.slots[51].y,98)
+  assert.deepEqual(one.blits[0], { path:NATIVE_CURIOS_GUI.inventory.path,x:0,y:0,sourceX:0,sourceY:0,width:176,height:166 })
+  const two = nativeCuriosMenuLayout(curiosMenu({ count: 13,columns: 2,paged:true }), UUID)
+  assert.equal(two.width,227); assert.equal(two.slots[46].x,-43); assert.equal(two.slots[47].x,-25)
+  assert.equal(two.slots[58].y,124)
+  assert.deepEqual(two.blits.filter(row => row.sourceX===7).map(row => row.height), [126,108])
+  assert.throws(() => nativeCuriosMenuLayout(curiosMenu(), OTHER), /IDENTITY/)
+  const damaged = curiosMenu(); damaged.slotLayout[46].x=8
+  assert.throws(() => nativeCuriosMenuLayout(damaged, UUID), /LAYOUT_MISMATCH/)
+})
+
+test('Curios GUI uses original texture crops and updates real cursor/slots after native clicks without proxy items', async () => {
+  const h=harness({ resolveItemIcon: () => ({ verified:true,url:'blob:native-item' }) })
+  await h.ui.setAssets(modMenuReader())
+  const menu=curiosMenu(), item={ name:'patchouli:guide_book',count:1,displayName:'幻想乡指南',snbt:'{id:"patchouli:guide_book",count:1,components:{}}' }
+  menu.slots[37].item=item; menu.mayPickup=Array(52).fill(true)
+  menu.curios={ playerUuid:UUID,menuOpen:true,containerId:1,stateId:17,page:0,totalPages:1,menuSlots:[] }
+  h.ui.update({ epoch:1,presentation:presentation({ nativeMenu:menu }) })
+  let panel=h.document.querySelector('.native-menu-curios')
+  assert.ok(panel); assert.equal(panel.style.width,'418px')
+  const side=panel.querySelectorAll('.corti-menu-slot').find(row=>row.dataset.slot==='46')
+  assert.equal(side.style.left,'14px'); assert.equal(side.dataset.nativeSlotX,'-25'); assert.equal(side.dataset.mayPickup,'true')
+  assert.equal(panel.querySelectorAll('.native-menu-background-blit').length,6)
+  assert.equal(h.document.querySelector('.corti-menu-grid'),null)
+  menu.slots[37].item=null; menu.carried=item; menu.stateId++
+  h.ui.update({ epoch:1,presentation:presentation({ nativeMenu:menu }) })
+  panel=h.document.querySelector('.native-menu-curios')
+  assert.equal(panel.querySelectorAll('.corti-menu-slot').find(row=>row.dataset.slot==='37').dataset.itemName,'')
+  assert.match(h.document.querySelector('.native-menu-carried').textContent,/幻想乡指南/)
+  menu.slots[9].item=item; menu.carried=null; menu.stateId++
+  h.ui.update({ epoch:1,presentation:presentation({ nativeMenu:menu }) })
+  assert.equal(h.document.querySelector('.native-menu-carried'),null)
+  assert.equal(h.document.querySelector('.native-menu-curios').querySelectorAll('.corti-menu-slot').find(row=>row.dataset.slot==='9').dataset.itemName,'patchouli:guide_book')
+  h.ui.setActor(null,'NATIVE_YSM_MODEL_UNSUPPORTED')
+  assert.match(h.previews.at(-1).options.getUnavailableReason(),/NATIVE_YSM_MODEL_UNSUPPORTED/)
+  h.ui.setActor(null,'本人模型正在载入')
+  assert.equal(h.previews.at(-1).options.getUnavailableReason(),null)
+  h.ui.dispose()
+})
+
+test('overridden Curios textures cannot masquerade as the installed GUI; diagnostic view retains original coordinates', async () => {
+  const reader=modMenuReader(); reader.manifest.assets[NATIVE_CURIOS_GUI.path].sha256='0'.repeat(64)
+  const h=harness(); await h.ui.setAssets(reader)
+  h.ui.update({ epoch:1,presentation:presentation({ nativeMenu:curiosMenu() }) })
+  assert.equal(h.document.querySelector('.native-menu-curios'),null)
+  const view=h.document.querySelector('.corti-menu-native-coordinates')
+  assert.ok(view); assert.equal(view.querySelectorAll('.corti-menu-slot').find(row=>row.dataset.slot==='46').dataset.nativeSlotX,'-25')
+  assert.match(h.document.querySelector('[data-menu-body]').textContent,/TEXTURE_UNVERIFIED/)
+  const malformed=curiosMenu(); malformed.slotLayout[4].x=Infinity
+  assert.throws(()=>nativeCoordinateMenuLayout(malformed,UUID),/INVALID/)
+  h.ui.dispose()
+})
+
+test('Domum material/output layout requires a fresh native state matching the exact window and state id', () => {
+  const menu=containerMenu('domum_ornamentum:architectscutter',39)
+  menu.slotLayout=menu.slots.map(({slot:i})=>({ slot:i,x:i<2 ? 96 : i===2 ? 183 : 40+((i-3)%9)*18,
+    y:i<2 ? 66+i*20 : i===2 ? 77 : i<30 ? 120+Math.floor((i-3)/9)*18 : 178 }))
+  menu.domum={ playerUuid:UUID,source:'same_player_native_architects_cutter',windowId:1,stateId:17,inputs:[{},{}],outputSlot:2,groups:[],currentGroup:null }
+  assert.equal(nativeDomumMenuLayout(menu,UUID).info.path,NATIVE_DOMUM_GUIS[0].path)
+  menu.domum.currentGroup='domum_ornamentum:doors'
+  assert.equal(nativeDomumMenuLayout(menu,UUID).info.path,NATIVE_DOMUM_GUIS[1].path)
+  menu.domum.stateId++
+  assert.throws(()=>nativeDomumMenuLayout(menu,UUID),/STATE_UNAVAILABLE/)
+})
+
 test('locked CraftingMenu slot origins cover the original result, 3x3 inputs and exact player inventory indices', () => {
   const menu = craftingMenu(), layout = nativeCraftingMenuLayout(menu, UUID)
   assert.equal(layout.length, 46); assert.deepEqual(layout[0].row, menu.slots[0])
@@ -375,6 +466,12 @@ test('private locked client crafting PNG is read through SHA and priority valida
       const bytes=await readFile(join(directory,image.path)),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
       assert.equal(view.getUint32(16),image===NATIVE_COOKING_POT_GUI?256:16)
       assert.equal(view.getUint32(20),image===NATIVE_COOKING_POT_GUI?256:16)
+    }
+    assert.equal(assets.curiosReason,null); assert.equal(assets.domumReason,null)
+    for(const image of [NATIVE_CURIOS_GUI,NATIVE_CURIOS_GUI.inventory,...NATIVE_DOMUM_GUIS]) {
+      assert.ok(assets.urls.has(image.path))
+      const bytes=await readFile(join(directory,image.path)),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
+      assert.equal(view.getUint32(16),256); assert.equal(view.getUint32(20),256)
     }
     assets.dispose()
   })

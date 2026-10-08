@@ -85,6 +85,7 @@ function injectedPresentation (provider, uuid) {
         .filter(key => Object.hasOwn(copy.self, key)).map(key => [key, key === 'ysm' ? projectNativeYsmState(copy.self.ysm, uuid)
           : key === 'motion' ? projectNativePlayerRenderState(copy.self.motion, uuid) : copy.self[key]])) : null
     return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
+      modOperations: copy.modOperations ?? [],
       nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null,
       entityRenderStates: copy.entityRenderStates ?? null, nativeState: { available: true } }
   } catch (error) {
@@ -117,7 +118,8 @@ function presentationText (input, simplifyNBT) {
 
 // The worker injects only observations it already owns. This adapter performs
 // no queries and never consults Mineflayer's vanilla proxy inventory.
-export function createNativePlayerPresentation ({ playerUuid, menu, spellState, spellCatalog = null, spellObservedAt = null, now = Date.now() }) {
+export function createNativePlayerPresentation ({ playerUuid, menu, spellState, spellCatalog = null, spellObservedAt = null,
+  curiosReceipt = null, domumState = null, modObservedAt = null, modOperations = [], now = Date.now() }) {
   const uuid = typeof playerUuid === 'string' ? playerUuid.toLowerCase() : null
   const own = value => UUID.test(uuid || '') && typeof value?.playerUuid === 'string' && value.playerUuid.toLowerCase() === uuid
   const nativeItem = item => {
@@ -153,6 +155,15 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
     for (const key of ['dataValues', 'dataValuesSource', 'dataValuesError', 'slotLayout']) {
       if (Object.hasOwn(menu, key)) nativeMenu[key] = menu[key]
     }
+    // A mod read may arrive before/after the container snapshot. Attach it only
+    // to exactly the same player's current window AND state, with a short age.
+    const freshMods = Number.isFinite(modObservedAt) && modObservedAt <= now && now - modObservedAt <= 5000
+    const curios = curiosReceipt?.state
+    if (freshMods && own(curiosReceipt) && curiosReceipt.ok === true && curiosReceipt.action === 'curios_state' &&
+        menu.menuType === 'curios:curios_container' && curios?.menuOpen === true &&
+        curios.containerId === menu.windowId && curios.stateId === menu.stateId) nativeMenu.curios = { ...curios, playerUuid: uuid }
+    if (freshMods && own(domumState) && domumState.source === 'same_player_native_architects_cutter' &&
+        menu.menuType?.startsWith('domum_ornamentum:') && domumState.windowId === menu.windowId && domumState.stateId === menu.stateId) nativeMenu.domum = domumState
     if (own(menu.cookingPot) && menu.cookingPot.source === 'native_cooking_pot_menu') {
       nativeMenu.cookingPot = { playerUuid: uuid, source: menu.cookingPot.source,
         isHeated: typeof menu.cookingPot.isHeated === 'boolean' ? menu.cookingPot.isHeated : null,
@@ -206,7 +217,16 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
       })) : [], cooldown: spellState.cooldown ?? null, source: 'ars_nouveau_receipt', observedAt: finiteNumber(spellObservedAt),
       stale: !sameHeld || !Number.isFinite(spellObservedAt) || now - spellObservedAt > 5000 }
   }
-  return { schemaVersion: 1, playerUuid: uuid, inventory, nativeMenu, skills, ...(self ? { self } : {}),
+  const operations = Array.isArray(modOperations) ? modOperations.filter(own).slice(-8).map(row => ({
+    playerUuid: uuid, operation: typeof row.operation === 'string' ? row.operation.slice(0, 96) : null,
+    requestId: typeof row.requestId === 'string' ? row.requestId.slice(0, 96) : null,
+    at: typeof row.at === 'string' ? row.at.slice(0, 40) : null,
+    ok: typeof row.ok === 'boolean' ? row.ok : null, changed: typeof row.changed === 'boolean' ? row.changed : null,
+    readOnly: typeof row.readOnly === 'boolean' ? row.readOnly : null,
+    code: typeof row.code === 'string' ? row.code.slice(0, 128) : null,
+    outcomeUnknown: row.outcomeUnknown === true || row.outcomeKnown === false
+  })) : []
+  return { schemaVersion: 1, playerUuid: uuid, inventory, nativeMenu, skills, modOperations: operations, ...(self ? { self } : {}),
     ...(renderRegistries ? { renderRegistries } : {}),
     ...(own(menu) && Array.isArray(menu.entityRenderStates) && menu.entityRenderStates.length <= 16
       ? { entityRenderStates: menu.entityRenderStates } : {}) }
@@ -425,7 +445,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             experienceLevel: finiteNumber(bot.experience?.level), experienceProgress: finiteNumber(bot.experience?.progress), experiencePoints: finiteNumber(bot.experience?.points),
             quickBarSlot: Number.isInteger(bot.quickBarSlot) && bot.quickBarSlot >= 0 && bot.quickBarSlot <= 8 ? bot.quickBarSlot : null,
             ...(injected.nativeSelf ?? {}) },
-          inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, nativeState: injected.nativeState,
+          inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, modOperations: injected.modOperations ?? [], nativeState: injected.nativeState,
           renderRegistries: injected.renderRegistries,
           entityRenderStates: injected.entityRenderStates,
           gameMessages: gameMessages.map(message => ({ ...message })),

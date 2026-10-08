@@ -68,7 +68,7 @@ async function start () {
       if (actor.firstPersonRoot) firstPersonScene.add(actor.firstPersonRoot)
       actor.setFirstPersonViewport?.(firstPersonCamera)
     }
-    onActor(actor); publishDiagnostics()
+    onActor(actor, status); publishDiagnostics()
   } })
   entityLayer = new NativeEntityLayer(reader,{onChange:publishDiagnostics});worldRoot.add(entityLayer.root)
   scene.add(new THREE.AmbientLight(0xffffff, 1.1))

@@ -154,7 +154,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         boot.classList.add('is-compact'); boot.classList.remove('is-error')
         boot.textContent = `原生模型 ${value.drawn}/${value.total} · 完整场景尚未验收`
       },
-      onActor (value) { if (!disposed) ui.setActor(value) },
+      onActor (value, reason) { if (!disposed) ui.setActor(value, reason) },
       onMode (value) { if (!disposed) { pendingMode = value; updateDiagnosticText() } },
       onFrame (frame) {
         if (disposed) return

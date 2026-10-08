@@ -270,11 +270,11 @@ export function createInventoryPreviewFallback(THREE, { getAvatar, getSkin, getE
 }
 
 export class InventoryPlayerPreview {
-  constructor({ THREE, resolveSource, createFallback, document = globalThis.document,
+  constructor({ THREE, resolveSource, createFallback, getUnavailableReason = () => null, document = globalThis.document,
     requestFrame = globalThis.requestAnimationFrame?.bind(globalThis),
     cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis),
     createRenderer = (options) => new THREE.WebGLRenderer(options) }) {
-    Object.assign(this, { THREE, resolveSource, createFallback, document, requestFrame, cancelFrame, createRenderer });
+    Object.assign(this, { THREE, resolveSource, createFallback, getUnavailableReason, document, requestFrame, cancelFrame, createRenderer });
     this.host = null;
     this.renderer = null;
     this.mirror = null;
@@ -350,9 +350,13 @@ export class InventoryPlayerPreview {
         releaseInventoryMirror(this.mirror);
         this.mirror = null;
         this.renderer?.clear();
-        this.host.dataset.previewState = 'waiting';
+        const reason = this.getUnavailableReason();
+        this.host.dataset.previewState = reason ? 'unavailable' : 'waiting';
+        if (reason) this.host.dataset.previewReason = reason;
+        else delete this.host.dataset.previewReason;
         return;
       }
+      delete this.host.dataset.previewReason;
       if (!this.renderer) {
         this.renderer = this.createRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' });
         this.renderer.setClearColor(0, 0);
