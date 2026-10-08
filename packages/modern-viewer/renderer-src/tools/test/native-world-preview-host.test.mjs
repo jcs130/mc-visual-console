@@ -32,6 +32,19 @@ test('tracked maid supplement cannot create, replace or cross-bind an identity',
   assert.equal(apply([row, row]).entities[0].maidRenderState, undefined)
 })
 
+test('tracked Create geometry remains on its own account, entity and dimension', () => {
+  const player = '01234567-89ab-cdef-0123-456789abcdef', uuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  const state = { epoch: 2, entities: [{ entityId: 1, uuid, name: 'create:stationary_contraption' }] }
+  const row = { source: 'same_player_tracked_entity', playerUuid: player, uuid, entityId: 1,
+    id: 'create:stationary_contraption', dimension: 'minecraft:overworld', available: true, blocks: [] }
+  const apply = rows => injectTrackedMaidPresentation(state, { contraptionRenderStates: rows }, 'minecraft:overworld', player)
+  assert.equal(apply([row]).entities[0].contraptionRenderState.epoch, 2)
+  for (const bad of [{ ...row, playerUuid: uuid }, { ...row, uuid: player }, { ...row, dimension: 'minecraft:the_nether' },
+    { ...row, entityId: 2 }, { ...row, id: 'create:contraption' }]) assert.equal(apply([bad]).entities[0].contraptionRenderState, undefined)
+  assert.equal(apply([row, row]).entities[0].contraptionRenderState, undefined)
+  assert.equal(state.entities[0].contraptionRenderState, undefined)
+})
+
 test('native presentation preserves real cooking-pot progress, slots and FOOD', () => {
   const playerUuid = '01234567-89ab-cdef-0123-456789abcdef'
   const meal = { id: 'farmersdelight:beef_stew', count: 1, snbt: '{id:"farmersdelight:beef_stew",count:1}',

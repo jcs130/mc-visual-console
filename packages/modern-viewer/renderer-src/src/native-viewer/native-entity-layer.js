@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { createNativeEntityActor } from './native-entity-dispatch.js'
+import { nativeContraptionGeometryKey } from './native-contraption.js'
 
 // One connection, one epoch, actual entity IDs. Rendering work may complete
 // after a disconnect; generation checks discard it instead of resurrecting it.
@@ -19,7 +20,8 @@ export class NativeEntityLayer {
   }
   signature(entity,registries) {
     return JSON.stringify([entity.uuid,entity.name,entity.metadata,entity.equipment,Boolean(entity.motion),entity.name==='minecraft:villager'?registries:null,
-      entity.name==='touhou_little_maid:maid'?[entity.maidRenderState,entity.motion?.maid?.hurtTime>0,entity.motion?.maid?.hurtPending,entity.motion?.maid?.swingPending,entity.motion?.maid?.animationId,entity.motion?.maid?.swimAmount>0||entity.motion?.maid?.swimAmountOld>0]:null])
+      entity.name==='touhou_little_maid:maid'?[entity.maidRenderState,entity.motion?.maid?.hurtTime>0,entity.motion?.maid?.hurtPending,entity.motion?.maid?.swingPending,entity.motion?.maid?.animationId,entity.motion?.maid?.swimAmount>0||entity.motion?.maid?.swimAmountOld>0]:null,
+      entity.name.startsWith('create:')?nativeContraptionGeometryKey(entity):null])
   }
   async drain() {
     if(this.running||this.disposed)return
@@ -59,7 +61,8 @@ export class NativeEntityLayer {
     }
   }
   diagnostics() {
-    return {received:this.data.size,rendered:this.actors.size,issues:[...(this.streamReason?[this.streamReason]:[]),...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
+    const motionIssues=[...this.actors.values()].map(row=>row.actor.root.userData.nativeContraption?.reason).filter(Boolean)
+    return {received:this.data.size,rendered:this.actors.size,issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
   }
   reset() {
     this.generation++;this.pending=null;for(const row of this.actors.values())row.actor.dispose();this.actors.clear();this.failures.clear();this.data.clear();this.root.clear();this.streamReason=null

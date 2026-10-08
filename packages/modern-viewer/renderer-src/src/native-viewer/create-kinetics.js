@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { MILLSTONE_ID, prepareNativeMillstoneModel } from './native-millstone.js'
+import { WINDMILL_BEARING_ID, createNativeWindmillBearingActor } from './native-windmill-bearing.js'
 
 // Adapter for the installed 6.0.10 JAR only (Create commit ac0c444d9828da3453ae8cc65338e8de063286fb).
 // Rules checked against its KineticBlockEntityRenderer, KineticBlockEntityVisual,
@@ -39,6 +40,7 @@ export async function createKineticActor (loader, state, position) {
   const sources = loader?.reader?.manifest?.sources?.filter(s => s?.name === 'create-1.21.1-6.0.10.jar')
   if (sources?.length !== 1 || sources[0].sha256 !== CREATE_JAR_SHA256 || sources[0].explicitOverride) throw Error('NATIVE_CREATE_VERSION_UNSUPPORTED')
   if (!position || ![position.x, position.y, position.z].every(n => Number.isSafeInteger(n) && n >= -2147483648 && n <= 2147483647)) throw Error('NATIVE_KINETIC_POSITION_INVALID')
+  if (state.name === WINDMILL_BEARING_ID) return createNativeWindmillBearingActor(loader, state, position, kineticAngle)
   const root = new THREE.Group(), rotor = new THREE.Group()
   root.position.set(position.x + 0.5, position.y + 0.5, position.z + 0.5)
   root.add(rotor)

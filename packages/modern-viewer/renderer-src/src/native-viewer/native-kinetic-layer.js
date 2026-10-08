@@ -38,6 +38,7 @@ export async function stageNativeKineticActors({nodes,definitions,actors,createA
         // Validate RPM before an actor can enter the active scene.
         actor.setSpeed(node.speed);attach(actor);actors.set(key,actor)
       }else actor.setSpeed(node.speed)
+      actor.setNativeState?.(node)
       if(actor.root.userData.nativeDevice)issues.push(`${state.name} @ ${key}：${actor.root.userData.nativeDevice.unavailableLayers.join(' / ')}`)
     }catch(error){
       if(actor){remove(actor);actors.delete(key)}

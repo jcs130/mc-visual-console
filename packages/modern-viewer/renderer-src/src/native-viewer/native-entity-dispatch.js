@@ -4,11 +4,12 @@ import { createNativeModelPart, ENTITY_MODEL_CLIENT_SHA256 } from './native-enti
 import { nativePlayerSin as sin, nativePlayerCos as cos } from './native-player-motion.js'
 import { NATIVE_MOB_MOTION_SOURCE } from './native-entity-motion.js'
 import { createNativeMaidActor, nativeMaidRenderState } from './native-entity-dispatch-maid.js'
+import { createNativeContraptionActor, nativeContraptionState } from './native-contraption.js'
 
 // Locked vanilla classes: fwm/fvd/fuz/fxa/fwz/fxi/fxv, fwu/fuf, glk,
 // gly/gjw/gju/gmh/gmm/gne and original saddle/fur/profession layers.
 // Original assets/geometry only; this is not a generic mob proxy renderer.
-export const NATIVE_ENTITY_RENDER_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid'])
+export const NATIVE_ENTITY_RENDER_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','create:contraption','create:stationary_contraption'])
 const SUPPORTED=new Set(NATIVE_ENTITY_RENDER_TYPES),F=Math.fround,PI=F(Math.PI),RAD=F(Math.PI/180)
 const wrap=v=>((v+180)%360+360)%360-180,lerp=(a,b,t)=>a+(b-a)*t,angle=(a,b,t)=>a+wrap(b-a)*t
 const cube=(uv,origin,size,dilation=0,mirror=false)=>({uv,origin,size,dilation,mirror})
@@ -28,6 +29,7 @@ function meta(entity,key,type,defaultValue){
 }
 
 export function nativeEntityRenderState(entity,{registries}={}){
+  if(['create:contraption','create:stationary_contraption'].includes(entity?.name))return nativeContraptionState(entity)
   if(entity?.name==='touhou_little_maid:maid')return nativeMaidRenderState(entity)
   if(!SUPPORTED.has(entity?.name))throw Error(`NATIVE_ENTITY_RENDERER_UNSUPPORTED:${entity?.name}`)
   if(!Number.isSafeInteger(entity.entityId)||typeof entity.uuid!=='string'||!Array.isArray(entity.metadata)||!entity.position||![entity.position.x,entity.position.y,entity.position.z,entity.yaw,entity.pitch,entity.headYaw].every(Number.isFinite))throw Error('NATIVE_ENTITY_STATE_INVALID')
@@ -87,6 +89,7 @@ export async function createNativeEntityActor(reader,entity,{registries,loadText
   const source=reader.manifest.sources?.filter(value=>value.name==='minecraft-1.21.1-client.jar')
   if(source?.length!==1||source[0].sha256!==ENTITY_MODEL_CLIENT_SHA256||source[0].explicitOverride)throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(entity?.name==='touhou_little_maid:maid')return createNativeMaidActor(reader,entity,{loadTexture})
+  if(['create:contraption','create:stationary_contraption'].includes(entity?.name))return createNativeContraptionActor(reader,entity,{loadTexture})
   const state=nativeEntityRenderState(entity,{registries}),leaf=state.name.split(':')[1],height=leaf==='villager'?64:32
   const root=new THREE.Group(),orientation=new THREE.Group(),content=new THREE.Group();root.add(orientation);orientation.add(content);content.position.y=-1.501;orientation.scale.set(-1,-1,1)
   const resources=[],models=[],layers=[],sourcePaths=[]

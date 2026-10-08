@@ -142,3 +142,13 @@ node --test tools/test/native-colony-huts.test.mjs
 ```
 
 真实资源测试使用当前原 manifest 和原 block-state registry，审计全部 48 类，并验证已支持 baker 的 107 原面/PNG 载入及 geometry 释放。提供目录时不跳过；缺目录时这一个原资产案例跳过，不能称已完成源资产验证。本轮不关闭完整 scene parity guard。
+
+## Create 风车轴承与原生转子（2026-10-09）
+
+锁定 Create 6.0.10 JAR `ef87fe5709f1ba1f5b8bb20a2925b5afb4669e178fd6d8bf10c167759eefe37a`。静态轴承本体读原 blockstate；动态半轴和木质顶部读原 `shaft_half`、`bearing/top_wooden` 模型、原 UV/PNG。六朝向按原 BearingVisual/Ponder 规则变换，半轴使用真实 RPM，顶部绑定相邻原生转子，不能选用另一台机器的角度。
+
+本人 PlayerMenuBridge 只导出本人实际已跟踪、同维度、32 格内的 ControlledContraptionEntity；每帧最多 4 个、每个 96 方块、总几何 24 KiB。原生客户端本就接收已跟踪转子的几何；渲染交由深度测试遮挡，不能用中心点 LOS 误隐藏整组仍可见的帆。可见性查询 API 保持原规则。浏览器要求原实体包中的类型/UUID/entityId 与同 playerUuid/epoch 的渲染状态一致，不凭桥数据生成幽灵实体。转子加载真实 block ID/全部 state properties 的原模型，在原 anchor 中心按实际轴、当前/前一 tick 角度旋转；保留 Flywheel 1.0.6 的 entityId nudge。超过 1 秒无新角度隐藏动态模型；新鲜数据可恢复。包含未适配 BlockEntity 的转子或超预算明确 unavailable。
+
+测试覆盖真实安装资源、全部六朝向、身份/几何限制、陈旧状态、重复/迟到实体和模型释放。原资产与状态链通过不等于完整 Java 画面一致，`pixelParityVerified/renderParityVerified` 仍为 false；客户端插值相位、光照、完整场景及所有复杂移动机器尚未逐项对照。
+
+实机普通 MawNeko 制作并启动八帆风车，服务端确认 1 RPM、8 帆、无卡转及两次同 UUID 角度变化。浏览器同账号观察已见原帆模型转动，重启后同转子 UUID 正常恢复、新 entityId 正确绑定；不是另开观战账号。最终相关 53 项 Node 测试在实际 v14 资源下全通过，无跳过。角色未支持的 YSM 模型、特殊物品及完整 Java 场景对照仍明确未验收。

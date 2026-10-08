@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath } from './model-loader.js'
 import { createKineticActor } from './create-kinetics.js'
+import { WINDMILL_BEARING_ID, verifyNativeWindmillBearing } from './native-windmill-bearing.js'
 import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
 import { waterGeometry } from './native-fluid.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
@@ -122,7 +123,7 @@ async function start () {
           if (tickAge === null || whole < tickAge || whole - tickAge > 100) tickAge = whole
           while (tickAge < whole) { for (const actor of actors.values()) actor.tick(); tickAge++ }
           for (const actor of actors.values()) {
-            try { actor.frame(clock.renderTicks, clock.partialTick); actor.setClockAvailable?.(true) }
+            try { actor.setContraptionEntities?.(current.entityState?.entities); actor.frame(clock.renderTicks, clock.partialTick); actor.setClockAvailable?.(true) }
             catch (error) { actor.setClockAvailable?.(false, error.message) }
           }
         }
@@ -226,13 +227,14 @@ function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
     drawn: drawn + [...actors.values()].filter(actor => !actor.staticBodyRenderedSeparately && actor.root.visible).length,
     issues: [...unknown, ...(actors.size && !kineticClockState.available ? [kineticClockState.reason] : []),
-      ...[...actors.values()].map(actor => actor.root.userData.nativeClockReason).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
+      ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
     selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture,
       support: selfActor.assetInfo.support ?? null, notice: selfActor.assetInfo.notice, motion: selfMotionState ?? selfActor.root.userData.motion ?? null } : null,
     heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,
     kinetics: current?.kinetic?.map(n => n.speed) || [], environment: current?.biomes?.map(b => b.name) || [],
     kineticClock: kineticClockState,
     deviceVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeDevice).map(actor => ({ position: actor.position, stateId: actor.state.stateId, ...actor.root.userData.nativeDevice })),
+    windmillVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeBearing).map(actor => ({ position: actor.position, ...actor.root.userData.nativeBearing })),
     skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
 function clearStatics () {
@@ -280,7 +282,8 @@ async function template (state, variants) {
     }
     // The exact empty-board entity guard is checked per position before this
     // shared template is used. Other entity-backed blocks remain unsupported.
-    if ((state.hasBlockEntity && state.name !== CUTTING_BOARD_ID) || state.renderShape !== 'MODEL') throw Error('原生实体方块渲染未适配')
+    if (state.name === WINDMILL_BEARING_ID) verifyNativeWindmillBearing(assetReader, state)
+    if ((state.hasBlockEntity && ![CUTTING_BOARD_ID, WINDMILL_BEARING_ID].includes(state.name)) || state.renderShape !== 'MODEL') throw Error('原生实体方块渲染未适配')
     const model = await loader.models(variants, { allowTint: true })
     if(disposed){loader.releaseModel(model);throw Error('NATIVE_SCENE_DISPOSED')}
     let faces = 0; model.traverse(part => { if (part.isMesh) faces++ })

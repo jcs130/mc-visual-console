@@ -87,7 +87,8 @@ function injectedPresentation (provider, uuid) {
     return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
       modOperations: copy.modOperations ?? [],
       nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null,
-      entityRenderStates: copy.entityRenderStates ?? null, nativeState: { available: true } }
+      entityRenderStates: copy.entityRenderStates ?? null, contraptionRenderStates: copy.contraptionRenderStates ?? null,
+      nativeState: { available: true } }
   } catch (error) {
     const reason = ['PRESENTATION_INVALID', 'PRESENTATION_TOO_LARGE', 'PRESENTATION_IDENTITY_MISMATCH'].includes(error?.message) ? error.message : 'PRESENTATION_UNAVAILABLE'
     return unavailable(reason)
@@ -229,7 +230,9 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
   return { schemaVersion: 1, playerUuid: uuid, inventory, nativeMenu, skills, modOperations: operations, ...(self ? { self } : {}),
     ...(renderRegistries ? { renderRegistries } : {}),
     ...(own(menu) && Array.isArray(menu.entityRenderStates) && menu.entityRenderStates.length <= 16
-      ? { entityRenderStates: menu.entityRenderStates } : {}) }
+      ? { entityRenderStates: menu.entityRenderStates } : {}),
+    ...(own(menu) && Array.isArray(menu.contraptionRenderStates) && menu.contraptionRenderStates.length <= 4
+      ? { contraptionRenderStates: menu.contraptionRenderStates } : {}) }
 }
 
 // Supplement only identities already present in this connection's native
@@ -243,8 +246,20 @@ export function injectTrackedMaidPresentation (entityState, presentation, dimens
     if (byId.has(row.entityId)) { byId.set(row.entityId, null); continue }
     byId.set(row.entityId, row)
   }
+  const contraptions = new Map()
+  for (const row of (Array.isArray(presentation?.contraptionRenderStates) ? presentation.contraptionRenderStates : []).slice(0, 4)) {
+    if (row?.source !== 'same_player_tracked_entity' || row.playerUuid !== playerUuid ||
+        row.dimension !== dimension || !Number.isSafeInteger(row.entityId) || !UUID.test(row.uuid || '')) continue
+    if (contraptions.has(row.entityId)) { contraptions.set(row.entityId, null); continue }
+    contraptions.set(row.entityId, row)
+  }
   return { ...entityState, renderRegistries: presentation?.renderRegistries ?? null,
     entities: (entityState.entities || []).map(entity => {
+      const contraption = contraptions.get(entity.entityId)
+      if (['create:contraption', 'create:stationary_contraption'].includes(entity.name) &&
+          contraption?.uuid === entity.uuid && contraption.id === entity.name) {
+        return { ...entity, contraptionRenderState: { ...contraption, epoch: entityState.epoch } }
+      }
       const row = byId.get(entity.entityId)
       return entity.name === 'touhou_little_maid:maid' && row?.uuid === entity.uuid
         ? { ...entity, maidRenderState: { ...row, epoch: entityState.epoch } } : entity
@@ -448,6 +463,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, modOperations: injected.modOperations ?? [], nativeState: injected.nativeState,
           renderRegistries: injected.renderRegistries,
           entityRenderStates: injected.entityRenderStates,
+          contraptionRenderStates: injected.contraptionRenderStates,
           gameMessages: gameMessages.map(message => ({ ...message })),
           title: currentTitle && { ...currentTitle }, actionbar: currentActionbar && { ...currentActionbar }, time: world.time && { ...world.time },
           weather: { raining: typeof bot.isRaining === 'boolean' ? bot.isRaining : null, thunder: finiteNumber(bot.thunderState), rain: finiteNumber(bot.rainState) } }

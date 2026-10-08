@@ -487,7 +487,10 @@ export class NativeWorldState extends EventEmitter {
         }
       }
       const be = this.blockEntities.get(key(p))
-      if (['create:shaft', 'create:hand_crank', 'create:millstone'].includes(state.name)) kinetic.push({ position: p, stateId: id, speed: Number.isFinite(be?.data.Speed) ? be.data.Speed : null, overstressed: be?.data.Overstressed ?? null })
+      if (['create:shaft', 'create:hand_crank', 'create:millstone', 'create:windmill_bearing'].includes(state.name)) kinetic.push({ position: p, stateId: id, speed: Number.isFinite(be?.data.Speed) ? be.data.Speed : null, overstressed: be?.data.Overstressed ?? null,
+        ...(state.name === 'create:windmill_bearing' ? { windmill: { source: 'same_player_native_block_entity_packet',
+          running: typeof be?.data.Running === 'boolean' ? be.data.Running : be?.data.Running === 1 ? true : be?.data.Running === 0 ? false : null,
+          angleDegrees: Number.isFinite(be?.data.Angle) ? be.data.Angle : null } } : {}) })
       if (state.name === CUTTING_BOARD_ID) cuttingBoards.push({ position: p, stateId: id, ...cuttingBoardContent(be?.data) })
     }
     // Every get used by native-fluid.js is within this 3×3×3 stencil (including
