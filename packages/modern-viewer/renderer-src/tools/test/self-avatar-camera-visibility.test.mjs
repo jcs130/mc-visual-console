@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
-import { installSelfAvatarCameraVisibility } from '../../src/modern-viewer/self-avatar-camera-visibility.js';
+import { installSelfAvatarCameraVisibility, inUpperCutawayRegion } from '../../src/modern-viewer/self-avatar-camera-visibility.js';
 
 function fixture() {
   const scene = new Scene();
@@ -22,6 +22,8 @@ function fixture() {
   scene.add(avatar, other, special);
   const world = {
     camera,
+    renderer: {},
+    sceneOrigin: { getWorldPosition: object => object.originalEntity?.pos },
     cameraCollisionBlockCache: { isSolidBlock() { throw Error('visibility must not change wall collision'); } },
     entities: {
       entities: { '7': avatar, '8': other },
@@ -34,6 +36,7 @@ function fixture() {
       },
     },
   };
+  world.scene = scene;
   return { world, camera, avatar, other, special };
 }
 
@@ -206,19 +209,59 @@ test('upper-layer clipping covers standard decoration materials and follows orig
   let cutawayY = 64.3;
   const controller = installSelfAvatarCameraVisibility(world, () => 7, { getUpperCutawayY: () => cutawayY });
   world.entities.render();
-  const plane = world.renderer.clippingPlanes[1];
+  const decoration = new Mesh(new BoxGeometry(1,1,1), new MeshBasicMaterial());
+  world.scene.add(decoration);
+  controller.dispose();
+  const next = installSelfAvatarCameraVisibility(world, () => 7, { getUpperCutawayY: () => cutawayY });
+  world.entities.render();
+  const plane = decoration.material.clippingPlanes[0];
+  for (const child of world.entities.entities['7'].children) {
+    assert.equal(child.material.clippingPlanes, null, 'player body, armor and held items remain whole');
+  }
   assert.equal(world.renderer.clippingPlanes[0], otherPlane);
   assert.ok(plane.distanceToPoint(new Vector3(80, 2, -50)) < 0, 'upper decoration outside the camera corridor is clipped');
   assert.ok(plane.distanceToPoint(new Vector3(80, 0, -50)) > 0, 'floor remains visible');
   originY = 32;
   world.entities.render();
-  assert.equal(world.renderer.clippingPlanes.length, 2, 'the same plane is reused each frame');
+  assert.deepEqual(world.renderer.clippingPlanes, [otherPlane], 'no global plane cuts characters');
+  assert.equal(decoration.material.clippingPlanes[0], plane);
   assert.equal(plane.constant, 33.95);
   cutawayY = null;
   world.entities.render();
   assert.deepEqual(world.renderer.clippingPlanes, [otherPlane]);
-  cutawayY = 70;
+  assert.equal(decoration.material.clippingPlanes, null);
+  cutawayY = 70.8;
+  world.entities.entities['7'].position.y = 70.8;
   world.entities.render();
-  controller.dispose();
+  assert.equal(world.entities.entities['7'].visible, true);
+  for (const child of world.entities.entities['7'].children) assert.equal(child.material.clippingPlanes, null);
+  next.dispose();
+  assert.equal(decoration.material.clippingPlanes, null);
   assert.deepEqual(world.renderer.clippingPlanes, [otherPlane], 'disposal removes only this controller\'s plane');
+});
+
+test('local roof opening preserves distant uphill players and decorations sharing the same material', () => {
+  const { world, camera, other } = fixture();
+  camera.position.z = 16;
+  const shared = new MeshBasicMaterial();
+  const near = new Mesh(new BoxGeometry(1,1,1), shared);
+  const far = new Mesh(new BoxGeometry(1,1,1), shared);
+  near.position.set(2, 3, 0);
+  far.position.set(40, 3, 0);
+  world.scene.add(near, far);
+  other.originalEntity = { id: 8, name: 'player', pos: { x: 40, y: 3, z: 0 } };
+  const region = { center: { x:0,z:0 }, camera: { x:0,z:16 }, radius:6, corridorRadius:1.85, hitAlong:.35, halfSpan:.1 };
+  const controller = installSelfAvatarCameraVisibility(world, () => 7, {
+    getUpperCutawayY: () => 0, getUpperCutawayRegion: () => region,
+  });
+  world.entities.render();
+  assert.equal(other.visible, true, 'far uphill players remain visible');
+  assert.equal(far.material, shared, 'distant decoration retains the original material');
+  assert.equal(far.material.clippingPlanes, null);
+  assert.notEqual(near.material, shared, 'local clipping does not mutate a shared material');
+  assert.equal(near.material.clippingPlanes.length, 1);
+  assert.equal(inUpperCutawayRegion({x:0,z:8}, region), true, 'sight corridor matches the terrain opening');
+  assert.equal(inUpperCutawayRegion({x:12,z:8}, region), false);
+  controller.dispose();
+  assert.equal(near.material, shared);
 });

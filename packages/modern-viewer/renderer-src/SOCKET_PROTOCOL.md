@@ -1,3 +1,4 @@
+<!-- Owner: src/modern-viewer/client.js, tools/minecraft-viewer-panels.js, tools/minecraft-viewer-hud.js -->
 # 现代渲染器接入协议（Minecraft Java 1.20.6）
 
 本文对应 `src/modern-viewer/client.js` 和 `tools/minecraft-viewer-*.js` 构建出的前端。它说明另一个 Mineflayer 项目需要提供什么数据；不要求使用 Cortico，也不要求连接千灯纪。
@@ -108,6 +109,7 @@ socket.emit('entity', {
 ```
 
 - 自身实体必须带 `name: 'player'` 和 `isSelf: true`。第一人称发送 `playerEntity`；第三人称/地下城发送 `entity`，后续用 `entityMoved` 更新同一个 ID。不要再创建另一个代表同一玩家的 ID。
+- 玩家外观可带 `skinUrl: '/head-texture/<texture-hash>.png'` 和 `skinModel: 'classic' | 'slim'`，自身与其他玩家使用相同格式。宿主从服务端 player-info 的 `skinData` 转换并代理 Minecraft 官方材质域名，哈希为 40–64 位小写十六进制。档案没有材质时发送 `skinUrl: null, skinModel: null`，以清除旧外观。皮肤改变时重新发送完整实体，自身也在 `avatarState.entity` 中更新。背包预览复用这份外观。
 - `equipment` 的 6 个位置固定为 **主手、副手、鞋、护腿、胸甲、头盔**。空位用 `null`。装备、年龄、姿势或 metadata 改变时发送完整 `entity`；日常移动用 `entityMoved`，避免每帧重建装备导致闪烁。
 - `metadata` 保持该版本实体 metadata 的索引关系，并转为可 JSON 序列化的数据。不能把所有怪物当玩家模型，也不能只传显示名称：类型决定骨架，metadata 决定幼年、姿态、使用物品等状态。
 - 羊可额外带 `sheepAppearance: { colorId, sheared }`（颜色 0–15）；村民可带 `villagerAppearance: { typeKey, professionKey, levelKey }`，字段使用 1.20.6 的群系、职业和等级键。

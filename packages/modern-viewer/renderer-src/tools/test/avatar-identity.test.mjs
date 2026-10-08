@@ -16,6 +16,7 @@ function harness() {
   const noop = () => {};
   const context = {
     entityCache: new Map(), pendingAvatarState: null, rendererReady: true, fishingVisuals: null,
+    playerSkinTargetSignatures: new Map(),
     focusedCharacterId: null, playerModelInstance: null, selectedNpcId: null,
     dungeonHoverEntityId: null, dungeonHoverPointer: null, normalizedAvatarMotion: null,
     pendingVillagerStyleChecks: new Set(), entityMotionFrames: new Map(),
@@ -78,7 +79,11 @@ test('partial position updates cannot revive a retired self ID', () => {
 test('a reused authoritative self ID can become current again', () => {
   const f = harness();
   f.self(player(7));
+  f.context.playerSkinTargetSignatures.set('7', 'loaded');
+  f.context.playerSkinTargetSignatures.set('player_entity', 'loaded');
   f.self(player(9));
+  assert.equal(f.context.playerSkinTargetSignatures.has('7'), false);
+  assert.equal(f.context.playerSkinTargetSignatures.has('player_entity'), false);
   f.self(player(7));
   assert.deepEqual([...f.rendered.keys()], ['7']);
 });

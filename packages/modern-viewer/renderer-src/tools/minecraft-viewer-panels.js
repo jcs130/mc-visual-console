@@ -47,7 +47,7 @@ function cortiSyncInventoryPlayerPreview() {
     },
     createFallback: () => createInventoryPreviewFallback(CortiThree, {
       getAvatar: () => cortiPanelAvatar,
-      getSkin: () => selectedPlayerSkin,
+      getSkin: () => resolveSelfPlayerSkin(),
       getEntities: () => globalThis.world?.entities,
     }),
   });

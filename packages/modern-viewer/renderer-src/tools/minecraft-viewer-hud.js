@@ -18,7 +18,7 @@ function renderCortiSurvivalHud(state) {
   const offhand = state.offhand ?? state.equipment?.[1];
   const signature = [state.health, state.maxHealth, state.absorption, state.food, state.armor, state.oxygen,
     state.inWater, state.experienceLevel, state.experienceProgress, state.quickBarSlot, cortiHudPoisoned,
-    `${offhand?.name ?? ''}:${offhand?.customName ?? ''}:${offhand?.enchanted === true}:${offhand?.durability?.left ?? ''}`,
+    `${offhand?.name ?? ''}:${offhand?.customName ?? ''}:${offhand?.headTextureHash ?? ''}:${offhand?.enchanted === true}:${offhand?.durability?.left ?? ''}`,
     ...slots.map((row) => `${row?.item?.name ?? ''}:${row?.item?.count ?? ''}:${row?.item?.customName ?? ''}:${row?.item?.headTextureHash ?? ''}:${row?.item?.enchanted === true}:${row?.item?.durability?.left ?? ''}:${row?.item?.durability?.max ?? ''}`)].join('|');
   if (signature === cortiHudSignature) return;
   cortiHudSignature = signature;
@@ -111,6 +111,7 @@ function renderCortiSurvivalHud(state) {
       offhandSlot.append(image);
     }
     if (offhand) {
+      cortiAppendHeadFace(offhandSlot, offhand, 4);
       cortiAppendEnchantmentGlint(offhandSlot, offhand, 4);
       cortiAppendDurability(offhandSlot, offhand);
     }

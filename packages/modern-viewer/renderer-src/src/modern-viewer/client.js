@@ -2909,6 +2909,9 @@ function handleEntity(update, movementOnly) {
   if (update.delete) {
     const prior = entityCache.get(id) || { id: update.id };
     entityCache.delete(id);
+    playerSkinTargetSignatures.delete(id);
+    playerSkinTargetSignatures.delete(`other:${id}`);
+    if (isOwnAvatarEntity(prior)) playerSkinTargetSignatures.delete('player_entity');
     fishingVisuals?.updateEntity(update);
     fishingVisuals?.sync();
     pendingVillagerStyleChecks.delete(id);
@@ -3720,9 +3723,36 @@ function maybeApplyPlayerSkin(entity, specialPlayerEntity = false, force = false
     return applyTrustedLocalPlayerSkin(entity, specialPlayerEntity, force);
   }
   const updatePlayerSkin = viewer?.backend?.backendMethods?.updatePlayerSkin;
-  if (!entity.skinUrl || typeof updatePlayerSkin !== "function") return false;
-  void Promise.resolve(updatePlayerSkin(entity.id, entity.username, entity.uuid, entity.skinUrl)).catch(() => undefined);
+  if ((!entity.skinUrl && !Object.hasOwn(entity, 'skinUrl')) || typeof updatePlayerSkin !== "function") return false;
+  const skin = resolveEntityPlayerSkin(entity);
+  const targetKey = `other:${String(entity.id)}`;
+  const signature = `${skin.id}:${String(entity.id)}`;
+  if (!force && playerSkinTargetSignatures.get(targetKey) === signature) return true;
+  playerSkinTargetSignatures.set(targetKey, signature);
+  void Promise.resolve(updatePlayerSkin.call(viewer.backend.backendMethods, entity.id, entity.username, entity.uuid, skin.texture))
+    .then(() => {
+      if (playerSkinTargetSignatures.get(targetKey) === signature) applyServerPlayerSkinModel(entity, false);
+    }).catch(() => {
+      if (playerSkinTargetSignatures.get(targetKey) === signature) playerSkinTargetSignatures.delete(targetKey);
+    });
   return true;
+}
+
+function resolveEntityPlayerSkin(entity) {
+  const hash = /^\/head-texture\/([0-9a-f]{40,64})\.png$/.exec(entity?.skinUrl || '')?.[1];
+  if (!hash) return selectedPlayerSkin;
+  const model = entity.skinModel === 'slim' ? 'slim' : 'classic';
+  return { id: `server:${hash}:${model}`, label: '服务端皮肤', model, texture: entity.skinUrl };
+}
+
+function resolveSelfPlayerSkin() {
+  return resolveEntityPlayerSkin(pendingAvatarState?.entity ?? pendingPlayerEntity);
+}
+
+function applyServerPlayerSkinModel(entity, specialPlayerEntity) {
+  const entities = globalThis.world?.entities;
+  const player = entities?.getPlayerObject?.(specialPlayerEntity ? 'player_entity' : entity.id);
+  if (player?.skin) player.skin.modelType = resolveEntityPlayerSkin(entity).model === 'slim' ? 'slim' : 'default';
 }
 
 function applyTrustedLocalPlayerSkin(entity, specialPlayerEntity, force) {
@@ -3734,7 +3764,7 @@ function applyTrustedLocalPlayerSkin(entity, specialPlayerEntity, force) {
     return false;
   }
   const targetKey = specialPlayerEntity ? "player_entity" : String(entity.id);
-  const skin = selectedPlayerSkin;
+  const skin = resolveEntityPlayerSkin(entity);
   const signature = `${skin.id}:${String(entity.id)}`;
   if (!force && playerSkinTargetSignatures.get(targetKey) === signature) return true;
   playerSkinTargetSignatures.set(targetKey, signature);
@@ -3748,7 +3778,8 @@ function applyTrustedLocalPlayerSkin(entity, specialPlayerEntity, force) {
   publishPlayerSkinDataset();
   void Promise.resolve(applyOverride.call(backendMethods, textureUrl, entity.id, entity.username, entity.uuid))
     .then(() => {
-      if (selectedPlayerSkin.id !== skin.id || playerSkinTargetSignatures.get(targetKey) !== signature) return;
+      if (playerSkinTargetSignatures.get(targetKey) !== signature) return;
+      applyServerPlayerSkinModel(entity, specialPlayerEntity);
       playerSkinStatus = "applied";
       playerSkinLastAppliedAt = Date.now();
       playerSkinLastError = null;
@@ -3761,7 +3792,7 @@ function applyTrustedLocalPlayerSkin(entity, specialPlayerEntity, force) {
         status: "applied",
       });
       setTimeout(() => {
-        if (selectedPlayerSkin.id !== skin.id) return;
+        if (playerSkinTargetSignatures.get(targetKey) !== signature) return;
         if (!specialPlayerEntity) maybeApplySelectedPlayerModel(entity);
         schedulePlayerHeadIntegrityCheck(entity, specialPlayerEntity);
         publishPlayerSkinDataset();
@@ -3769,7 +3800,7 @@ function applyTrustedLocalPlayerSkin(entity, specialPlayerEntity, force) {
     })
     .catch((error) => {
       if (playerSkinTargetSignatures.get(targetKey) === signature) playerSkinTargetSignatures.delete(targetKey);
-      if (selectedPlayerSkin.id !== skin.id) return;
+      if (resolveSelfPlayerSkin().id !== skin.id) return;
       playerSkinStatus = "failed";
       playerSkinLastError = error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160);
       publishPlayerSkinDataset();
@@ -3787,9 +3818,10 @@ function applyTrustedLocalPlayerSkin(entity, specialPlayerEntity, force) {
 function publishPlayerSkinDataset() {
   const canvas = document.getElementById("viewer-canvas");
   if (!canvas) return;
-  canvas.dataset.playerSkinId = selectedPlayerSkin.id;
-  canvas.dataset.playerSkinLabel = selectedPlayerSkin.label;
-  canvas.dataset.playerSkinModel = selectedPlayerSkin.model;
+  const skin = resolveSelfPlayerSkin();
+  canvas.dataset.playerSkinId = skin.id;
+  canvas.dataset.playerSkinLabel = skin.label;
+  canvas.dataset.playerSkinModel = skin.model;
   canvas.dataset.playerSkinStatus = playerSkinStatus;
 }
 

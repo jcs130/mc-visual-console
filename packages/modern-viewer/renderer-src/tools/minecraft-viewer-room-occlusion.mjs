@@ -37,10 +37,10 @@ export function roomCutoffWorldY(avatarY, hardCutaway) {
   return hardCutaway ? Math.floor(avatarY) + 1.95 : avatarY + 0.05
 }
 
-/** Dungeon view removes the upper layer; third-person view fades its sight corridor. */
-/** @param {boolean} isDungeonView */
-export function roomOcclusionMode(isDungeonView) {
-  return isDungeonView ? 'cutaway' : 'translucent'
+/** Only covered dungeon interiors remove an upper layer. Outdoor obstacles use a sight corridor. */
+/** @param {boolean} isDungeonView @param {boolean} hasCover */
+export function roomOcclusionMode(isDungeonView, hasCover = false) {
+  return isDungeonView && hasCover ? 'cutaway' : 'translucent'
 }
 
 /** @param {number} entityY @param {number} avatarY @param {boolean} isSelf */
@@ -59,7 +59,9 @@ const boundedCutawayShaderBlock = [
   '    bool lanternBeyondFirstHit = lanternAlongRaw >= max(0.0, u_lanternCutawayHitAlong - u_lanternCutawayHalfSpan) && lanternAlongRaw <= 1.0 + u_lanternCutawayHalfSpan;',
   '    bool lanternInSightCorridor = distance(v_lanternCutawayPosition.xz, lanternClosest) < lanternRadius;',
   '    bool lanternCutawayRegion = lanternBeyondFirstHit && lanternInSightCorridor;',
-  '    if (u_lanternCutawayEnabled > 1.5 && v_lanternCutawayPosition.y > u_lanternCutawayY) discard;',
+  '    bool lanternInRoom = distance(v_lanternCutawayPosition.xz, u_lanternCutawayTarget.xz) < 6.0;',
+  '    bool lanternHardCutawayRegion = lanternCutawayRegion || lanternInRoom;',
+  '    if (u_lanternCutawayEnabled > 1.5 && lanternHardCutawayRegion && v_lanternCutawayPosition.y > u_lanternCutawayY) discard;',
   '    if (u_lanternCutawayEnabled > 0.5 && u_lanternCutawayEnabled <= 1.5 && lanternCutawayRegion && v_lanternCutawayPosition.y > u_lanternCutawayY) {',
   '      vec2 lanternPixel = mod(floor(gl_FragCoord.xy), 4.0);',
   '      vec2 lanternLow = mod(lanternPixel, 2.0);',
@@ -89,16 +91,14 @@ export function patchRoomOcclusion(source) {
       'function refreshDungeonCutawayMaterials() {\n  if (!usesWorldAvatar) return;'],
     ['  if (isDungeonView && !document.hidden) scheduleDungeonOcclusionCheck();',
       '  if (usesWorldAvatar && !document.hidden) scheduleDungeonOcclusionCheck();'],
-    ['  if (!camera || !sceneOrigin || typeof collisionCache?.isSolidBlock !== "function") {',
-      '  if (!camera || !sceneOrigin || (!isDungeonView && typeof collisionCache?.isSolidBlock !== "function")) {'],
     ['  dungeonOcclusionState = updateOcclusionHysteresis(\n    dungeonOcclusionState,\n    trace.occluded,',
-      '  const collisionReady = typeof collisionCache?.isSolidBlock === "function";\n  const roomCeiling = collisionReady && hasRoomCeiling(avatar, collisionCache);\n  const deepRoof = collisionReady && hasDeepRoof(avatar, collisionCache);\n  dungeonOcclusionState = updateOcclusionHysteresis(\n    dungeonOcclusionState,\n    isDungeonView || deepRoof || trace.occluded || roomCeiling,'],
+      '  const roomCeiling = hasRoomCeiling(avatar, collisionCache);\n  const deepRoof = hasDeepRoof(avatar, collisionCache);\n  dungeonOcclusionState = updateOcclusionHysteresis(\n    dungeonOcclusionState,\n    deepRoof || trace.occluded || roomCeiling,'],
     ['      cutoffWorldY: avatar.y + DUNGEON_OCCLUSION_CUT_HEIGHT,',
       '      cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),\n      hardCutaway,'],
     ['    setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");',
       '    setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");\n    setElementDataset(canvas, "roomCeiling", roomCeiling ? "yes" : "no");\n    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");'],
     ['    detected: dungeonOcclusionState.active,',
-      '    detected: dungeonOcclusionState.active,\n    roomCeiling,\n    deepRoof,\n    mode: dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView) : "clear",\n    cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),\n    cutScope: hardCutaway ? "layer" : "corridor",'],
+      '    detected: dungeonOcclusionState.active,\n    roomCeiling,\n    deepRoof,\n    mode: dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, roomCeiling || deepRoof) : "clear",\n    cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),\n    cutScope: hardCutaway ? "room-and-corridor" : "corridor",'],
     ['    bool lanternBeyondFirstHit = lanternAlongRaw >= max(0.0, u_lanternCutawayHitAlong - u_lanternCutawayHalfSpan) && lanternAlongRaw <= 1.0;\\n    bool lanternInSightCorridor = distance(v_lanternCutawayPosition.xz, lanternClosest) < lanternRadius;\\n    if (u_lanternCutawayEnabled > 0.5 && lanternBeyondFirstHit && lanternInSightCorridor && v_lanternCutawayPosition.y > u_lanternCutawayY) discard;',
       boundedCutawayShaderBlock],
   ]) result = replaceOnce(result, before, after)
@@ -108,13 +108,19 @@ export function patchRoomOcclusion(source) {
     'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {\n  refreshDungeonCutawayMaterials();',
     'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {')
   result = replaceOnce(result, '  if (dungeonOcclusionState.active) {\n    applyDungeonCutaway({',
-    '  const hardCutaway = roomOcclusionMode(isDungeonView) === "cutaway";\n  if (dungeonOcclusionState.active) {\n    applyDungeonCutaway({')
+    '  const hardCutaway = roomOcclusionMode(isDungeonView, roomCeiling || deepRoof) === "cutaway";\n  dungeonUpperCutawayY = hardCutaway && dungeonOcclusionState.active ? avatar.y : null;\n  if (dungeonUpperCutawayY === null) dungeonUpperCutawayRegion = null;\n  if (dungeonOcclusionState.active) {\n    applyDungeonCutaway({')
   result = replaceOnce(result,
     'getUpperCutawayY: () => isDungeonView && dungeonOcclusionState.active ? latestPosition?.pos?.y : null',
-    'getUpperCutawayY: () => isDungeonView ? (resolveObserverTargetPosition()?.position?.y ?? latestPosition?.pos?.y ?? null) : null')
+    'getUpperCutawayY: () => dungeonUpperCutawayY,\n          getUpperCutawayRegion: () => dungeonUpperCutawayRegion')
+  result = replaceOnce(result, 'function installDungeonOcclusion() {',
+    'let dungeonUpperCutawayY = null;\nlet dungeonUpperCutawayRegion = null;\n\nfunction installDungeonOcclusion() {')
+  result = replaceOnce(result, '    dungeonOcclusionState = { active: false, clearSamples: 0 };',
+    '    dungeonOcclusionState = { active: false, clearSamples: 0 };\n    dungeonUpperCutawayY = null;\n    dungeonUpperCutawayRegion = null;')
+  result = replaceOnce(result, '  let applied = 0;\n  for (const record of dungeonCutawayMaterials.values()) {',
+    '  dungeonUpperCutawayRegion = hardCutaway ? { center: targetWorld, camera: cameraWorld, radius: 6, corridorRadius: DUNGEON_OCCLUSION_CORRIDOR_RADIUS, hitAlong, halfSpan: hitHalfSpan } : null;\n  let applied = 0;\n  for (const record of dungeonCutawayMaterials.values()) {')
   result = replaceOnce(result,
     '    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");',
-    '    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");\n    setElementDataset(canvas, "occlusionMode", dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView) : "clear");')
+    '    setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");\n    setElementDataset(canvas, "occlusionMode", dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, roomCeiling || deepRoof) : "clear");')
   result = replaceOnce(result, hasRoomCeiling.toString(), `${hasRoomCeiling.toString()}\n\n${hasDeepRoof.toString()}`)
   result = replaceOnce(result, 'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction }) {',
     'function applyDungeonCutaway({ cutoffWorldY, targetWorld, cameraWorld, cameraScene, obstruction, hardCutaway }) {')
