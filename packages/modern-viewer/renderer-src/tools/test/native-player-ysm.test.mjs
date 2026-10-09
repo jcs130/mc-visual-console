@@ -7,6 +7,7 @@ import { NativeAssetReader } from '../../src/native-viewer/model-loader.js'
 import { nativeSelfPlayerBinding, projectNativeYsmState, NATIVE_YSM_SOURCE, NATIVE_YSM_JAR_SHA256, NATIVE_YSM_NOTICE } from '../../src/native-viewer/native-ysm-state.js'
 import { createNativeYsmPlayerActor, NATIVE_YSM_ASSETS } from '../../src/native-viewer/native-player-ysm.js'
 import { NativeSelfPlayerController } from '../../src/native-viewer/native-self-player.js'
+import { NATIVE_YSM_MODELS } from '../../src/native-viewer/native-ysm-models.js'
 
 const UUID = '01234567-89ab-cdef-0123-456789abcdef'
 const foreign = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -136,4 +137,31 @@ test('tampered provenance, bytes, overrides and decoder sizes cannot render a re
   const wrong = new THREE.Texture({ width: 64, height: 64 }); wrong.addEventListener('dispose', () => released++)
   await assert.rejects(createNativeYsmPlayerActor(reader, { uuid: UUID, ysm: ysm(), loadTexture: async () => wrong }), /DECODE_INVALID/)
   assert.equal(released, 1)
+})
+
+test('native Steve/Alex IDs bind only their own original textures, never aliases or another model palette', () => {
+  for (const [modelId, texture] of [['misc/1_alex', 'gsl'], ['misc/2_steve', 'tartaric_acid']]) {
+    const binding = nativeSelfPlayerBinding(self(), UUID, ysm({ modelId, texture }))
+    assert.equal(binding.ysm.modelId, modelId); assert.equal(binding.ysm.texture, texture)
+    assert.throws(() => nativeSelfPlayerBinding(self(), UUID, ysm({ modelId, texture: 'blue' })), /TEXTURE_UNSUPPORTED/)
+  }
+  for (const modelId of ['__proto__', 'default', 'misc/2_steve/../3_default_boy'])
+    assert.throws(() => nativeSelfPlayerBinding(self(), UUID, ysm({ modelId })), /MODEL_UNSUPPORTED/)
+})
+
+test('real Steve/Alex actors use their complete original rigs and 64px textures without Default Boy assets', actual, async () => {
+  for (const modelId of ['misc/1_alex', 'misc/2_steve']) {
+    const profile = NATIVE_YSM_MODELS[modelId], texture = profile.textures[0], reader = await actualReader()
+    const actor = await createNativeYsmPlayerActor(reader, { uuid: UUID, ysm: ysm({ modelId, texture }), loadTexture: decode })
+    assert.equal(actor.assetInfo.modelId, modelId); assert.equal(actor.assetInfo.texture, texture)
+    assert.equal(actor.assetInfo.boneCount, 61); assert.equal(actor.assetInfo.cubeCount, profile.geometry.cubes)
+    assert.equal(actor.assetInfo.faceCount, profile.geometry.faces)
+    assert(actor.assetInfo.sourcePaths.every(filename => filename.includes(`/${modelId}/`)))
+    const mesh = actor.root.getObjectByProperty('isMesh', true)
+    assert.equal(mesh.material.map.image.width, 64); assert.equal(mesh.material.map.image.height, 64)
+    assert.equal(actor.assetInfo.equipmentRenderingAvailable, false); assert.equal(actor.assetInfo.completeEntityParityVerified, false)
+    actor.dispose()
+    const tampered = await actualReader(); tampered.manifest.assets[profile.assets.model].sha256 = NATIVE_YSM_MODELS['misc/3_default_boy'].hashes.model
+    await assert.rejects(createNativeYsmPlayerActor(tampered, { uuid: UUID, ysm: ysm({ modelId, texture }), loadTexture: decode }), /ASSET_SOURCE_UNSUPPORTED/)
+  }
 })

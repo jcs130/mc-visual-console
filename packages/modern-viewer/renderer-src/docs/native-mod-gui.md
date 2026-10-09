@@ -1,5 +1,13 @@
 # 原生模组窗口的网页展示
 
+2026-10-09：Domum Cutter 增加原生分组/款式第一页各最多 10 个预览，保留实际索引、完整物品组件、选择状态与原 PNG 按钮 UV。服务端只从原模组模板复制预览，已有真实输出材质时才按当前输入重映射；网页只读预览没有 `data-slot`、不作为库存或可取产物。页内预览仍须匹配本人 UUID、windowId、stateId 和新鲜度，后续滚动页没有伪装成已完成。
+
+新增 `native-domum-item-icons.js`：按锁定 Domum 1.0.231 的原材质 loader、PanelBlockItem、15 个 TrapdoorType ordinal 和原 item overrides，读取实际 `domum_ornamentum:texture_data`、`minecraft:block_state`，保留原模型顶点/UV并替换实际材质 sprite。仅接受明确的无 tint、不透明、单一 sprite 方块材质；原模组随机材质、透明/染色/动态方块、其他 Domum 物品和未知视觉组件明确不可用。材质资源冲突继续拒绝，未按文件顺序猜优先级。
+
+相机变换来自 `MateriallyTexturedBakedModel.getTransforms()` 委托的 `item/panel_spec` 原继承链；选中的 child 提供几何。NeoForge ItemRenderer 在 `getRenderPasses` 之前应用 camera transform，所以不能取 child 自身的空 display 或外层 loader JSON 的 translation 来画 GUI。证据为安装 JAR 的原 class，以及[官方 21.1.248 userdev 补丁包](https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.248/neoforge-21.1.248-userdev.jar)中的 ItemRenderer patch。原生源码/补丁与资产保持仓库外，代码不复制私有素材。
+
+实机以普通非 OP mc-agent-neko 身体完成两次圆石 → 4 full panel，最终 8 面板和完整组件重连保留；网页见原切割台、圆石款式预览、真实产物及库存图标，控制台无错误。管理员站位与材料夹具已披露，测试 0 模型调用。139 项相关原资源/界面测试通过、0 skip；这不等于 Java 像素或全部模组 GUI 一致性验收。
+
 界面与 Agent 操作来自同一个玩家连接。`createNativePlayerPresentation` 接收原生菜单、Ars 回执及可选 Curios/Domum 状态；不读取 Mineflayer 的代理物品，也不在渲染器中调用游戏动作。
 
 已移植 Minecraft 1.21.1 原工作台、箱子、炉界面，以及 Farmer’s Delight 1.3.4 烹饪锅、Curios 9.5.1 的实际饰品槽布局。Curios 的负 X 坐标、动态列、分页行和装饰槽图层来自安装 JAR 的 `CuriosScreen.renderBg` 与 `CuriosContainer.setPage`，通过原 PNG 裁剪绘制。Domum Ornamentum 1.0.231 切割台支持材料/产物/玩家槽与按原生分组选择的两个背景。

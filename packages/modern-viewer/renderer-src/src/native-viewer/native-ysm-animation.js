@@ -1,7 +1,8 @@
-// YSM 2.6.5 Default Boy only. Clips are read from the SHA-verified original
+// YSM 2.6.5 bounded CC0 models. Clips are read from the SHA-verified original
 // main.animation.json. Default player predicates: oo000ooO0O00oo0OO0ooO000.
 // This is a bounded browser port, not complete Java/native animation parity.
 import { renderNativePlayerMotion } from './native-player-motion.js'
+import { nativeYsmModelProfile } from './native-ysm-models.js'
 
 const F = Math.fround
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -13,7 +14,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 export const NATIVE_YSM_MOTION_SOURCE = 'same_player_server_tick'
 export const NATIVE_YSM_MAIN_CLIPS = Object.freeze(['idle', 'walk', 'run', 'jump'])
 export const NATIVE_YSM_ANIMATION_SUPPORT = Object.freeze({
-  scope: 'YSM_2.6.5_Default_Boy_main_clips', mainClips: NATIVE_YSM_MAIN_CLIPS,
+  scope: 'YSM_2.6.5_original_CC0_main_clips', mainClips: NATIVE_YSM_MAIN_CLIPS,
   notice: 'YSM 原关键帧动画预览：移动、视线与眨眼；装备和其他姿势未适配，客户端一致性未验',
   sourceRules: 'YSM_2.6.5_oo000ooO0O00oo0OO0ooO000_default_player_predicates',
   nativeMainTransitionSeconds: .1, channelTransformParityVerified: false, transitionRenderingAvailable: false,
@@ -44,7 +45,10 @@ function compileVector (value) {
   return value.map(scalar)
 }
 
-function compileTrack (value) {
+function compileTrack (value, channel) {
+  // Original Alex/Steve clips use a numeric scale for all three axes.
+  // This is an explicit native scale value, not a missing-track default.
+  if (channel === 'scale' && finite(value)) value = [value, value, value]
   if (vector(value)) {
     const components = compileVector(value)
     return (_time, query) => components.map(component => component(query))
@@ -68,17 +72,24 @@ function compileTrack (value) {
   }
 }
 
-export function compileNativeYsmAnimations (definition, boneNames) {
-  if (!known(definition, ['format_version', 'animations']) || definition.format_version !== '1.8.0' || !object(definition.animations)) throw Error('NATIVE_YSM_ANIMATION_SOURCE_UNSUPPORTED')
+export function compileNativeYsmAnimations (definition, boneNames, { modelId = 'misc/3_default_boy' } = {}) {
+  const profile = nativeYsmModelProfile(modelId)
+  if (!profile) throw Error('NATIVE_YSM_MODEL_UNSUPPORTED')
+  if (!known(definition, ['format_version', 'animations', 'geckolib_format_version']) || definition.format_version !== '1.8.0' ||
+      (definition.geckolib_format_version ?? null) !== profile.geckoFormatVersion || !object(definition.animations)) throw Error('NATIVE_YSM_ANIMATION_SOURCE_UNSUPPORTED')
   const bones = new Set(boneNames), clips = new Map()
   for (const name of [...NATIVE_YSM_MAIN_CLIPS, 'parallel0', 'parallel1']) {
     const source = definition.animations[name]
+    if (profile.absentClips.includes(name)) {
+      if (source !== undefined) throw Error(`NATIVE_YSM_ANIMATION_SOURCE_UNSUPPORTED:${name}`)
+      continue // An absent native clip is not another model's animation.
+    }
     if (!known(source, ['loop', 'animation_length', 'bones']) || !object(source.bones) || Object.keys(source.bones).length > 64 ||
         (source.loop !== undefined && typeof source.loop !== 'boolean') ||
         (source.animation_length !== undefined && (!finite(source.animation_length) || source.animation_length <= 0 || source.animation_length > 60))) throw Error(`NATIVE_YSM_ANIMATION_SOURCE_UNSUPPORTED:${name}`)
     const tracks = Object.entries(source.bones).map(([bone, channels]) => {
       if (!bones.has(bone) || !known(channels, ['rotation', 'position', 'scale'])) throw Error('NATIVE_YSM_ANIMATION_BONE_UNSUPPORTED')
-      return [bone, Object.fromEntries(Object.entries(channels).map(([channel, values]) => [channel, compileTrack(values)]))]
+      return [bone, Object.fromEntries(Object.entries(channels).map(([channel, values]) => [channel, compileTrack(values, channel)]))]
     })
     // Native default player registers all four main choices as LOOP, including
     // Boy idle whose JSON omits loop. Do not substitute the default model clip.
@@ -217,8 +228,8 @@ export function applyNativeYsmBonePose (model, poses, headQuery = null) {
   }
 }
 
-export function createNativeYsmAnimation (model, definition, playerUuid) {
-  const clips = compileNativeYsmAnimations(definition, model.bones.keys())
+export function createNativeYsmAnimation (model, definition, playerUuid, { modelId = 'misc/3_default_boy' } = {}) {
+  const clips = compileNativeYsmAnimations(definition, model.bones.keys(), { modelId })
   let currentClip = null, entrySeconds = 0, clipSeconds = 0, animationTicks = 0, physicsEpoch = null, previousNow = null, tickCount = null, previousPhysicsTime = null
   let lastObservation = null
   let state = unavailable('NATIVE_YSM_MOTION_WAITING')
@@ -245,6 +256,7 @@ export function createNativeYsmAnimation (model, definition, playerUuid) {
         }
         return reset(value.reason)
       }
+      if (!clips.has(value.clip)) return reset(`NATIVE_YSM_CLIP_NOT_PRESENT:${value.clip}`)
       if ((previousNow !== null && value.now < previousNow) ||
           (tickCount !== null && value.motion.tickCount < tickCount) ||
           (lastObservation && (value.now < lastObservation.now || value.motion.tickCount < lastObservation.tickCount))) return reset('NATIVE_YSM_MOTION_CLOCK_REGRESSED')
@@ -276,7 +288,8 @@ export function createNativeYsmAnimation (model, definition, playerUuid) {
         const eye = nativeYsmEyeQuery(playerUuid, animationTicks, value.motion.sleeping)
         const query = { ...head, ...eye }
         const base = sampleNativeYsmClip(clips, currentClip, clipSeconds)
-        applyNativeYsmBonePose(model, [base, sampleNativeYsmClip(clips, 'parallel0', 0, query), sampleNativeYsmClip(clips, 'parallel1', 0, query)], head)
+        applyNativeYsmBonePose(model, [base, ...['parallel0', 'parallel1'].filter(name => clips.has(name))
+          .map(name => sampleNativeYsmClip(clips, name, 0, query))], head)
         state = { available: true, reason: null, scope: NATIVE_YSM_ANIMATION_SUPPORT.scope, clip: currentClip,
           clipTime: base.time, entryTime: entrySeconds, beginningTransition: entrySeconds < F(.1),
           animationTicks, playerUuid, source: NATIVE_YSM_MOTION_SOURCE, tick: value.walk.tick,

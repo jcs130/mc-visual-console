@@ -9,6 +9,7 @@ import { NATIVE_YSM_JAR_SHA256, NATIVE_YSM_SOURCE } from '../../src/native-viewe
 import { compileNativeYsmAnimations, sampleNativeYsmClip, selectNativeYsmMainClip, nativeYsmHeadQuery,
   nativeYsmEyeQuery, nativeYsmMotionInput, createNativeYsmAnimation } from '../../src/native-viewer/native-ysm-animation.js'
 import { createNativeBedrockModel } from '../../src/native-viewer/native-entity-model-bedrock.js'
+import { NATIVE_YSM_MODELS } from '../../src/native-viewer/native-ysm-models.js'
 
 const UUID = '01234567-89ab-cdef-0123-456789abcdef'
 const motion = patch => ({ available: true, schemaVersion: 1, source: 'same_player_server_tick', playerUuid: UUID,
@@ -102,6 +103,29 @@ async function originals () {
   const geometry = await reader.json(NATIVE_YSM_ASSETS.model), animation = await reader.json(NATIVE_YSM_ASSETS.animation)
   return { reader, geometry, animation }
 }
+
+test('Steve/Alex consume their own original clips; absent native layers or Alex idle are never borrowed', async () => {
+  const { reader } = await originals()
+  for (const modelId of ['misc/1_alex', 'misc/2_steve']) {
+    const profile = NATIVE_YSM_MODELS[modelId]
+    const geometry = await reader.json(profile.assets.model), animation = await reader.json(profile.assets.animation)
+    const model = createNativeBedrockModel(geometry, new THREE.MeshLambertMaterial())
+    const clips = compileNativeYsmAnimations(animation, model.bones.keys(), { modelId })
+    assert.equal(clips.has('parallel0'), false); assert.equal(clips.has('parallel1'), false)
+    assert.deepEqual(sampleNativeYsmClip(clips, 'walk', 0).bones.RightArm.rotation,
+      animation.animations.walk.bones.RightArm.rotation['0.0'])
+    const animator = createNativeYsmAnimation(model, animation, UUID, { modelId })
+    assert.equal(animator.apply(input()).clip, 'walk')
+    const idle = animator.apply(input(1000, 0, {}, { walk: { speedOld: 0, speed: 0, position: 0 } }))
+    if (modelId === 'misc/1_alex') {
+      assert.equal(idle.available, false); assert.match(idle.reason, /CLIP_NOT_PRESENT:idle/)
+      assert.equal(clips.has('idle'), false)
+    } else assert.equal(idle.clip, 'idle')
+    const corrupted = structuredClone(animation); corrupted.animations.parallel0 = { bones: {} }
+    assert.throws(() => compileNativeYsmAnimations(corrupted, model.bones.keys(), { modelId }), /SOURCE_UNSUPPORTED:parallel0/)
+    model.dispose()
+  }
+})
 
 test('real SHA-verified Default Boy clips sample original authored joints and loop boundaries', async () => {
   const { geometry, animation } = await originals()

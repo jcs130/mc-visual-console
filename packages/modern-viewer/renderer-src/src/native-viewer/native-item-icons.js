@@ -4,9 +4,15 @@ import { parseNativeItemStack } from './native-item-stack.js'
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
 import { nativeArsItemEligible, NativeArsItemIconRenderer } from './native-ars-item-icons.js'
 import { nativeStaticItemState, verifyNativeStaticItemEvidence } from './native-static-item-providers.js'
+import { nativeDomumItemEligible, nativeDomumItemState, NativeDomumItemIconRenderer } from './native-domum-item-icons.js'
 
 export function nativeItemIconEligible(item) {
-  try { nativeStaticItemState(parseNativeItemStack(item)); return true } catch { return false }
+  try {
+    const stack = parseNativeItemStack(item)
+    if (nativeDomumItemEligible(stack.id)) nativeDomumItemState(stack)
+    else nativeStaticItemState(stack)
+    return true
+  } catch { return false }
 }
 
 export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {
@@ -21,11 +27,12 @@ export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {
 }
 
 export class NativeItemIcons {
-  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {} } = {}) {
+  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
     this.arsRenderer = new NativeArsItemIconRenderer(reader, arsRendererOptions)
+    this.domumRenderer = new NativeDomumItemIconRenderer(reader, domumRendererOptions)
   }
   resolve(item) {
     if (this.disposed) return null
@@ -37,6 +44,8 @@ export class NativeItemIcons {
       // JSON.stringify would conflate a typed tag wrapper with a compound that
       // happens to contain the same type/value fields. Never share their icon.
       // Input is bounded to 64 KiB and this cache to 128 entries.
+    } else if (nativeDomumItemEligible(key)) {
+      try { nativeDomumItemState(stack); provider = 'domum' } catch { return null }
     } else {
       try { nativeStaticItemState(stack); provider = 'static' } catch { return null }
     }
@@ -53,7 +62,8 @@ export class NativeItemIcons {
     if(this.disposed) return 'NATIVE_ITEM_ICONS_DISPOSED'
     try {
       const stack=parseNativeItemStack(item)
-      if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack)
+      if (nativeDomumItemEligible(item.name)) nativeDomumItemState(stack)
+      else if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack)
       const entry=this.entries.get(item.name+'#'+item.snbt)
       return entry ? entry.reason : this.entries.size>=128?'NATIVE_ITEM_ICON_CACHE_LIMIT':'not_requested'
     } catch(error) { return error.message }
@@ -67,8 +77,9 @@ export class NativeItemIcons {
   async load(key) {
     const entry = this.entries.get(key), name = entry.name
     try {
-      if (entry.provider === 'ars') {
-        const { blob, ...info } = await this.arsRenderer.render(entry.stack)
+      if (entry.provider === 'ars' || entry.provider === 'domum') {
+        const renderer = entry.provider === 'ars' ? this.arsRenderer : this.domumRenderer
+        const { blob, ...info } = await renderer.render(entry.stack)
         if (this.disposed) return
         entry.result = { verified: true, url: this.createUrl(blob), sourcePath: info.sourcePaths.find(path => path.includes('/models/item/')), ...info }
         entry.reason = null
@@ -105,6 +116,7 @@ export class NativeItemIcons {
     this.disposed = true; this.queue.length = 0
     this.blockRenderer.dispose()
     this.arsRenderer.dispose()
+    this.domumRenderer.dispose()
     for (const entry of this.entries.values()) if (entry.result) this.revokeUrl(entry.result.url)
     this.entries.clear()
   }

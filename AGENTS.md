@@ -1,5 +1,7 @@
 # Viewer fidelity requirements
 
+2026-10-09 原生YSM/Domum增量：YSM正向注册原Alex/gsl、Steve/tartaric_acid、Boy/blue|red，原model/PNG/animation SHA与64/128纹理/骨骼/UV保留；Alex无idle明确不可用，其他模型/装备/第一人称/完整动画和Java像素仍false。Domum原Cutter第一页组/款预览不带data-slot、不冒充库存；15种panel读取实际texture_data/type，原ordinal override/几何/UV及材质sprite，GUI来自外层baked parent transform（NeoForge先camera后renderPasses），随机/染色/透明/未知/资源冲突明确拒绝。普通非OP原生Neko身体2圆石→8panel和完整组件重连/浏览器实见，0模型调用；夹具披露，不称自主经营。139相关Node原资产测试全过0skip；新服已正常冷备更新桥576c911f…fe28并刷新常驻28984，原v14资产、旧服和MawExplorer暂停/旧未知保持。QA已正常关闭，原始包/JAR/素材/截图仓库外；细节renderer-src/docs/native-mod-gui.md与NATIVE_DEVICE_RENDERING_COMPATIBILITY.md。
+
 2026-10-09 有限Create风车适配：锁Create6.0.10原JAR/模型/UV/PNG，风车轴承六朝向、半轴/木顶和本人实际已跟踪转子anchor/轴/真实角度已接入。类型/UUID/entityId/playerUuid/epoch绑定，最多4实体×96方块、24KiB，陈旧>1秒或未支持BE明确不可用，不能凭桥数据造实体。实际普通MawNeko制作启动(-395,64,415)八帆风车，原生1RPM/角度变化；浏览器同账号已见帆转动，服务重启同UUID/新entityId恢复。修复中心LOS误隐藏整个已跟踪转子的服务端显示链，查询可见性保留。53项相关Node在实际v14资产下全过0skip；当前全场景Java对照/YSM未支持模型/复杂移动机仍未验，parity=false。私有素材/回执和截图不入Git，旧服不动。详情renderer-src/NATIVE_DEVICE_RENDERING_COMPATIBILITY.md及服务端风车任务文档。
 
 - The user's My Agent World view must use the exact Minecraft/modpack textures and models. Never substitute vanilla blocks/entities or simplified geometry for missing mod content.

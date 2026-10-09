@@ -93,6 +93,30 @@ export function nativeDomumMenuLayout (menu, expectedUuid) {
       : inv < 27 ? [40 + (inv%9)*18,120 + Math.floor(inv/9)*18] : [40 + (inv-27)*18,178]
     if (x !== expected[0] || y !== expected[1]) throw Error('NATIVE_DOMUM_SLOT_LAYOUT_MISMATCH')
   }
+  const previews = [], previewBlits = []
+  let previewReason = 'NATIVE_DOMUM_PREVIEWS_UNAVAILABLE'
+  if (state.previewSource === 'Domum_1.0.231_original_templates_current_materials' && state.previewOffset === 0 &&
+      Array.isArray(state.groupPreviews) && state.groupPreviews.length === Math.min(10, state.groups.length) &&
+      Array.isArray(state.variantPreviews) && Number.isInteger(state.variantPreviewTotal) && state.variantPreviewTotal >= 0 &&
+      state.variantPreviews.length === Math.min(10, state.variantPreviewTotal) &&
+      Number.isInteger(state.currentVariantIndex) && state.currentVariantIndex >= -1 && state.currentVariantIndex < Math.max(1, state.variantPreviewTotal)) {
+    const rows = [state.groupPreviews, state.variantPreviews]
+    if (rows.every((list, rowIndex) => Array.from(list).every((row, i) => row &&
+        (rowIndex === 0 ? row.buttonId === i && row.groupId === state.groups[i]?.groupId : row.variantIndex === i) &&
+        (row.item === null || (typeof row.item?.name === 'string' && row.item.count === 1 && typeof row.item.snbt === 'string'))))) {
+      previewReason = null
+      for (const [rowIndex, list] of rows.entries()) for (const [i, row] of list.entries()) {
+        const x = 57 + i * 16, y = rowIndex === 0 ? 18 : 41
+        const selected = rowIndex === 0 ? state.currentGroup === row.groupId : state.currentVariantIndex === i
+        previews.push({ ...row, x, y, kind: rowIndex === 0 ? 'group' : 'variant', selected })
+        previewBlits.push({ x, y: y - 1, sourceX: selected ? 0 : 32, sourceY: 202, width: 16, height: 18 })
+      }
+      // First page is explicit; client-local scrolling is not observed/invented.
+      previewBlits.push({ x: 220, y: 17, sourceX: state.groups.length > 10 ? 0 : 12, sourceY: 220, width: 12, height: 15 })
+      if (state.currentGroup !== null) previewBlits.push({ x: 220, y: 40, sourceX: state.variantPreviewTotal > 10 ? 0 : 12, sourceY: 220, width: 12, height: 15 })
+    }
+  }
   return { info: NATIVE_DOMUM_GUIS[state.currentGroup === null ? 0 : 1], width: 242, height: 202, slots: raw.slots.map(slot =>
-    ({ ...slot, role: slot.row.slot < inputs ? 'material' : slot.row.slot === output ? 'result' : 'inventory' })), state }
+    ({ ...slot, role: slot.row.slot < inputs ? 'material' : slot.row.slot === output ? 'result' : 'inventory' })),
+    previews, previewBlits, previewReason, state }
 }

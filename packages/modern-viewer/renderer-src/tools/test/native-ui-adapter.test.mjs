@@ -372,6 +372,32 @@ test('Domum material/output layout requires a fresh native state matching the ex
   assert.throws(()=>nativeDomumMenuLayout(menu,UUID),/STATE_UNAVAILABLE/)
 })
 
+test('Domum original recipe previews retain real material SNBT and cannot be mistaken for inventory slots', async () => {
+  const menu=containerMenu('domum_ornamentum:architectscutter',39)
+  menu.slotLayout=menu.slots.map(({slot:i})=>({ slot:i,x:i<2 ? 96 : i===2 ? 183 : 40+((i-3)%9)*18,
+    y:i<2 ? 66+i*20 : i===2 ? 77 : i<30 ? 120+Math.floor((i-3)/9)*18 : 178 }))
+  const item={name:'domum_ornamentum:panel',count:1,displayName:'建筑面板',snbt:'{id:"domum_ornamentum:panel",count:1,components:{"domum_ornamentum:material":{material:"minecraft:birch_planks"}}}'}
+  menu.domum={playerUuid:UUID,source:'same_player_native_architects_cutter',windowId:1,stateId:17,
+    inputs:[{},{}],outputSlot:2,groups:[{groupId:'domum_ornamentum:panel',buttonId:0,variantCount:1}],currentGroup:'domum_ornamentum:panel',
+    previewSource:'Domum_1.0.231_original_templates_current_materials',previewOffset:0,currentVariantIndex:0,variantPreviewTotal:1,
+    groupPreviews:[{groupId:'domum_ornamentum:panel',buttonId:0,item}],variantPreviews:[{variantIndex:0,item}]}
+  const seen=[],h=harness({resolveItemIcon:item=>{seen.push(item);return {verified:true,url:'blob:original-domum'}}})
+  await h.ui.setAssets(modMenuReader()); h.ui.update({epoch:1,presentation:presentation({nativeMenu:menu})})
+  const panel=h.document.querySelector('.native-menu-domum'),previews=panel.querySelectorAll('.native-domum-recipe-preview')
+  assert.equal(panel.dataset.previewState,'available');assert.equal(previews.length,2)
+  assert.equal(panel.querySelectorAll('.corti-menu-slot').length,39)
+  assert.deepEqual(previews.map(p=>[p.style.left,p.style.top]),[['114px','36px'],['114px','82px']])
+  assert(previews.every(p=>p.dataset.slot===undefined && p.dataset.selected==='true' && /不是可取物品/.test(p.title)))
+  assert(seen.some(row=>row.snbt===item.snbt))
+  const layout=nativeDomumMenuLayout(menu,UUID)
+  assert.deepEqual(layout.previewBlits.slice(0,2).map(row=>[row.sourceX,row.sourceY]),[[0,202],[0,202]])
+  menu.domum.groupPreviews[0].groupId='domum_ornamentum:other'
+  assert.match(nativeDomumMenuLayout(menu,UUID).previewReason,/UNAVAILABLE/)
+  menu.domum.playerUuid=OTHER
+  assert.throws(()=>nativeDomumMenuLayout(menu,UUID),/STATE_UNAVAILABLE/)
+  h.ui.dispose()
+})
+
 test('locked CraftingMenu slot origins cover the original result, 3x3 inputs and exact player inventory indices', () => {
   const menu = craftingMenu(), layout = nativeCraftingMenuLayout(menu, UUID)
   assert.equal(layout.length, 46); assert.deepEqual(layout[0].row, menu.slots[0])

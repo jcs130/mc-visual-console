@@ -164,7 +164,13 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
         menu.menuType === 'curios:curios_container' && curios?.menuOpen === true &&
         curios.containerId === menu.windowId && curios.stateId === menu.stateId) nativeMenu.curios = { ...curios, playerUuid: uuid }
     if (freshMods && own(domumState) && domumState.source === 'same_player_native_architects_cutter' &&
-        menu.menuType?.startsWith('domum_ornamentum:') && domumState.windowId === menu.windowId && domumState.stateId === menu.stateId) nativeMenu.domum = domumState
+        menu.menuType?.startsWith('domum_ornamentum:') && domumState.windowId === menu.windowId && domumState.stateId === menu.stateId) {
+      nativeMenu.domum = { ...domumState }
+      for (const key of ['groupPreviews', 'variantPreviews']) if (Array.isArray(domumState[key]) && domumState[key].length <= 10) {
+        try { nativeMenu.domum[key] = domumState[key].map(row => ({ ...row, item: row.item?.count === 0 ? null : nativeItem({ ...row.item, displayName: row.item?.name }) })) }
+        catch { delete nativeMenu.domum[key] }
+      } else delete nativeMenu.domum[key]
+    }
     if (own(menu.cookingPot) && menu.cookingPot.source === 'native_cooking_pot_menu') {
       nativeMenu.cookingPot = { playerUuid: uuid, source: menu.cookingPot.source,
         isHeated: typeof menu.cookingPot.isHeated === 'boolean' ? menu.cookingPot.isHeated : null,

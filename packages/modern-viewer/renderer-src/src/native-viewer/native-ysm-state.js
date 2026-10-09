@@ -1,3 +1,4 @@
+import { nativeYsmModelProfile } from './native-ysm-models.js'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 export const NATIVE_YSM_SOURCE = 'same_player_native_attachment'
 export const NATIVE_YSM_VERSION = '2.6.5'
@@ -50,8 +51,9 @@ export function nativeSelfPlayerBinding (self, playerUuid, ysm = self?.ysm, { ys
     if (state.enabled) {
       if (state.installed === false || typeof state.mandatory !== 'boolean') throw Error('NATIVE_YSM_ATTACHMENT_INVALID')
       if (state.ysmVersion !== NATIVE_YSM_VERSION || state.jarSha256 !== NATIVE_YSM_JAR_SHA256) throw Error('NATIVE_YSM_VERSION_UNSUPPORTED')
-      if (state.modelId !== NATIVE_YSM_MODEL_ID) throw Error('NATIVE_YSM_MODEL_UNSUPPORTED')
-      if (!['blue', 'red'].includes(state.texture)) throw Error('NATIVE_YSM_TEXTURE_UNSUPPORTED')
+      const profile = nativeYsmModelProfile(state.modelId)
+      if (!profile) throw Error('NATIVE_YSM_MODEL_UNSUPPORTED')
+      if (!profile.textures.includes(state.texture)) throw Error('NATIVE_YSM_TEXTURE_UNSUPPORTED')
       return { kind: 'ysm', uuid, ysm: state, key: `ysm:${uuid}:${state.modelId}:${state.texture}:${state.mandatory}` }
     }
   }

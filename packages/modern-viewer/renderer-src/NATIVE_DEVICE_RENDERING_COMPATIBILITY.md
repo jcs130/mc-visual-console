@@ -1,5 +1,13 @@
 # 原生加工设备的有限场景适配
 
+## 2026-10-09 YSM 与 Domum 增量
+
+YSM 原资源 provider 现按原 ID 支持 `misc/1_alex/gsl`、`misc/2_steve/tartaric_acid`、`misc/3_default_boy/blue|red`。分别验证原定义、模型、动画、PNG 和整个 2.6.5 JAR；64/128 像素纹理、原骨骼/几何/UV不改写。Steve/Alex 的原 geckolib_format_version=2 和数值 uniform scale=1 已按有限原语义读取。Alex 没有原 idle clip、Steve/Alex 没有原 parallel0/1，缺项明确展示，不造动画。未知模型、姿势、装备、第一人称手臂仍不可用；完整实体/动画/全场景 parity 均为 false。普通账号实际切 Steve → Alex → Boy/red，并通过网页确认；原生选择授权由服务端保留。
+
+Domum 原生切割台增加第一页原款式/分组预览，物品图标新增真实材质的全部 15 个 panel 款式。provider 移植原 loader → parent override → 材质 sprite 重映射路径，实际组件有缺失/随机/未知类型或资源冲突时拒绝；不绘制近似 cube。GUI 使用外层 baked model 的原 parent transform，child 仅提供选中几何。支持限于明确无 tint、不透明、单 sprite 材质，其他 Domum 动态物品、滚动页与完整 Java 像素对照仍未验。实机圆石面板制作、真实库存、重连、原 GUI/款式/产物图标通过；有限图标 pixelParityVerified=false。细节见 [原生模组窗口](docs/native-mod-gui.md)。
+
+本轮 139 项相关原资源测试全过 0 skip，另有普通非 OP、0 模型调用的实机操作与浏览器检查。测试夹具不计 Agent 自主采集或经营；资产、JAR 和原始包保留仓库外。
+
 本轮选择 Create 磨石的原外壳和旋转内齿轮，补齐同玩家网页中可见的机械几何与实际 RPM。它不代表 Farmer's Delight / Create 全部实体方块、加工粒子、声音、光照或 Java 客户端像素已经兼容；完整场景 parity guard 保持关闭。加工是否在进行、输入/产物及拾取结果由原设备回执独立证明，齿轮旋转不能替代这些后置条件。
 
 ## 原始来源与几何

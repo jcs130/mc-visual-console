@@ -100,13 +100,19 @@ export function nativeGuiFaceCulling(faces, transform) {
 export async function prepareNativeBlockItemIcon(reader, name) {
   if (!nativeBlockItemEligible(name)) throw Error('NATIVE_BLOCK_ITEM_PROVIDER_UNSUPPORTED')
   const evidence = verifyNativeStaticItemEvidence(reader, name)
+  const [namespace, leaf] = name.split(':')
+  const model = await resolveNativeBlockItemModel(reader, `${namespace}:item/${leaf}`)
+  return prepareNativeBlockGuiPlan(reader, { name, model, evidence })
+}
+
+// Shared original JSON geometry, GUI transform, shaders and bounded resource
+// validation. Dynamic providers must resolve and audit their native model first.
+export async function prepareNativeBlockGuiPlan(reader, { name, model, evidence, sourcePaths = [] }) {
   if (reader.manifest.clientJarSha256 !== BLOCK_ICON_CLIENT_SHA256) throw Error('NATIVE_BLOCK_ITEM_CLIENT_UNVERIFIED')
   for (const [path, hash] of Object.entries(BLOCK_ICON_SHADER_HASHES)) {
     if (reader.manifest.assets[path]?.sha256 !== hash) throw Error(`NATIVE_BLOCK_ITEM_SHADER_UNSUPPORTED:${path}`)
     await reader.bytes(path) // Also enforces the manifest SHA and resource priority.
   }
-  const [namespace, leaf] = name.split(':')
-  const model = await resolveNativeBlockItemModel(reader, `${namespace}:item/${leaf}`)
   if (model.nativeGenerated) throw Error('NATIVE_BLOCK_ITEM_GENERATED_PROVIDER_REQUIRED')
   if (!model.elements.length || model.elements.length > 128) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
   if ((model.gui_light ?? 'side') !== 'side') throw Error('NATIVE_BLOCK_ITEM_FRONT_LIGHT_UNSUPPORTED')
@@ -133,7 +139,7 @@ export async function prepareNativeBlockItemIcon(reader, name) {
     if (!Number.isSafeInteger(size) || size <= 0 || size > 16777216) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_LIMIT')
   }
   return { name, model, faces, renderFaces:culling.visible, culling, transform, texturePaths, evidence,
-    sourcePaths: [...model.sourcePaths, ...texturePaths, ...Object.keys(BLOCK_ICON_SHADER_HASHES)] }
+    sourcePaths: [...new Set([...sourcePaths, ...model.sourcePaths, ...texturePaths, ...Object.keys(BLOCK_ICON_SHADER_HASHES)])] }
 }
 
 function material(texture) {
@@ -214,6 +220,7 @@ const encodeCanvas = renderer => new Promise((resolve, reject) => renderer.domEl
 export class NativeBlockItemIconRenderer {
   constructor(reader, options = {}) {
     this.reader = reader; this.createRenderer = options.createRenderer ?? createRenderer
+    this.preparePlan = options.preparePlan ?? prepareNativeBlockItemIcon
     this.loadTexture = options.loadTexture ?? loadOpaqueTexture; this.encode = options.encode ?? encodeCanvas
     this.renderer = null; this.pending = Promise.resolve(); this.disposed = false
   }
@@ -228,7 +235,7 @@ export class NativeBlockItemIconRenderer {
     let object; const textures = new Map(); let pixels = 0
     const ensureOpen = () => { if (this.disposed) throw Error('NATIVE_BLOCK_ITEM_DISPOSED') }
     try {
-      ensureOpen(); const plan = await prepareNativeBlockItemIcon(this.reader, name); ensureOpen()
+      ensureOpen(); const plan = await this.preparePlan(this.reader, name); ensureOpen()
       for (const path of plan.texturePaths) {
         const bytes = await this.reader.bytes(path); ensureOpen()
         const texture = await this.loadTexture(bytes); textures.set(path, texture); ensureOpen()
@@ -247,7 +254,7 @@ export class NativeBlockItemIconRenderer {
       this.renderer.clear(); this.renderer.render(scene, camera)
       const blob = await this.encode(this.renderer); ensureOpen()
       if (!(blob instanceof Blob) || blob.type !== 'image/png') throw Error('NATIVE_BLOCK_ITEM_PNG_ENCODE_FAILED')
-      return { blob, sourcePaths: plan.sourcePaths, guiTransform: plan.transform, kind: 'native-block-gui', pixelParityVerified: false,
+      return { blob, sourcePaths: plan.sourcePaths, guiTransform: plan.transform, kind: plan.kind ?? 'native-block-gui', pixelParityVerified: false,
         providerEvidence: plan.evidence, guiCulling: { ...plan.culling, visible:undefined } }
     } finally {
       if (object) disposeNativeBlockItemObject(object)

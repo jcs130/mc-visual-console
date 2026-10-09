@@ -603,6 +603,22 @@ export function createNativeInterface ({ document = globalThis.document,
           if (cookingPot.heat.available && cookingPot.heat.isHeated) blit(background, 256, 256, cookingPot.heat.icon, 'native-menu-cooking-pot-heat')
           else if (!cookingPot.heat.available) panel.dataset.heatReason = cookingPot.heat.reason
         }
+        if (kind === 'domum') {
+          panel.dataset.previewState = layout.previewReason ? 'unavailable' : 'available'
+          if (layout.previewReason) panel.dataset.previewReason = layout.previewReason
+          for (const crop of layout.previewBlits) blit(assets.urls.get(NATIVE_DOMUM_GUIS[0].path), 256, 256, crop, 'native-domum-preview-background')
+          for (const preview of layout.previews) {
+            const element = node(document, 'div', 'native-domum-recipe-preview')
+            element.style.position = 'absolute'; element.style.left = `${preview.x * 2}px`; element.style.top = `${preview.y * 2}px`
+            element.style.width = '32px'; element.style.height = '32px'; element.style.pointerEvents = 'none'
+            element.dataset.previewKind = preview.kind; element.dataset.selected = String(preview.selected)
+            element.dataset.nativePreviewIndex = String(preview.buttonId ?? preview.variantIndex)
+            renderNativeItemSlot(document, element, preview.item, { label: '原生配方预览（不是物品栏）', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason })
+            element.title += ' · 配方预览，不是可取物品'; element.setAttribute('aria-label', element.title)
+            for (const image of element.querySelectorAll('img')) { image.style.width = '32px'; image.style.height = '32px'; image.style.imageRendering = 'pixelated' }
+            panel.append(element)
+          }
+        }
         for (const { row, x, y, role } of layout.slots) {
           // Original Slot coords address the 16px item; existing CSS draws its
           // 32px image 2px inside this 36px div, so place the div one GUI pixel back.
@@ -638,7 +654,7 @@ export function createNativeInterface ({ document = globalThis.document,
           : kind === 'domum' ? 'Domum Ornamentum 原建筑切割台材料、产物与玩家背包布局'
           : kind === 'cooking-pot' ? 'Farmer’s Delight 原 3×2 原料、熟食缓冲、容器、成品与玩家背包布局' : '原版炉输入、燃料、结果与玩家背包布局'
         const missing = kind === 'curios' ? '配方书、饰品按钮与原生标题未接入'
-          : kind === 'domum' ? '分组/款式按钮图标、滚动位置与原生标题未接入'
+          : kind === 'domum' ? `${layout.previewReason ? '分组/款式预览未同步' : '已显示原始分组/款式预览第一页'}；其他滚动页与原生标题未接入`
             : kind === 'chest' ? '原生标题未接入' : '配方书与原生标题未接入'
         const progressText = progress ? `；${progress.available ? '火焰与烧炼进度来自本人原生 dataValues'
           : `火焰与烧炼进度未知（${progress.reason}）`}` : cookingPot ? `；热源${cookingPot.heat.available ? (cookingPot.heat.isHeated ? '已加热' : '未加热') : `未知（${cookingPot.heat.reason}）`}；烹饪进度${cookingPot.progress.available ? '来自本人原生 dataValues' : `未知（${cookingPot.progress.reason}）`}` : ''
