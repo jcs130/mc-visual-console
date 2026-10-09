@@ -30,6 +30,8 @@ node tools/prepare-viewer-assets.mjs java-1.20.6 "<output-dir>"
 
 构建默认使用通用模式，适合 Neko 等其他宿主。千灯纪的技能视觉映射和公会看板显示用 `--preset=qiandengji` 显式开启；此选项不启用参考包内的命名 NPC 身份或本地剧情。服务端机制和 Agent 决策仍在独立 World 中。
 
+1.20.6 的第三人称和 2.5D 画面只在检测到视线或顶层遮挡时开启透视／切面；无遮挡时恢复完整地形，不再常驻人物周围的透视圈。离开遮挡沿用连续采样确认，避免边缘来回闪烁。
+
 ## 1.21.1 模组服的原生接入
 
 My Agent World 的实验接入复用原 `page-template.html`、`viewer.css`、背包人物预览和自适应画质组件，

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { hasDeepRoof, hasRoomCeiling, patchRoomOcclusion, roomCutoffWorldY, roomOcclusionMode } from '../minecraft-viewer-room-occlusion.mjs';
 import { CUTAWAY_MATERIAL_VERSION, createCutawayUniforms } from '../../src/modern-viewer/room-visibility.js';
+import { updateOcclusionHysteresis } from '../../src/modern-viewer/dungeon-view-controls.js';
 
 test('dungeon cuts both thin and thick upper layers while third-person keeps corridor transparency', () => {
   const solid = new Set(['0,66,0', '1,66,0', '0,66,1']);
@@ -28,7 +29,7 @@ test('host adaptation preserves the directly imported visibility policy', () => 
   assert.equal(patchRoomOcclusion(client), client);
 });
 
-test('dungeon walls reveal a local floor at cave entrances; clear and third-person views keep the body aperture', () => {
+test('clear views keep terrain intact while blocked views reveal the body or cave floor', () => {
   const client = patchRoomOcclusion(readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8'));
   const start = client.indexOf('function runDungeonOcclusionCheck()');
   const end = client.indexOf('function refreshDungeonCutawayMaterials()', start);
@@ -49,13 +50,13 @@ test('dungeon walls reveal a local floor at cave entrances; clear and third-pers
       resolveObserverTargetPosition: () => ({ position: { x: 50, y: 24.3, z: 25 }, mode: 'entity' }), focusedCharacterId: '8',
       traceVisibilityCorridor: () => ({ occluded: situation === 'wall', samples: 0, reason: 'clear', hit: null }),
       updateOcclusionHysteresis: (_previous, active) => ({ active, clearSamples: 0 }),
-      refreshDungeonCutawayMaterials() {}, restoreDungeonCutaway() {},
+      refreshDungeonCutawayMaterials() {}, restoreDungeonCutaway() { context.dungeonCutawayApplied = false; },
       roomCutoffWorldY, roomOcclusionMode, hasRoomCeiling, hasDeepRoof,
       applyDungeonCutaway(args) { calls.push(args); context.dungeonCutawayApplied = true; },
     };
     runInNewContext(`${client.slice(start, end)}\nrunDungeonOcclusionCheck();`, context);
     const covered = situation === 'roof';
-    const active = situation !== 'unavailable';
+    const active = covered || situation === 'wall';
     assert.equal(calls.length, active ? 1 : 0, `${isDungeonView}: ${situation}`);
     if (active) {
       const hard = isDungeonView && (covered || situation === 'wall');
@@ -66,6 +67,60 @@ test('dungeon walls reveal a local floor at cave entrances; clear and third-pers
       assert.equal(context.dungeonUpperCutawayY, hard ? 24.3 : null);
       assert.equal(context.dungeonOcclusionDiagnostics.detected, covered || situation === 'wall');
     }
-    if (situation === 'unavailable') assert.equal(context.dungeonOcclusionDiagnostics.active, false);
+    if (!active) {
+      assert.equal(context.dungeonOcclusionDiagnostics.active, false);
+      assert.equal(context.dungeonUpperCutawayY, null);
+      assert.equal(context.dungeonUpperCutawayRegion, null);
+      if (situation === 'clear') {
+        assert.equal(context.dungeonOcclusionDiagnostics.mode, 'clear');
+        assert.equal(context.dungeonOcclusionDiagnostics.cutScope, 'none');
+        assert.equal(context.viewerPerformanceCounters.cutawayActivations, 0);
+      }
+    }
   }
+});
+
+test('leaving an obstruction releases the reveal after the existing clear-sample hysteresis', () => {
+  const client = readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8');
+  const start = client.indexOf('function runDungeonOcclusionCheck()');
+  const end = client.indexOf('function refreshDungeonCutawayMaterials()', start);
+  let occluded = true;
+  let activations = 0, restores = 0;
+  const context = {
+    usesWorldAvatar: true, isDungeonView: true, rendererReady: true,
+    document: { hidden: false, getElementById: () => null }, performance,
+    latestPosition: { pos: { x: 0, y: 64, z: 0 } }, focusedCharacterId: null,
+    world: { camera: { getWorldPosition: point => Object.assign(point, { x: 0, y: 74, z: 10 }) },
+      cameraCollisionBlockCache: { isSolidBlock: () => false },
+      sceneOrigin: { toWorldX: x => x, toWorldY: y => y, toWorldZ: z => z } },
+    dungeonOcclusionCameraScene: {}, dungeonRoomCoverCache: null,
+    dungeonOcclusionState: { active: false, clearSamples: 0 }, dungeonRoofState: { active: false, clearSamples: 0 },
+    dungeonCutawayApplied: false, dungeonCutawayMaterials: new Map(), dungeonFloorMask: null,
+    dungeonVisibilityUniforms: createCutawayUniforms(), dungeonOcclusionDiagnostics: { checks: 0, samples: 0 },
+    DUNGEON_OCCLUSION_RELEASE_SAMPLES: 3, DUNGEON_OCCLUSION_INTERVAL_MS: 250, CUTAWAY_MATERIAL_VERSION,
+    viewerPerformanceCounters: { occlusionChecks: 0, occlusionVoxelSamples: 0, cutawayActivations: 0, cutawayRestores: 0 },
+    resolveObserverTargetPosition: () => null,
+    traceVisibilityCorridor: () => ({ occluded, samples: 0, reason: occluded ? 'blocked' : 'clear', hit: null }),
+    updateOcclusionHysteresis, roomCutoffWorldY, roomOcclusionMode, hasRoomCeiling, hasDeepRoof,
+    refreshDungeonCutawayMaterials() {},
+    applyDungeonCutaway() { activations++; context.dungeonCutawayApplied = true; },
+    restoreDungeonCutaway() { restores++; context.dungeonCutawayApplied = false; },
+  };
+  const check = runInNewContext(`${client.slice(start, end)}\nrunDungeonOcclusionCheck`, context);
+  check();
+  assert.equal(context.dungeonOcclusionDiagnostics.mode, 'cutaway');
+  occluded = false;
+  check(); check();
+  assert.equal(restores, 0, 'one clear ray must not cause flicker');
+  check();
+  assert.equal(restores, 1);
+  assert.equal(context.dungeonOcclusionDiagnostics.active, false);
+  assert.equal(context.dungeonOcclusionDiagnostics.cutScope, 'none');
+  assert.equal(context.dungeonUpperCutawayY, null);
+  const afterRelease = activations;
+  check(); check();
+  assert.equal(activations, afterRelease, 'the reveal stays off in an unobstructed view');
+  occluded = true;
+  check();
+  assert.equal(context.dungeonOcclusionDiagnostics.active, true, 'returning to a cave still reveals it');
 });

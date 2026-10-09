@@ -2229,15 +2229,17 @@ function runDungeonOcclusionCheck() {
   const hardCutaway = isDungeonView && dungeonOcclusionState.active;
   dungeonUpperCutawayY = hardCutaway && dungeonOcclusionState.active ? avatar.y : null;
   if (dungeonUpperCutawayY === null) dungeonUpperCutawayRegion = null;
-  // Collision caches omit some visible surfaces. The fragment mask handles
-  // the body aperture even when the sparse CPU rays report a clear view.
-  applyDungeonCutaway({
-    targetWorld: avatar,
-    cameraWorld,
-    cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
-    hardCutaway,
-    coveredRoom: dungeonRoofState.active,
-  });
+  if (dungeonOcclusionState.active) {
+    applyDungeonCutaway({
+      targetWorld: avatar,
+      cameraWorld,
+      cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
+      hardCutaway,
+      coveredRoom: dungeonRoofState.active,
+    });
+  } else {
+    restoreDungeonCutaway();
+  }
   if (!wasActive && dungeonOcclusionState.active) viewerPerformanceCounters.cutawayActivations += 1;
   if (wasActive && !dungeonOcclusionState.active) viewerPerformanceCounters.cutawayRestores += 1;
 
@@ -2246,7 +2248,7 @@ function runDungeonOcclusionCheck() {
     setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");
     setElementDataset(canvas, "roomCeiling", roomCeiling ? "yes" : "no");
     setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");
-    setElementDataset(canvas, "occlusionMode", roomOcclusionMode(isDungeonView, hardCutaway));
+    setElementDataset(canvas, "occlusionMode", dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, hardCutaway) : "clear");
     setElementDataset(canvas, "occlusionCutaway", dungeonCutawayApplied ? "active" : dungeonOcclusionState.active ? "unavailable" : "clear");
     setElementDataset(canvas, "occlusionSamples", trace.samples);
     setElementDataset(canvas, "occlusionTarget", resolvedTarget?.mode || "self");
@@ -2258,9 +2260,11 @@ function runDungeonOcclusionCheck() {
     detected: dungeonOcclusionState.active,
     roomCeiling,
     deepRoof,
-    mode: roomOcclusionMode(isDungeonView, hardCutaway),
+    mode: dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, hardCutaway) : "clear",
     cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
-    cutScope: hardCutaway ? dungeonRoofState.active ? "connected-floor-and-sightlines" : "local-floor-and-sightlines" : "aperture",
+    cutScope: dungeonOcclusionState.active
+      ? hardCutaway ? dungeonRoofState.active ? "connected-floor-and-sightlines" : "local-floor-and-sightlines" : "aperture"
+      : "none",
     maskVersion: CUTAWAY_MATERIAL_VERSION,
     roomRadius: dungeonVisibilityUniforms.u_lanternRoomRadius.value,
     coverCache: dungeonRoomCoverCache?.diagnostics ?? null,
