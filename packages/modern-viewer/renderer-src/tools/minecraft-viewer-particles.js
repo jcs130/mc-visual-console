@@ -46,11 +46,18 @@ function cortiEnsureParticleScene() {
   geometry.setDrawRange(0, 0);
   const material = new three.ShaderMaterial({
     vertexColors: true, transparent: true, depthWrite: false, blending: three.AdditiveBlending,
-    vertexShader: `attribute float opacity; varying vec3 vColor; varying float vOpacity;
+    vertexShader: `#include <common>
+      #include <logdepthbuf_pars_vertex>
+      attribute float opacity; varying vec3 vColor; varying float vOpacity;
       void main(){vColor=color;vOpacity=opacity;vec4 mv=modelViewMatrix*vec4(position,1.0);
-      gl_PointSize=clamp(70.0/max(1.0,-mv.z),2.0,28.0);gl_Position=projectionMatrix*mv;}`,
-    fragmentShader: `varying vec3 vColor;varying float vOpacity;
-      void main(){float d=length(gl_PointCoord*2.0-1.0);float a=1.0-smoothstep(0.30,1.0,d);
+      gl_PointSize=clamp(70.0/max(1.0,-mv.z),2.0,28.0);gl_Position=projectionMatrix*mv;
+      #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `#include <logdepthbuf_pars_fragment>
+      varying vec3 vColor;varying float vOpacity;
+      void main(){
+      #include <logdepthbuf_fragment>
+      float d=length(gl_PointCoord*2.0-1.0);float a=1.0-smoothstep(0.30,1.0,d);
       gl_FragColor=vec4(vColor,a*vOpacity);}`,
   });
   cortiParticleCloud = new three.Points(geometry, material);

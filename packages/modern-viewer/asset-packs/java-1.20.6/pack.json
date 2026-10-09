@@ -4,11 +4,18 @@
   "kind": "java",
   "minecraftVersion": "1.20.6",
   "source": {
-    "clientJarSha256": "02dfd345ac1ad55692d5dbc8486ac7e4fea72cd54ac494a79cd48963048e56b2"
+    "clientJarSha256": "02dfd345ac1ad55692d5dbc8486ac7e4fea72cd54ac494a79cd48963048e56b2",
+    "viewerContent": {
+      "exporter": "packages/modern-viewer/renderer-src/tools/export-minecraft-viewer-content.py",
+      "clientMappingsSha256": "27f4ef3a9362e9874e2c33edac981b6f485ad97f92c4e35b497525b646aae745",
+      "manifestSha256": "8c71ed85c1b9e24b35ac6051af13177f0f39561853d2e2441edce1c65e15b4fa",
+      "particleAtlasSha256": "e7eda4d74d77d471be3e198b39fc493729b90bcdbe8451a7e7fb5eec51b4abf2",
+      "scope": "Original native MapColor palette, item-frame model inputs, particle definitions and exact sprite pixels; no gameplay captures."
+    }
   },
-  "scope": "Version-matched source models, textures, item icons and painting data; build the browser bundle from current source.",
-  "fileCount": 5400,
-  "bytes": 22263754,
+  "scope": "Version-matched source models, textures, item icons, paintings, map palette, item frames and particle sprites; build the browser bundle from current source.",
+  "fileCount": 5404,
+  "bytes": 22280389,
   "files": {
     "public/asset-source.json": {
       "bytes": 559777,
@@ -21609,6 +21616,22 @@
     "render-assets/painting-records.json": {
       "bytes": 409,
       "sha256": "136bf72cab978dadb65ed904847c4c3a8e6f99ef96dd74126687870ec40cd6e8"
+    },
+    "public/particle-content.png": {
+      "bytes": 1084,
+      "sha256": "e7eda4d74d77d471be3e198b39fc493729b90bcdbe8451a7e7fb5eec51b4abf2"
+    },
+    "public/textures/1.20.6/entity/glow_squid.png": {
+      "bytes": 709,
+      "sha256": "a5b837dc765b92865b6a90617329b872497648c7f503a760ebe6f6df7f86ab15"
+    },
+    "public/textures/1.20.6/entity/squid.png": {
+      "bytes": 408,
+      "sha256": "f470d0ac2ebbb38861855f1cf40f799138bb2f6c495c53c8d6edfc569944c1ae"
+    },
+    "public/viewer-content.json": {
+      "bytes": 14434,
+      "sha256": "8c71ed85c1b9e24b35ac6051af13177f0f39561853d2e2441edce1c65e15b4fa"
     }
   }
 }

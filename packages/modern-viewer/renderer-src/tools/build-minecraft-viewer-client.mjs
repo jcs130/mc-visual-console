@@ -12,6 +12,7 @@ import { patchRendererPlayerSkin } from './minecraft-viewer-player-skin.mjs'
 import { assertMinimapArrowOrientation } from './minecraft-viewer-bundle-check.mjs'
 import { normalizeUntintedLeafModels } from './minecraft-viewer-leaf-tints.mjs'
 import { writeViewerPages } from '../src/viewer-page.mjs'
+import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -53,6 +54,7 @@ const sourceManifest = JSON.parse(await readFile(path.join(outputRoot, 'public',
 if (sourceManifest.minecraftVersion !== '1.20.6' || !sourceManifest.clientJarSha256) {
   throw Error('请先从 1.20.6 客户端 JAR 导出资源')
 }
+const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256)
 const replacements = {
   'blockStatesModels.json': 'blockStatesModels.json',
   'blocksAtlases.json': 'blocksAtlases.json',
@@ -117,7 +119,8 @@ const temp = await mkdtemp(path.join(tmpdir(), 'mc-modern-viewer-'))
 const aliasFile = path.join(temp, 'minecraft-data-1.20.6.cjs')
 await writeFile(aliasFile, alias)
 const clientFile = path.join(sourceRoot, 'src', 'modern-viewer', 'client.js')
-const clientSource = (await readFile(clientFile, 'utf8')).replace(/\r\n/g, '\n')
+// Git's Windows checkout may use CRLF. Anchors describe JavaScript, not EOLs.
+const clientSource = (await readFile(clientFile, 'utf8')).replaceAll('\r\n', '\n')
 let correctedEntitySkeleton = false
 let correctedAvatarMotion = false
 const itemIconSource = await readFile(new URL('./minecraft-viewer-item-icon.js', import.meta.url), 'utf8')
@@ -134,6 +137,7 @@ const combatSource = await readFile(new URL('./minecraft-viewer-combat.js', impo
 const tacticsSource = await readFile(new URL('./minecraft-viewer-tactics.js', import.meta.url), 'utf8')
 const eventsSource = await readFile(new URL('./minecraft-viewer-events.js', import.meta.url), 'utf8')
 const particleSource = await readFile(new URL('./minecraft-viewer-particles.js', import.meta.url), 'utf8')
+const contentSource = await readFile(new URL('./minecraft-viewer-content.js', import.meta.url), 'utf8')
 const presentationSource = await readFile(new URL('./minecraft-viewer-presentation.js', import.meta.url), 'utf8')
 const soundSource = await readFile(new URL('./minecraft-viewer-sound.js', import.meta.url), 'utf8')
 const biomeStyleSource = await readFile(new URL('./minecraft-viewer-biome-style.js', import.meta.url), 'utf8')
@@ -141,7 +145,7 @@ const panelsSource = await readFile(new URL('./minecraft-viewer-panels.js', impo
 const servicePanelSource = await readFile(new URL('./minecraft-viewer-service-panel.js', import.meta.url), 'utf8')
 const sheepSource = await readFile(new URL('./minecraft-viewer-sheep.js', import.meta.url), 'utf8')
 const paintingFile = path.join(sourceRoot, 'src', 'modern-viewer', 'painting-variants.js')
-const paintingSource = await readFile(paintingFile, 'utf8')
+const paintingSource = (await readFile(paintingFile, 'utf8')).replaceAll('\r\n', '\n')
 const paintingRecords = JSON.parse(await readFile(path.join(renderAssets, 'painting-records.json'), 'utf8'))
 const changedPaintings = paintingSource.replace(/const records = \[[\s\S]*?\n\];/, `const records = ${JSON.stringify(paintingRecords)};`)
 if (changedPaintings === paintingSource) throw Error('modern viewer 画作表格式已变化')
@@ -268,7 +272,7 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('  if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);\n  for (const event of pendingChunks.values())')) {
   throw Error('modern viewer 源码版本锚点已变化')
 }
-const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${eventsSource}\n${particleSource}\n${presentationSource}\n${soundSource}\n`
+const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${eventsSource}\n${particleSource}\n${contentSource}\n${presentationSource}\n${soundSource}\n`
 
 await mkdir(path.join(outputRoot, 'dist'), { recursive: true })
 await mkdir(path.join(outputRoot, 'public'), { recursive: true })
@@ -298,7 +302,7 @@ const buildResult = await build({
         const name = path.basename(file)
         if (vanillaPresetModules[name]) return { contents: vanillaPresetModules[name], loader: 'js', resolveDir: path.dirname(file) }
         if (name !== 'npc-gameplay.js') throw Error(`未处理的服务器预设模块：${name}`)
-        const original = await readFile(file, 'utf8')
+        const original = (await readFile(file, 'utf8')).replaceAll('\r\n', '\n')
         const loreTable = /export const ORIGINAL_NPC_LORE = Object\.freeze\(\[[\s\S]*?\n\]\);/
         if (!loreTable.test(original)) throw Error('NPC 本地故事表源码锚点已变化')
         return { contents: original.replace(loreTable, 'export const ORIGINAL_NPC_LORE = Object.freeze([]);'), loader: 'js', resolveDir: path.dirname(file) }
@@ -306,7 +310,7 @@ const buildResult = await build({
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]client\.js$/ }, () => ({ contents: clientWithHud, loader: 'js', resolveDir: path.dirname(clientFile) }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]avatar-motion\.js$/ }, async ({ path: file }) => {
         correctedAvatarMotion = true
-        return { contents: patchAvatarMotion(await readFile(file, 'utf8'), thirdPersonSwingSource),
+        return { contents: patchAvatarMotion((await readFile(file, 'utf8')).replaceAll('\r\n', '\n'), thirdPersonSwingSource),
           loader: 'js', resolveDir: path.dirname(file) }
       })
       context.onLoad({ filter: /[\\/]minecraft-renderer[\\/]dist[\\/]minecraft-renderer\.js$/ }, async ({ path: file }) => {
@@ -390,5 +394,6 @@ await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
   minecraftVersion: '1.20.6', clientJarSha256: sourceManifest.clientJarSha256,
   browserBundleSha256, mesherSha256, biomeCount: biomeWorker.biomeCount,
   preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null,
+  viewerContent,
 })}\n`)
 console.log(`1.20.6 modern viewer 已生成：${outputRoot}`)

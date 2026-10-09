@@ -20,6 +20,7 @@
 | [host/](host/README.md) | 通用 Mineflayer 钓获与声音观察器，无 Cortico 或千灯纪运行依赖 |
 | `src/modern-viewer/presets/qiandengji/`、`tools/presets/` | 可选的千灯纪 NPC 美术、身份与技能视觉映射 |
 | [SOCKET_PROTOCOL.md](SOCKET_PROTOCOL.md) | 宿主项目的数据接入合约 |
+| [Paper 插件内容适配](docs/paper-content-compatibility.md) | 1.20.6 原始粒子、ImageFrame/原版地图、展示框和手持预览接入、版本与限制 |
 
 技能规则、保护预检、试炼机制和 Agent 决策由
 [千灯纪 World](https://github.com/jcs130/cortico-world-qiandengji) 等宿主扩展负责。

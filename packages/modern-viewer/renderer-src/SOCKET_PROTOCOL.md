@@ -5,6 +5,8 @@
 
 **这里是浏览器与画面服务之间的 Socket.IO 协议，不是 Minecraft 网络包协议。** 需要由宿主把 Mineflayer 状态和收到的游戏包转换成下面的事件。仓库中较早的 `../src/mc-modern-viewer.mts` 有自己的 1.21.1 宿主实现，并不提供本文全部 1.20.6 功能。
 
+1.20.6 的原始粒子、地图像素、展示框和手持照片新增 `contentReset`、`particleBatch`、`mapPixels`、`mapFrame` 四个可选事件。使用同一行动连接的 [viewer-content 桥与事件说明](docs/paper-content-compatibility.md#socketio-增量事件)，不重复转发派生粒子。地图标记与完整原版粒子物理尚未实现。
+
 ## 1. 页面、资源和连接
 
 只读截图客户端可在本地浏览器的 HTTP 与 WebSocket 请求中发送 `x-mc-viewer-capture: 1`。

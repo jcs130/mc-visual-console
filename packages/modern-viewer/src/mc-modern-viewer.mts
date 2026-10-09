@@ -15,6 +15,7 @@ import { createViewerChunkStream, createViewerEntityStream } from './viewer-stre
 import { loadViewerBlockMapping, identityViewerBlockMapping } from './viewer-state-map.mts'
 import { createViewerStaticResponder } from './viewer-static.mjs'
 import { ViewerSessionSlots } from './viewer-session-slots.mjs'
+import { createViewerContentBridge } from '../renderer-src/host/viewer-content.mjs'
 
 // 依赖解析锚点：本包 src/ 下没有 node_modules（socket.io / prismarine-viewer / minecraft-data / vec3
 // 都装在宿主 viewer-service/ 里）。所以 require 锚在宿主的目录上，而不是 import.meta.url
@@ -1034,6 +1035,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   const prismarinePublicRoot = path.join(path.dirname(require.resolve('prismarine-viewer/package.json')), 'public')
   const sessions = new Set()
   const sessionSlots = new ViewerSessionSlots(MAX_VIEWER_SESSIONS, MAX_CAPTURE_SESSIONS)
+  const contentBridge = bot.version === '1.20.6' ? createViewerContentBridge(bot) : null
   const fishingOwners = createFishingBobberOwnerTracker(bot, entity => {
     for (const session of sessions) session.entityStream.queue(entity, true)
   })
@@ -1593,6 +1595,7 @@ if (!snap?.holder) {
     socket.once('disconnect', () => closeSession(session))
 
     socket.emit('version', bot.version)
+    session.contentOff = mode === 'modern' ? contentBridge?.subscribeSocket(socket) : undefined
     socket.emit('viewerProtocol', { schema: 1, blockStates: mode === 'modern' ? 'canonical-vanilla-and-runtime-mod' : 'canonical-vanilla-approximation',
       worldConfigSource: 'loaded-column', maxVisibleColumns: (VIEW_DISTANCE_CHUNKS * 2 - 1) ** 2 })
     emitOwnEntity()
@@ -1611,7 +1614,7 @@ if (!snap?.holder) {
       bot.on('entityCrouch', botEntityCrouch)
       bot.on('entityUncrouch', botEntityUncrouch)
       bot.on('entityHurt', botEntityHurt)
-      bot.on('particle', botParticle)
+      if (!contentBridge || mode !== 'modern') bot.on('particle', botParticle)
       bot.on('soundEffectHeard', botSoundEffect)
       bot.on('hardcodedSoundEffectHeard', botHardcodedSoundEffect)
       bot.on('entityDead', botEntityDead)
@@ -1635,6 +1638,7 @@ if (!snap?.holder) {
 
   function closeSession(session) {
     if (!sessions.delete(session)) return
+    session.contentOff?.()
     clearTimeout(session.captureTimer)
     session.releaseSlot()
     clearInterval(session.avatarTimer)
@@ -1682,7 +1686,7 @@ if (!snap?.holder) {
       viewDistanceChunks: VIEW_DISTANCE_CHUNKS,
       blockStates: blockStateMapping.health,
       streams: [...sessions].map(s => ({ mode: s.mode, chunks: s.worldView.stats(), entities: s.entityStream.stats() })),
-      generation: worldGeneration, scope: 'Observer and chunk stream readiness; browser rendering is verified separately' }
+      generation: worldGeneration, content: contentBridge?.stats() ?? null, scope: 'Observer and chunk stream readiness; browser rendering is verified separately' }
   }
   function close() {
     if (closing) return closing
@@ -1690,6 +1694,7 @@ if (!snap?.holder) {
     bot.off('respawn', scheduleWorldReset)
     bot.off('game', dimensionChanged)
     fishingOwners.close()
+    contentBridge?.dispose()
     for (const session of [...sessions]) closeSession(session)
     server.closeAllConnections()
     closing = Promise.all([firstIo, thirdIo].map(io => new Promise(resolve => io.close(() => resolve())))).then(() => {})

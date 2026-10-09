@@ -4,6 +4,7 @@ import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import minecraftData from 'minecraft-data'
 import prismarineBlock from 'prismarine-block'
+import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
 
 const [jarArg, rootArg] = process.argv.slice(2)
 if (!jarArg || !rootArg) {
@@ -20,6 +21,10 @@ const jarHash = createHash('sha256').update(await readFile(path.resolve(jarArg))
 if (source.clientJarSha256 !== jarHash) throw Error('资源不是从指定的 1.20.6 客户端 JAR 导出')
 const browserHash = createHash('sha256').update(await readFile(path.join(root, 'dist', 'modern-viewer.js'))).digest('hex')
 if (client.browserBundleSha256 !== browserHash) throw Error('浏览器 bundle 与构建清单不符')
+if (client.viewerContent) {
+  const content=await verifyViewerContentAssets(root,jarHash,{required:true})
+  if(content.manifestSha256!==client.viewerContent.manifestSha256)throw Error('内容资源与浏览器构建清单不符')
+}
 
 for (const relative of ['dist/modern-viewer.js', 'public/mesher.js', 'public/mesherWasm.js',
   'public/threeWorker.js', `public/textures/${version}.png`]) {

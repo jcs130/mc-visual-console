@@ -2,6 +2,8 @@
 
 These ESM observers attach to an existing Mineflayer bot. They do not create a bot, choose actions, send chat or request a model. The socket protocol is in `../SOCKET_PROTOCOL.md`.
 
+`createViewerContentBridge` in `viewer-content.mjs` additionally observes vanilla **1.20.6** particles, map pixels and item frames on that same action connection. Attach it once before login packets arrive; use `subscribeSocket(socket)` for each browser so a stalled transport only replays bounded current map/frame snapshots and drops old particles. Dispose it with the bot/host. See the [Paper content integration guide](../docs/paper-content-compatibility.md) for assets, events, limits and explicit unsupported features. It does not mutate Mineflayer's decoder or send game actions.
+
 ```js
 import { observeViewerSounds } from './viewer-sound-packets.mjs'
 import { loadViewerSoundRegistry } from './viewer-sound-registry.mjs'

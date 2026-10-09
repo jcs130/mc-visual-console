@@ -5,6 +5,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { verifyAssetPack, prepareAssetPack } from '../../../../../tools/prepare-viewer-assets.mjs';
+import { verifyViewerContentAssets } from '../viewer-content-assets.mjs';
 
 async function fixture(t) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'viewer-asset-pack-'));
@@ -53,11 +54,18 @@ test('a pack cannot traverse its directory or overwrite another version or sourc
 test('the committed Java pack contains baked states and every original icon, texture and render input', async () => {
   const { directory, manifest } = await verifyAssetPack('java-1.20.6');
   for (const relative of ['public/blocksStates/1.20.6.json', 'public/textures/1.20.6.png',
-    'public/minecraft-assets/painting/kebab.png', 'render-assets/painting-records.json']) {
+    'public/minecraft-assets/painting/kebab.png', 'render-assets/painting-records.json',
+    'public/viewer-content.json', 'public/particle-content.png']) {
     assert.ok(manifest.files[relative], 'Missing clean-build input: ' + relative);
   }
   const source = JSON.parse(await fs.readFile(path.join(directory, 'public/asset-source.json'), 'utf8'));
   for (const [prefix, hashes] of [['public/icons/', source.iconHashes], ['public/textures/1.20.6/', source.textureHashes], ['render-assets/', source.renderAssetHashes]]) {
     for (const [relative, expected] of Object.entries(hashes)) assert.equal(manifest.files[prefix + relative]?.sha256, expected, 'Missing or changed source resource: ' + relative);
   }
+  const content = await verifyViewerContentAssets(directory, source.clientJarSha256, { required: true });
+  assert.equal(content.manifestSha256, manifest.source.viewerContent.manifestSha256);
+  assert.equal(content.particleAtlasSha256, manifest.source.viewerContent.particleAtlasSha256);
+  assert.equal(content.capabilities.itemFrameMaps, true);
+  assert.equal(content.capabilities.serverParticleProtocol, true);
+  assert.equal(content.nativeParticlePhysicsParityVerified, false);
 });
