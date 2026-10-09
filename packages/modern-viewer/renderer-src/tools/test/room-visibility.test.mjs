@@ -4,7 +4,7 @@ import { MeshBasicMaterial, PerspectiveCamera, ShaderLib, UniformsUtils, Vector3
 import { Vec3 } from 'vec3';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { advanceReveal, createCutawayUniforms, cutawayMask, patchCutawayMaterial, hasRoomCeiling, CEILING_SCAN_HEIGHT, roomRevealRadius, MAX_ROOM_RADIUS } from '../../src/modern-viewer/room-visibility.js';
+import { advanceReveal, createCutawayUniforms, cutawayMask, patchCutawayMaterial, hasRoomCeiling, CEILING_SCAN_HEIGHT, roomRevealRadius, MAX_ROOM_RADIUS, ROOM_RADIUS, CUTAWAY_MATERIAL_VERSION, setRoomFloorMask } from '../../src/modern-viewer/room-visibility.js';
 
 const point = (x, y, z) => new Vector3(x, y, z);
 test('tall room ceilings are detected within a bounded vertical scan', () => {
@@ -88,6 +88,14 @@ test('covered tower floors reveal every visible ground corner at each zoom and a
   assert.ok(roomRevealRadius(camera, settings.target, 64) <= MAX_ROOM_RADIUS);
 });
 
+test('an uncovered cave entrance remains local even when the camera zooms out', () => {
+  for (const distance of [8, 16, 32]) for (const aspect of [0.6, 2.4]) {
+    const { camera, settings } = fixture(0, distance);
+    camera.aspect = aspect; camera.updateProjectionMatrix();
+    assert.equal(roomRevealRadius(camera, settings.target, 64, false), ROOM_RADIUS);
+  }
+});
+
 test('floating-origin translation and display aspect do not change the aperture', () => {
   const { settings, front, camera } = fixture();
   const sample = front.clone().addScaledVector(settings.right, 0.73);
@@ -156,7 +164,7 @@ test('standard leaf and decoration materials use the same bounded fragment mask'
   const patched = material.onBeforeCompile;
   patchCutawayMaterial(material, uniforms);
   assert.equal(material.onBeforeCompile, patched);
-  assert.equal(material.customProgramCacheKey(), `${originalKey}:lantern-visibility-3`);
+  assert.equal(material.customProgramCacheKey(), `${originalKey}:lantern-visibility-${CUTAWAY_MATERIAL_VERSION}`);
   assert.equal(material.clippingPlanes, null);
 });
 
@@ -181,7 +189,26 @@ test('render-time mask follows interpolated entity and camera between network up
   assert.ok(Math.abs(uniforms.u_lanternCutawayY.value - 1.95) < 1e-9);
   assert.deepEqual(uniforms.u_lanternCutawayCamera.value.toArray(), camera.position.toArray());
   assert.equal(context.dungeonUpperCutawayRegion.center.x, 802.5);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.dungeonUpperCutawayRegion.camera)), { x: 804, y: 74, z: -892 });
   root.getWorldPosition = out => out.set(2.75, 0.5, 3.75);
   update();
   assert.deepEqual(uniforms.u_lanternCutawayTarget.value.toArray(), [2.75, 1.5, 3.75]);
+});
+
+test('returning to an unchanged cave floor re-enables its cached mask after a clear view', () => {
+  const client=readFileSync(new URL('../../src/modern-viewer/client.js',import.meta.url),'utf8');
+  const start=client.indexOf('function applyDungeonCutaway('),end=client.indexOf('function restoreDungeonCutaway()',start);
+  const uniforms=createCutawayUniforms();
+  const mask={width:1,data:new Uint8Array([255,128])};
+  const context={dungeonVisibilityUniforms:uniforms,dungeonFloorMask:{current:mask,update:()=>mask},
+    dungeonCutawayMaterials:new Map([[0,{mode:'uniform'}]]),updateDungeonVisibilityFrame(){},setRoomFloorMask};
+  const apply=runInNewContext(`${client.slice(start,end)}\napplyDungeonCutaway`,context);
+  const args={targetWorld:{x:0,y:64,z:0},cameraWorld:{x:0,y:80,z:16},hardCutaway:true,coveredRoom:false};
+  apply(args);
+  assert.equal(uniforms.u_lanternCutawayEnabled.value,3,'uncovered entrance uses the local mode');
+  assert.equal(uniforms.u_lanternRoomMaskEnabled.value,1);
+  apply({...args,hardCutaway:false});
+  assert.equal(uniforms.u_lanternRoomMaskEnabled.value,0);
+  apply(args);
+  assert.equal(uniforms.u_lanternRoomMaskEnabled.value,1,'reused floor bytes are uploaded again after leaving the cave');
 });

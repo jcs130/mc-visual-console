@@ -200,6 +200,22 @@ test('cutaway follows current tracked height instead of the stale creation packe
   controller.dispose();
 });
 
+test('a companion on connected cave steps remains visible, while the storey above those steps is hidden', () => {
+  const {world,camera,other}=fixture();
+  camera.position.set(0,80,16);
+  const position={x:4,y:68,z:0};
+  world.sceneOrigin={getWorldPosition:object=>object===other?position:undefined};
+  const region={center:{x:0,y:64,z:0},camera:camera.position,radius:16,corridorRadius:0,hitAlong:1,halfSpan:0,
+    roomMask:{contains:()=>true,floorYAt:()=>68}};
+  const controller=installSelfAvatarCameraVisibility(world,()=>7,{getUpperCutawayY:()=>64,getUpperCutawayRegion:()=>region});
+  world.entities.render();
+  assert.equal(other.visible,true,'the connected floor is four blocks above the avatar');
+  position.y=70;
+  world.entities.render();
+  assert.equal(other.visible,false);
+  controller.dispose();
+});
+
 test('upper-layer clipping covers standard decoration materials and follows origin rebasing', () => {
   const { world, camera } = fixture();
   camera.position.z = 4;
@@ -283,7 +299,7 @@ test('large decoration geometry uses fragment bounds even when its mesh origin l
   world.entities.render();
   const patched = roof.material;
   assert.notEqual(patched, material);
-  assert.equal(patched.userData.lanternVisibilityVersion, 3);
+  assert.equal(patched.userData.lanternVisibilityVersion, 4);
   assert.equal(patched.clippingPlanes, null, 'only fragments within the live mask are removed');
   assert.equal(avatar.children[0].material.userData.lanternVisibilityVersion, undefined);
   world.entities.render();

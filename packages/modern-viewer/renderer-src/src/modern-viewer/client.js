@@ -51,7 +51,7 @@ import {
 } from "./npc-portraits.js";
 import { normalizeMotionFrame } from "./avatar-motion.js";
 import { rendererEntityEquipment } from "./renderer-equipment.js";
-import { hasRoomCeiling, hasDeepRoof, roomCutoffWorldY, roomOcclusionMode, createCutawayUniforms, patchCutawayMaterial, advanceReveal, roomRevealRadius, setRoomFloorMask } from "./room-visibility.js";
+import { CUTAWAY_MATERIAL_VERSION, hasRoomCeiling, hasDeepRoof, roomCutoffWorldY, roomOcclusionMode, createCutawayUniforms, patchCutawayMaterial, advanceReveal, roomRevealRadius, setRoomFloorMask } from "./room-visibility.js";
 import { RoomCoverCache } from "./room-cover-cache.js";
 import { RoomFloorMask } from "./room-floor-mask.js";
 import { installDungeonObserverControls } from "./dungeon-observer-controls.js";
@@ -2226,7 +2226,7 @@ function runDungeonOcclusionCheck() {
     DUNGEON_OCCLUSION_RELEASE_SAMPLES,
   );
   dungeonRoofState = updateOcclusionHysteresis(dungeonRoofState, roomCeiling || deepRoof, DUNGEON_OCCLUSION_RELEASE_SAMPLES);
-  const hardCutaway = isDungeonView && dungeonRoofState.active;
+  const hardCutaway = isDungeonView && dungeonOcclusionState.active;
   dungeonUpperCutawayY = hardCutaway && dungeonOcclusionState.active ? avatar.y : null;
   if (dungeonUpperCutawayY === null) dungeonUpperCutawayRegion = null;
   // Collision caches omit some visible surfaces. The fragment mask handles
@@ -2236,6 +2236,7 @@ function runDungeonOcclusionCheck() {
     cameraWorld,
     cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
     hardCutaway,
+    coveredRoom: dungeonRoofState.active,
   });
   if (!wasActive && dungeonOcclusionState.active) viewerPerformanceCounters.cutawayActivations += 1;
   if (wasActive && !dungeonOcclusionState.active) viewerPerformanceCounters.cutawayRestores += 1;
@@ -2259,8 +2260,8 @@ function runDungeonOcclusionCheck() {
     deepRoof,
     mode: roomOcclusionMode(isDungeonView, hardCutaway),
     cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
-    cutScope: hardCutaway ? "connected-floor-and-aperture" : "aperture",
-    maskVersion: 3,
+    cutScope: hardCutaway ? dungeonRoofState.active ? "connected-floor-and-sightlines" : "local-floor-and-sightlines" : "aperture",
+    maskVersion: CUTAWAY_MATERIAL_VERSION,
     roomRadius: dungeonVisibilityUniforms.u_lanternRoomRadius.value,
     coverCache: dungeonRoomCoverCache?.diagnostics ?? null,
     floorMask: dungeonFloorMask?.diagnostics ?? null,
@@ -2337,9 +2338,9 @@ function patchDungeonCutawayShader(material) {
   return patchCutawayMaterial(material, dungeonVisibilityUniforms);
 }
 
-function applyDungeonCutaway({ targetWorld, cameraWorld, hardCutaway }) {
+function applyDungeonCutaway({ targetWorld, cameraWorld, hardCutaway, coveredRoom }) {
   dungeonRevealTarget = true;
-  dungeonVisibilityUniforms.u_lanternCutawayEnabled.value = hardCutaway ? 2 : 1;
+  dungeonVisibilityUniforms.u_lanternCutawayEnabled.value = hardCutaway ? coveredRoom ? 2 : 3 : 1;
   dungeonUpperCutawayRegion = hardCutaway
     ? { center: targetWorld, camera: cameraWorld, radius: dungeonVisibilityUniforms.u_lanternRoomRadius.value, corridorRadius: 0, hitAlong: 1, halfSpan: 0 }
     : null;
@@ -2348,7 +2349,7 @@ function applyDungeonCutaway({ targetWorld, cameraWorld, hardCutaway }) {
   if (hardCutaway && dungeonFloorMask) {
     const previous = dungeonFloorMask.current;
     const mask = dungeonFloorMask.update(targetWorld, dungeonVisibilityUniforms.u_lanternRoomRadius.value);
-    if (mask !== previous) setRoomFloorMask(dungeonVisibilityUniforms, mask);
+    if (mask !== previous || dungeonVisibilityUniforms.u_lanternRoomMaskEnabled.value < 0.5) setRoomFloorMask(dungeonVisibilityUniforms, mask);
     updateDungeonVisibilityFrame();
   } else dungeonVisibilityUniforms.u_lanternRoomMaskEnabled.value = 0;
   return dungeonCutawayApplied;
@@ -2395,14 +2396,17 @@ function updateDungeonVisibilityFrame() {
   uniforms.u_lanternCameraRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
   uniforms.u_lanternCameraUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
   uniforms.u_lanternCameraForward.value.setFromMatrixColumn(camera.matrixWorld, 2).negate().normalize();
-  uniforms.u_lanternRoomRadius.value = roomRevealRadius(camera, dungeonOcclusionTargetScene, dungeonOcclusionTargetScene.y);
+  uniforms.u_lanternRoomRadius.value = roomRevealRadius(camera, dungeonOcclusionTargetScene, dungeonOcclusionTargetScene.y,
+    uniforms.u_lanternCutawayEnabled.value < 2.5);
   const roomMask = dungeonFloorMask?.current ?? null;
-  if (roomMask) uniforms.u_lanternRoomMaskOrigin.value.set(origin.toSceneX(roomMask.origin.x), 0, origin.toSceneZ(roomMask.origin.z));
+  if (roomMask) uniforms.u_lanternRoomMaskOrigin.value.set(origin.toSceneX(roomMask.origin.x), origin.toSceneY(roomMask.baseY), origin.toSceneZ(roomMask.origin.z));
   if (uniforms.u_lanternCutawayEnabled.value > 1.5) {
     dungeonUpperCutawayY = feetWorldY;
     dungeonUpperCutawayRegion = { center: {
       x: origin.toWorldX(dungeonOcclusionTargetScene.x), y: feetWorldY, z: origin.toWorldZ(dungeonOcclusionTargetScene.z),
-    }, camera: targetWorld, radius: uniforms.u_lanternRoomRadius.value, corridorRadius: 0, hitAlong: 1, halfSpan: 0, roomMask };
+    }, camera: { x: origin.toWorldX(uniforms.u_lanternCutawayCamera.value.x),
+      y: origin.toWorldY(uniforms.u_lanternCutawayCamera.value.y), z: origin.toWorldZ(uniforms.u_lanternCutawayCamera.value.z) },
+      radius: uniforms.u_lanternRoomRadius.value, corridorRadius: 0, hitAlong: 1, halfSpan: 0, roomMask };
   }
 }
 

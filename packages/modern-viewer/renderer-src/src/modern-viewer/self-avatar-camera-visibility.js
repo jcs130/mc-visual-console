@@ -1,11 +1,14 @@
 import { Plane, Vector3 } from "three";
-import { patchCutawayMaterial } from "./room-visibility.js";
+import { CUTAWAY_MATERIAL_VERSION, patchCutawayMaterial, projectedRoomFloor } from "./room-visibility.js";
 
 export function inUpperCutawayRegion(position, region) {
   if (!region) return true;
-  if (region.roomMask && !region.roomMask.contains(position)) return false;
   const { center, camera, radius, corridorRadius, hitAlong, halfSpan } = region;
-  if (Math.hypot(position.x - center.x, position.z - center.z) < radius) return true;
+  if ((!region.roomMask || region.roomMask.contains(position))
+    && Math.hypot(position.x - center.x, position.z - center.z) < radius) return true;
+  const floor = projectedRoomFloor(position, camera, center.y + 0.05, region.roomMask);
+  if (floor && Math.hypot(floor.x - center.x, floor.z - center.z) < radius) return true;
+  if (region.roomMask && !region.roomMask.contains(position)) return false;
   const dx = center.x - camera.x, dz = center.z - camera.z;
   const lengthSq = dx * dx + dz * dz;
   if (lengthSq < 0.0001) return false;
@@ -79,12 +82,12 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
           clippedObjects.delete(node);
         }
         const materials = Array.isArray(node.material) ? node.material : [node.material];
-        if (clippedObjects.has(node) || materials.some(material => material && !material.isShaderMaterial && material.userData?.lanternVisibilityVersion !== 3)) {
+        if (clippedObjects.has(node) || materials.some(material => material && !material.isShaderMaterial && material.userData?.lanternVisibilityVersion !== CUTAWAY_MATERIAL_VERSION)) {
           active.add(node);
           if (!clippedObjects.has(node)) {
             const original = node.material;
             const clones = materials.map(material => {
-              if (!material || material.isShaderMaterial || material.userData?.lanternVisibilityVersion === 3) return material;
+              if (!material || material.isShaderMaterial || material.userData?.lanternVisibilityVersion === CUTAWAY_MATERIAL_VERSION) return material;
               const clone = material.clone();
               if (cutawayUniforms) {
                 clone.onBeforeCompile = material.onBeforeCompile;
@@ -134,7 +137,8 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
         // movement tweens and floating-origin shifts, including vertical travel.
         const currentPosition = worldPosition(object);
         const y = Number(currentPosition?.y ?? entity?.pos?.y ?? entity?.position?.y);
-        if (Number.isFinite(y) && y >= Math.floor(cutawayY) + 2 && inUpperCutawayRegion(currentPosition, region)) {
+        const floorY = region?.roomMask?.floorYAt?.(currentPosition) ?? Math.floor(cutawayY);
+        if (Number.isFinite(y) && y >= floorY + 2 && inUpperCutawayRegion(currentPosition, region)) {
           object.visible = false;
           hiddenUpperEntities += 1;
         }
