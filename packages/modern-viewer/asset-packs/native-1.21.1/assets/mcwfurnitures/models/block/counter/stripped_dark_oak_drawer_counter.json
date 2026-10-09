@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/drawer_counter",
+	"textures": {
+		"1": "minecraft:block/dark_oak_log",
+		"2": "minecraft:block/stripped_dark_oak_log",
+		"particle": "minecraft:block/stripped_dark_oak_log",
+		"1_2": "mcwfurnitures:block/dark_oak_handle"
+	}
+}

@@ -1,0 +1,8 @@
+{
+	"parent": "mcwwindows:block/parent/window/window_barred",
+	"textures": {
+		"0": "minecraft:block/glass",
+		"1": "minecraft:block/cherry_log",
+		"particle": "minecraft:block/cherry_log"
+	}
+}

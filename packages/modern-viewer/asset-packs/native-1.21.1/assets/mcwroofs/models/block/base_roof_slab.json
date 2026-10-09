@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/slab",
+  "textures": {
+    "bottom": "mcwroofs:block/base_roof",
+    "top": "mcwroofs:block/base_roof",
+    "side": "mcwroofs:block/base_roof"
+  }
+}

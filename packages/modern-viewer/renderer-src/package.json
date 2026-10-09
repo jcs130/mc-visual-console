@@ -11,6 +11,7 @@
     "minecraft-data": "3.113.2",
     "minecraft-renderer": "0.1.96",
     "prismarine-chunk": "1.41.0",
+    "skinview3d": "3.4.2",
     "socket.io-client": "4.8.3",
     "three": "0.184.0",
     "valtio": "1.13.2",
@@ -26,6 +27,6 @@
     "build:client": "node tools/build-minecraft-viewer-client.mjs .",
     "verify:assets": "node tools/verify-minecraft-viewer-assets.mjs",
     "export:sounds": "node tools/export-minecraft-viewer-sounds.mjs",
-    "test:tools": "node --test tools/test/*.test.mjs"
+    "test:tools": "node tools/run-renderer-tests.mjs"
   }
 }

@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "blockstate=0": {
+      "model": "dungeoneer:block/wind_burst_trap"
+    },
+    "blockstate=1": {
+      "model": "dungeoneer:block/burst_trap_blockstates_blockstate_0"
+    }
+  }
+}

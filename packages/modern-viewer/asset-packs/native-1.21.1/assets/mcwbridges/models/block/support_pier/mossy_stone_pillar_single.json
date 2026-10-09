@@ -1,0 +1,7 @@
+{
+	"parent": "mcwbridges:block/support_pier/parent/pillar_single_stone",
+	"textures": {
+		"2": "minecraft:block/mossy_stone_bricks",
+		"particle": "minecraft:block/mossy_stone_bricks"
+	}
+}

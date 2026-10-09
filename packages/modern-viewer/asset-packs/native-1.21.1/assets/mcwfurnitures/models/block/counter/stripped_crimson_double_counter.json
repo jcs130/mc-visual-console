@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/double_counter",
+	"textures": {
+		"1": "minecraft:block/crimson_stem",
+		"2": "minecraft:block/stripped_crimson_stem",
+		"particle": "minecraft:block/stripped_crimson_stem",
+		"1_2": "mcwfurnitures:block/str_crimson_handle"
+	}
+}

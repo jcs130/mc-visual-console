@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Agent World · 实时原生世界</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,"Microsoft YaHei",sans-serif;background:#111820;color:#e5ecef}body{margin:0}header{padding:20px 26px;border-bottom:1px solid #34444c;background:#17232b}h1{font-size:22px;font-weight:550;margin:0 0 8px}p{color:#a7bbc5;font-size:13px;line-height:1.65;margin:0}main{display:grid;grid-template-columns:minmax(0,1fr) 320px;min-height:calc(100vh - 108px)}#viewport{position:relative;min-height:550px;overflow:hidden}canvas{display:block;position:absolute;inset:0;width:100%;height:100%}aside{padding:22px;background:#17232b;border-left:1px solid #34444c}.tag{display:inline-block;border:1px solid #47715c;color:#9ee0b8;border-radius:4px;padding:5px 8px;margin-bottom:18px;font-size:12px}.row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #2c3b44;font-size:13px}.value{color:#b0d6ed;font-variant-numeric:tabular-nums;text-align:right}h2{font-size:15px;margin:20px 0 10px}button{background:#254152;border:1px solid #47748b;color:#e5ecef;padding:9px;border-radius:4px;cursor:pointer}.controls{display:flex;gap:8px;margin:16px 0}.caption{position:absolute;z-index:1;bottom:15px;left:15px;padding:8px;background:#17232bdc;color:#cfba8e;font-size:12px;max-width:75%}#error{position:relative;z-index:2;white-space:pre-wrap;padding:20px;color:#ffc0b7}#error:empty{display:none}ul{padding-left:16px;color:#ddc4a4;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.small{font-size:12px;margin-top:16px}#status{color:#edcc8b}
+    #agent-panel{margin:16px 0 20px;padding:12px;border:1px solid #34444c;border-radius:5px}#agent-panel h2{margin:0 0 8px}#agent-panel .row{padding:7px 0;font-size:12px}#agent-panel .value{overflow-wrap:anywhere;max-width:190px}#agent-goal,#agent-receipt{overflow-wrap:anywhere;margin:8px 0;color:#b0d6ed}#agent-notice{color:#edcc8b}#agent-panel .small{margin-top:8px}
+    html,body{height:100%;overflow:hidden}header{padding:12px 20px}h1{font-size:18px;margin:0 0 4px}main{height:calc(100dvh - 78px);min-height:0;grid-template-columns:minmax(0,1fr) 300px}#viewport{min-height:0;height:100%;background:#111820}aside{overflow:auto;padding:16px}#agent-panel{margin:12px 0}.view-toolbar{position:absolute;top:12px;left:12px;z-index:3;display:flex;gap:6px;flex-wrap:wrap}.view-toolbar button{background:#14242cdb;font-size:12px;padding:8px 10px}.view-toolbar button[aria-pressed=true]{border-color:#b6f1d6;color:#b6f1d6;background:#234a40e8}.player-hud{position:absolute;bottom:45px;left:50%;transform:translateX(-50%);z-index:2;white-space:nowrap;background:#101b25cf;border:1px solid #537067;border-radius:5px;padding:10px 16px;font-size:13px;text-align:center;pointer-events:none}.player-hud strong{color:#c5f2dc}.player-hud .vitals{margin-top:6px;color:#edc898}.player-hud .coordinates{margin-top:5px;color:#b3cfde;font-variant-numeric:tabular-nums;font-size:12px}#player-label{position:absolute;z-index:2;transform:translate(-50%,-100%);background:#102017bc;border:1px solid #91b8a8;padding:3px 7px;border-radius:3px;font-size:12px;white-space:nowrap;pointer-events:none}#player-label[hidden]{display:none}.caption{left:12px;bottom:10px;background:#10202cb5;font-size:11px;padding:5px;max-width:calc(100% - 36px)}details{margin-top:18px}summary{cursor:pointer;font-size:13px;color:#b0d6ed}#skin-state{font-size:12px;color:#b0d6ed;line-height:1.6}#view-name{position:absolute;right:12px;top:15px;z-index:2;color:#c6e5da;background:#14242cdb;padding:6px;font-size:12px;pointer-events:none}
+    @media(max-width:760px){main{grid-template-columns:1fr}aside{display:none}header p{font-size:11px}.view-toolbar{top:8px;left:8px;gap:4px}.view-toolbar button{padding:7px;font-size:11px}#view-name{top:48px;right:8px}.player-hud{bottom:55px;padding:8px;max-width:90%;font-size:12px}.caption{font-size:10px}}
+  </style>
+</head>
+<body>
+  <header><h1>My Agent World · Agent 观战</h1><p>跟随同一个 Agent 的游戏连接 · 原始模型与贴图 · F5 切换视角</p></header>
+  <main>
+    <div id="viewport" data-view="third">
+      <div class="view-toolbar" aria-label="观战视角"><button id="third" aria-pressed="true">第三人称</button><button id="follow" aria-pressed="false">第一人称</button><button id="orbit" aria-pressed="false">自由观察</button><button id="recenter">回到 Agent</button></div>
+      <div id="view-name">第三人称 · 跟随 Agent</div><div id="player-label" hidden></div>
+      <div class="player-hud" aria-label="本人实时游戏状态"><strong id="hud-player">等待玩家</strong><div class="vitals">生命 <span id="hud-health">未收到</span> · 饱食 <span id="hud-food">未收到</span></div><div class="coordinates" id="hud-position">等待绝对坐标</div></div>
+      <div class="caption">当前为原生适配预览；其他实体、部分方块与完整光照尚未适配</div><div id="error" role="alert"></div>
+    </div>
+    <aside>
+      <div class="tag">实时联机 · 非记录回放</div><p id="status" role="status">正在连接原生世界…</p>
+      <section id="agent-panel" aria-label="实际 Agent 状态">
+        <h2>Agent 实际状态</h2>
+        <div class="row"><span>姓名</span><span class="value" id="agent-name">等待状态</span></div>
+        <div class="row"><span>当前模式</span><span class="value" id="agent-mode">等待状态</span></div>
+        <p class="small">当前目标</p><p id="agent-goal">未提供</p>
+        <div class="row"><span>最后动作</span><span class="value" id="agent-action">未收到动作回执</span></div>
+        <p class="small" id="agent-receipt">未收到回执</p>
+        <div class="row"><span>回执时间</span><span class="value" id="agent-receipt-at">未提供</span></div>
+        <div class="row"><span>决策时间</span><span class="value" id="agent-decision-at">未提供</span></div>
+        <p class="small" id="agent-notice" role="status">读取同连接 Agent 状态…</p>
+      </section>
+      <div class="row"><span>连接账号</span><span class="value" id="player">等待</span></div>
+      <div class="row"><span>绝对位置</span><span class="value" id="position">等待</span></div>
+      <p id="skin-state">本人模型等待原始皮肤信息</p>
+      <details><summary>渲染与协议诊断</summary>
+      <div class="row"><span>原生包序号</span><span class="value" id="sequence">0</span></div>
+      <div class="row"><span>区域内方块</span><span class="value" id="blocks">0</span></div>
+      <div class="row"><span>已绘制方块</span><span class="value" id="drawn">0</span></div>
+      <div class="row"><span>机械动力</span><span class="value" id="kinetics">等待</span></div>
+      <div class="row"><span>原生世界时钟</span><span class="value" id="clock">等待</span></div>
+      <div class="row"><span>环境数据</span><span class="value" id="environment">等待</span></div>
+      <h2>尚未适配的内容</h2><p class="small" id="coverage">等待区域状态</p><ul id="issues"></ul>
+      <p class="small">范围：玩家周围 10 格，向下 5 格、向上 10 格。本人使用 1.21.1 原始皮肤与经典玩家模型；其他实体、完整光照及特殊材质待适配。完整画面一致性尚未验收。</p>
+      </details>
+    </aside>
+  </main>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>

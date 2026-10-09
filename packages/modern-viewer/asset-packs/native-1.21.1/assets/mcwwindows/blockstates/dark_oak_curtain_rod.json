@@ -1,0 +1,19 @@
+{
+  "variants" : {
+    "facing=east" : {
+      "model" : "mcwwindows:block/curtain_rod/dark_oak_curtain_rod",
+      "y" : 270
+    },
+    "facing=north" : {
+      "model" : "mcwwindows:block/curtain_rod/dark_oak_curtain_rod",
+      "y" : 180
+    },
+    "facing=south" : {
+      "model" : "mcwwindows:block/curtain_rod/dark_oak_curtain_rod"
+    },
+    "facing=west" : {
+      "model" : "mcwwindows:block/curtain_rod/dark_oak_curtain_rod",
+      "y" : 90
+    }
+  }
+}

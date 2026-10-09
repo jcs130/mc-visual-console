@@ -1,0 +1,8 @@
+{
+	"parent": "mcwbridges:block/bridge/bridge_stone/parent/base",
+	"textures": {
+		"1": "minecraft:block/sandstone",
+		"2": "minecraft:block/sand",
+		"particle": "minecraft:block/sand"
+	}
+}

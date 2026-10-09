@@ -1,0 +1,444 @@
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath } from './model-loader.js'
+import { createKineticActor } from './create-kinetics.js'
+import { WINDMILL_BEARING_ID, verifyNativeWindmillBearing } from './native-windmill-bearing.js'
+import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
+import { waterGeometry } from './native-fluid.js'
+import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
+import { NativeSelfPlayerController, applyNativeSelfPlayerMotion } from './native-self-player.js'
+import { playerCamera } from './player-camera.js'
+import { createNativeSession } from './native-session.js'
+import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
+import { NativeEntityLayer } from './native-entity-layer.js'
+import { MILLSTONE_ID, prepareNativeMillstoneModel, NativeKineticRenderClock, nativeKineticTimeStatus } from './native-millstone.js'
+import { stageNativeKineticActors } from './native-kinetic-layer.js'
+import { nativeColonyHutEligible, prepareNativeColonyHutModel } from './native-colony-huts.js'
+
+// Shared exact-resource scene used by the full console and diagnostic preview.
+// UI, network presentation and quality policy belong to the console, not this backend.
+export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{}, onState=()=>{},
+  onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{}} = {}) {
+if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
+const pointKey = p => `${p.x},${p.y},${p.z}`
+let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
+const templates = new Map(), actors = new Map(), bedTemplates = new Set()
+let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
+let colormaps, textureStart = performance.now()
+let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
+let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null
+const cameraRay = new THREE.Raycaster(), labelPoint = new THREE.Vector3()
+const kineticClock = new NativeKineticRenderClock()
+let kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
+const kineticVisibility = () => {
+  if (disposed) return
+  if (document.hidden) {
+    lastPlayerFrameTime = null
+    kineticClock.pause(performance.now()); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_RENDER_CLOCK_PAUSED' }
+    for (const actor of actors.values()) actor.setClockAvailable?.(false, kineticClockState.reason)
+  } else kineticClock.resume(performance.now())
+  publishDiagnostics()
+}
+document.addEventListener('visibilitychange', kineticVisibility)
+async function start () {
+  const response = await fetch('/manifest.json')
+  if (!response.ok) throw Error('NATIVE_WORLD_MANIFEST_UNAVAILABLE')
+  const manifest = await response.json()
+  const reader = new NativeAssetReader(manifest, async path => {
+    const result = await fetch(`/${path}`)
+    if (!result.ok) throw Error(`NATIVE_ASSET_UNAVAILABLE:${path}`)
+    return result.arrayBuffer()
+  })
+  assetReader = reader
+  const session = createNativeSession(manifest.registryHashes['block-states.jsonl'], { entityRegistrySha256: manifest.registryHashes['entities.tsv'] ?? null })
+  loader = new NativeModelLoader(reader)
+  colormaps = {}
+  for (const name of ['grass', 'foliage']) {
+    const pixels = await reader.bytes(resourcePath(`minecraft:${name}`, 'textures/colormap', '.png'))
+    const image = await createImageBitmap(new Blob([pixels], { type: 'image/png' }), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
+    const canvas = new OffscreenCanvas(image.width, image.height), context = canvas.getContext('2d', { willReadFrequently: true })
+    context.drawImage(image, 0, 0); colormaps[name] = context.getImageData(0, 0, image.width, image.height).data; image.close()
+  }
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#111820')
+  worldRoot = new THREE.Group(); statics = new THREE.Group(); worldRoot.add(statics); scene.add(worldRoot)
+  selfController = new NativeSelfPlayerController(reader, { onChange (actor, status) {
+    selfActor = actor; skinState = status
+    selfMotionState = null; selfMotionSignature = null; lastPlayerFrameTime = null
+    if (actor) {
+      worldRoot.add(actor.root)
+      if (actor.firstPersonRoot) firstPersonScene.add(actor.firstPersonRoot)
+      actor.setFirstPersonViewport?.(firstPersonCamera)
+    }
+    onActor(actor, status); publishDiagnostics()
+  } })
+  entityLayer = new NativeEntityLayer(reader,{onChange:publishDiagnostics});worldRoot.add(entityLayer.root)
+  scene.add(new THREE.AmbientLight(0xffffff, 1.1))
+  const light = new THREE.DirectionalLight(0xffffff, 2.2); light.position.set(35, 70, 15); scene.add(light)
+  camera = new THREE.PerspectiveCamera(70, 1, 0.05, 150)
+  firstPersonScene=new THREE.Scene();firstPersonCamera=new THREE.PerspectiveCamera(70,1,0.05,150)
+  firstPersonScene.add(new THREE.AmbientLight(0xffffff,1.1))
+  const handLight=new THREE.DirectionalLight(0xffffff,2.2);handLight.position.set(35,70,15);firstPersonScene.add(handLight)
+  renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.outputColorSpace = THREE.SRGBColorSpace
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.domElement.setAttribute('aria-label', 'Agent 本人及实时原生世界画面')
+  viewport.append(renderer.domElement)
+  controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxDistance = 9; controls.enabled = false
+  const resize = () => {
+    const host = viewport
+    renderer.setSize(host.clientWidth, host.clientHeight)
+    camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix()
+    firstPersonCamera.aspect = camera.aspect; firstPersonCamera.updateProjectionMatrix()
+    selfActor?.setFirstPersonViewport?.(firstPersonCamera)
+  }
+  observer = new ResizeObserver(resize); observer.observe(viewport); resize()
+  renderer.setAnimationLoop(now => {
+    try {
+      if (disposed || document.hidden) return
+      loader.animateTextures((now - textureStart) / 50)
+      if (current?.pose) {
+        const dt = lastPlayerFrameTime === null ? 0 : (now - lastPlayerFrameTime) / 1000
+        lastPlayerFrameTime = now
+        updatePlayerCamera(now)
+        if (selfActor) {
+          selfActor.applyPose(current.pose)
+          selfMotionState = applyNativeSelfPlayerMotion(selfActor, current, { dt, now: Date.now() })
+          if (selfActor.assetInfo?.kind === 'ysm') {
+            const signature = JSON.stringify([selfMotionState?.available, selfMotionState?.reason, selfMotionState?.clip, selfMotionState?.selectedNativeState,
+              selfMotionState?.state, selfMotionState?.mode, selfMotionState?.notice])
+            if (signature !== selfMotionSignature) { selfMotionSignature = signature; publishDiagnostics() }
+          }
+          selfActor.root.visible = viewMode !== 'first' && (cameraDistance === null || cameraDistance > 0.9)
+        }
+        // Create's AnimationTickHolder uses a CLIENT clock. Native server time
+        // is a freshness guard, never substituted for its absolute phase.
+        const timeStatus = nativeKineticTimeStatus(current.time, Date.now(), { paused: document.hidden })
+        const clockNow = performance.now() // Never mix RAF's earlier timestamp with visibility-event timestamps.
+        const oldReason = kineticClockState.reason
+        if (!timeStatus.available) {
+          kineticClock.pause(clockNow); kineticClockState = timeStatus
+          for (const actor of actors.values()) actor.setClockAvailable?.(false, timeStatus.reason)
+        } else {
+          kineticClock.resume(clockNow)
+          const clock = kineticClock.sample(clockNow), whole = clock.elapsedTicks
+          kineticClockState = { available: true, ...clock }
+          if (tickAge === null || whole < tickAge || whole - tickAge > 100) tickAge = whole
+          while (tickAge < whole) { for (const actor of actors.values()) actor.tick(); tickAge++ }
+          for (const actor of actors.values()) {
+            try { actor.setContraptionEntities?.(current.entityState?.entities); actor.frame(clock.renderTicks, clock.partialTick); actor.setClockAvailable?.(true) }
+            catch (error) { actor.setClockAvailable?.(false, error.message) }
+          }
+        }
+        if (oldReason !== kineticClockState.reason) publishDiagnostics()
+      }
+      entityLayer.frame(Date.now())
+      renderer.render(scene, camera)
+      if(selfActor?.firstPersonRoot){
+        selfActor.firstPersonRoot.visible=viewMode==='first'
+        if(viewMode==='first'){
+          renderer.clearDepth();renderer.autoClear=false
+          try {renderer.render(firstPersonScene,firstPersonCamera)} finally {renderer.autoClear=true}
+        }
+      }
+      publishFrame(now)
+    } catch (error) { fail(error) }
+  })
+  events = new EventSource('/events')
+  events.onmessage = message => {
+    try {
+      const event = session.receive(JSON.parse(message.data)), value = event.value
+      if (event.kind === 'ignored') return
+      if (event.kind === 'identity') {
+        if (event.reset) clearScene()
+        player = value.player; playerUuid = value.playerUuid?.toLowerCase(); onIdentity(value); return
+      }
+      if (event.kind === 'unavailable') {
+        if (event.reset) clearScene()
+        epoch = value.epoch; onUnavailable(value.reason || 'NATIVE_WORLD_WAITING'); return
+      }
+      if (value.type === 'snapshot') {
+        if (epoch !== value.epoch) { clearScene(); epoch = value.epoch }
+        current = value; pending = value; void rebuildLatest()
+      } else if (value.type === 'frame' && current && value.epoch === epoch) {
+        current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
+        current.presentation = value.presentation; current.entityState = value.entityState
+      } else if (value.type === 'motion' && current && value.epoch === epoch) {
+        current.pose = value.pose; current.motion = value.motion; return
+      } else return
+      onState(value); void ensureSelfActor(current.selfPlayer)
+      entityLayer.stage(current.entityState,{selfEntityId:current.selfPlayer?.entityId,playerUuid})
+      const body = selfActor
+      if (body?.applyHeldItems) void Promise.resolve(body.applyHeldItems(current.presentation)).catch(error => {
+        if (selfActor !== body) return
+        body.root.userData.heldItems = { available: false, reason: error.message }; publishDiagnostics()
+      })
+    } catch (error) { fail(error) }
+  }
+  events.onerror = () => { session.receive({type:'unavailable'}); clearScene(); onUnavailable('NATIVE_WORLD_STREAM_DISCONNECTED') }
+}
+function orbitPosition () {
+  if (!current?.pose) return
+  const view = playerCamera(current.pose, 'region')
+  controls.target.fromArray(view.target); camera.position.fromArray(view.position); controls.update()
+}
+function setView (mode) {
+  if (!['third', 'first', 'region', 'dungeon'].includes(mode) || disposed) return
+  viewMode = mode; cameraDistance = null; cameraCollisionAt = 0
+  camera.fov = mode === 'dungeon' ? 48 : 70; camera.updateProjectionMatrix()
+  controls.enabled = mode === 'region'; if (controls.enabled) orbitPosition()
+  viewport.dataset.view = mode; onMode(mode)
+}
+function updatePlayerCamera (now) {
+  if (viewMode === 'region') { controls.update(); return }
+  const view = playerCamera(current.pose, viewMode)
+  const target = new THREE.Vector3().fromArray(view.target), desired = new THREE.Vector3().fromArray(view.position)
+  if (viewMode === 'third') {
+    const direction = desired.clone().sub(target), length = direction.length(); direction.normalize()
+    if (now - cameraCollisionAt >= 100 || cameraDistance === null) {
+      // Collide only against geometry actually rendered from received blocks.
+      // Never reveal an unsupported block with an invented collision mesh.
+      statics.updateMatrixWorld(true); cameraRay.set(target, direction); cameraRay.far = length
+      const hit = cameraRay.intersectObjects(statics.children, true).find(hit => hit.distance > 0.05)
+      cameraDistance = hit ? Math.max(0.1, hit.distance - 0.2) : length; cameraCollisionAt = now
+    }
+    desired.copy(target).addScaledVector(direction, Math.min(cameraDistance, length))
+  } else cameraDistance = null
+  camera.position.copy(desired); camera.lookAt(target)
+}
+async function ensureSelfActor (self) {
+  const nativeSelf = current?.presentation?.self
+  const ysm = nativeSelf && Object.hasOwn(nativeSelf, 'ysm') ? nativeSelf.ysm : self?.ysm
+  const actor = await selfController?.update(self, playerUuid, ysm)
+  if (actor && actor === selfActor && actor.applyHeldItems) {
+    try { await actor.applyHeldItems(current?.presentation) } catch (error) {
+      if (actor === selfActor) actor.root.userData.heldItems = { available: false, reason: error.message }
+    }
+  }
+}
+function publishFrame(now) {
+  const p = current?.pose
+  let label = { visible: false, x: 0, y: 0, name: player }
+  if (p && selfActor?.root.visible && viewMode !== 'first') {
+    labelPoint.set(p.x, p.y + 2.1, p.z).project(camera)
+    label = { visible: labelPoint.z >= -1 && labelPoint.z <= 1 && Math.abs(labelPoint.x) <= 1 && Math.abs(labelPoint.y) <= 1,
+      x: (labelPoint.x + 1) * viewport.clientWidth / 2, y: (1 - labelPoint.y) * viewport.clientHeight / 2, name: player }
+  }
+  onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label })
+}
+function publishDiagnostics() {
+  onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
+    drawn: drawn + [...actors.values()].filter(actor => !actor.staticBodyRenderedSeparately && actor.root.visible).length,
+    issues: [...unknown, ...(actors.size && !kineticClockState.available ? [kineticClockState.reason] : []),
+      ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
+    selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture,
+      support: selfActor.assetInfo.support ?? null, notice: selfActor.assetInfo.notice, motion: selfMotionState ?? selfActor.root.userData.motion ?? null } : null,
+    heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,
+    kinetics: current?.kinetic?.map(n => n.speed) || [], environment: current?.biomes?.map(b => b.name) || [],
+    kineticClock: kineticClockState,
+    deviceVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeDevice).map(actor => ({ position: actor.position, stateId: actor.state.stateId, ...actor.root.userData.nativeDevice })),
+    windmillVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeBearing).map(actor => ({ position: actor.position, ...actor.root.userData.nativeBearing })),
+    skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
+}
+function clearStatics () {
+  if (!statics) return
+  for (const mesh of statics.children) { mesh.dispose?.(); if (mesh.userData.nativeFluid) mesh.geometry.dispose() } // fluid geometry is per-snapshot; model templates remain shared
+  statics.clear()
+}
+function clearScene () {
+  generation++; pending = null; current = null; lastGroupSignature = null; clearStatics()
+  for (const actor of actors.values()) removeActor(actor)
+  actors.clear()
+  entityLayer?.reset()
+  selfController?.clear(); selfActor = null
+  lastPlayerFrameTime = null; selfMotionState = null; selfMotionSignature = null
+  cameraDistance = null; skinState = null; drawn = 0; unknown = []; staticIssues = []; tickAge = null
+  kineticClock.reset(); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
+  onActor(null); publishDiagnostics()
+  camera?.position.set(0, 0, 0)
+}
+function removeActor (actor) {
+  worldRoot.remove(actor.root); if (actor.dispose) actor.dispose(); else loader.releaseModel(actor.root)
+}
+async function template (state, variants) {
+  const key = `${state.stateId}:${JSON.stringify(variants)}`
+  if (!templates.has(key)) templates.set(key, (async () => {
+    if (/^minecraft:[a-z_]+_bed$/.test(state.name)) {
+      const bed = await createNativeBedTemplate(assetReader,state)
+      if(disposed){bed.dispose();throw Error('NATIVE_SCENE_DISPOSED')}
+      bedTemplates.add(bed); return bed.root
+    }
+    if (state.name === MILLSTONE_ID) {
+      const plan = await prepareNativeMillstoneModel(assetReader, state, 'body')
+      const model = await loader.model(plan.modelId)
+      if (disposed) { loader.releaseModel(model); throw Error('NATIVE_SCENE_DISPOSED') }
+      model.userData.nativeDevice = { part: 'body', sourcePaths: plan.sourcePaths, pixelParityVerified: false }
+      model.updateMatrixWorld(true); return model
+    }
+    if (nativeColonyHutEligible(state)) {
+      const plan = await prepareNativeColonyHutModel(assetReader, state)
+      const model = await loader.models(plan.variants)
+      if (disposed) { loader.releaseModel(model); throw Error('NATIVE_SCENE_DISPOSED') }
+      model.userData.nativeColonyHut = { sourcePaths: plan.sourcePaths, blockClass: plan.blockClass,
+        blockEntityRendererEmpty: true, blueprintPreviewAvailable: false, pixelParityVerified: false }
+      model.updateMatrixWorld(true); return model
+    }
+    // The exact empty-board entity guard is checked per position before this
+    // shared template is used. Other entity-backed blocks remain unsupported.
+    if (state.name === WINDMILL_BEARING_ID) verifyNativeWindmillBearing(assetReader, state)
+    if ((state.hasBlockEntity && ![CUTTING_BOARD_ID, WINDMILL_BEARING_ID].includes(state.name)) || state.renderShape !== 'MODEL') throw Error('原生实体方块渲染未适配')
+    const model = await loader.models(variants, { allowTint: true })
+    if(disposed){loader.releaseModel(model);throw Error('NATIVE_SCENE_DISPOSED')}
+    let faces = 0; model.traverse(part => { if (part.isMesh) faces++ })
+    if (!faces) throw Error('原生模型无可绘制面')
+    model.updateMatrixWorld(true)
+    return model
+  })())
+  return templates.get(key)
+}
+async function rebuildLatest () {
+  if (rebuilding) return
+  rebuilding = true
+  try {
+    while (pending) {
+      const snapshot = pending, run = generation; pending = null
+      const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
+      const cuttingBoards = new Map((snapshot.cuttingBoards || []).map(board => [pointKey(board.position), board]))
+      const signature = JSON.stringify([snapshot.groups, snapshot.neighbors, snapshot.biomeGrid?.ids, snapshot.biomes, snapshot.biomeSeed, snapshot.cuttingBoards])
+      const staged = await stageNativeKineticActors({nodes:snapshot.kinetic,definitions,actors,
+        createActor:(state,position)=>createKineticActor(loader,state,position),attach:actor=>worldRoot.add(actor.root),remove:removeActor,
+        isCurrent:()=>run===generation&&!disposed})
+      if (!staged.current) continue
+      const nextIssues = staged.issues, nextStaticIssues = []
+      if (signature !== lastGroupSignature) {
+        const next = new THREE.Group(), tintCache = new Map(); let count = 0
+        let workStarted = performance.now()
+        for (const group of snapshot.groups) {
+          // A larger native volume must leave the controls/HUD responsive.
+          // Only scheduling changes; no geometry, state or texture is omitted.
+          if (performance.now() - workStarted > 8) {
+            await new Promise(resolve => requestAnimationFrame(resolve)); workStarted = performance.now()
+            if (run !== generation) break
+          }
+          const state = definitions.get(group.stateId)
+          if (['create:shaft', 'create:hand_crank'].includes(state.name)) continue
+          if (state.name === 'minecraft:water') {
+            const result = await waterMeshes(snapshot, group, definitions)
+            if (run !== generation) { for (const mesh of result.meshes) mesh.geometry.dispose(); break }
+            for (const mesh of result.meshes) next.add(mesh)
+            count += result.count; nextStaticIssues.push(...result.issues); continue
+          }
+          if (state.fluid && !state.fluid.empty) nextStaticIssues.push(`${state.name}：${state.fluid.name === 'minecraft:water' || state.fluid.name === 'minecraft:flowing_water' ? '原生含水方块的液体面未适配' : '原生液体渲染提供器未适配'}`)
+          try {
+            const positions = []
+            for (let i = 0; i < group.positions.length; i += 3) {
+              const position = { x: group.positions[i], y: group.positions[i + 1], z: group.positions[i + 2] }
+              if (state.name === CUTTING_BOARD_ID) {
+                const support = cuttingBoardStaticModelStatus(state, cuttingBoards.get(pointKey(position)), loader.reader.manifest)
+                if (!support.available) {
+                  nextStaticIssues.push(`${state.name} @ ${pointKey(position)}：${support.reason}${support.storedItem ? ` (${support.storedItem.id} × ${support.storedItem.count})` : ''}`)
+                  continue
+                }
+              }
+              positions.push(position)
+            }
+            if (!positions.length) continue
+            const isBed = /^minecraft:[a-z_]+_bed$/.test(state.name)
+            if (isBed) nativeBedState(state)
+            const blockstate = isBed ? null : await loader.blockstate(state.name)
+            const subgroups = new Map()
+            for (const position of positions) {
+              const variants = isBed ? [] : selectBlockVariants(blockstate, state, position), key = JSON.stringify(variants)
+              if (!subgroups.has(key)) subgroups.set(key, { variants, positions: [] })
+              subgroups.get(key).positions.push(position.x, position.y, position.z)
+            }
+            for (const subgroup of subgroups.values()) {
+              const model = await template(state, subgroup.variants)
+              if (run !== generation) break
+              const instanceCount = subgroup.positions.length / 3
+              const meshes = []
+              try {
+                model.traverse(part => {
+                  if (!part.isMesh) return
+                  const mesh = new THREE.InstancedMesh(part.geometry, part.material, instanceCount)
+                  meshes.push(mesh)
+                  const matrix = new THREE.Matrix4()
+                  for (let i = 0; i < instanceCount; i++) {
+                    const p = { x: subgroup.positions[i * 3], y: subgroup.positions[i * 3 + 1], z: subgroup.positions[i * 3 + 2] }, offset = modelOffset(state, p)
+                    matrix.makeTranslation(p.x + 0.5 + offset[0], p.y + 0.5 + offset[1], p.z + 0.5 + offset[2]).multiply(part.matrixWorld)
+                    mesh.setMatrixAt(i, matrix)
+                    if (part.userData.tintIndex >= 0) {
+                      const key = `${state.stateId}:${part.userData.tintIndex}:${pointKey(p)}`
+                      if (!tintCache.has(key)) tintCache.set(key, new THREE.Color().setHex(blockTint(snapshot, state, p, part.userData.tintIndex, colormaps)))
+                      mesh.setColorAt(i, tintCache.get(key))
+                    }
+                  }
+                  mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+                })
+              } catch (error) { for (const mesh of meshes) mesh.dispose(); throw error }
+              for (const mesh of meshes) next.add(mesh)
+              count += instanceCount
+            }
+          } catch (error) { nextStaticIssues.push(`${state.name}：${error.message}`) }
+        }
+        if (run !== generation) { for (const mesh of next.children) { mesh.dispose?.(); if (mesh.userData.nativeFluid) mesh.geometry.dispose() } continue }
+        clearStatics(); for (const mesh of [...next.children]) statics.add(mesh)
+        drawn = count; lastGroupSignature = signature; staticIssues = nextStaticIssues
+      }
+      unknown = [...nextIssues, ...staticIssues]
+      if (run !== generation) continue
+      if (!current) continue
+      publishDiagnostics()
+      if (camera.position.lengthSq() === 0 && viewMode === 'region') orbitPosition()
+    }
+  } catch (error) { fail(error) } finally { rebuilding = false }
+}
+
+async function waterMeshes (snapshot, group, definitions) {
+  const neighbors = new Map(), data = new Map(), issues = new Set()
+  for (let i = 0; i < (snapshot.neighbors || []).length; i += 4) neighbors.set(`${snapshot.neighbors[i]},${snapshot.neighbors[i + 1]},${snapshot.neighbors[i + 2]}`, definitions.get(snapshot.neighbors[i + 3]))
+  const get = p => { const state = neighbors.get(pointKey(p)); if (!state) throw Error('NATIVE_FLUID_NEIGHBOR_NOT_RECEIVED'); return state }
+  let count = 0
+  for (let i = 0; i < group.positions.length; i += 3) {
+    const p = { x: group.positions[i], y: group.positions[i + 1], z: group.positions[i + 2] }
+    try {
+      const result = waterGeometry(p, get), color = new THREE.Color().setHex(blendedBiomeColor(snapshot, p, 'water', colormaps))
+      for (const quad of result.quads) {
+        if (!data.has(quad.texture)) data.set(quad.texture, { positions: [], colors: [], uv: [], indices: [] })
+        const batch = data.get(quad.texture), base = batch.positions.length / 3
+        for (let j = 0; j < 4; j++) {
+          batch.positions.push(quad.vertices[j * 3] + p.x, quad.vertices[j * 3 + 1] + p.y, quad.vertices[j * 3 + 2] + p.z)
+          batch.colors.push(color.r * quad.shade, color.g * quad.shade, color.b * quad.shade)
+          batch.uv.push(quad.uv[j * 2], 1 - quad.uv[j * 2 + 1])
+        }
+        batch.indices.push(base, base + 1, base + 2, base, base + 2, base + 3)
+        if (quad.backwards) batch.indices.push(base, base + 2, base + 1, base, base + 3, base + 2)
+      }
+      count++
+    } catch (error) { issues.add(`minecraft:water：${error.message}`) }
+  }
+  const meshes = []
+  try {
+    for (const [texture, batch] of data) {
+      const material = await loader.fluidMaterial(texture), geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3))
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(batch.colors, 3))
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uv, 2))
+      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(batch.positions.map((_, i) => i % 3 === 1 ? 1 : 0), 3))
+      geometry.setIndex(batch.indices)
+      const mesh = new THREE.Mesh(geometry, material); mesh.userData.nativeFluid = true; meshes.push(mesh)
+    }
+  } catch (error) { for (const mesh of meshes) mesh.geometry.dispose(); throw error }
+  return { meshes, count, issues: [...issues] }
+}
+function fail (error) {
+  events?.close(); clearScene(); renderer?.setAnimationLoop(null)
+  onUnavailable(error.message)
+}
+function dispose () {
+  if (disposed) return
+  disposed = true; events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
+  document.removeEventListener('visibilitychange', kineticVisibility)
+  controls?.dispose(); clearScene(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
+}
+try { await start(); setView(mode) } catch(error) { dispose(); throw error }
+return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,
+  get actor() { return selfActor }, get state() { return current } }
+}

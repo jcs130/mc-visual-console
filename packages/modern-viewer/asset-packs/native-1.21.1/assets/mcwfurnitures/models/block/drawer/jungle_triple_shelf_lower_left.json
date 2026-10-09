@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/triple_shelf_left_lower",
+	"textures": {
+		"0": "mcwfurnitures:block/jungle_handle",
+		"1": "minecraft:block/jungle_log",
+		"2": "minecraft:block/stripped_jungle_log",
+		"particle": "minecraft:block/jungle_log"
+	}
+}

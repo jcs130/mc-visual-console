@@ -1,0 +1,9 @@
+{
+	"parent": "mcwroofs:block/parent/gutter_inner",
+	"textures": {
+		"0": "mcwroofs:block/gray_gutter",
+		"2": "mcwroofs:block/gray_gutter",
+		"3": "mcwroofs:block/gray_gutter",
+		"particle": "mcwroofs:block/gray_gutter"
+	}
+}

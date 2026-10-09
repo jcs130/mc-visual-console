@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/drawer_counter",
+	"textures": {
+		"1": "minecraft:block/warped_stem",
+		"2": "minecraft:block/stripped_warped_stem",
+		"particle": "minecraft:block/stripped_warped_stem",
+		"1_2": "mcwfurnitures:block/str_warped_handle"
+	}
+}

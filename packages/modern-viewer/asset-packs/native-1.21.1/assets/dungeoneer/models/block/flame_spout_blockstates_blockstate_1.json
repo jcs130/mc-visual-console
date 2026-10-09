@@ -1,0 +1,9 @@
+{
+  "parent": "dungeoneer:custom/flame_spout_trap_3",
+  "textures": {
+    "all": "dungeoneer:block/flametrap3",
+    "particle": "dungeoneer:block/flametrapoff",
+    "0": "dungeoneer:block/flametrap3"
+  },
+  "render_type": "cutout"
+}

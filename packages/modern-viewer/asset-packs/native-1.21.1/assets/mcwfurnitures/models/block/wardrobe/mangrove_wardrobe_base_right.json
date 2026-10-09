@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/wardrobe_base_right",
+	"textures": {
+		"0": "minecraft:block/mangrove_log",
+		"1": "minecraft:block/stripped_mangrove_log",
+		"2": "mcwfurnitures:block/mangrove_handle",
+		"particle": "minecraft:block/mangrove_log"
+	}
+}

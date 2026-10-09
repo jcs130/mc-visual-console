@@ -1,0 +1,10 @@
+{
+	"parent": "mcwfurnitures:block/parent/glass_kitchen_cabinet",
+	"textures": {
+		"0": "minecraft:block/stripped_acacia_log",
+		"1": "minecraft:block/acacia_log",
+		"2": "mcwfurnitures:block/str_acacia_handle",
+		"4": "mcwfurnitures:block/cabinet",
+		"particle": "minecraft:block/stripped_acacia_log"
+	}
+}

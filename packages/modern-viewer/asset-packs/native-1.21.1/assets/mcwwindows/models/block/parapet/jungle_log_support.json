@@ -1,0 +1,7 @@
+{
+	"parent": "mcwwindows:block/parent/support",
+	"textures": {
+		"1": "minecraft:block/jungle_log",
+		"particle": "minecraft:block/jungle_log"      
+	}
+}

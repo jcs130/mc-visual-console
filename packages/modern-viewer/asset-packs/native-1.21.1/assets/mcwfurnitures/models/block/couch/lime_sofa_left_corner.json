@@ -1,0 +1,7 @@
+{
+	"parent": "mcwfurnitures:block/parent/sofa_left_corner",
+	"textures": {
+		"1": "block/stripped_spruce_log",
+		"particle": "block/lime_wool"
+	}
+}

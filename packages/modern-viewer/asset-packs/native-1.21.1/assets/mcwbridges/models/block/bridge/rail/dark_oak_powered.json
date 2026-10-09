@@ -1,0 +1,9 @@
+{
+	"parent": "mcwbridges:block/bridge/rail/parent/rail_powered",
+	"textures": {
+		"0": "minecraft:block/stripped_dark_oak_log",
+		"1": "minecraft:block/dark_oak_log",
+		"2": "minecraft:block/redstone_block",
+		"particle": "minecraft:block/dark_oak_log"
+	}
+}

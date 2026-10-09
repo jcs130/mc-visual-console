@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/triple_shelf_left_lower",
+	"textures": {
+		"0": "mcwfurnitures:block/str_crimson_handle",
+		"1": "minecraft:block/stripped_crimson_stem",
+		"2": "minecraft:block/crimson_stem",
+		"particle": "minecraft:block/stripped_crimson_stem"
+	}
+}

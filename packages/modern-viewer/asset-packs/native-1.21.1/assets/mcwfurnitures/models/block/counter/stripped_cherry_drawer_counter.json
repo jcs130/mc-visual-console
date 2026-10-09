@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/drawer_counter",
+	"textures": {
+		"1": "minecraft:block/cherry_log",
+		"2": "minecraft:block/stripped_cherry_log",
+		"particle": "minecraft:block/stripped_cherry_log",
+		"1_2": "mcwfurnitures:block/cherry_handle"
+	}
+}

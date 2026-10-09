@@ -1,0 +1,18 @@
+{
+    "variants": {                     
+		"connection=base":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_base","uvlock": true},
+		
+        "connection=middle_ns":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_middle", "y": 90,"uvlock": true},
+		"connection=middle_ew":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_middle","uvlock": true},
+
+		"connection=corner_nw":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_corner", "y": 180,"uvlock": true},
+		"connection=corner_ne":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_corner", "y": 270,"uvlock": true},
+		"connection=corner_se":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_corner","uvlock": true},
+		"connection=corner_sw":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_corner", "y": 90,"uvlock": true},	
+		
+		"connection=side_s":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_side","uvlock": true},
+		"connection=side_n":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_side", "y": 180,"uvlock": true},
+		"connection=side_w":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_side", "y": 90,"uvlock": true},
+		"connection=side_e":  { "model": "mcwbridges:block/bridge/bridge_wood/jungle_side", "y": 270,"uvlock": true}
+    }
+}

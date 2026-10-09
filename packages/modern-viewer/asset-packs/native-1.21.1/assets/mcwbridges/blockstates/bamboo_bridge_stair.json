@@ -1,0 +1,36 @@
+{
+    "variants": {                                                                        
+        "facing=north,connection=base":  { "model": "mcwbridges:block/stair/bamboo/double", "y": 270},
+		"facing=north,connection=right":  { "model": "mcwbridges:block/stair/bamboo/right", "y": 270},
+		"facing=north,connection=left":  { "model": "mcwbridges:block/stair/bamboo/left", "y": 270},
+		"facing=north,connection=double":  { "model": "mcwbridges:block/stair/bamboo/base", "y": 270},
+
+        "facing=west,connection=base":  { "model": "mcwbridges:block/stair/bamboo/double", "y": 180},
+		"facing=west,connection=right":  { "model": "mcwbridges:block/stair/bamboo/right", "y": 180},
+		"facing=west,connection=left":  { "model": "mcwbridges:block/stair/bamboo/left", "y": 180},
+		"facing=west,connection=double":  { "model": "mcwbridges:block/stair/bamboo/base", "y": 180},
+
+        "facing=south,connection=base":  { "model": "mcwbridges:block/stair/bamboo/double", "y": 90},
+		"facing=south,connection=right":  { "model": "mcwbridges:block/stair/bamboo/right", "y": 90},
+		"facing=south,connection=left":  { "model": "mcwbridges:block/stair/bamboo/left", "y": 90},
+		"facing=south,connection=double":  { "model": "mcwbridges:block/stair/bamboo/base", "y": 90},
+
+        "facing=east,connection=base":  { "model": "mcwbridges:block/stair/bamboo/double"},
+		"facing=east,connection=right":  { "model": "mcwbridges:block/stair/bamboo/right"},
+		"facing=east,connection=left":  { "model": "mcwbridges:block/stair/bamboo/left"},	
+		"facing=east,connection=double":  { "model": "mcwbridges:block/stair/bamboo/base"}
+
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+

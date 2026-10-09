@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/large_shelf_left",
+	"textures": {
+		"0": "mcwfurnitures:block/str_crimson_handle",
+		"1": "minecraft:block/stripped_crimson_stem",
+		"2": "minecraft:block/crimson_stem",
+		"particle": "minecraft:block/stripped_crimson_stem"
+	}
+}

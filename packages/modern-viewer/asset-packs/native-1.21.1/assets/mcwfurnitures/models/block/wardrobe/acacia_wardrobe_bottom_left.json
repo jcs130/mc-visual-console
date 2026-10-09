@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/wardrobe_bottom_left",
+	"textures": {
+		"0": "minecraft:block/acacia_log",
+		"1": "minecraft:block/stripped_acacia_log",
+		"2": "mcwfurnitures:block/acacia_handle",
+		"particle": "minecraft:block/acacia_log"
+	}
+}

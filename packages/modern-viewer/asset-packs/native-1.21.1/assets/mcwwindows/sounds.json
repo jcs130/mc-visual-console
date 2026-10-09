@@ -1,0 +1,26 @@
+{
+    "block.bars_close": {
+        "subtitle": "subtitle.mcwwindows.bars_close",
+        "sounds": [ "mcwwindows:block/bars_close" ]
+    },
+	"block.bars_open": {
+        "subtitle": "subtitle.mcwwindows.bars_open",
+        "sounds": [ "mcwwindows:block/bars_open" ]
+    },
+	"block.blinds_close": {
+        "subtitle": "subtitle.mcwwindows.blinds_close",
+        "sounds": [ "mcwwindows:block/blinds_close" ]
+    },
+	"block.blinds_open": {
+        "subtitle": "subtitle.mcwwindows.blinds_open",
+        "sounds": [ "mcwwindows:block/blinds_open" ]
+    },
+	"block.window_close": {
+        "subtitle": "subtitle.mcwwindows.window_close",
+        "sounds": [ "mcwwindows:block/window_close" ]
+    },
+    "block.window_open": {
+        "subtitle": "subtitle.mcwwindows.window_open",
+        "sounds": [ "mcwwindows:block/window_open" ]
+    }
+}

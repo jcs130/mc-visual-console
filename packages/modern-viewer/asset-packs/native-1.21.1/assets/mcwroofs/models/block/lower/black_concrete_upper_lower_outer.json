@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_upper_lower_outer",
+	"textures": {
+		"particle": "minecraft:block/black_concrete",
+		"1_2": "minecraft:block/black_concrete"
+	}
+}

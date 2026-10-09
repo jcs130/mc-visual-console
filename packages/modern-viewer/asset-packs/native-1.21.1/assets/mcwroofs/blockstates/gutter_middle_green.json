@@ -1,0 +1,31 @@
+{
+    "variants": {           
+
+        "facing=north,above=true,below=true":  { "model": "mcwroofs:block/gutter/gutter_middle_green", "y":270 },
+        "facing=south,above=true,below=true":  { "model": "mcwroofs:block/gutter/gutter_middle_green", "y":90 },
+        "facing=west,above=true,below=true": { "model": "mcwroofs:block/gutter/gutter_middle_green", "y":180},
+        "facing=east,above=true,below=true": { "model": "mcwroofs:block/gutter/gutter_middle_green"},
+
+        "facing=north,below=false,water=false":  { "model": "mcwroofs:block/gutter/gutter_bot_green", "y":270 },
+        "facing=south,below=false,water=false":  { "model": "mcwroofs:block/gutter/gutter_bot_green", "y":90 },
+        "facing=west,below=false,water=false": { "model": "mcwroofs:block/gutter/gutter_bot_green", "y":180},
+        "facing=east,below=false,water=false": { "model": "mcwroofs:block/gutter/gutter_bot_green"},
+
+        "facing=north,below=false,water=true":  { "model": "mcwroofs:block/gutter/gutter_bot_green0", "y":270 },
+        "facing=south,below=false,water=true":  { "model": "mcwroofs:block/gutter/gutter_bot_green0", "y":90 },
+        "facing=west,below=false,water=true": { "model": "mcwroofs:block/gutter/gutter_bot_green0", "y":180},
+        "facing=east,below=false,water=true": { "model": "mcwroofs:block/gutter/gutter_bot_green0"},
+
+        "facing=north,above=false,below=true,water=false":  { "model": "mcwroofs:block/gutter/gutter_top_green0", "y":270 },
+        "facing=south,above=false,below=true,water=false":  { "model": "mcwroofs:block/gutter/gutter_top_green0", "y":90 },
+        "facing=west,above=false,below=true,water=false": { "model": "mcwroofs:block/gutter/gutter_top_green0", "y":180},
+        "facing=east,above=false,below=true,water=false": { "model": "mcwroofs:block/gutter/gutter_top_green0"},
+
+        "facing=north,above=false,below=true,water=true":  { "model": "mcwroofs:block/gutter/gutter_top_green", "y":270 },
+        "facing=south,above=false,below=true,water=true":  { "model": "mcwroofs:block/gutter/gutter_top_green", "y":90 },
+        "facing=west,above=false,below=true,water=true": { "model": "mcwroofs:block/gutter/gutter_top_green", "y":180},
+        "facing=east,above=false,below=true,water=true": { "model": "mcwroofs:block/gutter/gutter_top_green"}
+  
+    }
+}
+

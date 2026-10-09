@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_steep",
+	"textures": {
+		"particle": "mcwroofs:block/base_roof",
+		"2": "mcwroofs:block/base_roof"
+	}
+}

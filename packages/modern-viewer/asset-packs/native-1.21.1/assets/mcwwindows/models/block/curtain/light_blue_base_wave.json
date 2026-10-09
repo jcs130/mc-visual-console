@@ -1,0 +1,8 @@
+{
+
+	"parent": "mcwwindows:block/parent/base_wave",
+	"textures": {
+		"3": "mcwwindows:block/light_blue_curtain",
+		"particle": "mcwwindows:block/light_blue_curtain"
+	}
+}

@@ -1,0 +1,9 @@
+{    
+	"variants": {                                                                        
+	  	"facing=west": { "model": "mcwwindows:block/window/one_way_glass_pane", "y": 180 },
+        "facing=north": { "model": "mcwwindows:block/window/one_way_glass_pane", "y": 270 },
+        "facing=east": { "model": "mcwwindows:block/window/one_way_glass_pane" },
+        "facing=south": { "model": "mcwwindows:block/window/one_way_glass_pane", "y": 90 }
+    }
+}
+

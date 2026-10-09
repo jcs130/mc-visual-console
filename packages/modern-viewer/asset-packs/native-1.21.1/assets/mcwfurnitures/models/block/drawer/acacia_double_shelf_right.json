@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/double_shelf_right",
+	"textures": {
+		"0": "mcwfurnitures:block/acacia_handle",
+		"1": "minecraft:block/acacia_log",
+		"2": "minecraft:block/stripped_acacia_log",
+		"particle": "minecraft:block/acacia_log"
+	}
+}

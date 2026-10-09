@@ -1,0 +1,8 @@
+{
+	"parent": "mcwbridges:block/support_pier/parent/pillar_single",
+	"textures": {
+		"0": "mcwbridges:block/red_stripped_wood",
+		"2": "mcwbridges:block/red_stripped_wood",
+		"particle": "mcwbridges:block/red_stripped_wood"
+	}
+}

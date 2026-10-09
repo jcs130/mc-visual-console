@@ -1,0 +1,18 @@
+{
+    "block.drawer_open": {
+        "subtitle": "subtitle.mcwfurnitures.drawer_open",
+        "sounds": [ "mcwfurnitures:block/drawer_open" ]
+    },
+	"block.drawer_close": {
+        "subtitle": "subtitle.mcwfurnitures.drawer_close",
+        "sounds": [ "mcwfurnitures:block/drawer_close" ]
+    },
+	"block.cabinet_open": {
+        "subtitle": "subtitle.mcwfurnitures.cabinet_open",
+        "sounds": [ "mcwfurnitures:block/cabinet_open" ]
+    },
+	"block.cabinet_close": {
+        "subtitle": "subtitle.mcwfurnitures.cabinet_close",
+        "sounds": [ "mcwfurnitures:block/cabinet_close" ]
+    }
+}

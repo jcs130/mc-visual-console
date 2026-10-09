@@ -1,0 +1,4 @@
+# Export manifests contain hashes of the original bytes, including JSON and mcmeta.
+packages/modern-viewer/asset-packs/** -text -whitespace
+*.png binary
+*.ogg binary

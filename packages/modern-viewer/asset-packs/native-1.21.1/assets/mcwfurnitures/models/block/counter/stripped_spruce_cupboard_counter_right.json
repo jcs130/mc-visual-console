@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/cupboard_counter_right",
+	"textures": {
+		"1": "minecraft:block/spruce_log",
+		"2": "minecraft:block/stripped_spruce_log",
+		"particle": "minecraft:block/stripped_spruce_log",
+		"2_1": "mcwfurnitures:block/spruce_handle"
+	}
+}

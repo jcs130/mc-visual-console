@@ -1,0 +1,7 @@
+{
+	"parent": "mcwwindows:block/parent/support",
+	"textures": {
+		"1": "minecraft:block/dark_oak_log",
+		"particle": "minecraft:block/dark_oak_log"      
+	}
+}

@@ -1,0 +1,13 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "render_type": "translucent",
+  "textures": {
+        "particle": "mcwwindows:block/one_glass",
+        "down": "mcwwindows:block/one_glass",
+        "up": "mcwwindows:block/one_glass",
+        "north": "mcwwindows:block/one_glass",
+        "east": "mcwwindows:block/one_glass",
+        "south": "mcwwindows:block/one_way_glass",
+        "west": "mcwwindows:block/one_glass"
+  }
+}

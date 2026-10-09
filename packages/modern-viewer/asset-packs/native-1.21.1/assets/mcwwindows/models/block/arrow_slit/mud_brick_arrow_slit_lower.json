@@ -1,0 +1,7 @@
+{
+	"parent": "mcwwindows:block/parent/arrow_slit_lower",
+	"textures": {
+		"0": "minecraft:block/mud_bricks",
+		"particle": "minecraft:block/mud_bricks"     
+	}
+}

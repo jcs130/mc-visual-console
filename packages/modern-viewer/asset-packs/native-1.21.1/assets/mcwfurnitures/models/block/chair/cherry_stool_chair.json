@@ -1,0 +1,8 @@
+{
+	"parent": "mcwfurnitures:block/parent/stool_chair",
+	"textures": {
+		"1_0": "minecraft:block/cherry_log",
+		"particle": "minecraft:block/cherry_log",
+		"1_3": "minecraft:block/stripped_cherry_log"
+	}
+}

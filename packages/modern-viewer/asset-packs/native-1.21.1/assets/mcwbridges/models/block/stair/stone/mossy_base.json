@@ -1,0 +1,8 @@
+{
+	"parent": "mcwbridges:block/stair/stone/parent/base",
+	"textures": {
+		"1": "minecraft:block/gravel",
+		"2": "minecraft:block/mossy_stone_bricks",
+		"particle": "minecraft:block/mossy_stone_bricks"
+	}
+}

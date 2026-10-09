@@ -1,0 +1,13 @@
+{
+    "variants": {                         
+		"facing=north,lightstate=bridge":  { "model": "mcwbridges:block/lantern_side", "y": 270},
+		"facing=east,lightstate=bridge":  { "model": "mcwbridges:block/lantern_side"},
+		"facing=south,lightstate=bridge":  { "model": "mcwbridges:block/lantern_side", "y": 90},
+		"facing=west,lightstate=bridge":  { "model": "mcwbridges:block/lantern_side", "y": 180},
+		
+		"facing=north,lightstate=stair":  { "model": "mcwbridges:block/lantern_side_stair", "y": 270},
+		"facing=east,lightstate=stair":  { "model": "mcwbridges:block/lantern_side_stair"},
+		"facing=south,lightstate=stair":  { "model": "mcwbridges:block/lantern_side_stair", "y": 90},
+		"facing=west,lightstate=stair":  { "model": "mcwbridges:block/lantern_side_stair", "y": 180}
+    }
+}

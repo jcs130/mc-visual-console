@@ -1,0 +1,15 @@
+{
+    "variants": {                                                                        
+        "facing=north,powered=false":  { "model": "mcwbridges:block/bridge/rail/crimson", "y": 90},
+		"facing=east,powered=false":  { "model": "mcwbridges:block/bridge/rail/crimson"},
+		"facing=south,powered=false":  { "model": "mcwbridges:block/bridge/rail/crimson", "y": 90},
+		"facing=west,powered=false":  { "model": "mcwbridges:block/bridge/rail/crimson"},
+
+		"facing=north,powered=true":  { "model": "mcwbridges:block/bridge/rail/crimson_powered", "y": 90},
+		"facing=east,powered=true":  { "model": "mcwbridges:block/bridge/rail/crimson_powered"},
+		"facing=south,powered=true":  { "model": "mcwbridges:block/bridge/rail/crimson_powered", "y": 90},
+		"facing=west,powered=true":  { "model": "mcwbridges:block/bridge/rail/crimson_powered"}			
+    }
+}
+
+

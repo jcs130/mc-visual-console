@@ -1,0 +1,10 @@
+{
+  "parent": "dungeoneer:custom/proxspiketrapon",
+  "textures": {
+    "all": "dungeoneer:block/spike_trap_soul",
+    "particle": "dungeoneer:block/spike_trap",
+    "1": "dungeoneer:block/spike_trap_soul",
+    "2": "dungeoneer:block/spikes_on"
+  },
+  "render_type": "cutout"
+}

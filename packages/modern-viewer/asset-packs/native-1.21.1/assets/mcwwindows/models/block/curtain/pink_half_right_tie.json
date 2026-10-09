@@ -1,0 +1,8 @@
+{
+	"parent": "mcwwindows:block/parent/half_right_tie",
+	"textures": {
+		"2": "mcwwindows:block/pink_curtain_right",
+		"3": "mcwwindows:block/pink_curtain",
+		"particle": "mcwwindows:block/pink_curtain"
+	}
+}

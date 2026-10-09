@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/triple_shelf_right",
+	"textures": {
+		"0": "mcwfurnitures:block/warped_handle",
+		"1": "minecraft:block/warped_stem",
+		"2": "minecraft:block/stripped_warped_stem",
+		"particle": "minecraft:block/warped_stem"
+	}
+}

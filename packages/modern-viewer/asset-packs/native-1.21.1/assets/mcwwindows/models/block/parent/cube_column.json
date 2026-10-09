@@ -1,0 +1,13 @@
+{
+    "parent": "block/cube",
+	"render_type": "translucent",
+    "textures": {
+        "particle": "#side",
+        "down": "#end",
+        "up": "#end",
+        "north": "#side",
+        "east": "#side",
+        "south": "#side",
+        "west": "#side"
+    }
+}

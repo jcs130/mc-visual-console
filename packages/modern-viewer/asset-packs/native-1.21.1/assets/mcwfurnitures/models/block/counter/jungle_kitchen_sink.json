@@ -1,0 +1,10 @@
+{
+	"parent": "mcwfurnitures:block/parent/kitchen_sink",
+	"textures": {
+		"1": "minecraft:block/stripped_jungle_log",
+		"2": "minecraft:block/jungle_log",
+		"4": "minecraft:block/cauldron_inner",
+		"5": "minecraft:block/cauldron_top",
+		"particle": "minecraft:block/jungle_log"
+	}
+}

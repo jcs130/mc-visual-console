@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_upper_steep_outer",
+	"textures": {
+		"particle": "minecraft:block/gray_terracotta",
+		"2": "minecraft:block/gray_terracotta"
+	}
+}

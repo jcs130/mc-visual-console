@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/roof",
+	"textures": {
+		"2": "minecraft:block/oak_log",
+		"particle": "minecraft:block/oak_log"
+	}
+}

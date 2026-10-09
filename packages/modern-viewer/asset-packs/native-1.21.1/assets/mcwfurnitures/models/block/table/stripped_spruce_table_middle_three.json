@@ -1,0 +1,7 @@
+{
+	"parent": "mcwfurnitures:block/parent/table_middle_three",
+	"textures": {
+		"1": "minecraft:block/stripped_spruce_log",
+		"particle": "minecraft:block/stripped_spruce_log"
+	}
+}

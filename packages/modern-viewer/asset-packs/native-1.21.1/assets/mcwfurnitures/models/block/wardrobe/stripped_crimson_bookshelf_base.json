@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/bookshelf_base",
+	"textures": {
+		"2": "minecraft:block/bookshelf",
+		"1": "minecraft:block/crimson_stem",
+		"0": "minecraft:block/stripped_crimson_stem",
+		"particle": "minecraft:block/stripped_crimson_stem"
+	}
+}

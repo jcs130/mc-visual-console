@@ -1,0 +1,10 @@
+{
+	"parent": "mcwfurnitures:block/parent/modern_chair",
+	"textures": {
+		"0": "minecraft:block/acacia_log",
+		"5": "minecraft:block/stripped_acacia_log",
+		"3": "minecraft:block/stripped_acacia_log",
+		"4": "minecraft:block/white_wool",
+		"particle": "minecraft:block/acacia_log"
+	}
+}

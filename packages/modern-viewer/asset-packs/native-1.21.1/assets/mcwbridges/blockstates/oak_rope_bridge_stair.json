@@ -1,0 +1,33 @@
+{
+    "variants": {                                                                        
+        "facing=north,connection=base":  { "model": "mcwbridges:block/stair/rope/oak_double", "y": 270},
+		"facing=north,connection=right":  { "model": "mcwbridges:block/stair/rope/oak_right", "y": 270},
+		"facing=north,connection=left":  { "model": "mcwbridges:block/stair/rope/oak_left", "y": 270},
+		"facing=north,connection=double":  { "model": "mcwbridges:block/stair/rope/oak_base", "y": 270},
+
+        "facing=west,connection=base":  { "model": "mcwbridges:block/stair/rope/oak_double", "y": 180},
+		"facing=west,connection=right":  { "model": "mcwbridges:block/stair/rope/oak_right", "y": 180},
+		"facing=west,connection=left":  { "model": "mcwbridges:block/stair/rope/oak_left", "y": 180},
+		"facing=west,connection=double":  { "model": "mcwbridges:block/stair/rope/oak_base", "y": 180},
+
+        "facing=south,connection=base":  { "model": "mcwbridges:block/stair/rope/oak_double", "y": 90},
+		"facing=south,connection=right":  { "model": "mcwbridges:block/stair/rope/oak_right", "y": 90},
+		"facing=south,connection=left":  { "model": "mcwbridges:block/stair/rope/oak_left", "y": 90},
+		"facing=south,connection=double":  { "model": "mcwbridges:block/stair/rope/oak_base", "y": 90},
+
+        "facing=east,connection=base":  { "model": "mcwbridges:block/stair/rope/oak_double"},
+		"facing=east,connection=right":  { "model": "mcwbridges:block/stair/rope/oak_right"},
+		"facing=east,connection=left":  { "model": "mcwbridges:block/stair/rope/oak_left"},	
+		"facing=east,connection=double":  { "model": "mcwbridges:block/stair/rope/oak_base"}
+
+    }
+}
+
+
+
+
+
+
+
+
+

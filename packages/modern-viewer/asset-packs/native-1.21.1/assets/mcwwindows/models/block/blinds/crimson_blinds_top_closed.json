@@ -1,0 +1,10 @@
+{
+	"parent": "mcwwindows:block/parent/blinds_top_closed",
+	"textures": {
+		"1": "minecraft:block/stripped_crimson_stem",
+		"2": "minecraft:block/crimson_stem",
+		"3": "minecraft:block/crimson_planks",
+		"particle": "minecraft:block/crimson_planks"
+	}    
+}
+

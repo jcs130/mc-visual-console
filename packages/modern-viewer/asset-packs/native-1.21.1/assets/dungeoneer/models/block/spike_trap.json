@@ -1,0 +1,10 @@
+{
+  "parent": "dungeoneer:custom/spiketrapoff",
+  "textures": {
+    "all": "dungeoneer:block/redstone_spike_trap_off",
+    "particle": "dungeoneer:block/redstone_spike_trap_off",
+    "1": "dungeoneer:block/redstone_spike_trap_off",
+    "2": "dungeoneer:block/spikes_off"
+  },
+  "render_type": "cutout"
+}

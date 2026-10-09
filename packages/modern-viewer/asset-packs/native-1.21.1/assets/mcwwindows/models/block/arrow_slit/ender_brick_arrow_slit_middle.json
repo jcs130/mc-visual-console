@@ -1,0 +1,8 @@
+{
+	"parent": "mcwwindows:block/parent/arrow_slit_middle",
+	"textures": {
+		"0": "minecraft:block/end_stone_bricks",
+		"particle": "minecraft:block/end_stone_bricks"
+     
+	}
+}

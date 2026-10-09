@@ -1,0 +1,117 @@
+{
+  "empty": {
+    "sounds": []
+  },
+  "fire_family": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:fire_projectile_medium"
+      },
+      {
+        "name": "ars_nouveau:fire_projectile_small"
+      },
+      {
+        "name": "ars_nouveau:fire_projectile_large",
+        "pitch": 1.1,
+        "volume": 0.75
+      }
+    ]
+  },
+  "ea_channel": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:apparatus_channel"
+      }
+    ]
+  },
+  "ea_finish": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:apparatus_finish"
+      }
+    ]
+  },
+  "gaia_family": {
+    "sounds": [
+      "ars_nouveau:gaia_1",
+      "ars_nouveau:gaia_2",
+      "ars_nouveau:gaia_3",
+      "ars_nouveau:gaia_4"
+    ]
+  },
+  "tempestry_family": {
+    "sounds": [
+      "ars_nouveau:tempestry_1",
+      "ars_nouveau:tempestry_2",
+      "ars_nouveau:tempestry_3",
+      "ars_nouveau:tempestry_4"
+    ]
+  },
+  "fire_family_2": {
+    "sounds": [
+      "ars_nouveau:pyro_1",
+      "ars_nouveau:pyro_2",
+      "ars_nouveau:pyro_3",
+      "ars_nouveau:pyro_4"
+    ]
+  },
+  "aria_biblio": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:aria_biblio",
+        "stream": true,
+        "volume": 0.75
+      }
+    ]
+  },
+  "firel_the_wild_hunt": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:firel_the_wild_hunt",
+        "stream": true,
+        "volume": 0.4
+      }
+    ]
+  },
+  "thistle_the_sound_of_glass": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:thistle_the_sound_of_glass",
+        "stream": true,
+        "volume": 0.4
+      }
+    ]
+  },
+  "dominion_wand_clear": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:dominion_wand_clear",
+        "volume": 1.0
+      }
+    ]
+  },
+  "dominion_wand_fail": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:dominion_wand_fail",
+        "volume": 1.0
+      }
+    ]
+  },
+  "dominion_wand_select": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:dominion_wand_select",
+        "volume": 1.0
+      }
+    ]
+  },
+  "dominion_wand_success": {
+    "sounds": [
+      {
+        "name": "ars_nouveau:dominion_wand_success",
+        "volume": 1.0
+      }
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "mcwwindows:block/parent/cube_all",
+  "textures": {
+    "all": "mcwwindows:block/lime_middle"
+  }
+}

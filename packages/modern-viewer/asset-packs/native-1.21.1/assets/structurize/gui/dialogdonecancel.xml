@@ -1,0 +1,9 @@
+<overlay size="100% 100%" pos="0 0">
+    <view size="248 166" pos="82 30">
+        <image source="minecraft:textures/gui/demo_background.png" imagesize="248 166" pos="0 0" size="248 166"/>
+        <text id="title" size="200 18" pos="24 19" textalign="TOP_MIDDLE" color="black" wrap="false"/>
+        <text id="textcontent" size="200 22" pos="24 53" textalign="TOP_MIDDLE" color="black"/>
+        <button id="done" size="200 20" pos="24 91" label="$(gui.done)"/>
+        <button id="cancel" size="200 20" pos="24 127" label="$(gui.cancel)"/>
+    </view>
+</overlay>

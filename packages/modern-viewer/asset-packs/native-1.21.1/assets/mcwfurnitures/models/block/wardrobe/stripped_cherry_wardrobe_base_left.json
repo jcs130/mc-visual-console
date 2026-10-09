@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/wardrobe_base_left",
+	"textures": {
+		"0": "minecraft:block/stripped_cherry_log",
+		"1": "minecraft:block/cherry_log",
+		"2": "mcwfurnitures:block/cherry_handle",
+		"particle": "minecraft:block/stripped_cherry_log"
+	}
+}

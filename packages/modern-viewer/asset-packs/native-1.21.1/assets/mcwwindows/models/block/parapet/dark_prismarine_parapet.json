@@ -1,0 +1,7 @@
+{
+	"parent": "mcwwindows:block/parent/parapet",
+	"textures": {
+		"1": "minecraft:block/dark_prismarine",
+		"particle": "minecraft:block/dark_prismarine"      
+	}
+}

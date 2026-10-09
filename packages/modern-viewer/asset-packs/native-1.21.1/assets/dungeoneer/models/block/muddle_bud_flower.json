@@ -1,0 +1,9 @@
+{
+  "parent": "dungeoneer:custom/plantmuddlepicked",
+  "textures": {
+    "all": "dungeoneer:block/muddle_bud_plant_harvested",
+    "particle": "dungeoneer:block/muddle_bud_plant",
+    "0": "dungeoneer:block/muddle_bud_plant_harvested"
+  },
+  "render_type": "cutout"
+}

@@ -1,0 +1,45 @@
+{
+  "multipart": [
+    {
+      "when": { "AND": [  {"facing": "east|west","part": "top"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/nether_brick_gothic_tall_top"}
+    },
+	{
+      "when": { "AND": [  {"facing": "north|south","part": "top"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/nether_brick_gothic_tall_top", "y": 90}
+    },
+	{
+      "when": { "AND": [  {"facing": "east|west","part": "middle"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/nether_brick_gothic_tall_middle"}
+    },
+	{
+      "when": { "AND": [  {"facing": "north|south","part": "middle"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/nether_brick_gothic_tall_middle", "y": 90}
+    },
+	{
+      "when": { "AND": [  {"facing": "east|west","part": "bottom"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/nether_brick_gothic_tall_lower"}
+    },
+	{
+      "when": { "AND": [  {"facing": "north|south","part": "bottom"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/nether_brick_gothic_tall_lower", "y": 90}
+    },
+	{
+      "when": { "AND": [  {"facing": "east|west","part": "base"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/nether_brick_gothic"}
+    },
+	{
+      "when": { "AND": [  {"facing": "north|south","part": "base"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/nether_brick_gothic", "y": 90}
+    },
+	{
+      "when": { "AND": [  {"facing": "east|west","open":"true"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/iron_bars"}
+    },
+	{
+      "when": { "AND": [  {"facing": "north|south","open":"true"} ]},
+      "apply": { "model": "mcwwindows:block/gothic/iron_bars", "y": 90}
+    }
+  ]
+}
+

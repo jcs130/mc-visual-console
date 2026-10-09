@@ -1,0 +1,44 @@
+{
+	"credit": "Made with Blockbench",
+	"ambientocclusion": false,
+	"textures": {
+		"2": "minecraft:block/gray_concrete_powder",
+		"particle": "mcwbridges:block/red_stripped_wood",
+		"1_1": "mcwbridges:block/red_stripped_wood"
+	},
+	"elements": [
+		{
+			"from": [0, 12, 0],
+			"to": [16, 15, 5.3],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, -5, 8]},
+			"faces": {
+				"north": {"uv": [0, 5, 16, 8], "texture": "#2"},
+				"south": {"uv": [0, 5, 16, 8], "texture": "#2"},
+				"up": {"uv": [0, 0, 5.3, 16], "rotation": 90, "texture": "#2"},
+				"down": {"uv": [0, 0, 5.3, 16], "rotation": 270, "texture": "#2"}
+			}
+		},
+		{
+			"from": [0, 6.5, 5.3],
+			"to": [16, 9.5, 10.7],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, -5, 8]},
+			"faces": {
+				"north": {"uv": [0, 5, 16, 8], "texture": "#2"},
+				"south": {"uv": [0, 5, 16, 8], "texture": "#2"},
+				"up": {"uv": [0, 0, 5.4, 16], "rotation": 90, "texture": "#2"},
+				"down": {"uv": [0, 0, 5.4, 16], "rotation": 270, "texture": "#2"}
+			}
+		},
+		{
+			"from": [0, 1, 10.7],
+			"to": [16, 4, 16],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, -5, 8]},
+			"faces": {
+				"north": {"uv": [0, 5, 16, 8], "texture": "#2"},
+				"south": {"uv": [0, 5, 16, 8], "texture": "#2"},
+				"up": {"uv": [0, 0, 5.3, 16], "rotation": 90, "texture": "#2"},
+				"down": {"uv": [0, 0, 5.3, 16], "rotation": 270, "texture": "#2"}
+			}
+		}
+	]
+}

@@ -1,0 +1,10 @@
+{
+	"parent": "mcwfurnitures:block/parent/kitchen_sink",
+	"textures": {
+		"1": "minecraft:block/crimson_stem",
+		"2": "minecraft:block/stripped_crimson_stem",
+		"4": "minecraft:block/cauldron_inner",
+		"5": "minecraft:block/cauldron_top",
+		"particle": "minecraft:block/crimson_stem"
+	}
+}

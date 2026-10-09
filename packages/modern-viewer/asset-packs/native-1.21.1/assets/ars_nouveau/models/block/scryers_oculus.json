@@ -1,0 +1,7 @@
+{
+  "parent": "block/cube_all",
+  "render_type": "cutout",
+  "textures": {
+    "all": "ars_nouveau:block/scryers_eye_idle"
+  }
+}

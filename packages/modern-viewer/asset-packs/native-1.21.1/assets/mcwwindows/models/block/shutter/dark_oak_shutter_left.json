@@ -1,0 +1,7 @@
+{
+	"parent": "mcwwindows:block/parent/shutter_left",
+	"textures": {
+		"0": "mcwwindows:block/dark_oak_shutter",
+		"particle": "mcwwindows:block/dark_oak_shutter"
+	}    
+}

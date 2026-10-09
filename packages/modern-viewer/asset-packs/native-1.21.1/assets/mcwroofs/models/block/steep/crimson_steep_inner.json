@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_steep_inner",
+	"textures": {
+		"particle": "minecraft:block/crimson_stem",
+		"2": "minecraft:block/crimson_stem"
+	}
+}

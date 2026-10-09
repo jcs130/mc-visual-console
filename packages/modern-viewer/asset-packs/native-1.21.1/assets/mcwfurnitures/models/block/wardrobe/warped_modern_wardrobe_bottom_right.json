@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/modern_wardrobe_bottom_right",
+	"textures": {
+		"0": "minecraft:block/warped_stem",
+		"1": "minecraft:block/stripped_warped_stem",
+		"2": "mcwfurnitures:block/warped_handle",
+		"particle": "minecraft:block/warped_stem"
+	}
+}

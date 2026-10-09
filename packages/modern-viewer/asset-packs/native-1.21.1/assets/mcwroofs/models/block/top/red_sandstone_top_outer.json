@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/top_outer",
+	"textures": {
+		"particle": "minecraft:block/red_sandstone",
+		"1_2": "minecraft:block/red_sandstone"
+	}
+}

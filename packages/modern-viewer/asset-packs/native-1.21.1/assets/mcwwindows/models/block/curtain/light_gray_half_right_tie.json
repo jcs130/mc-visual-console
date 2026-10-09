@@ -1,0 +1,8 @@
+{
+	"parent": "mcwwindows:block/parent/half_right_tie",
+	"textures": {
+		"2": "mcwwindows:block/light_gray_curtain_right",
+		"3": "mcwwindows:block/light_gray_curtain",
+		"particle": "mcwwindows:block/light_gray_curtain"
+	}
+}

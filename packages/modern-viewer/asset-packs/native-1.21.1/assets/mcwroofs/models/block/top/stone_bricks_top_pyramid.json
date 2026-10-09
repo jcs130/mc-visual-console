@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/top_pyramid",
+	"textures": {
+		"particle": "minecraft:block/stone_bricks",
+		"1_2": "minecraft:block/stone_bricks"
+	}
+}

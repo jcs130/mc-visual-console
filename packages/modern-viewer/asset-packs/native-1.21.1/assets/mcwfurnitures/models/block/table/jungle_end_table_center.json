@@ -1,0 +1,7 @@
+{
+	"parent": "mcwfurnitures:block/parent/end_table_center",
+	"textures": {
+		"1": "minecraft:block/stripped_jungle_log",
+		"particle": "minecraft:block/stripped_jungle_log"
+	}
+}

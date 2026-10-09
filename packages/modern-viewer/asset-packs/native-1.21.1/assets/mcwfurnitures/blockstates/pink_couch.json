@@ -1,0 +1,38 @@
+{
+  "variants": {	
+	"facing=north,shape=single":  { "model": "mcwfurnitures:block/couch/pink_sofa_single", "y": 90, "uvlock": true },
+	"facing=east,shape=single":  { "model": "mcwfurnitures:block/couch/pink_sofa_single", "y": 180, "uvlock": true },
+	"facing=south,shape=single":  { "model": "mcwfurnitures:block/couch/pink_sofa_single", "y": 270, "uvlock": true },
+	"facing=west,shape=single":  { "model": "mcwfurnitures:block/couch/pink_sofa_single", "uvlock": true },
+	
+	"facing=north,shape=left":  { "model": "mcwfurnitures:block/couch/pink_sofa_left", "y": 90, "uvlock": true },
+	"facing=east,shape=left":  { "model": "mcwfurnitures:block/couch/pink_sofa_left", "y": 180, "uvlock": true },
+	"facing=south,shape=left":  { "model": "mcwfurnitures:block/couch/pink_sofa_left", "y": 270, "uvlock": true },
+	"facing=west,shape=left":  { "model": "mcwfurnitures:block/couch/pink_sofa_left", "uvlock": true },
+	
+	"facing=north,shape=middle":  { "model": "mcwfurnitures:block/couch/pink_sofa_middle", "y": 90, "uvlock": true },
+	"facing=east,shape=middle":  { "model": "mcwfurnitures:block/couch/pink_sofa_middle", "y": 180, "uvlock": true },
+	"facing=south,shape=middle":  { "model": "mcwfurnitures:block/couch/pink_sofa_middle", "y": 270, "uvlock": true },
+	"facing=west,shape=middle":  { "model": "mcwfurnitures:block/couch/pink_sofa_middle", "uvlock": true },
+	
+	"facing=north,shape=right":  { "model": "mcwfurnitures:block/couch/pink_sofa_right", "y": 90, "uvlock": true },
+	"facing=east,shape=right":  { "model": "mcwfurnitures:block/couch/pink_sofa_right", "y": 180, "uvlock": true },
+	"facing=south,shape=right":  { "model": "mcwfurnitures:block/couch/pink_sofa_right", "y": 270, "uvlock": true },
+	"facing=west,shape=right":  { "model": "mcwfurnitures:block/couch/pink_sofa_right", "uvlock": true },
+	
+	"facing=north,shape=left_corner":  { "model": "mcwfurnitures:block/couch/pink_sofa_left_corner", "y": 90, "uvlock": true },
+	"facing=east,shape=left_corner":  { "model": "mcwfurnitures:block/couch/pink_sofa_left_corner", "y": 180, "uvlock": true },
+	"facing=south,shape=left_corner":  { "model": "mcwfurnitures:block/couch/pink_sofa_left_corner", "y": 270, "uvlock": true },
+	"facing=west,shape=left_corner":  { "model": "mcwfurnitures:block/couch/pink_sofa_left_corner", "uvlock": true },
+	
+    "facing=north,shape=right_corner":  { "model": "mcwfurnitures:block/couch/pink_sofa_right_corner", "y": 90, "uvlock": true },
+	"facing=east,shape=right_corner":  { "model": "mcwfurnitures:block/couch/pink_sofa_right_corner", "y": 180, "uvlock": true },
+	"facing=south,shape=right_corner":  { "model": "mcwfurnitures:block/couch/pink_sofa_right_corner", "y": 270, "uvlock": true },
+	"facing=west,shape=right_corner":  { "model": "mcwfurnitures:block/couch/pink_sofa_right_corner", "uvlock": true }
+	
+
+	
+	
+	
+  }
+}

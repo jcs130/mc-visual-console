@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/roof",
+	"textures": {
+		"2": "mcwroofs:block/light_gray_roof",
+		"particle": "mcwroofs:block/light_gray_roof"
+	}
+}

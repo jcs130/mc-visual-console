@@ -1,0 +1,9 @@
+
+{
+    "variants": {
+        "facing=east":  { "model": "mcwfurnitures:block/cabinet/stripped_spruce_double_kitchen_cabinet", "y": 0 },
+        "facing=west":  { "model": "mcwfurnitures:block/cabinet/stripped_spruce_double_kitchen_cabinet", "y": 180 },
+        "facing=south": { "model": "mcwfurnitures:block/cabinet/stripped_spruce_double_kitchen_cabinet", "y": 90 },
+        "facing=north": { "model": "mcwfurnitures:block/cabinet/stripped_spruce_double_kitchen_cabinet", "y": 270 }
+    }
+}

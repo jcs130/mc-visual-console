@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_steep",
+	"textures": {
+		"particle": "minecraft:block/diorite",
+		"2": "minecraft:block/diorite"
+	}
+}

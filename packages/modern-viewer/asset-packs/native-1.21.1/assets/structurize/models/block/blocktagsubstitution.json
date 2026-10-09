@@ -1,0 +1,4 @@
+{
+  "parent": "structurize:block/blocktagsubstitutionoverlay",
+  "loader": "structurize:overlaid"
+}

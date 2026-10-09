@@ -1,0 +1,9 @@
+{
+	"parent": "mcwbridges:block/bridge/bridge_wood/parent/base",
+	"textures": {
+		"5": "minecraft:block/birch_planks",
+		"1": "minecraft:block/birch_log",
+		"2": "minecraft:block/birch_planks",
+		"particle": "minecraft:block/birch_planks"
+	}
+}

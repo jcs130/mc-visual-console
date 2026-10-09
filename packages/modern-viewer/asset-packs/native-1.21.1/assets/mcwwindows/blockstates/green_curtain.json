@@ -1,0 +1,70 @@
+{
+    "variants": {                                                                        
+        "facing=west,tied=none": { "model": "mcwwindows:block/curtain/green_curtain","uvlock": true },
+        "facing=west,tied=left": { "model": "mcwwindows:block/curtain/green_curtain_left","uvlock": true },
+        "facing=west,tied=right": { "model": "mcwwindows:block/curtain/green_curtain_right","uvlock": true },
+		"facing=west,tied=single": { "model": "mcwwindows:block/curtain/green_curtain_single","uvlock": true },
+		"facing=west,tied=half_single": { "model": "mcwwindows:block/curtain/green_curtain_half_single","uvlock": true },
+		"facing=west,tied=half_right_tie": { "model": "mcwwindows:block/curtain/green_half_right_tie","uvlock": true },
+		"facing=west,tied=half_right": { "model": "mcwwindows:block/curtain/green_half_right","uvlock": true },
+		"facing=west,tied=half_right_bottom": { "model": "mcwwindows:block/curtain/green_half_right_bottom","uvlock": true },
+		"facing=west,tied=half_left_tie": { "model": "mcwwindows:block/curtain/green_half_left_tie","uvlock": true },
+	    "facing=west,tied=half_left": { "model": "mcwwindows:block/curtain/green_half_left","uvlock": true },
+	    "facing=west,tied=half_left_bottom": { "model": "mcwwindows:block/curtain/green_half_left_bottom","uvlock": true },
+		"facing=west,tied=base_wave": { "model": "mcwwindows:block/curtain/green_base_wave","uvlock": true },
+		"facing=west,tied=base_half_wave": { "model": "mcwwindows:block/curtain/green_base_half_wave","uvlock": true },
+		
+		"facing=north,tied=none": { "model": "mcwwindows:block/curtain/green_curtain","uvlock": true,"y":90 },
+        "facing=north,tied=left": { "model": "mcwwindows:block/curtain/green_curtain_left","uvlock": true,"y":90 },
+        "facing=north,tied=right": { "model": "mcwwindows:block/curtain/green_curtain_right","uvlock": true,"y":90 },
+		"facing=north,tied=single": { "model": "mcwwindows:block/curtain/green_curtain_single","uvlock": true,"y":90 },
+		"facing=north,tied=half_single": { "model": "mcwwindows:block/curtain/green_curtain_half_single","uvlock": true,"y":90 },
+		"facing=north,tied=half_right_tie": { "model": "mcwwindows:block/curtain/green_half_right_tie","uvlock": true,"y":90 },
+		"facing=north,tied=half_right": { "model": "mcwwindows:block/curtain/green_half_right","uvlock": true,"y":90 },
+		"facing=north,tied=half_right_bottom": { "model": "mcwwindows:block/curtain/green_half_right_bottom","uvlock": true,"y":90 },
+		"facing=north,tied=half_left_tie": { "model": "mcwwindows:block/curtain/green_half_left_tie","uvlock": true,"y":90 },
+	    "facing=north,tied=half_left": { "model": "mcwwindows:block/curtain/green_half_left","uvlock": true,"y":90 },
+	    "facing=north,tied=half_left_bottom": { "model": "mcwwindows:block/curtain/green_half_left_bottom","uvlock": true,"y":90 },
+		"facing=north,tied=base_wave": { "model": "mcwwindows:block/curtain/green_base_wave","uvlock": true,"y":90 },
+		"facing=north,tied=base_half_wave": { "model": "mcwwindows:block/curtain/green_base_half_wave","uvlock": true,"y":90 },
+		
+		"facing=east,tied=none": { "model": "mcwwindows:block/curtain/green_curtain","uvlock": true,"y":180 },
+        "facing=east,tied=left": { "model": "mcwwindows:block/curtain/green_curtain_left","uvlock": true,"y":180 },
+        "facing=east,tied=right": { "model": "mcwwindows:block/curtain/green_curtain_right","uvlock": true,"y":180 },
+		"facing=east,tied=single": { "model": "mcwwindows:block/curtain/green_curtain_single","uvlock": true,"y":180 },
+		"facing=east,tied=half_single": { "model": "mcwwindows:block/curtain/green_curtain_half_single","uvlock": true,"y":180 },
+		"facing=east,tied=half_right_tie": { "model": "mcwwindows:block/curtain/green_half_right_tie","uvlock": true,"y":180 },
+		"facing=east,tied=half_right": { "model": "mcwwindows:block/curtain/green_half_right","uvlock": true,"y":180 },
+		"facing=east,tied=half_right_bottom": { "model": "mcwwindows:block/curtain/green_half_right_bottom","uvlock": true,"y":180 },
+		"facing=east,tied=half_left_tie": { "model": "mcwwindows:block/curtain/green_half_left_tie","uvlock": true,"y":180 },
+	    "facing=east,tied=half_left": { "model": "mcwwindows:block/curtain/green_half_left","uvlock": true,"y":180 },
+	    "facing=east,tied=half_left_bottom": { "model": "mcwwindows:block/curtain/green_half_left_bottom","uvlock": true,"y":180 },
+		"facing=east,tied=base_wave": { "model": "mcwwindows:block/curtain/green_base_wave","uvlock": true,"y":180 },
+		"facing=east,tied=base_half_wave": { "model": "mcwwindows:block/curtain/green_base_half_wave","uvlock": true,"y":180 },
+		
+		"facing=south,tied=none": { "model": "mcwwindows:block/curtain/green_curtain","uvlock": true,"y":270 },
+        "facing=south,tied=left": { "model": "mcwwindows:block/curtain/green_curtain_left","uvlock": true,"y":270 },
+        "facing=south,tied=right": { "model": "mcwwindows:block/curtain/green_curtain_right","uvlock": true,"y":270 },
+		"facing=south,tied=single": { "model": "mcwwindows:block/curtain/green_curtain_single","uvlock": true,"y":270 },
+		"facing=south,tied=half_single": { "model": "mcwwindows:block/curtain/green_curtain_half_single","uvlock": true,"y":270 },
+		"facing=south,tied=half_right_tie": { "model": "mcwwindows:block/curtain/green_half_right_tie","uvlock": true,"y":270 },
+		"facing=south,tied=half_right": { "model": "mcwwindows:block/curtain/green_half_right","uvlock": true,"y":270 },
+		"facing=south,tied=half_right_bottom": { "model": "mcwwindows:block/curtain/green_half_right_bottom","uvlock": true,"y":270 },
+		"facing=south,tied=half_left_tie": { "model": "mcwwindows:block/curtain/green_half_left_tie","uvlock": true,"y":270 },
+	    "facing=south,tied=half_left": { "model": "mcwwindows:block/curtain/green_half_left","uvlock": true,"y":270 },
+	    "facing=south,tied=half_left_bottom": { "model": "mcwwindows:block/curtain/green_half_left_bottom","uvlock": true,"y":270 },
+		"facing=south,tied=base_wave": { "model": "mcwwindows:block/curtain/green_base_wave","uvlock": true,"y":270 },
+		"facing=south,tied=base_half_wave": { "model": "mcwwindows:block/curtain/green_base_half_wave","uvlock": true,"y":270 }      
+    }
+}
+
+
+
+
+
+
+
+
+
+
+

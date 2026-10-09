@@ -1,0 +1,12 @@
+{
+  "parent": "block/cube_all",
+  "textures": {
+    "particle": "block/oak_planks",
+    "down": "structurize:block/blocksolidsubstitution",
+    "up": "structurize:block/blocksolidsubstitution",
+    "north": "structurize:block/blocksolidsubstitution",
+    "east": "structurize:block/blocksolidsubstitution",
+    "south": "structurize:block/blocksolidsubstitution",
+    "west": "structurize:block/blocksolidsubstitution"
+  }
+}

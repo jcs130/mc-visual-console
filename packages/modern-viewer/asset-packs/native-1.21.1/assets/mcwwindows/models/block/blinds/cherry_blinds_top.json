@@ -1,0 +1,10 @@
+{
+	"parent": "mcwwindows:block/parent/blinds_top",
+	"textures": {
+		"1": "minecraft:block/stripped_cherry_log",
+		"2": "minecraft:block/cherry_log",
+		"3": "minecraft:block/cherry_planks",
+		"particle": "minecraft:block/cherry_planks"
+	}    
+}
+

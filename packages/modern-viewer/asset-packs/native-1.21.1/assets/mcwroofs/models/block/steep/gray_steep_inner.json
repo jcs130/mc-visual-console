@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_steep_inner",
+	"textures": {
+		"particle": "mcwroofs:block/gray_roof",
+		"2": "mcwroofs:block/gray_roof"
+	}
+}

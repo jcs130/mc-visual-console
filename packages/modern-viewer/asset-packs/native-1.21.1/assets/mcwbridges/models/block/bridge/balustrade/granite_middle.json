@@ -1,0 +1,8 @@
+{
+	"parent": "mcwbridges:block/bridge/balustrade/parent/middle",
+	"textures": {
+		"0": "minecraft:block/polished_granite",
+		"1": "minecraft:block/granite",
+		"particle": "minecraft:block/polished_granite"
+	}
+}

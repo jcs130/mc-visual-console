@@ -1,0 +1,8 @@
+{
+  "parent": "mcwwindows:block/parent/template_glass_pane_post",
+  "render_type": "translucent",
+  "textures": {
+    "pane": "mcwwindows:block/light_gray_middle",
+    "edge": "mcwwindows:block/light_gray_side"
+  }
+}

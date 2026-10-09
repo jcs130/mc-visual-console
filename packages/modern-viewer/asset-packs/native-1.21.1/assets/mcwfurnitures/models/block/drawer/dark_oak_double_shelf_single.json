@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/double_shelf_single",
+	"textures": {
+		"0": "mcwfurnitures:block/dark_oak_handle",
+		"1": "minecraft:block/dark_oak_log",
+		"2": "minecraft:block/stripped_dark_oak_log",
+		"particle": "minecraft:block/dark_oak_log"
+	}
+}

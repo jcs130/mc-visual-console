@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/triple_shelf_right_lower",
+	"textures": {
+		"0": "mcwfurnitures:block/mangrove_handle",
+		"1": "minecraft:block/stripped_mangrove_log",
+		"2": "minecraft:block/mangrove_log",
+		"particle": "minecraft:block/stripped_mangrove_log"
+	}
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "tracks": [
+    {
+      "id": "river-at-dusk",
+      "title": "河畔慢时光",
+      "file": "custom-bgm/river-at-dusk-20261005.ogg"
+    },
+    {
+      "id": "lantern-trails",
+      "title": "提灯走远方",
+      "file": "custom-bgm/lantern-trails-20261005.ogg"
+    },
+    {
+      "id": "embers-and-starlight",
+      "title": "星火迎战",
+      "file": "custom-bgm/embers-and-starlight-20261005.ogg"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/wardrobe_base_left",
+	"textures": {
+		"0": "minecraft:block/stripped_jungle_log",
+		"1": "minecraft:block/jungle_log",
+		"2": "mcwfurnitures:block/str_jungle_handle",
+		"particle": "minecraft:block/stripped_jungle_log"
+	}
+}

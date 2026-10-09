@@ -1,0 +1,10 @@
+{
+  "parent": "dungeoneer:custom/proxspiketrapoff",
+  "textures": {
+    "all": "dungeoneer:block/spike_trap",
+    "particle": "dungeoneer:block/spike_trap",
+    "1": "dungeoneer:block/spike_trap",
+    "2": "dungeoneer:block/spikes_off"
+  },
+  "render_type": "cutout"
+}

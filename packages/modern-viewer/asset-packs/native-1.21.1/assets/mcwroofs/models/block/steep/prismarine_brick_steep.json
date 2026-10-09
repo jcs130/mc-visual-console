@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_steep",
+	"textures": {
+		"particle": "minecraft:block/prismarine_bricks",
+		"2": "minecraft:block/prismarine_bricks"
+	}
+}

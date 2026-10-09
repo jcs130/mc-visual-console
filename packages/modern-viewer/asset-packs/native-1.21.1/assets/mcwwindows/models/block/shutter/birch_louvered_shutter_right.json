@@ -1,0 +1,7 @@
+{
+	"parent": "mcwwindows:block/parent/shutter_right",
+	"textures": {
+		"0": "mcwwindows:block/birch_louvered_shutter",
+		"particle": "mcwwindows:block/birch_louvered_shutter"
+	}    
+}

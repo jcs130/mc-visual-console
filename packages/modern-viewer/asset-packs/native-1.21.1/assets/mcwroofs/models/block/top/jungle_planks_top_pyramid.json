@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/top_pyramid",
+	"textures": {
+		"particle": "minecraft:block/jungle_planks",
+		"1_2": "minecraft:block/jungle_planks"
+	}
+}

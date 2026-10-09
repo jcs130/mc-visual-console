@@ -1,0 +1,7 @@
+{
+	"parent": "mcwfurnitures:block/parent/drawer_base",
+	"textures": {
+		"1": "minecraft:block/cherry_log",
+		"particle": "minecraft:block/cherry_log"
+	}
+}

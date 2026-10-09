@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/shelf_middle",
+	"textures": {
+		"0": "minecraft:block/stripped_spruce_log",
+		"1": "minecraft:block/spruce_log",
+		"2": "mcwfurnitures:block/spruce_handle",
+		"particle": "minecraft:block/stripped_spruce_log"
+	}
+}

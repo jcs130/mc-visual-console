@@ -1,0 +1,10 @@
+{
+	"parent": "mcwfurnitures:block/parent/bookshelf_cupboard_bottom_left",
+	"textures": {
+		"2": "mcwfurnitures:block/dark_oak_handle",
+		"3": "minecraft:block/bookshelf",
+		"1": "minecraft:block/dark_oak_log",
+		"0": "minecraft:block/stripped_dark_oak_log",
+		"particle": "minecraft:block/stripped_dark_oak_log"
+	}
+}

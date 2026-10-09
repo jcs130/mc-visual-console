@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_steep_outer",
+	"textures": {
+		"particle": "minecraft:block/cyan_concrete",
+		"2": "minecraft:block/cyan_concrete"
+	}
+}

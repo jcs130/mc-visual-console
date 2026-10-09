@@ -1,0 +1,18 @@
+{
+    "variants": {                     
+		"connection=base":  { "model": "mcwbridges:block/bridge/glass/base"},
+		
+        "connection=middle_ns":  { "model": "mcwbridges:block/bridge/glass/middle", "y": 90},
+		"connection=middle_ew":  { "model": "mcwbridges:block/bridge/glass/middle"},
+
+		"connection=corner_nw":  { "model": "mcwbridges:block/bridge/glass/corner", "y": 180},
+		"connection=corner_ne":  { "model": "mcwbridges:block/bridge/glass/corner", "y": 270},
+		"connection=corner_se":  { "model": "mcwbridges:block/bridge/glass/corner"},
+		"connection=corner_sw":  { "model": "mcwbridges:block/bridge/glass/corner", "y": 90},	
+		
+		"connection=side_s":  { "model": "mcwbridges:block/bridge/glass/side"},
+		"connection=side_n":  { "model": "mcwbridges:block/bridge/glass/side", "y": 180},
+		"connection=side_w":  { "model": "mcwbridges:block/bridge/glass/side", "y": 90},
+		"connection=side_e":  { "model": "mcwbridges:block/bridge/glass/side", "y": 270}
+    }
+}

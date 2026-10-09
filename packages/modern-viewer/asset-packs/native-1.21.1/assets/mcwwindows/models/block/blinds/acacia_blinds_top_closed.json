@@ -1,0 +1,10 @@
+{
+	"parent": "mcwwindows:block/parent/blinds_top_closed",
+	"textures": {
+		"1": "minecraft:block/stripped_acacia_log",
+		"2": "minecraft:block/acacia_log",
+		"3": "minecraft:block/acacia_planks",
+		"particle": "minecraft:block/acacia_planks"
+	}    
+}
+

@@ -314,3 +314,14 @@ test('early fallback resource failure is contained and a subsequent state/open c
   assert.equal(host.dataset.previewState, 'ready');
   h.preview.dispose();
 });
+
+test('a known native model rejection is unavailable, not an endless loading state or replacement rig', () => {
+  let reason='NATIVE_YSM_MODEL_UNSUPPORTED';
+  const h=browserHarness(null,{getUnavailableReason:()=>reason});
+  const host=h.hosts(); h.preview.attach(host); h.tick(0);
+  assert.equal(host.dataset.previewState,'unavailable'); assert.equal(host.dataset.previewReason,reason);
+  assert.equal(h.contexts,0);
+  reason=null; h.preview.attach(host); h.tick(40);
+  assert.equal(host.dataset.previewState,'waiting'); assert.equal(host.dataset.previewReason,undefined);
+  h.preview.dispose();
+});

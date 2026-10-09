@@ -1,0 +1,7 @@
+{
+	"parent": "mcwfurnitures:block/parent/table_corner",
+	"textures": {
+		"1": "minecraft:block/jungle_log",
+		"particle": "minecraft:block/jungle_log"
+	}
+}

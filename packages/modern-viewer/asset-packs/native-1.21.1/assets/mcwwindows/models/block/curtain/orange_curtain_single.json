@@ -1,0 +1,8 @@
+{
+  "parent" : "mcwwindows:block/parent/curtain_single",
+  "textures" : {
+    "2" : "mcwwindows:block/orange_curtain_left",
+    "3" : "mcwwindows:block/orange_curtain",
+    "particle" : "mcwwindows:block/orange_curtain"
+  }
+}

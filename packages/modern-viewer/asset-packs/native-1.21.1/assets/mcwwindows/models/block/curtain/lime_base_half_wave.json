@@ -1,0 +1,8 @@
+{
+
+	"parent": "mcwwindows:block/parent/base_half_wave",
+	"textures": {
+		"3": "mcwwindows:block/lime_curtain",
+		"particle": "mcwwindows:block/lime_curtain"
+	}
+}

@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/top_pyramid",
+	"textures": {
+		"particle": "mcwroofs:block/base_roof",
+		"1_2": "mcwroofs:block/base_roof"
+	}
+}

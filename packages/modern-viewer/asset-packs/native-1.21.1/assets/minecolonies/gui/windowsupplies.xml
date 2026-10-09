@@ -1,0 +1,7 @@
+<window xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/ldtteam/BlockUI/version/main/src/main/resources/assets/blockui/gui/block_ui.xsd"
+        size="420 240">
+
+    <layout source="structurize:gui/layoutmanipulation.xml"/>
+
+    <button id="switch" source="structurize:textures/gui/buildtool/button_medium.png" label="$(structurize.gui.buildtool.switchpack)" size="86 17" pos="5 5" textcolor="black" texthovercolor="gray"/>
+</window>

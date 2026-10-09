@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "type=bottom": {
+      "model": "mcwroofs:block/black_roof_slab"
+    },
+    "type=double": {
+      "model": "mcwroofs:block/black_roof_block"
+    },
+    "type=top": {
+      "model": "mcwroofs:block/black_roof_slab_top"
+    }
+  }
+}

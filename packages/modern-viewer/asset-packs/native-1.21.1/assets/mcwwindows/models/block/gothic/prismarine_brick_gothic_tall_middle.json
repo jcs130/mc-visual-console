@@ -1,0 +1,8 @@
+{
+	"parent": "mcwwindows:block/parent/gothic/gothic_tall_middle",
+	"textures": {
+      	"0": "minecraft:block/prismarine_bricks",
+		"3": "minecraft:block/glass",
+		"particle": "minecraft:block/prismarine_bricks"      
+	}
+}

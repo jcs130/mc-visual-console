@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/modern_wardrobe_base_left",
+	"textures": {
+		"0": "minecraft:block/stripped_crimson_stem",
+		"1": "minecraft:block/crimson_stem",
+		"2": "mcwfurnitures:block/str_crimson_handle",
+		"particle": "minecraft:block/stripped_crimson_stem"
+	}
+}

@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/cupboard_counter_right",
+	"textures": {
+		"1": "minecraft:block/stripped_jungle_log",
+		"2": "minecraft:block/jungle_log",
+		"particle": "minecraft:block/jungle_log",
+		"2_1": "mcwfurnitures:block/jungle_handle"
+	}
+}

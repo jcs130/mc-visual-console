@@ -1,0 +1,8 @@
+{
+	"parent": "mcwbridges:block/bridge/balustrade/parent/middle",
+	"textures": {
+		"0": "minecraft:block/cobblestone",
+		"1": "minecraft:block/gravel",
+		"particle": "minecraft:block/cobblestone"
+	}
+}

@@ -1,0 +1,24 @@
+2026-10-09 魂符图标后续已部署：INIT/HAS_MAID 分别校验原模型，两者本来引用同一原16×112 PNG/mcmeta，七帧×2tick以32×32裁剪显示，缓存共享时钟/完整本人SNBT。默认附魔glint缺原sprite atlas UV，明确partial/effectReason，不造CSS假光效；原Java像素/手持/完整玩法仍未验。157项相关Node原资产测试全过0skip，普通非OP零模型QA浏览器实见动画/同步transform、错误为空，正常exit0/临时端口关闭。新服已正常冷备80文件并刷新常驻bundle，同supervisor Java35596/Gate8196/worker31260健康；桥a672b1d2…f8ec、v15资产/全部27JAR、五份保护配置与原主Agent暂停/旧unknown/账本前缀保持。维护已结束勿重放，旧Paper/网络未动。细节renderer-src/docs/native-soul-slab-icons.md；原素材/JAR/包/截图/私有research/soul-slab-icons-20261009留Git外。
+
+# Viewer fidelity requirements
+
+## Shared renderer updates
+
+- Commit reusable renderer, page, HUD and build-tool changes in this repository. Consuming projects keep their connection and gameplay adapters.
+- Synchronize tested changes to the shared `main` branch when the user requests synchronization. Reconcile concurrent branches and preserve both the 1.20.6 and native modded integrations.
+- Updating source does not update a copied deployment. Rebuild each affected asset directory with its original version and preset, record the source commit and bundle hash, and verify the files served by the consumer.
+- Versioned shared assets belong in `packages/modern-viewer/asset-packs/`, with original source/version records and a SHA-256 for every file. Preserve their exact bytes. Report source publication, local deployment and unverified remote consumers separately.
+
+2026-10-09 中文与图标增量已部署：本人原生 displayNameComponent 按校验过的原 en_us/zh_cn 翻译，保留自定义名称、原 ID/SNBT，窗口及槽位标题汉化；Mojang 中文经 version/index/object 哈希链导出。Domum 新增七种默认模型、四种门、十五种活板门，Cutter 首屏十组原图标实见；保留原几何/UV/GUI transform/铁铰链。仅原 oak/dark_oak 两 PNG 的锁定默认 NeoForge 优先级已独立审计放行，其余九冲突与完整 parity/complete 仍 false。148 Node、9 导出及 12 Java 审计通过；v15 资产39768文件全校验，桥 a672b1d2…f8ec。魂符动画/glint仍 unavailable，勿借其他状态图标替代。两次零模型普通身体验收 exit0、临时端口关闭，常驻28984正常；原主Agent暂停和旧unknown不重放。详见 renderer-src/docs/native-ui-localization.md；素材/JAR/私有 research/viewer-chinese-icons-20261009 留 Git 外。
+
+2026-10-09 原生YSM/Domum增量：YSM正向注册原Alex/gsl、Steve/tartaric_acid、Boy/blue|red，原model/PNG/animation SHA与64/128纹理/骨骼/UV保留；Alex无idle明确不可用，其他模型/装备/第一人称/完整动画和Java像素仍false。Domum原Cutter第一页组/款预览不带data-slot、不冒充库存；15种panel读取实际texture_data/type，原ordinal override/几何/UV及材质sprite，GUI来自外层baked parent transform（NeoForge先camera后renderPasses），随机/染色/透明/未知/资源冲突明确拒绝。普通非OP原生Neko身体2圆石→8panel和完整组件重连/浏览器实见，0模型调用；夹具披露，不称自主经营。139相关Node原资产测试全过0skip；新服已正常冷备更新桥576c911f…fe28并刷新常驻28984，原v14资产、旧服和MawExplorer暂停/旧未知保持。QA已正常关闭，原始包/JAR/素材/截图仓库外；细节renderer-src/docs/native-mod-gui.md与NATIVE_DEVICE_RENDERING_COMPATIBILITY.md。
+
+2026-10-09 有限Create风车适配：锁Create6.0.10原JAR/模型/UV/PNG，风车轴承六朝向、半轴/木顶和本人实际已跟踪转子anchor/轴/真实角度已接入。类型/UUID/entityId/playerUuid/epoch绑定，最多4实体×96方块、24KiB，陈旧>1秒或未支持BE明确不可用，不能凭桥数据造实体。实际普通MawNeko制作启动(-395,64,415)八帆风车，原生1RPM/角度变化；浏览器同账号已见帆转动，服务重启同UUID/新entityId恢复。修复中心LOS误隐藏整个已跟踪转子的服务端显示链，查询可见性保留。53项相关Node在实际v14资产下全过0skip；当前全场景Java对照/YSM未支持模型/复杂移动机仍未验，parity=false。私有素材/回执和截图不入Git，旧服不动。详情renderer-src/NATIVE_DEVICE_RENDERING_COMPATIBILITY.md及服务端风车任务文档。
+
+- The user's My Agent World view must use the exact Minecraft/modpack textures and models. Never substitute vanilla blocks/entities or simplified geometry for missing mod content.
+- Keep original namespaces, native state properties, model inheritance, UVs, resource-pack priority, animation metadata and dynamic model inputs. A translated Mineflayer proxy registry is not a rendering registry.
+- Read rendering data from the action player's own connection. Do not create another account and call its inventory or UI the original player's state.
+- Distinguish source-asset integrity, native network-state integrity and actual scene parity. Exporting resources or passing protocol tests is not proof of rendering parity.
+- Prefer browser rendering with Three.js. Port the original mod's geometry, textures, animation rules, materials and live state rather than assuming a Java renderer requires Java client streaming. Use a matched modded Java client as the reference. Consider another rendering backend only after demonstrating a concrete fidelity limitation; never replace browser development with an untested assertion that animation is impossible.
+- Missing support is an explicit unavailable/error state. Do not quietly fall back to an approximate view. The native asset verifier's strict rendering check must remain closed until actual complete scene parity is accepted.
+- Shared source textures, models, icons and optional sound packs are tracked in `asset-packs/`. Generated browser bundles, client/mod JARs, world saves, credentials and private runtime captures stay outside Git. Keep the existing family server and its network ports untouched while developing in the isolated 1.21.1 lab.

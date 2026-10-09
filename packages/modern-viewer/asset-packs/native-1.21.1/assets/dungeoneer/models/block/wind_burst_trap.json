@@ -1,0 +1,9 @@
+{
+  "parent": "dungeoneer:custom/wind_burst_trap",
+  "textures": {
+    "all": "dungeoneer:block/windbursttrap",
+    "particle": "dungeoneer:block/windbursttrap",
+    "0": "dungeoneer:block/windbursttrap"
+  },
+  "render_type": "cutout"
+}

@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/bookshelf_bottom",
+	"textures": {
+		"2": "minecraft:block/bookshelf",
+		"1": "minecraft:block/warped_stem",
+		"0": "minecraft:block/stripped_warped_stem",
+		"particle": "minecraft:block/stripped_warped_stem"
+	}
+}

@@ -1,0 +1,8 @@
+{
+	"parent": "mcwwindows:block/parent/curtain_right",
+	"textures": {
+		"2": "mcwwindows:block/brown_curtain_right",
+		"particle": "mcwwindows:block/brown_curtain", 
+		"3": "mcwwindows:block/brown_curtain"
+	}
+}

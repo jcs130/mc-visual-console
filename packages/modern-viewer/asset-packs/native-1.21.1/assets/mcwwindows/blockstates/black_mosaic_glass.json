@@ -1,0 +1,8 @@
+{
+      "variants": {                                                                        
+        "part=base":  { "model": "mcwwindows:block/mosaic_block/black_mosaic_glass_base"},
+        "part=top":  { "model": "mcwwindows:block/mosaic_block/black_mosaic_glass_top"},
+        "part=middle": { "model": "mcwwindows:block/mosaic_block/black_mosaic_glass_middle"},
+        "part=bottom": { "model": "mcwwindows:block/mosaic_block/black_mosaic_glass_bottom"}
+ }
+}

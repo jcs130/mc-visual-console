@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "blockstate=0": {
+      "model": "dungeoneer:block/pressure_spike_trap"
+    },
+    "blockstate=1": {
+      "model": "dungeoneer:block/prox_spike_trap_state_blockstate_0"
+    }
+  }
+}

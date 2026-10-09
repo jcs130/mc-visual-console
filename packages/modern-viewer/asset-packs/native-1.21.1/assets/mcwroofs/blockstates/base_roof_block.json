@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "mcwroofs:block/base_roof_block"
+    }
+  }
+}

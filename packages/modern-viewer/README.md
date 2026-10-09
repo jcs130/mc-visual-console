@@ -7,6 +7,10 @@
 可以独立构建；Mineflayer 项目接入见 [Socket.IO 合约](renderer-src/SOCKET_PROTOCOL.md)。
 千灯纪的画面预设可选，服务端机制保留在独立 World 中。
 
+共享素材现已按版本提交在 [`asset-packs/`](asset-packs/README.md)。在仓库根目录运行
+`node tools/prepare-viewer-assets.mjs java-1.20.6 <输出目录>` 可校验素材并构建通用画面。
+下文的资源导入方式和“不入库”描述属于旧实验记录。
+
 ## 历史记录：1.21.1 独立宿主实验
 
 以下内容记录 2026-09-23 的旧部署。`src/mc-modern-viewer.mts`、`viewer-service/` 和

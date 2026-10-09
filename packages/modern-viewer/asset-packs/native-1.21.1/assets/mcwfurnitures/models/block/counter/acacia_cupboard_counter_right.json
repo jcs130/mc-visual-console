@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/cupboard_counter_right",
+	"textures": {
+		"1": "minecraft:block/stripped_acacia_log",
+		"2": "minecraft:block/acacia_log",
+		"particle": "minecraft:block/acacia_log",
+		"2_1": "mcwfurnitures:block/acacia_handle"
+	}
+}

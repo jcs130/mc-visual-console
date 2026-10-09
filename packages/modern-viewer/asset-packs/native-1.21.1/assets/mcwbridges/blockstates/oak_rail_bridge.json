@@ -1,0 +1,15 @@
+{
+    "variants": {                                                                        
+        "facing=north,powered=false":  { "model": "mcwbridges:block/bridge/rail/oak", "y": 90},
+		"facing=east,powered=false":  { "model": "mcwbridges:block/bridge/rail/oak"},
+		"facing=south,powered=false":  { "model": "mcwbridges:block/bridge/rail/oak", "y": 90},
+		"facing=west,powered=false":  { "model": "mcwbridges:block/bridge/rail/oak"},
+
+		"facing=north,powered=true":  { "model": "mcwbridges:block/bridge/rail/oak_powered", "y": 90},
+		"facing=east,powered=true":  { "model": "mcwbridges:block/bridge/rail/oak_powered"},
+		"facing=south,powered=true":  { "model": "mcwbridges:block/bridge/rail/oak_powered", "y": 90},
+		"facing=west,powered=true":  { "model": "mcwbridges:block/bridge/rail/oak_powered"}			
+    }
+}
+
+

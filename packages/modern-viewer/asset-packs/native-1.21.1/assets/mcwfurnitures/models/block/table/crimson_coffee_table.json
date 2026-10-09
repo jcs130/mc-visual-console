@@ -1,0 +1,7 @@
+{
+	"parent": "mcwfurnitures:block/parent/coffee_table",
+	"textures": {
+		"1": "minecraft:block/crimson_stem",
+		"particle": "minecraft:block/crimson_stem"
+	}
+}

@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/drawer_counter",
+	"textures": {
+		"1": "minecraft:block/acacia_log",
+		"2": "minecraft:block/stripped_acacia_log",
+		"particle": "minecraft:block/stripped_acacia_log",
+		"1_2": "mcwfurnitures:block/str_acacia_handle"
+	}
+}

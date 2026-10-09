@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/shelf_right",
+	"textures": {
+		"0": "minecraft:block/stripped_oak_log",
+		"1": "minecraft:block/oak_log",
+		"2": "mcwfurnitures:block/oak_handle",
+		"particle": "minecraft:block/stripped_oak_log"
+	}
+}

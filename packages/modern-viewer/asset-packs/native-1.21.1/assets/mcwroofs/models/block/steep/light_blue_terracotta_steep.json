@@ -1,0 +1,7 @@
+{
+	"parent": "mcwroofs:block/parent/xx_steep",
+	"textures": {
+		"particle": "minecraft:block/light_blue_terracotta",
+		"2": "minecraft:block/light_blue_terracotta"
+	}
+}

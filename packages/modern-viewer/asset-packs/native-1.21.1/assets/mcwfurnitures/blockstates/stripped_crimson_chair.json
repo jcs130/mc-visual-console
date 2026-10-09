@@ -1,0 +1,8 @@
+{
+    "variants": {
+        "facing=east": { "model": "mcwfurnitures:block/chair/stripped_crimson_chair", "y": 180  },
+        "facing=south": { "model": "mcwfurnitures:block/chair/stripped_crimson_chair", "y": 270 },
+        "facing=west": { "model": "mcwfurnitures:block/chair/stripped_crimson_chair" },
+        "facing=north": { "model": "mcwfurnitures:block/chair/stripped_crimson_chair", "y": 90  }
+    }
+}

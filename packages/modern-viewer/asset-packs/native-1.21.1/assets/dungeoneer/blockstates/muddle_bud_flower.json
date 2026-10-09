@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "blockstate=0": {
+      "model": "dungeoneer:block/muddle_bud_flower"
+    },
+    "blockstate=1": {
+      "model": "dungeoneer:block/blockstate_muddle_flower_blockstate_0"
+    }
+  }
+}

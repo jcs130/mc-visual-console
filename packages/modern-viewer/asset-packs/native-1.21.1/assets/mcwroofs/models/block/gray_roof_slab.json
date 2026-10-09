@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/slab",
+  "textures": {
+    "bottom": "mcwroofs:block/gray_roof",
+    "top": "mcwroofs:block/gray_roof",
+    "side": "mcwroofs:block/gray_roof"
+  }
+}

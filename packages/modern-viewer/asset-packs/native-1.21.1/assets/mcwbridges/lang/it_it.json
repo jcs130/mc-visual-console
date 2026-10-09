@@ -1,0 +1,100 @@
+{	
+	     "itemGroup.mcwbridges.bridges": "Macaw's Bridges",
+ 
+		 "block.mcwbridges.iron_bridge":"Ponte di ferro",
+ 
+		 "item.mcwbridges.pliers":"Pinze",
+		 "mcwbridges.pliers.desc":"Fare clic con il pulsante destro del mouse su un ponte per cambiarlo in una parte finale, funziona solo per ponti da 2 o più parti",
+ 
+         "block.mcwbridges.oak_log_bridge_middle":"Ponte di quercia",
+         "block.mcwbridges.birch_log_bridge_middle":"Ponte di betulla",
+         "block.mcwbridges.acacia_log_bridge_middle":"Ponte di acacia",
+         "block.mcwbridges.spruce_log_bridge_middle":"Ponte di abete",
+         "block.mcwbridges.jungle_log_bridge_middle":"Ponte della giungla",
+         "block.mcwbridges.dark_oak_log_bridge_middle":"Ponte di quercia scura",
+         "block.mcwbridges.crimson_log_bridge_middle":"Ponte cremisi",
+         "block.mcwbridges.warped_log_bridge_middle":"Ponte distorto",
+ 
+         "block.mcwbridges.rope_oak_bridge":"Ponte in corda di quercia",
+         "block.mcwbridges.rope_birch_bridge":"Ponte in corda di betulla",
+         "block.mcwbridges.rope_spruce_bridge":"Ponte in corda di abete",
+         "block.mcwbridges.rope_jungle_bridge":"Ponte in corda della giungla",
+         "block.mcwbridges.rope_acacia_bridge":"Ponte in corda di acacia",
+         "block.mcwbridges.rope_dark_oak_bridge":"Ponte in corda di quercia scura",
+         "block.mcwbridges.rope_crimson_bridge":"Ponte in corda cremisi",
+         "block.mcwbridges.rope_warped_bridge":"Ponte in corda distorto",
+ 
+         "block.mcwbridges.brick_bridge":"Ponte di mattoni",
+         "block.mcwbridges.stone_brick_bridge":"Ponte di mattoni di pietra",
+		 "block.mcwbridges.mossy_stone_brick_bridge":"Ponte di pietrisco muschioso",
+         "block.mcwbridges.sandstone_bridge":"Ponte di arenaria",
+         "block.mcwbridges.orange_sandstone_bridge":"Ponte di arenaria rossa",
+ 
+ 	 	 "block.mcwbridges.blackstone_bridge":"Ponte di pietranera",
+ 
+        "block.mcwbridges.oak_rail_bridge":"Ponte ferroviario di quercia",
+		"block.mcwbridges.spruce_rail_bridge":"Ponte ferroviario di abete",
+		"block.mcwbridges.birch_rail_bridge":"Ponte ferroviario di betulla",
+		"block.mcwbridges.jungle_rail_bridge":"Ponte ferroviario della giungla",
+		"block.mcwbridges.acacia_rail_bridge":"Ponte ferroviario di acacia",
+		"block.mcwbridges.dark_oak_rail_bridge":"Ponte ferroviario di quercia scura",
+		"block.mcwbridges.crimson_rail_bridge":"Ponte ferroviario cremisi",
+		"block.mcwbridges.warped_rail_bridge":"Ponte ferroviario distorto",
+ 
+		"block.mcwbridges.dry_bamboo_bridge":"Ponte di bambù essiccato",
+		"block.mcwbridges.bamboo_bridge":"Ponte di bambù",
+ 
+		"block.mcwbridges.iron_bridge_pier":"Supporto per ponte di ferro",
+ 
+		"block.mcwbridges.oak_bridge_pier":"Supporto per ponte di quercia",
+		"block.mcwbridges.spruce_bridge_pier":"Supporto per ponte di abete",
+		"block.mcwbridges.birch_bridge_pier":"Supporto per ponte di betulla",
+		"block.mcwbridges.jungle_bridge_pier":"Supporto per ponte della giungla",
+		"block.mcwbridges.acacia_bridge_pier":"Supporto per ponte di acacia",
+		"block.mcwbridges.dark_oak_bridge_pier":"Supporto per ponte di quercia scura",
+		"block.mcwbridges.crimson_bridge_pier":"Supporto per ponte cremisi",
+		"block.mcwbridges.warped_bridge_pier":"Supporto per ponte distorto",
+ 
+		"block.mcwbridges.brick_bridge_pier":"Supporto per ponte di mattoni",
+		"block.mcwbridges.sandstone_bridge_pier":"Supporto per ponte di arenaria",
+		"block.mcwbridges.stone_bridge_pier":"Supporto per ponte di pietra",
+		"block.mcwbridges.red_sandstone_bridge_pier":"Supporto per ponte di arenaria rossa",
+		"block.mcwbridges.blackstone_bridge_pier":"Supporto per ponte di pietranera",
+		"block.mcwbridges.mossy_stone_bridge_pier":"Supporto per ponte di pietrisco muschioso",
+ 
+		"block.mcwbridges.bamboo_bridge_pier":"Supporto per ponte di bambù",
+		"block.mcwbridges.dry_bamboo_bridge_pier":"Supporto per ponte di bambù essiccato",
+ 
+ 
+		 "block.mcwbridges.iron_bridge_stair":"Scala del ponte di ferro",
+ 
+         "block.mcwbridges.oak_log_bridge_stair":"Scala del ponte di quercia",
+         "block.mcwbridges.spruce_log_bridge_stair":"Scala del ponte di abete",
+         "block.mcwbridges.birch_log_bridge_stair":"Scala del ponte di betulla",
+         "block.mcwbridges.jungle_log_bridge_stair":"Scala del ponte della giungla",
+         "block.mcwbridges.acacia_log_bridge_stair":"Scala del ponte di acacia",
+         "block.mcwbridges.dark_oak_log_bridge_stair":"Scala del ponte di quercia scura",
+         "block.mcwbridges.crimson_log_bridge_stair":"Scala del ponte cremisi",
+         "block.mcwbridges.warped_log_bridge_stair":"Scala del ponte distorto",
+ 
+         "block.mcwbridges.oak_rope_bridge_stair":"Scala del ponte di corda di quercia",
+         "block.mcwbridges.spruce_rope_bridge_stair":"Scala del ponte di corda di abete",
+         "block.mcwbridges.birch_rope_bridge_stair":"Scala del ponte di corda di betulla",
+         "block.mcwbridges.jungle_rope_bridge_stair":"Scala del ponte di corda della giungla",
+         "block.mcwbridges.acacia_rope_bridge_stair":"Scala del ponte di corda di acacia",
+         "block.mcwbridges.dark_oak_rope_bridge_stair":"Scala del ponte di corda di quercia scura",
+         "block.mcwbridges.crimson_rope_bridge_stair":"Scala del ponte di corda cremisi",
+         "block.mcwbridges.warped_rope_bridge_stair":"Scala del ponte di corda distorto",
+ 
+         "block.mcwbridges.stone_brick_bridge_stair":"Scala del ponte di mattoni di pietra",
+         "block.mcwbridges.sandstone_bridge_stair":"Scala del ponte di arenaria",
+		 "block.mcwbridges.brick_bridge_stair":"Scala del ponte di mattoni",
+         "block.mcwbridges.red_sandstone_bridge_stair":"Scala del ponte di arenaria rossa",
+         "block.mcwbridges.blackstone_bridge_stair":"Scala del ponte di pietranera",
+ 	 	 "block.mcwbridges.mossy_stone_bridge_stair":"Scala del ponte di pietrisco muschioso",
+ 
+	 	 "block.mcwbridges.bamboo_bridge_stair":"Scala del ponte di bambù",
+		 "block.mcwbridges.dry_bamboo_bridge_stair":"Scala del ponte di bambù essiccato"
+ 
+ 
+	}

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "mcwbridges:block/support_pier/parent/pillar_single_iron"
+    }
+  }
+}

@@ -1,0 +1,101 @@
+	{	
+	     "itemGroup.bridges": "Macawové Mosty",
+		
+		 "block.mcwbridges.iron_bridge":"Železný Most",
+		 
+		 "item.mcwbridges.pliers":"Kombinačky",
+		 "mcwbridges.pliers.desc":"Kliknite pravým na most, aby ste ho zmenili na konečnú časť, funguje len pre 2 a širšie mosty",
+		 
+         "block.mcwbridges.oak_log_bridge_middle":"Dubový Most",
+         "block.mcwbridges.birch_log_bridge_middle":"Brezový Most",
+         "block.mcwbridges.acacia_log_bridge_middle":"Akáciový Most",
+         "block.mcwbridges.spruce_log_bridge_middle":"Smrekový Most",
+         "block.mcwbridges.jungle_log_bridge_middle":"Džunglový Most",
+         "block.mcwbridges.dark_oak_log_bridge_middle":"Tmavo Dubový Most",
+         "block.mcwbridges.crimson_log_bridge_middle":"Karmínový Most",
+         "block.mcwbridges.warped_log_bridge_middle":"Prízračný Most",
+
+         "block.mcwbridges.rope_oak_bridge":"Lanový Dubový Most",
+         "block.mcwbridges.rope_birch_bridge":"Lanový Brezový Most",
+         "block.mcwbridges.rope_spruce_bridge":"Lanový Smrekový Most",
+         "block.mcwbridges.rope_jungle_bridge":"Lanový Džunglový Most",
+         "block.mcwbridges.rope_acacia_bridge":"Lanový Akáciový Most",
+         "block.mcwbridges.rope_dark_oak_bridge":"Lanový Tmavo Dubový Most",
+         "block.mcwbridges.rope_crimson_bridge":"Lanový Karmínový Most",
+         "block.mcwbridges.rope_warped_bridge":"Lanový Prízračný Most",
+
+         "block.mcwbridges.brick_bridge":"Tehlový Most",
+         "block.mcwbridges.stone_brick_bridge":"Kamenný Tehlový Most",
+		 "block.mcwbridges.mossy_stone_brick_bridge":"Machovitý Kamenný Tehlový Most",
+         "block.mcwbridges.sandstone_bridge":"Pieskovcový Most",
+         "block.mcwbridges.orange_sandstone_bridge":"Červený Pieskovcový Most",
+         
+ 	 	 "block.mcwbridges.blackstone_bridge":"Čierno Kamenný Most",
+         
+        "block.mcwbridges.oak_rail_bridge":"Dubový Kolajnicový Most",
+		"block.mcwbridges.spruce_rail_bridge":"Smrekový Kolajnicový Most",
+		"block.mcwbridges.birch_rail_bridge":"Brezový Kolajnicový Most",
+		"block.mcwbridges.jungle_rail_bridge":"Džunglový Kolajnicový Most",
+		"block.mcwbridges.acacia_rail_bridge":"Akáciový Kolajnicový Most",
+		"block.mcwbridges.dark_oak_rail_bridge":"Tmavo Dubový Kolajnicový Most",
+		"block.mcwbridges.crimson_rail_bridge":"Karmínový Kolajnicový Most",
+		"block.mcwbridges.warped_rail_bridge":"Prízračný Kolajnicový Most",
+	
+		"block.mcwbridges.dry_bamboo_bridge":"Suchý Bambusový Most",
+		"block.mcwbridges.bamboo_bridge":"Bambusový Most",
+		
+		"block.mcwbridges.iron_bridge_pier":"Železné Mólo",
+		
+		"block.mcwbridges.oak_bridge_pier":"Dubové Mólo",
+		"block.mcwbridges.spruce_bridge_pier":"Smrekové Mólo",
+		"block.mcwbridges.birch_bridge_pier":"Brezové Mólo",
+		"block.mcwbridges.jungle_bridge_pier":"Džunglové Mólo",
+		"block.mcwbridges.acacia_bridge_pier":"Akáciové Mólo",
+		"block.mcwbridges.dark_oak_bridge_pier":"Tmavo Dubové Mólo",
+		"block.mcwbridges.crimson_bridge_pier":"Karmínové Mólo",
+		"block.mcwbridges.warped_bridge_pier":"Prízračné Mólo",
+		
+		"block.mcwbridges.brick_bridge_pier":"Tehlové Mólo",
+		"block.mcwbridges.sandstone_bridge_pier":"Pieskovcové Mólo",
+		"block.mcwbridges.stone_bridge_pier":"Kamenné Mólo",
+		"block.mcwbridges.red_sandstone_bridge_pier":"Červeno Pieskovcové Mólo",
+		"block.mcwbridges.blackstone_bridge_pier":"Čierno Kamenné Mólo",
+		"block.mcwbridges.mossy_stone_bridge_pier":"Machovito Kamenné Mólo",
+		
+		"block.mcwbridges.bamboo_bridge_pier":"Bambusové Mólo",
+		"block.mcwbridges.dry_bamboo_bridge_pier":"Sucho Bambusové Mólo",
+		
+
+		 "block.mcwbridges.iron_bridge_stair":"Železné Mostové Schody",
+		 
+         "block.mcwbridges.oak_log_bridge_stair":"Dubové Mostové Schody",
+         "block.mcwbridges.spruce_log_bridge_stair":"Smrekové Mostové Schody",
+         "block.mcwbridges.birch_log_bridge_stair":"Brezové Mostové Schody",
+         "block.mcwbridges.jungle_log_bridge_stair":"Džunglové Mostové Schody",
+         "block.mcwbridges.acacia_log_bridge_stair":"Akáciové Mostové Schody",
+         "block.mcwbridges.dark_oak_log_bridge_stair":"Tmavo Dubové Mostové Schody",
+         "block.mcwbridges.crimson_log_bridge_stair":"Karmínové Mostové Schody",
+         "block.mcwbridges.warped_log_bridge_stair":"Prízračné Mostové Schody",
+
+         "block.mcwbridges.oak_rope_bridge_stair":"Lanovo Dubové Mostové Schody",
+         "block.mcwbridges.spruce_rope_bridge_stair":"Lanovo Smrekové Mostové Schody",
+         "block.mcwbridges.birch_rope_bridge_stair":"Lanovo Brezové Mostové Schody",
+         "block.mcwbridges.jungle_rope_bridge_stair":"Lanovo Džunglové Mostové Schody",
+         "block.mcwbridges.acacia_rope_bridge_stair":"Lanovo Akáciové Mostové Schody",
+         "block.mcwbridges.dark_oak_rope_bridge_stair":"Lanovo Tmavo Dubové Mostové Schody",
+         "block.mcwbridges.crimson_rope_bridge_stair":"Lanovo Karmínové Mostové Schody",
+         "block.mcwbridges.warped_rope_bridge_stair":"Lanovo Prízračné Mostové Schody",
+
+         "block.mcwbridges.stone_brick_bridge_stair":"Kamenno Tehlové Mostové Schody",
+         "block.mcwbridges.sandstone_bridge_stair":"Pieskovcové Mostové Schody",
+		 "block.mcwbridges.brick_bridge_stair":"Tehlové Mostové Schody",
+         "block.mcwbridges.red_sandstone_bridge_stair":"Červeno Pieskovcové Mostové Schody",
+         "block.mcwbridges.blackstone_bridge_stair":"Čierno Kamenné Mostové Schody",
+ 	 	 "block.mcwbridges.mossy_stone_bridge_stair":"Machovito Kamenné Mostové Schody",
+
+	 	 "block.mcwbridges.bamboo_bridge_stair":"Bambusové Mostové Schody",
+		 "block.mcwbridges.dry_bamboo_bridge_stair":"Sucho Bambusové Mostové Schody"
+		
+		                                                                          
+	}
+	

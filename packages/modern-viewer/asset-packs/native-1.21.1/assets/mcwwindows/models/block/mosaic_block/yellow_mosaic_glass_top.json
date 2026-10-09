@@ -1,0 +1,7 @@
+{
+  "parent": "mcwwindows:block/parent/cube_column",
+  "textures": {
+    "end": "mcwwindows:block/yellow_base",
+    "side": "mcwwindows:block/yellow_top"
+  }
+}

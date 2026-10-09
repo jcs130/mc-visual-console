@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/double_shelf_middle",
+	"textures": {
+		"3": "mcwfurnitures:block/birch_handle",
+		"1": "minecraft:block/stripped_birch_log",
+		"2": "minecraft:block/birch_log",
+		"particle": "minecraft:block/stripped_birch_log"
+	}
+}

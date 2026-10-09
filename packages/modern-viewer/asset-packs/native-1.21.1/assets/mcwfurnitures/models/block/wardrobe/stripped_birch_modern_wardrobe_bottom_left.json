@@ -1,0 +1,9 @@
+{
+	"parent": "mcwfurnitures:block/parent/modern_wardrobe_bottom_left",
+	"textures": {
+		"0": "minecraft:block/stripped_birch_log",
+		"1": "minecraft:block/birch_log",
+		"2": "mcwfurnitures:block/birch_handle",
+		"particle": "minecraft:block/stripped_birch_log"
+	}
+}
