@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { verifyAssetPack, prepareAssetPack } from '../../../../../tools/prepare-viewer-assets.mjs';
+import { listAssetPackIds, loadAssetPack, verifyAssetPack, prepareAssetPack } from '../../../../../tools/prepare-viewer-assets.mjs';
 import { verifyViewerContentAssets } from '../viewer-content-assets.mjs';
 
 async function fixture(t) {
@@ -21,6 +21,29 @@ async function fixture(t) {
   await save();
   return { directory, assetRoot, pack, bytes, manifest, save, outputDirectory: path.join(directory, 'output') };
 }
+
+test('pack discovery excludes provenance-only catalogs and includes corrupt manifests for validation', async t => {
+  const f = await fixture(t);
+  const catalog = path.join(f.assetRoot, 'bedrock-1.21.1');
+  await fs.mkdir(catalog);
+  await fs.writeFile(path.join(catalog, 'model-catalog.json'), '{}');
+  await fs.writeFile(path.join(catalog, 'build-contract.json'), '{}');
+  const broken = path.join(f.assetRoot, 'broken-pack');
+  await fs.mkdir(broken);
+  await fs.writeFile(path.join(broken, 'pack.json'), '{}');
+  assert.deepEqual(await listAssetPackIds(f.assetRoot), ['broken-pack', f.manifest.id]);
+  await assert.rejects(loadAssetPack('broken-pack', f.assetRoot), /MANIFEST_INVALID/);
+  await assert.rejects(loadAssetPack('bedrock-1.21.1', f.assetRoot), { code: 'ENOENT' });
+  await fs.unlink(path.join(broken, 'pack.json'));
+  await fs.mkdir(path.join(broken, 'pack.json'));
+  await assert.rejects(listAssetPackIds(f.assetRoot), /MANIFEST_INVALID/);
+});
+
+test('all discovered committed packs have valid manifests', async () => {
+  const ids = await listAssetPackIds();
+  assert.ok(ids.length > 0);
+  for (const id of ids) assert.equal((await loadAssetPack(id)).manifest.id, id);
+});
 
 test('shared pack copies the verified bytes and records version and source receipt', async t => {
   const f = await fixture(t);

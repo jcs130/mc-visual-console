@@ -12,6 +12,21 @@ const rendererRoot = path.join(repositoryRoot, 'packages/modern-viewer/renderer-
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const inside = (root, candidate) => candidate === root || candidate.startsWith(root + path.sep);
 
+export async function listAssetPackIds(assetRoot = SHARED_ASSET_ROOT) {
+  const ids = [];
+  for (const entry of await fs.readdir(assetRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifest = await fs.lstat(path.join(assetRoot, entry.name, 'pack.json')).catch(error => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (!manifest) continue;
+    if (!manifest.isFile()) throw Error('ASSET_PACK_MANIFEST_INVALID: ' + entry.name);
+    ids.push(entry.name);
+  }
+  return ids.sort();
+}
+
 async function eachFile(entries, action) {
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(8, entries.length) }, async () => {
@@ -98,7 +113,7 @@ export async function prepareAssetPack({ id, outputDirectory, sounds = false, pr
 async function main() {
   const args = process.argv.slice(2);
   if (args[0] === '--list' || args[0] === '--verify') {
-    const ids = args[1] ? [args[1]] : (await fs.readdir(SHARED_ASSET_ROOT, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+    const ids = args[1] ? [args[1]] : await listAssetPackIds();
     for (const id of ids) {
       const { manifest } = await (args[0] === '--verify' ? verifyAssetPack(id) : loadAssetPack(id));
       console.log(JSON.stringify({ id, minecraftVersion: manifest.minecraftVersion, files: manifest.fileCount, bytes: manifest.bytes,
