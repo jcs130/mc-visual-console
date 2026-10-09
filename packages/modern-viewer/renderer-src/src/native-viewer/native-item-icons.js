@@ -5,11 +5,13 @@ import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-gu
 import { nativeArsItemEligible, NativeArsItemIconRenderer } from './native-ars-item-icons.js'
 import { nativeStaticItemState, verifyNativeStaticItemEvidence } from './native-static-item-providers.js'
 import { nativeDomumItemEligible, nativeDomumItemState, NativeDomumItemIconRenderer } from './native-domum-item-icons.js'
+import { nativeSoulSlabEligible, nativeSoulSlabState, prepareNativeSoulSlabIcon } from './native-soul-slab-icons.js'
 
 export function nativeItemIconEligible(item) {
   try {
     const stack = parseNativeItemStack(item)
-    if (nativeDomumItemEligible(stack.id)) nativeDomumItemState(stack)
+    if (nativeSoulSlabEligible(stack.id)) nativeSoulSlabState(stack)
+    else if (nativeDomumItemEligible(stack.id)) nativeDomumItemState(stack)
     else nativeStaticItemState(stack)
     return true
   } catch { return false }
@@ -30,6 +32,7 @@ export class NativeItemIcons {
   constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
+    this.animationEpochMs = Date.now()
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
     this.arsRenderer = new NativeArsItemIconRenderer(reader, arsRendererOptions)
     this.domumRenderer = new NativeDomumItemIconRenderer(reader, domumRendererOptions)
@@ -38,7 +41,9 @@ export class NativeItemIcons {
     if (this.disposed) return null
     let provider = null, stack = null, key = item?.name
     try { stack = parseNativeItemStack(item) } catch { return null }
-    if (nativeGuideItemEligible(key) || nativeArsItemEligible(key)) {
+    if (nativeSoulSlabEligible(key)) {
+      try { nativeSoulSlabState(stack); provider = 'soul-slab' } catch { return null }
+    } else if (nativeGuideItemEligible(key) || nativeArsItemEligible(key)) {
       provider = nativeGuideItemEligible(key) ? 'guide' : 'ars'
       // Bind to the complete authoritative SNBT, including numeric tag types.
       // JSON.stringify would conflate a typed tag wrapper with a compound that
@@ -62,7 +67,8 @@ export class NativeItemIcons {
     if(this.disposed) return 'NATIVE_ITEM_ICONS_DISPOSED'
     try {
       const stack=parseNativeItemStack(item)
-      if (nativeDomumItemEligible(item.name)) nativeDomumItemState(stack)
+      if (nativeSoulSlabEligible(item.name)) nativeSoulSlabState(stack)
+      else if (nativeDomumItemEligible(item.name)) nativeDomumItemState(stack)
       else if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack)
       const entry=this.entries.get(item.name+'#'+item.snbt)
       return entry ? entry.reason : this.entries.size>=128?'NATIVE_ITEM_ICON_CACHE_LIMIT':'not_requested'
@@ -77,6 +83,14 @@ export class NativeItemIcons {
   async load(key) {
     const entry = this.entries.get(key), name = entry.name
     try {
+      if (entry.provider === 'soul-slab') {
+        const { blob, ...info } = await prepareNativeSoulSlabIcon(this.reader, entry.stack)
+        if (this.disposed) return
+        entry.result = { verified: true, url: this.createUrl(blob), ...info,
+          animation: { ...info.animation, epochMs: this.animationEpochMs } }
+        entry.reason = null
+        return
+      }
       if (entry.provider === 'ars' || entry.provider === 'domum') {
         const renderer = entry.provider === 'ars' ? this.arsRenderer : this.domumRenderer
         const { blob, ...info } = await renderer.render(entry.stack)

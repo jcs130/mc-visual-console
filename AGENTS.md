@@ -1,3 +1,5 @@
+2026-10-09 魂符图标后续已部署：INIT/HAS_MAID 分别校验原模型，两者本来引用同一原16×112 PNG/mcmeta，七帧×2tick以32×32裁剪显示，缓存共享时钟/完整本人SNBT。默认附魔glint缺原sprite atlas UV，明确partial/effectReason，不造CSS假光效；原Java像素/手持/完整玩法仍未验。157项相关Node原资产测试全过0skip，普通非OP零模型QA浏览器实见动画/同步transform、错误为空，正常exit0/临时端口关闭。新服已正常冷备80文件并刷新常驻bundle，同supervisor Java35596/Gate8196/worker31260健康；桥a672b1d2…f8ec、v15资产/全部27JAR、五份保护配置与原主Agent暂停/旧unknown/账本前缀保持。维护已结束勿重放，旧Paper/网络未动。细节renderer-src/docs/native-soul-slab-icons.md；原素材/JAR/包/截图/私有research/soul-slab-icons-20261009留Git外。
+
 # Viewer fidelity requirements
 
 2026-10-09 中文与图标增量已部署：本人原生 displayNameComponent 按校验过的原 en_us/zh_cn 翻译，保留自定义名称、原 ID/SNBT，窗口及槽位标题汉化；Mojang 中文经 version/index/object 哈希链导出。Domum 新增七种默认模型、四种门、十五种活板门，Cutter 首屏十组原图标实见；保留原几何/UV/GUI transform/铁铰链。仅原 oak/dark_oak 两 PNG 的锁定默认 NeoForge 优先级已独立审计放行，其余九冲突与完整 parity/complete 仍 false。148 Node、9 导出及 12 Java 审计通过；v15 资产39768文件全校验，桥 a672b1d2…f8ec。魂符动画/glint仍 unavailable，勿借其他状态图标替代。两次零模型普通身体验收 exit0、临时端口关闭，常驻28984正常；原主Agent暂停和旧unknown不重放。详见 renderer-src/docs/native-ui-localization.md；素材/JAR/私有 research/viewer-chinese-icons-20261009 留 Git 外。

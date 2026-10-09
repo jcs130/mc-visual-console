@@ -14,6 +14,28 @@ const UUID = 'e371227c-09fa-3722-84f4-f3228a552c3c'
 const OTHER = '1231227c-09fa-3722-84f4-f3228a552c3c'
 
 import { shell } from './fixtures/native-console-dom.mjs'
+import { nativeSoulSlabAnimationStyle } from '../../src/native-viewer/native-soul-slab-icons.js'
+
+test('soul slab displays the original clipped animated image, discloses missing glint and clears state when the item changes', () => {
+  const document = shell(), slot = document.createElement('div')
+  const item = { name: 'touhou_little_maid:smart_slab_init', count: 1, displayName: '魂符' }
+  const animation = { kind: 'native-soul-slab-sheet-v1', frameCount: 7, frameTicks: 2, tickMs: 50,
+    frameWidth: 16, frameHeight: 16, sheetHeight: 112, epochMs: Date.now() }
+  const icon = { verified: true, url: 'blob:soul-sheet', animation, effectUnavailableReason: 'NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE' }
+  renderNativeItemSlot(document,slot,item,{ resolveItemIcon: () => icon })
+  assert.equal(slot.querySelector('img').alt,'魂符')
+  assert.equal(slot.querySelector('img').style.height,'224px')
+  assert.equal(slot.querySelector('.corti-native-animated-icon').style.overflow,'hidden')
+  assert.equal(slot.querySelector('.corti-item-fallback'),null)
+  assert.equal(slot.dataset.modelState,'partial'); assert.equal(slot.dataset.animationFrames,'7')
+  assert.match(slot.title,/附魔光效未适配/)
+  assert.match(nativeSoulSlabAnimationStyle(animation).animation,/700ms steps\(7,end\)/)
+  renderNativeItemSlot(document,slot,null)
+  assert.equal(slot.dataset.modelState,'empty'); assert.equal(slot.dataset.effectReason,undefined)
+  assert.equal(slot.dataset.animationFrames,undefined)
+  renderNativeItemSlot(document,slot,item,{ resolveItemIcon: () => ({ ...icon, animation: { ...animation, frameCount: 8 } }) })
+  assert.equal(slot.querySelector('img'),null); assert.equal(slot.dataset.modelReason,'NATIVE_SOUL_SLAB_ANIMATION_INVALID')
+})
 function presentation (overrides = {}) {
   return { schemaVersion: 1, playerUuid: UUID, source: 'same_player_connection', available: true,
     self: { uuid: UUID, health: 17, maxHealth: 20, food: 18, armor: null, oxygen: null },

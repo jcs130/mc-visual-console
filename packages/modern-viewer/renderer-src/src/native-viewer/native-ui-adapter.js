@@ -3,6 +3,7 @@ import { InventoryPlayerPreview } from '../modern-viewer/inventory-player-previe
 import { FishingCatchHud } from '../modern-viewer/fishing-catch.js'
 import { NativeItemIcons } from './native-item-icons.js'
 import { NativeLanguage } from './native-language.js'
+import { nativeSoulSlabAnimationStyle, NATIVE_SOUL_SLAB_KEYFRAMES } from './native-soul-slab-icons.js'
 import { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
   nativeCoordinateMenuLayout } from './native-mod-menus.js'
 export { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
@@ -303,6 +304,7 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
   slot.dataset.itemName = item?.name ?? ''
   slot.dataset.modelState = item ? 'unavailable' : 'empty'
   delete slot.dataset.modelReason
+  delete slot.dataset.effectReason; delete slot.dataset.animationFrames
   // Localize the original same-player Component, retaining the native ID and
   // complete SNBT. Unknown/custom names keep the authoritative server text.
   const displayName = text(resolveItemName?.(item), 256) || text(item?.displayName, 256) || item?.name
@@ -314,20 +316,38 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
   slot.title = item ? `${identity} · 原生物品模型未支持` : `${label}：空`
   slot.setAttribute('aria-label', slot.title)
   if (!item) return
-  const icon = resolveItemIcon?.(item)
+  let icon = resolveItemIcon?.(item), animationStyle = null, animationError = null
+  if (icon?.animation) {
+    try { animationStyle = nativeSoulSlabAnimationStyle(icon.animation) }
+    catch (error) { animationError = error.message; icon = null }
+  }
   if (record(icon) && icon.verified === true && typeof icon.url === 'string' && icon.url.startsWith('blob:')) {
     const image = node(document, 'img'); image.alt = displayName; image.src = icon.url
-    slot.dataset.modelState = 'verified'; slot.title = identity
+    slot.dataset.modelState = icon.effectUnavailableReason ? 'partial' : 'verified'; slot.title = identity
+    let iconContainer = slot
+    if (animationStyle) {
+      iconContainer = node(document, 'span', 'corti-native-animated-icon')
+      Object.assign(iconContainer.style, { position: 'relative', display: 'block', width: '32px', height: '32px', overflow: 'hidden', flexShrink: '0' })
+      Object.assign(image.style, { position: 'absolute', left: '0', top: '0', width: '32px', maxHeight: 'none', imageRendering: 'pixelated', ...animationStyle })
+      slot.dataset.animationFrames = String(icon.animation.frameCount)
+      slot.title += ' · 原模组7帧动画图标'
+    }
+    if (icon.effectUnavailableReason) {
+      slot.dataset.effectReason = icon.effectUnavailableReason
+      slot.title += ' · 附魔光效未适配（原生图集坐标未同步）'
+    }
     image.addEventListener('error', () => {
-      if (image.parentNode !== slot) return // Late error belongs to a retired item/image.
-      image.remove(); slot.dataset.modelState = 'unavailable'
+      if (image.parentNode !== iconContainer || (iconContainer !== slot && iconContainer.parentNode !== slot)) return
+      if (iconContainer === slot) image.remove(); else iconContainer.remove()
+      slot.dataset.modelState = 'unavailable'; delete slot.dataset.animationFrames; delete slot.dataset.effectReason
       slot.dataset.modelReason = 'NATIVE_ITEM_ICON_IMAGE_DECODE_FAILED'
       slot.title = `${identity} · 原生物品图标解码失败（${slot.dataset.modelReason}）`; slot.setAttribute('aria-label', slot.title)
       slot.prepend(node(document, 'span', 'corti-item-fallback', displayName))
     }, { once: true })
-    slot.append(image)
+    if (iconContainer === slot) slot.append(image)
+    else { iconContainer.append(image); slot.append(iconContainer) }
   } else {
-    const reason = text(resolveItemIconReason?.(item), 512)
+    const reason = animationError || text(resolveItemIconReason?.(item), 512)
     if (reason) slot.dataset.modelReason = reason
     const loading = reason === 'loading' || reason === 'not_requested'
     if (loading) slot.dataset.modelState = 'loading'
@@ -810,7 +830,7 @@ export function createNativeInterface ({ document = globalThis.document,
       style.dataset.nativeHudAssets = ''
       style.textContent = [background('.corti-crosshair', 'crosshair'), background('.corti-hotbar', 'hotbar'),
         background('.corti-hotbar-selection', 'hotbar_selection'), background('.corti-xp', 'experience_bar_background'),
-        background('.corti-xp-fill', 'experience_bar_progress')].join('\n')
+        background('.corti-xp-fill', 'experience_bar_progress'), NATIVE_SOUL_SLAB_KEYFRAMES].join('\n')
       q('style[data-native-hud-assets]')?.remove(); document.head?.append(style)
       lastMenuSignature = null; hudSignature = null; renderHud(); renderMenu(); return result
     },

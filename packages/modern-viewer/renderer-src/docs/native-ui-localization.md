@@ -1,5 +1,7 @@
 # 原生物品图标与中文显示
 
+2026-10-09 后续：[魂符原动画图标](native-soul-slab-icons.md)已接通 INIT/HAS_MAID，原七帧/100ms、同缓存相位；默认附魔光效因原图集 UV 未取得仍明确 partial。当前相关测试为157项；以下148项为此前汉化/Domum增量记录。
+
 2026-10-09：网页翻译同一玩家原始 `displayNameComponent`，保留 `translate`、`with`、`extra`；原 `displayName`、`descriptionId`、物品 ID 和完整 SNBT 不变。文字使用 DOM textContent，不执行点击、选择器或 NBT 内容。自定义命名优先，未知组件/翻译保留服务端名称，不按英文名称做字符串替换。
 
 `NativeLanguage` 从校验过的原始 `assets/<namespace>/lang/en_us.json`、`zh_cn.json` 读取词条。中文优先；同语言同键冲突不按 namespace 排序猜优先级。Domum 常用分组和材质格式补有界的 viewer 中文覆盖表。原工作台、箱子、炉、烹饪锅、饰品栏、建筑切割台提供中文界面名；未知模组窗口及缺失翻译仍保留原类型/原文。
@@ -18,7 +20,7 @@ Minecraft 1.21.1 中文不在 client.jar 内。导出器支持三个同时提供
 
 在既有图标基础上，新增七种 Domum 默认模型：栅栏、木框架、屋瓦、圆柱、框架隔板、灯饰、浅色砖；以及四种门、十五种活板门。读取实际材质和类型，沿原 loader/parent/ordinal 选择模型。原顶点、UV、铁铰链等未被重贴的 sprite 保留。GUI 相机变换来自外层 baked parent，translation 按原 ItemTransform 除以 16；嵌套 materially_textured wrapper 的 display 不会误覆盖 parent。
 
-材料只支持已审计的不透明、无 tint、所有候选面为同一 sprite 的原方块。随机/透明/染色材质、未知属性/loader、动画和 glint 仍明确 unavailable。魂符 INIT/HAS_MAID 的动画及附魔光效尚未实现，不借 EMPTY 图标替代。第一页十个 Cutter 分组图标已支持，不代表所有后续款式或整个模组已完成。
+Domum 材料只支持已审计的不透明、无 tint、所有候选面为同一 sprite 的原方块。随机/透明/染色材质、未知属性/loader、未移植动画和 glint 仍明确 unavailable。魂符 INIT/HAS_MAID 动画现已按上文接入，附魔光效仍未实现，不借 EMPTY 图标替代。第一页十个 Cutter 分组图标已支持，不代表所有后续款式或整个模组已完成。
 
 ## 两个已审计的覆盖
 
