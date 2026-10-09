@@ -6,7 +6,7 @@ import * as THREE from 'three'
 import { NativeAssetReader, bakeFaces } from '../../src/native-viewer/model-loader.js'
 import { NativeItemIcons } from '../../src/native-viewer/native-item-icons.js'
 import { resolveNativeBlockItemModel } from '../../src/native-viewer/native-block-item-icons.js'
-import { nativeDomumItemState, prepareNativeDomumItemIcon, DOMUM_PANEL_TYPES } from '../../src/native-viewer/native-domum-item-icons.js'
+import { nativeDomumItemState, prepareNativeDomumItemIcon, DOMUM_PANEL_TYPES, DOMUM_DOOR_TYPES } from '../../src/native-viewer/native-domum-item-icons.js'
 
 const item = (type = 'full', material = 'minecraft:cobblestone', extra = '') => ({ name: 'domum_ornamentum:panel', count: 4,
   snbt: `{id:"domum_ornamentum:panel",count:4,components:{"minecraft:block_state":{type:"${type}"},"domum_ornamentum:texture_data":{"minecraft:block/oak_planks":"${material}"}${extra}}}` })
@@ -69,8 +69,60 @@ test('wrong native source and changed override rules cannot become a valid panel
 })
 
 test('resource priority conflicts stay explicit even for a valid original panel', async () => {
-  const reader = await originals(), plan = await prepareNativeDomumItemIcon(reader, item('full', 'minecraft:oak_planks'))
+  const reader = await originals()
+  reader.manifest = structuredClone(reader.manifest)
+  delete reader.manifest.assets['assets/minecraft/textures/block/oak_planks.png'].priorityResolution
+  const plan = await prepareNativeDomumItemIcon(reader, item('full', 'minecraft:oak_planks'))
   await assert.rejects(reader.bytes(plan.texturePaths[0]), /RESOURCE_PRIORITY_UNRESOLVED/)
+})
+
+test('seven native Cutter group icons retain original geometry, distinct material sprites and actual parent camera transforms', async () => {
+  const reader = await originals()
+  const cases = {
+    vanilla_fence_compat: { 'minecraft:block/oak_planks': 'minecraft:oak_planks' },
+    plain: { 'minecraft:block/oak_planks': 'minecraft:oak_planks', 'minecraft:block/dark_oak_planks': 'minecraft:dark_oak_planks' },
+    shingle: { 'minecraft:block/oak_planks': 'minecraft:oak_planks', 'minecraft:block/clay': 'minecraft:clay' },
+    blockpillar: { 'minecraft:block/oak_planks': 'minecraft:oak_planks' },
+    blockpaperwall: { 'minecraft:block/oak_planks': 'minecraft:oak_planks', 'minecraft:block/dark_oak_planks': 'minecraft:dark_oak_planks' },
+    vertical_light: { 'minecraft:block/oak_planks': 'minecraft:oak_planks', 'minecraft:block/glowstone': 'minecraft:glowstone' },
+    light_brick: { 'minecraft:block/oak_planks': 'minecraft:oak_planks' }
+  }
+  for (const [name, materials] of Object.entries(cases)) {
+    const id = `domum_ornamentum:${name}`, data = Object.entries(materials).map(([key, value]) => `${JSON.stringify(key)}:${JSON.stringify(value)}`).join(',')
+    const stack = { name: id, count: 1, snbt: `{id:"${id}",count:1,components:{"domum_ornamentum:texture_data":{${data}}}}` }
+    const plan = await prepareNativeDomumItemIcon(reader, stack)
+    assert.equal(plan.kind, 'native-domum-material-gui'); assert.ok(plan.faces.length)
+    assert.deepEqual(plan.evidence.materials, materials)
+    assert.ok(plan.sourcePaths.includes(`assets/domum_ornamentum/models/item/${name}.json`))
+    for (const texturePath of plan.texturePaths) await reader.bytes(texturePath)
+    const invalid = { ...stack, snbt: stack.snbt.replace('"domum_ornamentum:texture_data":', '"minecraft:block_state":{type:"unsupported"},"domum_ornamentum:texture_data":') }
+    assert.throws(() => nativeDomumItemState(invalid), /VARIANT_UNSUPPORTED/)
+  }
+})
+
+test('all four door and fifteen trapdoor variants follow original registered ordinal predicates and original parent GUI transforms', async () => {
+  const reader = await originals()
+  for (const [leaf, types, child] of [['vanilla_doors_compat', DOMUM_DOOR_TYPES, 'item/door/door_'],
+    ['vanilla_trapdoors_compat', DOMUM_PANEL_TYPES, 'block/trapdoor/trapdoor_']]) {
+    for (const type of types) {
+      const stack = item(type, 'minecraft:oak_planks')
+      stack.name = `domum_ornamentum:${leaf}`; stack.snbt = stack.snbt.replace('domum_ornamentum:panel', stack.name)
+      const plan = await prepareNativeDomumItemIcon(reader, stack)
+      const original = await resolveNativeBlockItemModel(reader, `domum_ornamentum:${child}${type}_spec`)
+      assert.deepEqual(plan.faces.map(({ position, uv }) => ({ position, uv })), bakeFaces(original).map(({ position, uv }) => ({ position, uv })))
+      assert.equal(plan.evidence.type, type); assert.equal(plan.kind, 'native-domum-variant-gui')
+      // Original iron hinge sprites survive a material change; only the
+      // declared oak component is replaced, retaining every original face.
+      assert.deepEqual(plan.faces.map(face => face.texture), bakeFaces(original).map(face => face.texture))
+      const cobble = await prepareNativeDomumItemIcon(reader, { ...stack, snbt: stack.snbt.replace('"minecraft:oak_planks"', '"minecraft:cobblestone"') })
+      assert.deepEqual(cobble.faces.map(face => face.texture), bakeFaces(original).map(face =>
+        face.texture === 'minecraft:block/oak_planks' ? 'minecraft:block/cobblestone' : face.texture))
+      assert.deepEqual(plan.transform, leaf === 'vanilla_doors_compat'
+        ? { rotation: [30, 225, 0], translation: [-2 / 16, -4 / 16, 0], scale: [.45, .45, .45] }
+        : { rotation: [30, 225, 0], translation: [0, .5 / 16, 0], scale: [.625, .625, .625] })
+      for (const texturePath of plan.texturePaths) await reader.bytes(texturePath)
+    }
+  }
 })
 
 test('production icon queue keys complete native components and cleans its own rendering resources', async () => {

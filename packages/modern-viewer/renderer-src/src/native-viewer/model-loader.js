@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { weightedModel, multipartMatches, defaultBlockSeedEvidence } from './model-selection.js'
 import { lockedFaceUV } from './uv-lock.js'
 import { animationFrames, applyFrame, enableInterpolation } from './texture-animation.js'
+import { verifiedNativeBasePriority } from './native-resource-priority.js'
 
 // Native assets only. A missing loader/model/texture is an error, never a cube
 // or a vanilla replacement. Scene lighting and complete mod parity are separate
@@ -26,7 +27,7 @@ export class NativeAssetReader {
   async bytes (path) {
     const entry = this.manifest.assets[path]
     if (!entry) throw Error(`NATIVE_ASSET_MISSING:${path}`)
-    if (entry.variants?.some(v => v.sha256 !== entry.sha256)) throw Error(`NATIVE_RESOURCE_PRIORITY_UNRESOLVED:${path}`)
+    if (entry.variants?.some(v => v.sha256 !== entry.sha256) && !verifiedNativeBasePriority(this.manifest, path, entry)) throw Error(`NATIVE_RESOURCE_PRIORITY_UNRESOLVED:${path}`)
     if (!this.cache.has(path)) {
       this.cache.set(path, (async () => {
         const bytes = new Uint8Array(await this.readBytes(path))

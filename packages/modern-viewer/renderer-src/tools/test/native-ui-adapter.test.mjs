@@ -428,7 +428,7 @@ test('real crafting window draws the original PNG and all 46 native slots at the
   assert.equal(result.style.left, '246px'); assert.equal(result.style.top, '68px', 'CSS item +2px yields original (248px,70px) origin')
   assert.equal(result.dataset.nativeSlotX, '124'); assert.equal(result.dataset.nativeSlotY, '35'); assert.equal(result.dataset.slotRole, 'result')
   assert.match(result.title, /本人木棍/); assert.match(result.title, /minecraft:stick/); assert.ok(received.includes(item)); assert.equal(item.snbt, received.find(row => row === item).snbt)
-  assert.equal(panel.querySelector('.corti-menu-note'), null); assert.match(body.textContent, /窗口 1 · state 17/)
+  assert.equal(panel.querySelector('.corti-menu-note'), null); assert.match(body.textContent, /窗口 1 · 状态编号 17/)
   assert.match(body.textContent, /配方书与原生标题未接入/); assert.equal(h.previews.length, 0)
   for (const row of panel.querySelectorAll('.corti-menu-slot')) assert.equal(row.listeners.size, 0, 'no game/menu mutation event is installed')
   const replacement = craftingMenu({ stateId: 18 }); replacement.slots[0].item = { name: 'minecraft:oak_button', count: 1, snbt: '{count:1,id:"minecraft:oak_button"}' }

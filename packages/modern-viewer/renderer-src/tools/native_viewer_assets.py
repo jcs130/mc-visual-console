@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-from hashlib import sha256
+from hashlib import sha256, sha1
 from io import BytesIO
 import json
 from pathlib import Path, PurePosixPath
@@ -200,7 +200,79 @@ def read_blocks(path: Path):
     return result
 
 
-def export(client: Path, lock_file: Path, mods_dir: Path, registry_dir: Path, output: Path, resource_packs=(), platform_jars=()):
+BASE_PRIORITY_RULE = "neoforge-21.1.248-mods-above-vanilla"
+BASE_PRIORITY_SOURCES = {
+    "minecraft-1.21.1-client.jar": "499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99",
+    "domum-ornamentum-1.0.231-main.jar": "04c0c902bdbcbd48e38bee5a323907ae0b7b7db4ff4a3e4da7c45334b65610a1",
+    "neoforge-21.1.248-universal.jar": "90a56f70425711b4e1a4b94ff0c2904ae9f6d74ca6478b3b2152ac794a07b8e5",
+}
+BASE_PRIORITY_TEXTURES = {
+    "oak_planks": ("3a33db67a3ba30537d0890a5cb37c8087ca336be89cbb1393a71c23224e361a8", "3b00412fec87bd07b83825b86de49bcb6c186ca7799f41721a36b04e5d8ed161"),
+    "dark_oak_planks": ("2bccdc1ef269b7ae6050d46b70071ead5c3ad4c3a16e3f6baf24fc629752b8bc", "3d04f576678df35491ccc43b0fafddce13e310fa5f363ca13193f8a2f55b285b"),
+}
+# Exact class audit: ClientPackSource grc e5f833a22b1f144291f64472cb74ec057793920fc96b8b3b21efd90aaa390d41
+# creates vanilla with BOTTOM; NeoForge ResourcePackLoader
+# 89f699b517eb79e76d48eb7387b31939b38938ac70d68b0764f8db8b0f83ac3b
+# creates mod_resources with TOP and expands children after it. FallbackResourceManager
+# atv cb84739e30214079af9e1f511fb0857e33c80b5080afca45ab94923613f3c16a searches backwards.
+def resolve_audited_base_priority(assets):
+    if any(s["explicitOverride"] for s in assets.sources):
+        return []
+    for name, digest in BASE_PRIORITY_SOURCES.items():
+        matches = [s for s in assets.sources if s["name"] == name]
+        if len(matches) != 1 or matches[0]["sha256"] != digest:
+            return []
+    resolved = []
+    for name, hashes in BASE_PRIORITY_TEXTURES.items():
+        path = f"assets/minecraft/textures/block/{name}.png"
+        entry = assets.index.get(path, {})
+        variants = entry.get("variants", [])
+        if (len(variants) == 2 and [v["source"] for v in variants] == list(BASE_PRIORITY_SOURCES)[:2]
+                and tuple(v["sha256"] for v in variants) == hashes
+                and entry.get("source") == variants[1]["source"] and entry.get("sha256") == hashes[1]):
+            entry["priorityResolution"] = BASE_PRIORITY_RULE
+            resolved.append(path)
+    assets.conflicts = [c for c in assets.conflicts if c["path"] not in resolved]
+    return resolved
+
+
+def add_vanilla_languages(assets, client_bytes, minecraft_version, version_path, index_path, objects_dir, locales=("zh_cn",)):
+    """Import byte-exact Mojang language objects, missing from the client JAR.
+
+    Validate the version's client SHA1, index SHA1/size and object SHA1/size.
+    Downloads are intentionally separate from this deterministic exporter.
+    """
+    version = json.loads(version_path.read_text(encoding="utf-8"))
+    if version["id"] != minecraft_version or sha1(client_bytes).hexdigest() != version["downloads"]["client"]["sha1"]:
+        raise ValueError("Language metadata and client JAR differ")
+    index_bytes = index_path.read_bytes()
+    info = version["assetIndex"]
+    if sha1(index_bytes).hexdigest() != info["sha1"] or len(index_bytes) != info["size"]:
+        raise ValueError("Mojang asset index hash/size differs")
+    index = json.loads(index_bytes)
+    label = f"minecraft-assets-{info['id']}:{info['sha1']}"
+    assets.sources.append({"name": label, "sha256": sha256(index_bytes).hexdigest(), "bytes": len(index_bytes), "explicitOverride": False})
+    for locale in locales:
+        if not re.fullmatch(r"[a-z]{2}_[a-z]{2}", locale):
+            raise ValueError("Invalid language locale")
+        obj = index["objects"][f"minecraft/lang/{locale}.json"]
+        if not re.fullmatch(r"[a-f0-9]{40}", obj["hash"]) or not 0 < obj["size"] <= 2097152:
+            raise ValueError("Invalid language object")
+        content = (objects_dir / obj["hash"]).read_bytes()
+        if len(content) != obj["size"] or sha1(content).hexdigest() != obj["hash"]:
+            raise ValueError("Mojang language object hash/size differs")
+        values = json.loads(content)
+        if not isinstance(values, dict) or any(not isinstance(v, str) for v in values.values()):
+            raise ValueError("Invalid language dictionary")
+        path = f"assets/minecraft/lang/{locale}.json"
+        if path in assets.index:
+            raise ValueError("Language resource already provided")
+        assets.data[path] = content
+        assets.index[path] = {"sha256": sha256(content).hexdigest(), "bytes": len(content), "source": label,
+                              "objectSha1": obj["hash"], "assetIndexSha1": info["sha1"], "overriddenSources": [], "variants": []}
+
+
+def export(client: Path, lock_file: Path, mods_dir: Path, registry_dir: Path, output: Path, resource_packs=(), platform_jars=(), vanilla_languages=None):
     lock = json.loads(lock_file.read_text(encoding="utf-8"))
     client_bytes = client.read_bytes()
     with zipfile.ZipFile(BytesIO(client_bytes)) as jar:
@@ -215,6 +287,8 @@ def export(client: Path, lock_file: Path, mods_dir: Path, registry_dir: Path, ou
         raise ValueError("Output must be new; preserve previous export and choose a new directory")
     assets = AssetArchive()
     assets.add(client_bytes, client.name)
+    if vanilla_languages:
+        add_vanilla_languages(assets, client_bytes, lock["minecraftVersion"], **vanilla_languages)
     for platform in platform_jars:
         assets.add(platform.read_bytes(), platform.name)
     for name in sorted(expected):
@@ -224,6 +298,7 @@ def export(client: Path, lock_file: Path, mods_dir: Path, registry_dir: Path, ou
         assets.add(content, name)
     for pack in resource_packs:
         assets.add(pack.read_bytes(), pack.name, explicit_override=True)
+    resolved_priorities = resolve_audited_base_priority(assets)
     blocks = read_blocks(registry_dir / "blocks.tsv")
     audit = ModelAudit(assets)
     coverage = [dict(row, **audit.block(row["id"])) for row in blocks]
@@ -271,7 +346,7 @@ def export(client: Path, lock_file: Path, mods_dir: Path, registry_dir: Path, ou
               "modpackLockSha256": sha256(lock_file.read_bytes()).hexdigest(), "clientJarSha256": sha256(client_bytes).hexdigest(),
               "sources": assets.sources, "registryHashes": registry_hashes, "assets": assets.index,
               "counts": {"files": len(assets.data), "blocks": len(blocks), "states": sum(b["stateCount"] for b in blocks), **counts},
-              "blockCoverage": coverage, "ambiguousOverrides": assets.conflicts,
+              "blockCoverage": coverage, "ambiguousOverrides": assets.conflicts, "auditedBasePriorities": resolved_priorities,
               "nativeRenderClasses": assets.render_classes, "assetIntegrityVerified": True,
               "resourcePriorityVerified": not assets.conflicts, "nativeStatePropertiesExported": native_states.exists(),
               "platformAssetsProvided": bool(platform_jars), "variantContentPath": "asset-variants/{sha256}.bin",
@@ -327,6 +402,9 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--resource-pack", type=Path, action="append", default=[], help="Explicit resource-pack priority, lowest first")
     parser.add_argument("--platform-jar", type=Path, action="append", default=[], help="Exact client platform JAR, e.g. NeoForge universal")
+    parser.add_argument("--minecraft-version-json", type=Path, help="Official version metadata matching the client JAR")
+    parser.add_argument("--asset-index", type=Path, help="Original Mojang asset index matching the version metadata")
+    parser.add_argument("--asset-objects-dir", type=Path, help="Original language objects, named by SHA1")
     parser.add_argument("--verify", type=Path, help="Verify an existing byte-exact source export")
     parser.add_argument("--require-render-parity", action="store_true", help="Refuse sources without an accepted complete native rendering implementation")
     args = parser.parse_args()
@@ -337,7 +415,11 @@ def main():
             parser.error("Use --require-render-parity with --verify; export never asserts rendering completion")
         if not all((args.client_jar, args.modpack_lock, args.mods_dir, args.registry_dir, args.output)):
             parser.error("Export requires client JAR, modpack lock, mods directory, registry directory and output")
-        result = export(args.client_jar, args.modpack_lock, args.mods_dir, args.registry_dir, args.output, args.resource_pack, args.platform_jar)
+        language_args = (args.minecraft_version_json, args.asset_index, args.asset_objects_dir)
+        if any(language_args) and not all(language_args):
+            parser.error("Language export requires version metadata, asset index and object directory")
+        languages = dict(version_path=args.minecraft_version_json, index_path=args.asset_index, objects_dir=args.asset_objects_dir) if all(language_args) else None
+        result = export(args.client_jar, args.modpack_lock, args.mods_dir, args.registry_dir, args.output, args.resource_pack, args.platform_jar, languages)
     print(json.dumps(result, ensure_ascii=False))
 
 

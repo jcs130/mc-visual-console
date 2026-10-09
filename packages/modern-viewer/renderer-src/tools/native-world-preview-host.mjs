@@ -129,6 +129,8 @@ export function createNativePlayerPresentation ({ playerUuid, menu, spellState, 
     return { name: item.id, count: item.count, snbt: item.snbt,
       ...(Object.hasOwn(item, 'food') ? { food: item.food } : {}),
       ...(typeof item.displayName === 'string' && item.displayName.length <= 512 ? { displayName: item.displayName } : {}),
+      ...(item.displayNameComponent !== undefined && Buffer.byteLength(JSON.stringify(item.displayNameComponent) ?? '', 'utf8') <= 4096
+        ? { displayNameComponent: structuredClone(item.displayNameComponent) } : {}),
       ...(typeof item.descriptionId === 'string' && item.descriptionId.length <= 512 ? { descriptionId: item.descriptionId } : {}) }
   }
   let nativeMenu = null, inventory = null, skills = null, self = null, renderRegistries = null

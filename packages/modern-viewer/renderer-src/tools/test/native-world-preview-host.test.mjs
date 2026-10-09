@@ -16,6 +16,21 @@ const assetBytes = Buffer.from('{"parent":"test:original"}')
 const defaultSkinNames = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri']
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 
+test('original localized name components travel only with the same-player item and keep full native identity', () => {
+  const playerUuid = '01234567-89ab-cdef-0123-456789abcdef'
+  const component = { translate: 'domum_ornamentum.panel.name.format', with: [{ translate: 'block.minecraft.cobblestone' }] }
+  const item = { id: 'domum_ornamentum:panel', count: 4, snbt: '{id:"domum_ornamentum:panel",count:4}',
+    displayName: 'Cobblestone Panel', displayNameComponent: component, descriptionId: 'block.domum_ornamentum.panel' }
+  const menu = { playerUuid, windowId: 0, menuType: 'minecraft:inventory', slots: Array.from({ length: 46 }, (_, i) => i === 9 ? item : null) }
+  const projected = createNativePlayerPresentation({ playerUuid, menu })
+  assert.deepEqual(projected.inventory.slots[9].item.displayNameComponent, component)
+  assert.equal(projected.inventory.slots[9].item.snbt, item.snbt)
+  assert.equal(projected.inventory.slots[9].item.name, item.id)
+  assert.equal(createNativePlayerPresentation({ playerUuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', menu }).inventory, null)
+  menu.slots[9] = { ...item, displayNameComponent: { text: 'x'.repeat(4097) } }
+  assert.equal(createNativePlayerPresentation({ playerUuid, menu }).inventory.slots[9].item.displayNameComponent, undefined)
+})
+
 test('tracked maid supplement cannot create, replace or cross-bind an identity', () => {
   const player = '01234567-89ab-cdef-0123-456789abcdef', maid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
   const state = { epoch: 5, entities: [{ entityId: 91, uuid: maid, name: 'touhou_little_maid:maid' }] }

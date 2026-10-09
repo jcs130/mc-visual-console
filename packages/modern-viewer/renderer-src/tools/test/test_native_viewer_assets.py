@@ -1,5 +1,5 @@
 """Native-source integrity and unsupported-renderer regression checks."""
-from hashlib import sha256
+from hashlib import sha256, sha1
 from io import BytesIO
 import json
 from pathlib import Path
@@ -9,7 +9,7 @@ import unittest
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from native_viewer_assets import AssetArchive, ModelAudit, export, read_blocks, resource_path, verify_export
+from native_viewer_assets import AssetArchive, ModelAudit, export, read_blocks, resource_path, verify_export, add_vanilla_languages
 
 
 def archive(files):
@@ -21,6 +21,28 @@ def archive(files):
 
 
 class NativeAssetsTest(unittest.TestCase):
+    def test_external_mojang_language_is_byte_exact_and_bound_to_client_index_and_object(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            content = '{"block.minecraft.stone":"石头"}'.encode('utf-8')
+            digest = sha1(content).hexdigest()
+            (root / digest).write_bytes(content)
+            index = json.dumps({'objects': {'minecraft/lang/zh_cn.json': {'hash': digest, 'size': len(content)}}}).encode()
+            index_path = root / '17.json'; index_path.write_bytes(index)
+            version = {'id': '1.21.1', 'downloads': {'client': {'sha1': sha1(b'client').hexdigest()}},
+                       'assetIndex': {'id': '17', 'sha1': sha1(index).hexdigest(), 'size': len(index)}}
+            version_path = root / 'version.json'; version_path.write_text(json.dumps(version), encoding='utf-8')
+            assets = AssetArchive()
+            add_vanilla_languages(assets, b'client', '1.21.1', version_path, index_path, root)
+            key = 'assets/minecraft/lang/zh_cn.json'
+            self.assertEqual(assets.data[key], content)
+            self.assertEqual(assets.index[key]['objectSha1'], digest)
+            for client, broken_index, broken_object in [(b'other-client', index, content),
+                    (b'client', index + b' ', content), (b'client', index, b'changed')]:
+                index_path.write_bytes(broken_index); (root / digest).write_bytes(broken_object)
+                with self.assertRaises(ValueError):
+                    add_vanilla_languages(AssetArchive(), client, '1.21.1', version_path, index_path, root)
+
     def test_namespace_and_original_bytes_are_preserved(self):
         assets = AssetArchive()
         pixels = bytes(range(256))

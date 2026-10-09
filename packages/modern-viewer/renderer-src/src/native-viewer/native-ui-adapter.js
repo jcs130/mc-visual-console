@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { InventoryPlayerPreview } from '../modern-viewer/inventory-player-preview.js'
 import { FishingCatchHud } from '../modern-viewer/fishing-catch.js'
 import { NativeItemIcons } from './native-item-icons.js'
+import { NativeLanguage } from './native-language.js'
 import { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
   nativeCoordinateMenuLayout } from './native-mod-menus.js'
 export { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
@@ -13,6 +14,8 @@ export { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDom
 // the original modules. No proxy registry, default player or game action API.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const RESOURCE = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/
+const slotRoleName = role => ({ material: '材料', result: '产物', inventory: '背包', input: '输入',
+  output: '输出', fuel: '燃料', container: '容器', equipment: '装备', armor: '护甲' })[role] ?? role
 const finite = value => typeof value === 'number' && Number.isFinite(value)
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
@@ -294,15 +297,15 @@ function node (document, tag, className, content) {
 
 // An optional future icon resolver must consume the complete native item.
 // Absence means a truthful text label, never /icons/<basename>.png.
-export function renderNativeItemSlot (document, slot, item, { label = '', resolveItemIcon, resolveItemIconReason } = {}) {
+export function renderNativeItemSlot (document, slot, item, { label = '', resolveItemIcon, resolveItemIconReason, resolveItemName } = {}) {
   slot.replaceChildren()
   slot.dataset.state = 'available'
   slot.dataset.itemName = item?.name ?? ''
   slot.dataset.modelState = item ? 'unavailable' : 'empty'
   delete slot.dataset.modelReason
-  // displayName is the same-player server's getHoverName().getString(). Never
-  // infer a translated name from a registry basename or a guessed component.
-  const displayName = text(item?.displayName, 256) || item?.name
+  // Localize the original same-player Component, retaining the native ID and
+  // complete SNBT. Unknown/custom names keep the authoritative server text.
+  const displayName = text(resolveItemName?.(item), 256) || text(item?.displayName, 256) || item?.name
   const food = item?.food
   const foodText = record(food) && Number.isSafeInteger(food.nutrition) && food.nutrition >= 0 &&
     finite(food.saturation) && food.saturation >= 0 && typeof food.canAlwaysEat === 'boolean' && finite(food.eatSeconds) && food.eatSeconds >= 0
@@ -340,7 +343,7 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
 // so this native presentation override keeps the actual complete item and
 // renders through the same strict item resolver as inventory/hotbar.
 export class NativeFishingCatchHud extends FishingCatchHud {
-  constructor (options) { super(options); this.nativeItems = new Map() }
+  constructor (options) { super(options); this.nativeItems = new Map(); this.resolveItemName = options.resolveItemName }
   push (event) {
     const rows = nativeSlotRows([{ slot: 0, item: event?.item ? { ...event.item, count: event.count } : null }])
     if (!rows?.[0].item || !Number.isSafeInteger(event.seq)) return false
@@ -354,7 +357,7 @@ export class NativeFishingCatchHud extends FishingCatchHud {
     const icon = node(document, 'div', 'viewer-fishing-catch-icon corti-slot')
     icon.setAttribute('aria-hidden', 'true')
     const actualItem=this.nativeItems.get(caught.seq) ?? caught.item
-    const actualLabel=text(actualItem?.displayName,256)||actualItem?.name||caught.label
+    const actualLabel=this.resolveItemName?.(actualItem)||text(actualItem?.displayName,256)||actualItem?.name||caught.label
     this.renderIcon?.(icon, actualItem)
     const copy = node(document, 'div', 'viewer-fishing-catch-copy')
     const name = node(document, 'strong', '', actualLabel); name.title = actualItem?.name ? `${actualLabel}\n${actualItem.name}` : actualLabel
@@ -369,12 +372,13 @@ export class NativeFishingCatchHud extends FishingCatchHud {
 
 export function createNativeInterface ({ document = globalThis.document,
   previewFactory = options => new InventoryPlayerPreview(options), now = Date.now,
-  setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason } = {}) {
+  setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason, language = new NativeLanguage() } = {}) {
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   let expectedUuid = null, actor = null, actorReason = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
   let hudSignature = null, skillsSignature = null
   const resolveIcon = item => typeof resolveItemIcon === 'function' ? resolveItemIcon(item) : itemIcons?.resolve(item)
+  const resolveName = item => language.item(item)
   const resolveIconReason = item => typeof resolveItemIconReason === 'function' ? resolveItemIconReason(item)
     : typeof resolveItemIcon === 'function' ? null : itemIcons?.reason(item)
   let presentation = unavailable('等待本人状态'), manualOpen = false, idleOpen = false,
@@ -440,12 +444,12 @@ export function createNativeInterface ({ document = globalThis.document,
         const index = inventory.hotbarStart + i, slot = node(document, 'div', 'corti-slot')
         slot.dataset.slot = String(index)
         if (!slotMap.has(index)) note(slot, '槽未同步')
-        else renderNativeItemSlot(document, slot, slotMap.get(index), { label: `快捷栏 ${i + 1}`, resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason })
+        else renderNativeItemSlot(document, slot, slotMap.get(index), { label: `快捷栏 ${i + 1}`, resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName })
         bar.append(slot)
       }
     }
     if (offhand) {
-      if (inventory && Number.isInteger(inventory.offhandSlot) && slotMap.has(inventory.offhandSlot)) renderNativeItemSlot(document, offhand, slotMap.get(inventory.offhandSlot), { label: '副手', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason })
+      if (inventory && Number.isInteger(inventory.offhandSlot) && slotMap.has(inventory.offhandSlot)) renderNativeItemSlot(document, offhand, slotMap.get(inventory.offhandSlot), { label: '副手', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName })
       else note(offhand, '副手未同步')
     }
     if (selection) {
@@ -458,7 +462,7 @@ export function createNativeInterface ({ document = globalThis.document,
     const element = node(document, 'div', 'corti-menu-slot')
     element.dataset.slot = String(row.slot)
     if (x !== undefined) { element.style.left = `${x * 2}px`; element.style.top = `${y * 2}px` }
-    renderNativeItemSlot(document, element, row.item, { label, resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason }); body.append(element)
+    renderNativeItemSlot(document, element, row.item, { label, resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName }); body.append(element)
     return element
   }
   const actorSource = () => {
@@ -525,7 +529,7 @@ export function createNativeInterface ({ document = globalThis.document,
     const heading = q('[data-menu-title]'), source = q('[data-menu-source]')
     if (showWindow) {
       menu.dataset.inventorySource = 'container'
-      if (heading) heading.textContent = text(window.title) || text(window.menuType) || '本人原生菜单'
+      if (heading) heading.textContent = language.menu(window)
       if (source) source.textContent = '真实游戏窗口 · 只读'
       let layout = null, kind = null, reason = null
       try {
@@ -613,7 +617,7 @@ export function createNativeInterface ({ document = globalThis.document,
             element.style.width = '32px'; element.style.height = '32px'; element.style.pointerEvents = 'none'
             element.dataset.previewKind = preview.kind; element.dataset.selected = String(preview.selected)
             element.dataset.nativePreviewIndex = String(preview.buttonId ?? preview.variantIndex)
-            renderNativeItemSlot(document, element, preview.item, { label: '原生配方预览（不是物品栏）', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason })
+            renderNativeItemSlot(document, element, preview.item, { label: '原生配方预览（不是物品栏）', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName })
             element.title += ' · 配方预览，不是可取物品'; element.setAttribute('aria-label', element.title)
             for (const image of element.querySelectorAll('img')) { image.style.width = '32px'; image.style.height = '32px'; image.style.imageRendering = 'pixelated' }
             panel.append(element)
@@ -622,7 +626,7 @@ export function createNativeInterface ({ document = globalThis.document,
         for (const { row, x, y, role } of layout.slots) {
           // Original Slot coords address the 16px item; existing CSS draws its
           // 32px image 2px inside this 36px div, so place the div one GUI pixel back.
-          const itemSlot = slot(panel, row, x - 1 + (layout.offsetX ?? 0), y - 1 + (layout.offsetY ?? 0), `原生${role}槽 ${row.slot}`)
+          const itemSlot = slot(panel, row, x - 1 + (layout.offsetX ?? 0), y - 1 + (layout.offsetY ?? 0), `原生${slotRoleName(role)}槽 ${row.slot}`)
           itemSlot.dataset.nativeSlotX = String(x); itemSlot.dataset.nativeSlotY = String(y); itemSlot.dataset.slotRole = role
           if (typeof window.mayPickup?.[row.slot] === 'boolean') itemSlot.dataset.mayPickup = String(window.mayPickup[row.slot])
           if (kind === 'cooking-pot' && row.slot === 7 && row.item === null) {
@@ -643,7 +647,7 @@ export function createNativeInterface ({ document = globalThis.document,
           if (kind === 'cooking-pot' && row.slot === 6) {
             const container = cookingPot.container
             const item = container.item
-            itemSlot.title += `\n熟食缓冲槽；原模组禁止直接取出；盛装容器：${container.available ? (item ? `${text(item.displayName,256) || item.name} (${item.name})` : '原回执为空') : '未同步'}`
+            itemSlot.title += `\n熟食缓冲槽；原模组禁止直接取出；盛装容器：${container.available ? (item ? `${resolveName(item)} (${item.name})` : '原回执为空') : '未同步'}`
             itemSlot.setAttribute('aria-label', itemSlot.title)
           }
         }
@@ -659,10 +663,10 @@ export function createNativeInterface ({ document = globalThis.document,
         const progressText = progress ? `；${progress.available ? '火焰与烧炼进度来自本人原生 dataValues'
           : `火焰与烧炼进度未知（${progress.reason}）`}` : cookingPot ? `；热源${cookingPot.heat.available ? (cookingPot.heat.isHeated ? '已加热' : '未加热') : `未知（${cookingPot.heat.reason}）`}；烹饪进度${cookingPot.progress.available ? '来自本人原生 dataValues' : `未知（${cookingPot.progress.reason}）`}` : ''
         const placeholderText = kind === 'cooking-pot' && assets.cookingPotPlaceholderReason ? `；空槽图标未支持（${assets.cookingPotPlaceholderReason}）` : ''
-        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId} · state ${window.stateId}；${label} · 只读；${missing}${progressText}${placeholderText}`))
+        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId} · 状态编号 ${window.stateId}；${label} · 只读；${missing}${progressText}${placeholderText}`))
         if (kind === 'domum') {
           const state = layout.state, variant = state.currentVariant
-          body.append(node(document, 'p', 'corti-menu-note', `本人原生选择 · 分组：${state.currentGroup ?? '未选择'}；款式：${variant?.displayName || variant?.name || variant?.id || '未选择'}；可用分组：${state.groups.length}；匹配配方：${state.matchingRecipeCount ?? '未同步'}。可选款式是配方预览，不是背包物品。`))
+          body.append(node(document, 'p', 'corti-menu-note', `本人原生选择 · 分组：${language.translate(`cuttergroup.${state.currentGroup}`) ?? state.currentGroup ?? '未选择'}；款式：${variant?.count > 0 ? resolveName({ ...variant, name: variant.id, displayName: variant.name }) : '未选择'}；可用分组：${state.groups.length}；匹配配方：${state.matchingRecipeCount ?? '未同步'}。可选款式是配方预览，不是背包物品。`))
         }
       } else {
         let coordinates = null
@@ -681,12 +685,12 @@ export function createNativeInterface ({ document = globalThis.document,
           panel.append(grid)
         }
         body.append(panel)
-        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId ?? '未同步'} · state ${window.stateId ?? '未同步'}；${coordinates ? '本人原生槽位坐标诊断视图；原模组界面贴图/控件未支持' : '原生菜单布局未支持'}${reason ? `（${reason}）` : ''}`))
+        body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId ?? '未同步'} · 状态编号 ${window.stateId ?? '未同步'}；${coordinates ? '本人原生槽位坐标诊断视图；原模组界面贴图/控件未支持' : '原生菜单布局未支持'}${reason ? `（${reason}）` : ''}`))
       }
       if (window.carried) {
         const carried = node(document, 'div', 'native-menu-carried'), icon = node(document, 'div', 'corti-menu-slot')
-        renderNativeItemSlot(document, icon, window.carried, { label: '本人光标', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason })
-        carried.append(icon, node(document, 'span', '', `光标：${window.carried.displayName || window.carried.name} × ${window.carried.count}`)); body.append(carried)
+        renderNativeItemSlot(document, icon, window.carried, { label: '本人光标', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName })
+        carried.append(icon, node(document, 'span', '', `光标：${resolveName(window.carried)} × ${window.carried.count}`)); body.append(carried)
       }
       const operation = presentation.modOperations?.at(-1)
       if (operation?.playerUuid === expectedUuid) {
@@ -772,9 +776,9 @@ export function createNativeInterface ({ document = globalThis.document,
     else if (event.code === 'Escape') { event.preventDefault(); closeMenu() }
   })
   const fishingRoot = el('viewer-fishing-catch')
-  const fishing = fishingRoot ? new NativeFishingCatchHud({ root: fishingRoot, now,
+  const fishing = fishingRoot ? new NativeFishingCatchHud({ root: fishingRoot, now, resolveItemName: resolveName,
     schedule: later, cancel: timer => { clearTimer(timer); timers.delete(timer) },
-    renderIcon: (target, item) => renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason }) }) : null
+    renderIcon: (target, item) => renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName }) }) : null
   const reset = () => {
     current = null; actor = null; actorReason = null; presentation = unavailable('本人状态不可用')
     manualOpen = false; cancelIdle(); dismissedMenu = null; lastMenuSignature = null; hudSignature = null; skillsSignature = null
@@ -797,8 +801,10 @@ export function createNativeInterface ({ document = globalThis.document,
         if (disposed || sequence !== assetsSequence) return
         iconRevision++; lastMenuSignature = null; renderHud(); renderMenu()
       } })
-      const result = await assets.prepare()
+      const nextLanguage = new NativeLanguage(reader)
+      const [result] = await Promise.all([assets.prepare(), nextLanguage.prepare()])
       if (disposed || sequence !== assetsSequence) return result
+      language = nextLanguage
       const style = node(document, 'style')
       const background = (selector, name) => `${selector}{background-image:${uiSprite(name) ? `url("${uiSprite(name)}")` : 'none'}}`
       style.dataset.nativeHudAssets = ''

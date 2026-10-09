@@ -1,5 +1,7 @@
 # 原生模组窗口的网页展示
 
+2026-10-09 中文与图标后续：原始名称 Component/翻译参数保留到网页，接入原 Minecraft/模组中文；新增七种 Domum 默认图标、四种门和十五种活板门，补齐第一页十组图标。原版橡木按钮/木板/楼梯的两个已审计贴图覆盖按默认原生 pack 顺序解决，其他冲突和专用动画/glint 仍明确 unavailable。148 项相关测试通过。当前规则、来源及维护步骤见 [中文与图标](native-ui-localization.md)；下文“仅 panel/全部冲突拒绝”为较早增量范围。
+
 2026-10-09：Domum Cutter 增加原生分组/款式第一页各最多 10 个预览，保留实际索引、完整物品组件、选择状态与原 PNG 按钮 UV。服务端只从原模组模板复制预览，已有真实输出材质时才按当前输入重映射；网页只读预览没有 `data-slot`、不作为库存或可取产物。页内预览仍须匹配本人 UUID、windowId、stateId 和新鲜度，后续滚动页没有伪装成已完成。
 
 新增 `native-domum-item-icons.js`：按锁定 Domum 1.0.231 的原材质 loader、PanelBlockItem、15 个 TrapdoorType ordinal 和原 item overrides，读取实际 `domum_ornamentum:texture_data`、`minecraft:block_state`，保留原模型顶点/UV并替换实际材质 sprite。仅接受明确的无 tint、不透明、单一 sprite 方块材质；原模组随机材质、透明/染色/动态方块、其他 Domum 物品和未知视觉组件明确不可用。材质资源冲突继续拒绝，未按文件顺序猜优先级。

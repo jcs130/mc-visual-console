@@ -1,5 +1,9 @@
 # 原生加工设备的有限场景适配
 
+## 2026-10-09 中文名称与建筑图标
+
+原同账号名称 Component 已保留到网页，读取原版和模组中文，动态材质名按原参数翻译；自定义名称、ID 与完整组件不改写。新增七种 Domum 默认图标、四种门、十五种活板门和两个已审计木板贴图覆盖，第一页十组图标已支持。148 项相关测试通过，完整场景仍未验；魂符动画/glint、其他专用模型和未知资源覆盖继续明确不可用。来源及维护输入见 [图标与汉化](docs/native-ui-localization.md)。
+
 ## 2026-10-09 YSM 与 Domum 增量
 
 YSM 原资源 provider 现按原 ID 支持 `misc/1_alex/gsl`、`misc/2_steve/tartaric_acid`、`misc/3_default_boy/blue|red`。分别验证原定义、模型、动画、PNG 和整个 2.6.5 JAR；64/128 像素纹理、原骨骼/几何/UV不改写。Steve/Alex 的原 geckolib_format_version=2 和数值 uniform scale=1 已按有限原语义读取。Alex 没有原 idle clip、Steve/Alex 没有原 parallel0/1，缺项明确展示，不造动画。未知模型、姿势、装备、第一人称手臂仍不可用；完整实体/动画/全场景 parity 均为 false。普通账号实际切 Steve → Alex → Boy/red，并通过网页确认；原生选择授权由服务端保留。
