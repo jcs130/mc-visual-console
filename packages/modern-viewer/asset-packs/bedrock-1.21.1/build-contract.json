@@ -1,0 +1,140 @@
+{
+  "actualBedrockVisualVerified": false,
+  "backendCommit": "b38bf188859f4ed0370d499366f5e822e520f192",
+  "date": "2026-10-09",
+  "excluded": [
+    {
+      "kind": "touhou",
+      "modelId": "authors_and_credits:wine_fox_taisho",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "authors_and_credits:sazuki",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "geckolib:winefox_mini",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:kisume",
+      "reason": "duplicate_geometry_bones"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:tsukumo_yatsuhashi",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:tsukumo_benben",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:clownpiece",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:hecatia_lapislazuli",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:niwatari_kutaka",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:kurokoma_saki",
+      "reason": "duplicate_geometry_bones"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:ibaraki_kasen",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid:ibaraki_kasen_2",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "touhou",
+      "modelId": "touhou_little_maid_old:meira",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "ysm",
+      "modelId": "assets/yes_steve_model/builtin/wine_fox/11_salesperson/ysm.json",
+      "reason": "multi_channel_ysm_texture_requires_adapter"
+    },
+    {
+      "kind": "ysm",
+      "modelId": "assets/yes_steve_model/builtin/wine_fox/15_kluonoa/ysm.json",
+      "reason": "multi_channel_ysm_texture_requires_adapter"
+    },
+    {
+      "kind": "ysm",
+      "modelId": "assets/yes_steve_model/builtin/wine_fox/17_mini/ysm.json",
+      "reason": "geometry_png_size_mismatch"
+    },
+    {
+      "kind": "ysm",
+      "modelId": "assets/yes_steve_model/builtin/wine_fox/21_saint/ysm.json",
+      "reason": "multi_channel_ysm_texture_requires_adapter"
+    }
+  ],
+  "files": {
+    "MawModels.jar": {
+      "bytes": 12114,
+      "directory": "extensions",
+      "sha256": "361b9b763fb762fb0c2d70add6def4905cef8ddcd5c0d4e4ecfa5bb2a8da2427"
+    },
+    "maw-touhou-models.mcpack": {
+      "bytes": 2869354,
+      "directory": "packs",
+      "sha256": "445beb6214b3d8c63fba0961407c9eda01d1688bee7ed9e7ef5b32fd071f99d0"
+    },
+    "maw-ysm-models.mcpack": {
+      "bytes": 1857594,
+      "directory": "packs",
+      "sha256": "059364342d67adbe5a1ec0af62f130102083db12ff58e63597eda6c14759a054"
+    },
+    "modpack-catalog.json": {
+      "bytes": 307931,
+      "directory": "",
+      "sha256": "b91ab213e1bfe17027dd8896f26b3113265ed5901879581f8d07b08bdd586d2d"
+    }
+  },
+  "modelCount": 279,
+  "originalAssetsCommit": "986a052c",
+  "packs": [
+    {
+      "file": "maw-touhou-models.mcpack",
+      "models": 241,
+      "uuid": "b6a63468-6f80-5fff-b05e-4d9cb26da319",
+      "version": [
+        1,
+        0,
+        2
+      ]
+    },
+    {
+      "file": "maw-ysm-models.mcpack",
+      "models": 38,
+      "uuid": "2ede22d4-5f53-564c-b226-f551bb6a08dc",
+      "version": [
+        1,
+        0,
+        2
+      ]
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceManifestSha256": "466ecea9a3f7d85f66b42e9b7ee91e3c2143c17cea8cfbe488c30b2a30baa1f9"
+}
