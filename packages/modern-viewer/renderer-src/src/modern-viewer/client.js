@@ -138,6 +138,7 @@ const viewMode = window.location.pathname.startsWith("/dungeon")
     ? "third"
     : "first";
 const isFirstPersonView = viewMode === "first";
+const isPhotoView = queryValue("photo") === "1";
 const isFreeOrbitView = viewMode === "third";
 const isDungeonView = viewMode === "dungeon";
 const usesWorldAvatar = !isFirstPersonView;
@@ -825,7 +826,7 @@ async function initializeRenderer(version) {
           defaultSkybox: !isDungeonView,
           renderEntities: true,
           extraBlockRenderers: true,
-          showHand: true,
+          showHand: !isPhotoView,
           viewBobbing: true,
           fetchPlayerSkins: false,
           fov: isFirstPersonView ? firstPersonFov : isDungeonView ? dungeonFov : 75,
@@ -3784,12 +3785,17 @@ function maybeApplyPlayerSkin(entity, specialPlayerEntity = false, force = false
   const signature = `${skin.id}:${String(entity.id)}`;
   if (!force && playerSkinTargetSignatures.get(targetKey) === signature) return true;
   playerSkinTargetSignatures.set(targetKey, signature);
-  void Promise.resolve(updatePlayerSkin.call(viewer.backend.backendMethods, entity.id, entity.username, entity.uuid, skin.texture))
+  const request = Promise.resolve(updatePlayerSkin.call(viewer.backend.backendMethods, entity.id, entity.username, entity.uuid, skin.texture))
     .then(() => {
       if (playerSkinTargetSignatures.get(targetKey) === signature) applyServerPlayerSkinModel(entity, false);
     }).catch(() => {
       if (playerSkinTargetSignatures.get(targetKey) === signature) playerSkinTargetSignatures.delete(targetKey);
+      if (globalThis.__photoSkinTasks) globalThis.__photoSkinFailed = true;
     });
+  if (globalThis.__photoSkinTasks) {
+    globalThis.__photoSkinTasks.add(request);
+    void request.then(() => globalThis.__photoSkinTasks.delete(request));
+  }
   return true;
 }
 
@@ -5543,6 +5549,7 @@ function publishDiagnostics(version) {
     mesher: useWasmMesher ? "WASM experimental" : "JavaScript workers",
     minecraftVersion: version,
     viewMode,
+    photoMode: isPhotoView,
     firstPersonFov,
     renderDistance,
     textureAnisotropy,

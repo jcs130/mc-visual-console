@@ -2,6 +2,8 @@
 
 These ESM observers attach to an existing Mineflayer bot. They do not create a bot, choose actions, send chat or request a model. The socket protocol is in `../SOCKET_PROTOCOL.md`.
 
+`viewerPhotoPage(assetRoot)` in `viewer-photo-page.mjs` mounts the existing renderer as a clean still camera. Use `photo=1&distance=2` to hide the HUD and observer hand, then wait for `__photoReady()` before capturing `#viewer-canvas`: this checks the actual 5×5 received/meshed chunk footprint, pending sections, fonts and server skin loads. Player names and world display entities remain visible. The host owns identity, camera pose, access control, resource limits and PNG delivery; this page opens no endpoint and provides no game controls. Ordinary viewer pages keep their HUD and hands. Photo output is renderer imagery, with the same supported content limits as the selected asset pack.
+
 `createViewerContentBridge` in `viewer-content.mjs` observes vanilla **1.20.6** particles, map pixels, item frames and TextDisplay bubbles on the action connection. Attach once before login; use `subscribeSocket(socket)` for each browser to replay only bounded current snapshots and drop old particles. Private dialogue is never inferred from chat history or shared across bots. Dispose with the bot/host. See the [Paper guide](../docs/paper-content-compatibility.md) and [bubble/font update guide](../docs/text-display-bubbles.md). It does not mutate Mineflayer's decoder or send game actions.
 
 ```js
