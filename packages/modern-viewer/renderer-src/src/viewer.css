@@ -1,4 +1,18 @@
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#080d12;color:#f3f5f6;font:14px/1.4 system-ui,sans-serif}
+/* OBS browser source: no world renderer or full-screen backgrounds. */
+html[data-obs-overlay=true],body[data-obs-overlay=true]{background:transparent!important}
+body[data-obs-overlay=true] #viewer-canvas,
+body[data-obs-overlay=true] .corti-crosshair,
+body[data-obs-overlay=true] .corti-status-vignette,
+body[data-obs-overlay=true] .corti-view-switch,
+body[data-obs-overlay=true] .corti-minimap,
+body[data-obs-overlay=true] .corti-tactical-canvas,
+body[data-obs-overlay=true] .corti-sound-toggle,
+body[data-obs-overlay=true] .corti-music-toggle,
+body[data-obs-overlay=true] .viewer-audio-controls,
+body[data-obs-overlay=true] .corti-night-vision-toggle,
+body[data-obs-overlay=true] #corti-content-status{display:none!important}
+body[data-obs-overlay=true] .boot{inset:auto;top:12px;left:12px;max-width:480px;padding:8px;border-radius:6px;background:#14212bd9}
 
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .boot{position:fixed;inset:0;z-index:5;display:grid;place-items:center;text-align:center;background:#080d12;color:#e6eeee;pointer-events:none}

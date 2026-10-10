@@ -195,9 +195,9 @@ const adaptedClient = clientSource
   .replace('socket.on("entityAnimation", (event) => applyEntityAnimation(event));',
     'socket.on("digProgress", (event) => cortiApplyDigProgress(event));\n' +
     'socket.on("entityAnimation", (event) => applyEntityAnimation(event));')
-  .replace('socket.on("entity", (update) => handleEntity(update, false));',
+  .replace('socket.on("entity", (update) => { if (!isObsOverlay) handleEntity(update, false); });',
     'socket.on("biome", (event) => cortiSetBiome(event));\n' +
-    'socket.on("entity", (update) => handleEntity(update, false));')
+    'socket.on("entity", (update) => { if (!isObsOverlay) handleEntity(update, false); });')
   .replaceAll('    maybeApplyVillagerAppearance(entity);',
     '    maybeApplyVillagerAppearance(entity);\n    cortiApplySheepAppearance(entity);')
   .replace('  maybeApplyVillagerAppearance(normalized);',

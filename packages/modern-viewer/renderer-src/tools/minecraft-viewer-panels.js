@@ -25,12 +25,35 @@ let cortiDismissedWindowId = null;
 let cortiCombatUntil = 0;
 let cortiCombatTimer = null;
 let cortiInventoryPlayerPreview = null;
+let cortiViewerSessionKey = null;
+let cortiViewerSessionAt = 0;
+let cortiWindowAnchor = null;
+
+function cortiResetViewerPanels(clearSubject = false) {
+  cortiCancelInventoryPreview(false);
+  cortiPanelWindow = null; cortiInventoryOpen = false; cortiDismissedWindowId = null;
+  cortiWindowAnchor = null;
+  cortiMenuSignature = ''; cortiInventoryPlayerPreview?.reset();
+  if (clearSubject) {
+    cortiPanelAvatar = null; cortiPanelSkills = null;
+    cortiAbilityCooldowns.clear(); cortiAbilityCastSequences.clear();
+    cortiRenderSkills();
+  }
+  cortiRenderMenu();
+}
 
 function cortiSyncInventoryPlayerPreview() {
   const menu = document.getElementById('corti-menu');
   const host = menu?.querySelector('[data-inventory-player-preview]');
   if (!menu || menu.hidden || !host) {
     cortiInventoryPlayerPreview?.setVisible(false);
+    return;
+  }
+  if (typeof isObsOverlay !== 'undefined' && isObsOverlay) {
+    cortiInventoryPlayerPreview?.setVisible(false);
+    host.dataset.previewStatus = 'world-renderer-disabled';
+    host.dataset.previewState = 'disabled';
+    host.title = 'OBS 覆盖模式显示真实物品，角色由游戏观战画面显示';
     return;
   }
   if (cortiInventoryPlayerPreview?.disposed) cortiInventoryPlayerPreview = null;
@@ -199,14 +222,37 @@ function cortiInstallPanels(socket) {
   socket.on('containerState', (state) => {
     const previousId = cortiPanelWindow?.id;
     cortiPanelWindow = state && typeof state === 'object' ? state : null;
+    if (!cortiPanelWindow) cortiWindowAnchor = null;
+    else if (previousId !== cortiPanelWindow.id && latestPosition?.pos)
+      cortiWindowAnchor = { x: latestPosition.pos.x, y: latestPosition.pos.y, z: latestPosition.pos.z };
     if (cortiPanelWindow) cortiCancelInventoryPreview(false);
     if (!cortiPanelWindow || cortiPanelWindow.id !== previousId) cortiDismissedWindowId = null;
     if (cortiPanelWindow || previousId !== undefined || cortiInventoryOpen) cortiRenderMenu();
   });
+  socket.on('position', (state) => {
+    const pos = state?.pos;
+    if (!cortiPanelWindow || !pos) return;
+    if (!cortiWindowAnchor) { cortiWindowAnchor = { ...pos }; return; }
+    if (Math.hypot(pos.x - cortiWindowAnchor.x, pos.z - cortiWindowAnchor.z) > 0.35
+        || Math.abs(pos.y - cortiWindowAnchor.y) > 0.5) {
+      cortiDismissedWindowId = cortiPanelWindow.id;
+      cortiInventoryOpen = false; cortiCancelInventoryPreview(false); cortiRenderMenu();
+    }
+  });
+  socket.on('viewerSession', (state) => {
+    cortiViewerSessionAt = Date.now();
+    const key = state?.attached ? `${state.playerUuid}:${state.entityId}:${state.worldUuid}` : '';
+    if (key !== cortiViewerSessionKey || !state?.attached) cortiResetViewerPanels(true);
+    cortiViewerSessionKey = key;
+    if (!state?.windowOpen && cortiPanelWindow) {
+      cortiPanelWindow = null; cortiCancelInventoryPreview(false); cortiRenderMenu();
+    }
+    document.body.dataset.observedPlayer = state?.attached ? state.playerName : '';
+  });
   socket.on('inventoryPreview', cortiInventoryPreview);
   for (const name of ['disconnect', 'viewerReset']) socket.on(name, () => {
-    cortiCancelInventoryPreview();
-    cortiInventoryPlayerPreview?.reset();
+    cortiResetViewerPanels(true);
+    cortiViewerSessionKey = null; cortiViewerSessionAt = 0;
   });
   window.addEventListener('pagehide', (event) => {
     cortiCancelInventoryPreview();
@@ -279,6 +325,13 @@ function cortiInstallPanels(socket) {
     cortiUpdateAbilityIcons();
   });
   setInterval(cortiUpdateAbilityIcons, 200);
+  const sessionTimer = setInterval(() => {
+    if (cortiViewerSessionAt && Date.now() - cortiViewerSessionAt > 12_000) {
+      cortiViewerSessionAt = 0; cortiResetViewerPanels(true);
+      const hud = document.getElementById('corti-survival'); if (hud) hud.hidden = true;
+    }
+  }, 1000);
+  window.addEventListener('pagehide', () => clearInterval(sessionTimer), { once: true });
   cortiRenderSkills();
 }
 

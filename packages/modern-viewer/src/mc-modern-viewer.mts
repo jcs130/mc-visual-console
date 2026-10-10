@@ -16,6 +16,7 @@ import { loadViewerBlockMapping, identityViewerBlockMapping } from './viewer-sta
 import { createViewerStaticResponder } from './viewer-static.mjs'
 import { ViewerSessionSlots } from './viewer-session-slots.mjs'
 import { createViewerContentBridge } from '../renderer-src/host/viewer-content.mjs'
+import { createViewerObserverBridge } from '../renderer-src/host/viewer-observer.mjs'
 import { createViewerAppearanceBridge } from '../renderer-src/host/viewer-appearance.mjs'
 import { serveViewerAsset } from '../renderer-src/host/viewer-asset-server.mjs'
 
@@ -540,7 +541,18 @@ function stripOwnNameTag<T extends object>(payload: T): T {
   delete clone.customName
   return clone as T
 }
-function serializeAvatarState(bot, sequence = 0) {
+export function serializeViewerWindow(bot, window) {
+  if (!window || !Array.isArray(window.slots) || window.slots.length > 256) return null
+  let title = window.title
+  try { if (typeof title === 'string') title = JSON.parse(title) } catch {}
+  const plain = value => typeof value === 'string' ? value
+    : value && typeof value === 'object' ? String(value.text ?? value.translate ?? '') + (Array.isArray(value.extra) ? value.extra.map(plain).join('') : '') : ''
+  return { id: window.id, type: window.type, title: plain(title).slice(0, 256),
+    inventoryStart: window.inventoryStart, hotbarStart: window.hotbarStart ?? window.inventoryEnd - 9,
+    slots: window.slots.map((item, slot) => serializeViewerItem(bot, item, slot) ?? null) }
+}
+
+export function serializeAvatarState(bot, sequence = 0) {
   const entity = bot.entity
   const inventory = viewerInventory(bot)
   const quickBarSlot = finiteInteger(bot.quickBarSlot, 0, 8)
@@ -1039,6 +1051,9 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   const sessionSlots = new ViewerSessionSlots(MAX_VIEWER_SESSIONS, MAX_CAPTURE_SESSIONS)
   const contentBridge = bot.version === '1.20.6' ? createViewerContentBridge(bot) : null
   const appearanceBridge = bot.version === '1.20.6' ? createViewerAppearanceBridge(bot) : null
+  const observerBridge = bot.version === '1.20.6' ? createViewerObserverBridge(bot, {
+    serializeWindow: window => serializeViewerWindow(bot, window),
+  }) : null
   const fishingOwners = createFishingBobberOwnerTracker(bot, entity => {
     for (const session of sessions) session.entityStream.queue(entity, true)
   })
@@ -1591,7 +1606,7 @@ if (!snap?.holder) {
     settleTimer.unref()
     const session = {
       socket, worldView, entityStream, mode, viewMode, avatarTimer, locomotionKeepalive, settleTimer, movementAnimations,
-      releaseSlot, captureTimer: null, appearanceOff: undefined as undefined | (() => void),
+      releaseSlot, captureTimer: null, observerOff: undefined as undefined | (() => void), appearanceOff: undefined as undefined | (() => void),
       botPosition, botTime, botWeather, botAvatarState, botEntitySpawn, botEntityMoved, botEntityRefresh,
       botEntitySwingArm, botEntityHurt, botParticle, botSoundEffect, botHardcodedSoundEffect, botEntityDead,
       botEntityCrouch, botEntityUncrouch,
@@ -1607,6 +1622,7 @@ if (!snap?.holder) {
     socket.emit('version', bot.version)
     session.contentOff = mode === 'modern' ? contentBridge?.subscribeSocket(socket) : undefined
     session.appearanceOff = mode === 'modern' ? appearanceBridge?.subscribeSocket(socket) : undefined
+    session.observerOff = mode === 'modern' ? observerBridge?.subscribeSocket(socket) : undefined
     socket.emit('viewerProtocol', { schema: 1, blockStates: mode === 'modern' ? 'canonical-vanilla-and-runtime-mod' : 'canonical-vanilla-approximation',
       worldConfigSource: 'loaded-column', maxVisibleColumns: (VIEW_DISTANCE_CHUNKS * 2 - 1) ** 2 })
     emitOwnEntity()
@@ -1651,6 +1667,7 @@ if (!snap?.holder) {
     if (!sessions.delete(session)) return
     session.contentOff?.()
     session.appearanceOff?.()
+    session.observerOff?.()
     clearTimeout(session.captureTimer)
     session.releaseSlot()
     clearInterval(session.avatarTimer)
@@ -1708,6 +1725,7 @@ if (!snap?.holder) {
     fishingOwners.close()
     contentBridge?.dispose()
     appearanceBridge?.dispose()
+    observerBridge?.dispose()
     for (const session of [...sessions]) closeSession(session)
     server.closeAllConnections()
     closing = Promise.all([firstIo, thirdIo].map(io => new Promise(resolve => io.close(() => resolve())))).then(() => {})

@@ -21,7 +21,8 @@ function browser() {
   let sequence = 0;
   const timers = new Map();
   const context = createContext({
-    document: { head: { append() {} }, createElement: () => ({}),
+    latestPosition: { pos: { x: 1, y: 64, z: 1 } },
+    document: { body: { dataset: {} }, head: { append() {} }, createElement: () => ({}),
       getElementById: (id) => ({ 'corti-inventory-toggle': button, 'corti-menu': menu }[id] || null),
       querySelector: () => null },
     window: { localStorage: { getItem: () => null }, addEventListener: (name, listener) => keys.set(name, listener) },
@@ -51,6 +52,39 @@ function browser() {
   const key = (code) => keys.get('keydown')({ code, preventDefault() {} });
   return { emit, preview, advance, menu, button, close, key, label, body, inventory, timers };
 }
+
+for (const event of ['disconnect', 'viewerReset']) test(`${event} clears a persistent game container`, () => {
+  const h = browser();
+  h.emit('containerState', { id: 6, type: 'inventory', title: '交易', slots: [] });
+  assert.equal(h.menu.hidden, false);
+  h.emit(event);
+  assert.equal(h.menu.hidden, true);
+  h.emit('avatarState', { inventory: h.inventory });
+  assert.equal(h.menu.hidden, true);
+});
+
+test('walking dismisses a real window, looking around and position jitter do not', () => {
+  const h = browser();
+  h.emit('containerState', { id: 6, type: 'inventory', title: '交易', slots: [] });
+  h.emit('position', { pos: { x: 1.1, y: 64, z: 1 }, yaw: 2 });
+  assert.equal(h.menu.hidden, false);
+  h.emit('position', { pos: { x: 1.4, y: 64, z: 1 } });
+  assert.equal(h.menu.hidden, true);
+  h.emit('containerState', { id: 6, type: 'inventory', title: '交易', slots: [] });
+  assert.equal(h.menu.hidden, true, 'same stale window must stay dismissed');
+});
+
+test('server closed state and observer subject changes clear copied windows', () => {
+  const h = browser();
+  const subject = { attached: true, playerUuid: 'a', entityId: 1, worldUuid: 'w', playerName: 'A', windowOpen: true };
+  h.emit('viewerSession', subject);
+  h.emit('containerState', { id: 6, type: 'inventory', slots: [] });
+  h.emit('viewerSession', { ...subject, windowOpen: false });
+  assert.equal(h.menu.hidden, true);
+  h.emit('containerState', { id: 7, type: 'inventory', slots: [] });
+  h.emit('viewerSession', { ...subject, playerUuid: 'b', playerName: 'B' });
+  assert.equal(h.menu.hidden, true);
+});
 
 test('idle preview is read-only, uses existing avatar inventory and expires after 2.4 seconds', () => {
   const h = browser();

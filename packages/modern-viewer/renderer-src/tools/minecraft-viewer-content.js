@@ -8,7 +8,7 @@ const cortiNativeParticles = new ServerParticles();
 const cortiMapPhotos = new MapPhotos();
 const cortiTextDisplays = new TextDisplays();
 let cortiTextDisplayError = null;
-loadTextDisplayFont().then(font=>{if(cortiContentDisposed){font.dispose();return;}cortiTextDisplays.setFont(font);})
+if (typeof isObsOverlay === 'undefined' || !isObsOverlay) loadTextDisplayFont().then(font=>{if(cortiContentDisposed){font.dispose();return;}cortiTextDisplays.setFont(font);})
   .catch(error=>{cortiTextDisplayError=String(error.message);});
 let cortiContentEpoch = null;
 let cortiContentDisposed = false;
@@ -91,6 +91,6 @@ function cortiAnimateNativeContent(now) {
   cortiContentStatus.textContent=message;cortiContentStatus.style.display=message?'block':'none';
   requestAnimationFrame(cortiAnimateNativeContent);
 }
-requestAnimationFrame(cortiAnimateNativeContent);
+if (typeof isObsOverlay === 'undefined' || !isObsOverlay) requestAnimationFrame(cortiAnimateNativeContent);
 window.cortiViewerContent={stats:()=>({ysm:cortiYsmPlayers.stats(),particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
 window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});

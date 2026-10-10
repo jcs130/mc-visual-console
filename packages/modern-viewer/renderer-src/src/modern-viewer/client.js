@@ -140,6 +140,13 @@ const viewMode = window.location.pathname.startsWith("/dungeon")
     : "first";
 const isFirstPersonView = viewMode === "first";
 const isPhotoView = queryValue("photo") === "1";
+const isObsOverlay = !isPhotoView && (queryValue("obs") === "1" || queryValue("overlay") === "1"
+  || window.location.pathname.startsWith("/obs/"));
+if (isObsOverlay) {
+  document.documentElement.dataset.obsOverlay = "true";
+  document.body.dataset.obsOverlay = "true";
+}
+let latestObserverState = null;
 const isFreeOrbitView = viewMode === "third";
 const isDungeonView = viewMode === "dungeon";
 const usesWorldAvatar = !isFirstPersonView;
@@ -615,6 +622,7 @@ installNpcGameplay();
 
 const socket = io({
   path: socketPath,
+  query: isObsOverlay ? { overlay: "1" } : {},
   reconnection: true,
   reconnectionDelay: 600,
   reconnectionDelayMax: 3_000,
@@ -633,9 +641,16 @@ window.addEventListener("beforeunload", () => fishingCatchHud.dispose(), { once:
 
 const stopConnectionStatus = installViewerConnectionStatus(socket, {
   setStatus,
-  isRendererReady: () => rendererReady,
+  isRendererReady: () => rendererReady || isObsOverlay,
   reload: () => window.location.reload(),
-  onDisconnect: () => fishingCatchHud.reset(),
+  onDisconnect: () => {
+    fishingCatchHud.reset();
+    latestObserverState = null;
+    if (document.body.dataset.observedPlayer) {
+      const hud = document.getElementById("corti-survival");
+      if (hud) hud.hidden = true;
+    }
+  },
 });
 window.addEventListener("beforeunload", stopConnectionStatus, { once: true });
 socket.on("viewerReset", () => {
@@ -653,6 +668,12 @@ socket.on("chunkStreamState", (state) => {
 });
 
 socket.on("version", (version) => {
+  if (isObsOverlay) {
+    document.body.dataset.overlayReady = "true";
+    setStatus("", false, true);
+    globalThis.modernViewerDiagnostics = { mode: "obs-overlay", worldRenderer: false, version: String(version) };
+    return;
+  }
   if (rendererReady || initializing) return;
   void initializeRenderer(String(version || "1.21.1"));
 });
@@ -673,6 +694,7 @@ socket.on("playerEntity", (entity) => {
 
 socket.on("avatarState", (state) => {
   if (!state || typeof state !== "object") return;
+  if (latestObserverState?.attached === true) state = { ...state, ...latestObserverState.vitals };
   const entity = normalizeEntity(state.entity);
   pendingAvatarState = { ...state, entity };
   const previousMotion = normalizedAvatarMotion;
@@ -695,6 +717,16 @@ socket.on("avatarState", (state) => {
   fishingVisuals?.sync();
 });
 
+socket.on("observerState", (state) => {
+  latestObserverState = state;
+  const root = document.getElementById("corti-survival");
+  if (root) root.hidden = state?.attached === false;
+  if (state?.attached && pendingAvatarState) {
+    pendingAvatarState = { ...pendingAvatarState, ...state.vitals };
+    if (typeof renderCortiSurvivalHud === "function") renderCortiSurvivalHud(pendingAvatarState);
+  }
+});
+
 socket.on("entityAnimation", (event) => applyEntityAnimation(event));
 socket.on("entityDamage", (event) => applyEntityDamage(event));
 socket.on("viewerEffect", (event) => {
@@ -703,6 +735,7 @@ socket.on("viewerEffect", (event) => {
 });
 
 socket.on("loadChunk", (data) => {
+  if (isObsOverlay) return;
   if (!data || !Number.isFinite(data.x) || !Number.isFinite(data.z)) return;
   const normalized = normalizeChunk(data);
   dungeonRoomCoverCache?.ingestColumn(data.x, data.z, normalized.chunk);
@@ -715,6 +748,7 @@ socket.on("loadChunk", (data) => {
 });
 
 socket.on("unloadChunk", (data) => {
+  if (isObsOverlay) return;
   if (!data || !Number.isFinite(data.x) || !Number.isFinite(data.z)) return;
   const key = `${data.x},${data.z}`;
   dungeonRoomCoverCache?.removeColumn(data.x, data.z);
@@ -727,6 +761,7 @@ socket.on("unloadChunk", (data) => {
 });
 
 socket.on("blockUpdate", (data) => {
+  if (isObsOverlay) return;
   if (!data?.pos || !Number.isFinite(data.stateId)) return;
   const normalized = { ...data, pos: toVec3(data.pos) };
   dungeonRoomCoverCache?.setBlockStateId(Math.floor(data.pos.x), Math.floor(data.pos.y), Math.floor(data.pos.z), data.stateId);
@@ -738,6 +773,7 @@ socket.on("blockUpdate", (data) => {
 });
 
 socket.on("blockEntities", (data) => {
+  if (isObsOverlay) return;
   pendingBlockEntities = data && typeof data === "object" ? data : {};
   if (rendererReady) worldView.emit("blockEntities", pendingBlockEntities);
 });
@@ -757,8 +793,8 @@ socket.on("weather", (weather) => {
   applyServerWeather();
 });
 
-socket.on("entity", (update) => handleEntity(update, false));
-socket.on("entityMoved", (update) => handleEntity(update, true));
+socket.on("entity", (update) => { if (!isObsOverlay) handleEntity(update, false); });
+socket.on("entityMoved", (update) => { if (!isObsOverlay) handleEntity(update, true); });
 
 async function initializeRenderer(version) {
   initializing = true;
@@ -5868,7 +5904,8 @@ function setStatus(message, error = false, compact = false) {
   if (!statusElement) return;
   statusElement.textContent = message;
   statusElement.classList.toggle("is-error", error);
-  statusElement.classList.toggle("is-compact", compact);
+  statusElement.classList.toggle("is-compact", isObsOverlay || compact);
+  statusElement.hidden = isObsOverlay && !error && document.body.dataset.overlayReady === "true";
 }
 
 function toVec3(value) {
