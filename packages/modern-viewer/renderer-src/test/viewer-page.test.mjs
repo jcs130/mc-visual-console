@@ -39,3 +39,16 @@ test('page export is repeatable and preserves other generated assets', async () 
     await rm(output, { recursive: true, force: true });
   }
 });
+
+test('nested camera pages resolve mesher workers and entity textures at the asset root', () => {
+  for (const route of ['/', '/third/', '/dungeon/', '/photo/']) {
+    const pageUrl = new URL(route, 'https://viewer.example');
+    const html = renderViewerPage(route === '/dungeon/' ? 'dungeon' : route === '/third/' ? 'third' : 'first');
+    const base = html.match(/<base\s+href="([^"]+)"/)[1];
+    const documentBase = new URL(base, pageUrl);
+    for (const relative of ['mesher.js', 'textures/entity/zombie/zombie.png']) {
+      assert.equal(new URL(relative, documentBase).href, new URL(relative, pageUrl.origin + '/').href);
+    }
+    assert.ok(html.indexOf('<base ') < html.indexOf('<script'));
+  }
+});

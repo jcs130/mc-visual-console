@@ -6,6 +6,7 @@ import {
 import { io } from "socket.io-client";
 import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { FishingCatchHud } from "./fishing-catch.js";
+import { installViewerConnectionStatus } from "./viewer-connection.js";
 import {
   Box3,
   BoxGeometry,
@@ -453,8 +454,6 @@ let rendererPerformance = {
   triangles: null,
   quality: null,
 };
-let reconnectAfterServerDisconnect = true;
-let serverReconnectTimer = null;
 let accumulatedWalkDistance = 0;
 let lastAvatarAnimation = "idle";
 let lastMainHandKey = "";
@@ -632,32 +631,13 @@ const fishingCatchHud = new FishingCatchHud({
 socket.on("fishingCatch", (event) => fishingCatchHud.push(event));
 window.addEventListener("beforeunload", () => fishingCatchHud.dispose(), { once: true });
 
-let socketEverConnected = false;
-socket.on("connect", () => {
-  if (socketEverConnected && rendererReady) {
-    // A fresh socket gets a fresh world snapshot. Reload so stale entity IDs,
-    // fishing lines and chunks from the previous stream cannot survive it.
-    window.location.reload();
-    return;
-  }
-  socketEverConnected = true;
-  reconnectAfterServerDisconnect = true;
-  setStatus(rendererReady ? "实时画面已重新连接" : "正在同步世界数据…", false, rendererReady);
+const stopConnectionStatus = installViewerConnectionStatus(socket, {
+  setStatus,
+  isRendererReady: () => rendererReady,
+  reload: () => window.location.reload(),
+  onDisconnect: () => fishingCatchHud.reset(),
 });
-socket.on("viewerBusy", () => {
-  reconnectAfterServerDisconnect = false;
-  setStatus("本地画面连接已满，请关闭多余的画面页面后刷新。", true);
-});
-socket.on("disconnect", (reason) => {
-  fishingCatchHud.reset();
-  setStatus("画面数据流暂时中断，正在重连…", true);
-  if (reason !== "io server disconnect" || !reconnectAfterServerDisconnect) return;
-  clearTimeout(serverReconnectTimer);
-  serverReconnectTimer = setTimeout(() => {
-    if (!socket.connected) socket.connect();
-  }, 350);
-});
-socket.on("connect_error", () => setStatus("无法连接本地画面服务，正在重试…", true));
+window.addEventListener("beforeunload", stopConnectionStatus, { once: true });
 socket.on("viewerReset", () => {
   fishingCatchHud.reset();
   setTimeout(() => window.location.reload(), 250);

@@ -24,7 +24,9 @@
 
 这些是 Socket.IO **传输路径**，不是 namespace。客户端使用同源连接，允许 WebSocket 和 polling。宿主应在同一个 HTTP 服务上提供页面、静态资源和两个 Socket.IO 入口；每个新连接都发送完整快照。第三人称与地下城共用同一份世界数据，镜头由前端选择。
 
-前端入口是 `/index.js`，对应构建输出 `dist/modern-viewer.js`；样式是 `/viewer.css`。其余 worker、纹理、模型、图标资源应按构建输出 `public/` 的路径提供。HUD 使用 `/textures/gui/...`，导出的版本纹理位于 `public/textures/1.20.6/`，宿主需提供 `/textures/*` 到该目录的映射。资源及 Minecraft 数据版本必须一致，不能用 1.21.1 数据解释 1.20.6 的 state ID。
+名额满时宿主发送 `viewerBusy` 后断开该连接。前端保留“连接已满”的原因，按 3、6、12、15 秒退避重试（之后保持 15 秒），空位释放后自动恢复；页面关闭时取消重试。已渲染页面只有收到获准连接的 `version` 才重新载入，避免拒绝连接触发刷新循环。
+
+前端入口是 `/index.js`，对应构建输出 `dist/modern-viewer.js`；样式是 `/viewer.css`。页面通过 `<base href="/">` 将相对 worker 和纹理路径固定在资源根目录，嵌套相机页面也须保留此设置。其余 worker、纹理、模型、图标资源应按构建输出 `public/` 的路径提供。HUD 使用 `/textures/gui/...`，导出的版本纹理位于 `public/textures/1.20.6/`，宿主需提供 `/textures/*` 到该目录的映射。资源及 Minecraft 数据版本必须一致，不能用 1.21.1 数据解释 1.20.6 的 state ID。
 
 ## 2. 最小可用数据流
 
