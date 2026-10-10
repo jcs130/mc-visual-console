@@ -16,6 +16,7 @@ import { loadViewerBlockMapping, identityViewerBlockMapping } from './viewer-sta
 import { createViewerStaticResponder } from './viewer-static.mjs'
 import { ViewerSessionSlots } from './viewer-session-slots.mjs'
 import { createViewerContentBridge } from '../renderer-src/host/viewer-content.mjs'
+import { createViewerAppearanceBridge } from '../renderer-src/host/viewer-appearance.mjs'
 import { serveViewerAsset } from '../renderer-src/host/viewer-asset-server.mjs'
 
 // 依赖解析锚点：本包 src/ 下没有 node_modules（socket.io / prismarine-viewer / minecraft-data / vec3
@@ -1037,6 +1038,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   const sessions = new Set()
   const sessionSlots = new ViewerSessionSlots(MAX_VIEWER_SESSIONS, MAX_CAPTURE_SESSIONS)
   const contentBridge = bot.version === '1.20.6' ? createViewerContentBridge(bot) : null
+  const appearanceBridge = bot.version === '1.20.6' ? createViewerAppearanceBridge(bot) : null
   const fishingOwners = createFishingBobberOwnerTracker(bot, entity => {
     for (const session of sessions) session.entityStream.queue(entity, true)
   })
@@ -1589,7 +1591,7 @@ if (!snap?.holder) {
     settleTimer.unref()
     const session = {
       socket, worldView, entityStream, mode, viewMode, avatarTimer, locomotionKeepalive, settleTimer, movementAnimations,
-      releaseSlot, captureTimer: null,
+      releaseSlot, captureTimer: null, appearanceOff: undefined as undefined | (() => void),
       botPosition, botTime, botWeather, botAvatarState, botEntitySpawn, botEntityMoved, botEntityRefresh,
       botEntitySwingArm, botEntityHurt, botParticle, botSoundEffect, botHardcodedSoundEffect, botEntityDead,
       botEntityCrouch, botEntityUncrouch,
@@ -1604,6 +1606,7 @@ if (!snap?.holder) {
 
     socket.emit('version', bot.version)
     session.contentOff = mode === 'modern' ? contentBridge?.subscribeSocket(socket) : undefined
+    session.appearanceOff = mode === 'modern' ? appearanceBridge?.subscribeSocket(socket) : undefined
     socket.emit('viewerProtocol', { schema: 1, blockStates: mode === 'modern' ? 'canonical-vanilla-and-runtime-mod' : 'canonical-vanilla-approximation',
       worldConfigSource: 'loaded-column', maxVisibleColumns: (VIEW_DISTANCE_CHUNKS * 2 - 1) ** 2 })
     emitOwnEntity()
@@ -1647,6 +1650,7 @@ if (!snap?.holder) {
   function closeSession(session) {
     if (!sessions.delete(session)) return
     session.contentOff?.()
+    session.appearanceOff?.()
     clearTimeout(session.captureTimer)
     session.releaseSlot()
     clearInterval(session.avatarTimer)
@@ -1703,6 +1707,7 @@ if (!snap?.holder) {
     bot.off('game', dimensionChanged)
     fishingOwners.close()
     contentBridge?.dispose()
+    appearanceBridge?.dispose()
     for (const session of [...sessions]) closeSession(session)
     server.closeAllConnections()
     closing = Promise.all([firstIo, thirdIo].map(io => new Promise(resolve => io.close(() => resolve())))).then(() => {})

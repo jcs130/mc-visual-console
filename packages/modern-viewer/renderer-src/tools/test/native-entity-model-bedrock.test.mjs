@@ -8,6 +8,13 @@ import { nativeBedrockCubeFaces, createNativeBedrockModel } from '../../src/nati
 
 const definition = bones => ({ format_version: '1.12.0', 'minecraft:geometry': [{ description: { texture_width: 128, texture_height: 128 }, bones }] })
 
+test('uploaded model bone names preserve bounded Unicode names and parent links', () => {
+  const material = new THREE.MeshBasicMaterial()
+  const model = createNativeBedrockModel(definition([{ name: '身体', pivot: [0, 0, 0], cubes: [] }, { name: '左耳 1', parent: '身体', pivot: [0, 2, 0], cubes: [] }]), material)
+  assert.equal(model.bones.get('左耳 1').parent, model.bones.get('身体'))
+  model.dispose(); material.dispose()
+})
+
 test('original Bedrock box UVs floor fractional extents without changing zero-thickness geometry', () => {
   const faces = nativeBedrockCubeFaces({ origin: [-3, -4, -4.01], size: [6, 3.5, 0], uv: [24, 0] }, [128, 128])
   assert.equal(faces.length, 6)

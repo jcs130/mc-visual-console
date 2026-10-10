@@ -5453,8 +5453,10 @@ function applyRendererQuality(quality) {
   // skinned shadow pass once adaptive quality reaches performance mode.
   if (renderer.shadowMap) renderer.shadowMap.enabled = quality.mode !== "performance";
   const current = finiteOr(renderer.getPixelRatio?.(), 1);
-  if (Math.abs(current - quality.pixelRatio) < 0.01) return false;
-  renderer.setPixelRatio(quality.pixelRatio);
+  // Still photographs keep their requested physical resolution while chunks load.
+  const ratio = isPhotoView ? 1 : quality.pixelRatio;
+  if (Math.abs(current - ratio) < 0.01) return false;
+  renderer.setPixelRatio(ratio);
   return true;
 }
 

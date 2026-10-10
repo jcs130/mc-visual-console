@@ -69,7 +69,7 @@ export function createNativeBedrockModel (definition, material) {
   }
   try {
     for (const item of geometry.bones) {
-      if (!item || !known(item, ['name', 'parent', 'pivot', 'rotation', 'mirror', 'cubes']) || !/^[a-zA-Z0-9_]+$/.test(item.name ?? '') || bones.has(item.name) || !vector(item.pivot) ||
+      if (!item || !known(item, ['name', 'parent', 'pivot', 'rotation', 'mirror', 'cubes']) || !/^[\p{L}\p{N}_ .-]{1,96}$/u.test(item.name ?? '') || bones.has(item.name) || !vector(item.pivot) ||
           (item.rotation !== undefined && !vector(item.rotation)) || (item.mirror !== undefined && typeof item.mirror !== 'boolean') || (item.cubes !== undefined && (!Array.isArray(item.cubes) || item.cubes.length > 64))) throw Error('NATIVE_BEDROCK_BONE_INVALID')
       const bone = new THREE.Group(); bone.name = item.name; bones.set(item.name, bone); source.set(item.name, item)
     }

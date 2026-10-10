@@ -11,10 +11,12 @@ test('clean photography waits for actual meshed chunks and hides UI without dele
     await assert.rejects(viewerPhotoPage(root),/PHOTO_VIEWER_ASSETS_MISSING/);
     await mkdir(root+'/public');await writeFile(root+'/public/index.html','<html><head></head><body><div>HUD</div><script type="module" src="/index.js"></script></body></html>');
     const page=await viewerPhotoPage(root);assert.match(page,/:not\(#viewer-canvas\)/);assert.match(page,/display:none !important/);
-    const context={document:{fonts:{status:'loaded'},getElementById:()=>({width:768,height:768})}};
+    const context={URLSearchParams,location:{search:'?distance=2'},document:{fonts:{status:'loaded'},getElementById:()=>({width:1536,height:1536})}};
     vm.createContext(context);vm.runInContext(page.match(/<script>([\s\S]*?)<\/script>/)[1],context);
     assert.equal(context.__photoReady(),false);
     const state={received:25,meshed:25,masked:0,pendingSections:0};context.__lanternRenderer={photoMode:true,chunkLoading:state};assert.equal(context.__photoReady(),true);
     for (const changes of [{received:8},{meshed:8},{masked:1},{pendingSections:1}]) {context.__lanternRenderer.chunkLoading={...state,...changes};assert.equal(context.__photoReady(),false);}
+    context.location.search='?distance=6';context.__lanternRenderer.chunkLoading={received:169,meshed:169,masked:0,pendingSections:0};assert.equal(context.__photoReady(),true);
+    context.cortiViewerContent={stats:()=>({ysm:{pending:1,failed:0,unavailable:0,rendered:0,states:1}})};assert.equal(context.__photoReady(),false);
   } finally {await rm(root,{recursive:true,force:true});}
 });
