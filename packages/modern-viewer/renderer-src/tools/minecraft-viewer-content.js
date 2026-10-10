@@ -1,8 +1,14 @@
 import { ServerParticles, loadViewerContentAssets } from './server-particles.js';
 import { MapPhotos, heldMapId } from './map-photos.js';
+import {TextDisplays} from './text-displays.js';
+import {loadTextDisplayFont} from './text-display-font.js';
 
 const cortiNativeParticles = new ServerParticles();
 const cortiMapPhotos = new MapPhotos();
+const cortiTextDisplays = new TextDisplays();
+let cortiTextDisplayError = null;
+loadTextDisplayFont().then(font=>{if(cortiContentDisposed){font.dispose();return;}cortiTextDisplays.setFont(font);})
+  .catch(error=>{cortiTextDisplayError=String(error.message);});
 let cortiContentEpoch = null;
 let cortiContentDisposed = false;
 let cortiContentError = null;
@@ -35,10 +41,11 @@ function cortiUpdateHeldMap() {
   }
 }
 function cortiContentClear(epoch=null) {
-  cortiContentEpoch=epoch;cortiNativeParticles.clear();cortiMapPhotos.reset(epoch);
+  cortiContentEpoch=epoch;cortiNativeParticles.clear();cortiMapPhotos.reset(epoch);cortiTextDisplays.reset(epoch);
 }
 socket.on('contentReset', event => {
   if(event?.schemaVersion!==1||!Number.isSafeInteger(event.epoch)||event.epoch<0)return;
+  if(cortiContentEpoch!==null&&event.epoch<cortiContentEpoch)return;
   cortiContentClear(event.epoch);
 });
 socket.on('particleBatch', event => {
@@ -47,6 +54,7 @@ socket.on('particleBatch', event => {
 });
 socket.on('mapPixels', event => cortiMapPhotos.handlePixels(event));
 socket.on('mapFrame', event => cortiMapPhotos.handleFrame(event));
+socket.on('textDisplay', event => cortiTextDisplays.handle(event));
 socket.on('disconnect', () => cortiContentClear());
 socket.on('viewerReset', () => cortiContentClear());
 loadViewerContentAssets().then(({assets,texture})=>{
@@ -55,9 +63,12 @@ loadViewerContentAssets().then(({assets,texture})=>{
 }).catch(error=>{cortiContentError=String(error.message);});
 function cortiAnimateNativeContent(now) {
   if(cortiContentDisposed)return;
-  if(!document.hidden){cortiNativeParticles.tick(now);cortiMapPhotos.tick();cortiUpdateHeldMap();}
+  if(!document.hidden){cortiNativeParticles.tick(now);cortiMapPhotos.tick();cortiTextDisplays.tick();cortiUpdateHeldMap();}
   const photos=cortiMapPhotos.stats();
-  const message=cortiContentError?'粒子／照片资源暂不可用，请更新匹配版本的网页资源包':photos.waiting?'尚未收到可用照片像素，请靠近展示框或重新手持地图':'';
+  const texts=cortiTextDisplays.stats();
+  const message=cortiTextDisplayError?'文字气泡字库不可用，请更新匹配版本的网页资源包':texts.unavailable?'部分文字显示格式暂未适配':cortiContentError?'粒子／照片资源暂不可用，请更新匹配版本的网页资源包':photos.waiting?'尚未收到可用照片像素，请靠近展示框或重新手持地图':'';
+  cortiContentStatus.dataset.textDisplays=String(texts.visible);cortiContentStatus.dataset.textDisplayReady=String(texts.ready);
+  cortiContentStatus.dataset.textDisplayUpdates=String(texts.updates);cortiContentStatus.dataset.textTextureUpdates=String(texts.textureUpdates);
   cortiContentStatus.dataset.frames=String(photos.visible);cortiContentStatus.dataset.cachedMaps=String(photos.maps);
   const particles=cortiNativeParticles.stats();
   cortiContentStatus.dataset.renderedParticles=String(particles.rendered);
@@ -68,5 +79,5 @@ function cortiAnimateNativeContent(now) {
   requestAnimationFrame(cortiAnimateNativeContent);
 }
 requestAnimationFrame(cortiAnimateNativeContent);
-window.cortiViewerContent={stats:()=>({particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),error:cortiContentError,epoch:cortiContentEpoch})};
-window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});
+window.cortiViewerContent={stats:()=>({particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
+window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});

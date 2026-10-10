@@ -32,6 +32,8 @@ node tools/prepare-viewer-assets.mjs java-1.20.6 "<output-dir>"
 
 1.20.6 的第三人称和 2.5D 画面只在检测到视线或顶层遮挡时开启透视／切面；无遮挡时恢复完整地形，不再常驻人物周围的透视圈。离开遮挡沿用连续采样确认，避免边缘来回闪烁。
 
+2026-10-10：玩家与 NPC 头顶气泡已接入同连接原版 TextDisplay，包含匹配 1.20.6 的中文原字库、跟随、更新和清理。远端电脑需更新 content 桥并重建实际网页资源；[更新步骤与支持范围](packages/modern-viewer/renderer-src/docs/text-display-bubbles.md)。无需重启 Minecraft 服务器。
+
 ## 1.21.1 模组服的原生接入
 
 My Agent World 的实验接入复用原 `page-template.html`、`viewer.css`、背包人物预览和自适应画质组件，

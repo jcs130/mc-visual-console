@@ -7,6 +7,7 @@ const MIME = {
     '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
     '.png': 'image/png', '.ogg': 'audio/ogg', '.wasm': 'application/wasm', '.glb': 'model/gltf-binary',
     '.vrm': 'model/gltf-binary', '.webp': 'image/webp', '.jpg': 'image/jpeg',
+    '.zip': 'application/zip',
 };
 export function viewerByteRange(range, size) {
     const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());

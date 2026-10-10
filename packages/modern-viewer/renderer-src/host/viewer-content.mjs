@@ -1,9 +1,10 @@
 /** Vanilla 1.20.6 content from the action bot's connection, with bounded replay. */
+import {decodeTextDisplay,textDisplayMetadataKeys} from './text-display.mjs';
 const finite = n => typeof n === 'number' && Number.isFinite(n);
 const integer = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
 const pos = p => p && [p.x, p.y, p.z].every(finite) ? { x: p.x, y: p.y, z: p.z } : null;
 const rgb = p => Array.isArray(p) && p.length === 3 && p.every(n => finite(n) && n >= 0 && n <= 1) ? p : null;
-export const VIEWER_CONTENT_LIMITS = Object.freeze({ maps: 64, frames: 128, particleBatch: 64, flushMs: 50, range: 80 });
+export const VIEWER_CONTENT_LIMITS = Object.freeze({ maps: 64, frames: 128, textDisplays: 64, particleBatch: 64, flushMs: 50, range: 80 });
 
 export function transitionFieldOrder(protocol) {
   const fields = protocol?.types?.Particle?.[1]?.find(f => f.name === 'data')?.type?.[1]?.fields?.dust_color_transition?.[1];
@@ -97,13 +98,53 @@ export function cachedMapFrame(entity, registry) {
 
 export function createViewerContentBridge(bot, { now = Date.now, schedule = setInterval, unschedule = clearInterval } = {}) {
   if (bot.version !== '1.20.6') throw Error('viewer_content_requires_1.20.6');
-  const protocol = bot._client, maps = new Map(), frames = new Map(), listeners = new Set(), hooks = [], socketDrainers=new Set(), socketDisposers=new Set();
+  const protocol = bot._client, maps = new Map(), frames = new Map(), textEntities=new Map(), textDisplays=new Map(), listeners = new Set(), hooks = [], socketDrainers=new Set(), socketDisposers=new Set();
   let epoch = 0, queue = [], disposed = false;
-  const diagnostics = { particles: 0, droppedParticles: 0, mapPatches: 0, rejected: 0, subscriberErrors: 0, cachedFrames: 0 };
+  const diagnostics = { particles: 0, droppedParticles: 0, mapPatches: 0, rejected: 0, subscriberErrors: 0, cachedFrames: 0, cachedTextDisplays:0, rejectedTextDisplays:0 };
   const nearby = p => !bot.entity?.position || Math.hypot(p.x-bot.entity.position.x, p.y-bot.entity.position.y, p.z-bot.entity.position.z) <= VIEWER_CONTENT_LIMITS.range;
   const deliver = (publish,name,value) => { try { publish(name,value); } catch { diagnostics.subscriberErrors++; } };
   const send = (name, value) => { for (const publish of listeners) deliver(publish,name,{ ...value, epoch }); };
   const on = (emitter, name, fn) => { emitter.on(name, fn); hooks.push(() => emitter.off(name, fn)); };
+  function textSnapshot(display) { return {...display,position:{...display.position},translation:{...display.translation},scale:{...display.scale},runs:display.runs.map(r=>({...r}))}; }
+  function publishText(entity) {
+    const display=decodeTextDisplay(entity,bot.registry);
+    if(!display){diagnostics.rejectedTextDisplays++;if(textDisplays.delete(entity.id))send('textDisplay',{schemaVersion:1,id:entity.id,delete:true});return;}
+    textDisplays.set(display.id,display);send('textDisplay',textSnapshot(display));
+  }
+  function removeText(id) {
+    textEntities.delete(id);
+    if(textDisplays.delete(id))send('textDisplay',{schemaVersion:1,id,delete:true});
+  }
+  on(protocol,'spawn_entity',packet=>{
+    // Numeric IDs are reusable, including replacement by a different entity type.
+    removeText(packet.entityId);
+    if(bot.registry?.entities?.[packet.type]?.name!=='text_display'||!textDisplayMetadataKeys(bot.registry)
+        ||!integer(packet.entityId,0,2147483647)||!pos(packet))return;
+    if(textEntities.size>=VIEWER_CONTENT_LIMITS.textDisplays){diagnostics.rejectedTextDisplays++;return;}
+    const entity={id:packet.entityId,uuid:packet.objectUUID,name:'text_display',position:pos(packet),metadata:{},
+      yaw:Math.PI-(packet.yaw??0)*Math.PI/128,pitch:-(packet.pitch??0)*Math.PI/128};
+    textEntities.set(entity.id,entity);publishText(entity);
+  });
+  on(protocol,'entity_metadata',packet=>{
+    const entity=textEntities.get(packet.entityId);if(!entity||!Array.isArray(packet.metadata))return;
+    for(const field of packet.metadata.slice(0,64))if(integer(field.key,0,27))entity.metadata[field.key]=field.value;
+    publishText(entity);
+  });
+  on(protocol,'entity_teleport',packet=>{
+    const entity=textEntities.get(packet.entityId),position=pos(packet);if(!entity||!position)return;
+    const yaw=integer(packet.yaw,-128,255)?Math.PI-packet.yaw*Math.PI/128:entity.yaw;
+    const pitch=integer(packet.pitch,-128,255)?-packet.pitch*Math.PI/128:entity.pitch;
+    if(['x','y','z'].every(k=>entity.position[k]===position[k])&&entity.yaw===yaw&&entity.pitch===pitch)return;
+    entity.position=position;
+    entity.yaw=yaw;entity.pitch=pitch;
+    publishText(entity);
+  });
+  on(bot,'entityMoved',moved=>{
+    const entity=textEntities.get(moved.id);if(!entity||!pos(moved.position))return;
+    if(JSON.stringify(entity.position)===JSON.stringify(pos(moved.position))&&entity.yaw===moved.yaw&&entity.pitch===moved.pitch)return;
+    entity.position=pos(moved.position);entity.yaw=moved.yaw;entity.pitch=moved.pitch;publishText(entity);
+  });
+  on(protocol,'entity_destroy',packet=>{for(const id of packet.entityIds??[])removeText(id);});
   on(protocol, 'world_particles', packet => {
     const event = viewerParticlePacket(packet, { version: bot.version, protocol: bot.registry?.protocol });
     if (!event) { diagnostics.rejected++; return; }
@@ -166,7 +207,14 @@ export function createViewerContentBridge(bot, { now = Date.now, schedule = setI
     const frame=cachedMapFrame(entity,bot.registry);
     if (frame) {frames.set(frame.id,frame);diagnostics.cachedFrames++;}
   }
-  function reset() { epoch++; maps.clear(); frames.clear(); queue = []; send('contentReset', { schemaVersion: 1 }); }
+  for(const entity of Object.values(bot.entities??{})) {
+    if(textEntities.size>=VIEWER_CONTENT_LIMITS.textDisplays)break;
+    if(entity.name!=='text_display')continue;
+    const display=decodeTextDisplay(entity,bot.registry);if(!display)continue;
+    textEntities.set(entity.id,{...entity,position:pos(entity.position),metadata:{...entity.metadata}});
+    textDisplays.set(entity.id,display);diagnostics.cachedTextDisplays++;
+  }
+  function reset() { epoch++; maps.clear(); frames.clear();textEntities.clear();textDisplays.clear(); queue = []; send('contentReset', { schemaVersion: 1 }); }
   on(bot, 'respawn', reset); on(bot, 'end', reset);
   function snapshot(map) {
     return {schemaVersion:1,epoch,...map,data:Uint8Array.from(map.data),coverage:Uint8Array.from(map.coverage),snapshot:true,x:0,y:0,columns:128,rows:128};
@@ -177,37 +225,42 @@ export function createViewerContentBridge(bot, { now = Date.now, schedule = setI
       listeners.add(publish); deliver(publish,'contentReset', { schemaVersion: 1, epoch });
       for (const map of maps.values()) deliver(publish,'mapPixels',snapshot(map));
       for (const frame of frames.values()) if (nearby(frame.position)) deliver(publish,'mapFrame', { schemaVersion: 1, epoch, ...frame });
+      for (const display of textDisplays.values()) deliver(publish,'textDisplay',{...textSnapshot(display),epoch});
       return () => listeners.delete(publish);
   }
   function subscribeSocket(socket,{writable=()=>socket.connected&&socket.conn?.transport?.writable!==false&&(socket.conn?.writeBuffer?.length??0)<=4}={}) {
     let closed=false,resetPending=false;
-    const mapIds=new Set(),frameIds=new Set();
-    const fullReplay=()=>{resetPending=true;mapIds.clear();frameIds.clear();for(const id of maps.keys())mapIds.add(id);for(const id of frames.keys())frameIds.add(id);};
+    const mapIds=new Set(),frameIds=new Set(),textIds=new Set();
+    const fullReplay=()=>{resetPending=true;mapIds.clear();frameIds.clear();textIds.clear();for(const id of maps.keys())mapIds.add(id);for(const id of frames.keys())frameIds.add(id);for(const id of textDisplays.keys())textIds.add(id);};
     function drain() {
       if(closed||!writable())return;
       if(resetPending){socket.emit('contentReset',{schemaVersion:1,epoch});resetPending=false;}
       let sent=0;
+      // Retire private dialogue before replaying potentially large photo caches.
+      for(const id of textIds){if(!writable()||sent>=4)break;textIds.delete(id);const display=textDisplays.get(id);
+        socket.emit('textDisplay',display?{...textSnapshot(display),epoch}:{schemaVersion:1,epoch,id,delete:true});sent++;}
       for(const id of mapIds){if(!writable()||sent>=4)break;mapIds.delete(id);const map=maps.get(id);if(map){socket.emit('mapPixels',snapshot(map));sent++;}}
       for(const id of frameIds){if(!writable()||sent>=4)break;frameIds.delete(id);const frame=frames.get(id);
         socket.emit('mapFrame',frame?{schemaVersion:1,epoch,...frame}:{schemaVersion:1,epoch,id,delete:true});sent++;}
     }
     const off=subscribe((name,value)=>{
-      if(name==='contentReset'){resetPending=true;mapIds.clear();frameIds.clear();}
-      if(writable()&&!resetPending&&!mapIds.size&&!frameIds.size){socket.emit(name,value);return;}
+      if(name==='contentReset'){resetPending=true;mapIds.clear();frameIds.clear();textIds.clear();}
+      if(writable()&&!resetPending&&!mapIds.size&&!frameIds.size&&!textIds.size){socket.emit(name,value);return;}
       if(name==='mapPixels')mapIds.add(value.mapId);
       if(name==='mapFrame')frameIds.add(value.id);
-      if(mapIds.size>VIEWER_CONTENT_LIMITS.maps||frameIds.size>VIEWER_CONTENT_LIMITS.frames)fullReplay();
+      if(name==='textDisplay')textIds.add(value.id);
+      if(mapIds.size>VIEWER_CONTENT_LIMITS.maps||frameIds.size>VIEWER_CONTENT_LIMITS.frames||textIds.size>VIEWER_CONTENT_LIMITS.textDisplays)fullReplay();
       // Old particles have no useful replay; cached pixels/frames can be resent.
       drain();
     });
-    function close(){if(closed)return;closed=true;off();mapIds.clear();frameIds.clear();socketDrainers.delete(drain);socketDisposers.delete(close);socket.off('disconnect',close);}
+    function close(){if(closed)return;closed=true;off();mapIds.clear();frameIds.clear();textIds.clear();socketDrainers.delete(drain);socketDisposers.delete(close);socket.off('disconnect',close);}
     socketDrainers.add(drain);socketDisposers.add(close);socket.on('disconnect',close);
     return close;
   }
   return {
     subscribe,subscribeSocket,
     flush,
-    stats: () => ({ ...diagnostics, epoch, maps: maps.size, frames: frames.size, viewers: listeners.size, pendingParticles: queue.length }),
-    dispose() { if (disposed) return; disposed = true; unschedule(timer);for(const close of [...socketDisposers])close();for (const off of hooks) off(); maps.clear(); frames.clear(); listeners.clear(); queue = []; }
+    stats: () => ({ ...diagnostics, epoch, maps: maps.size, frames: frames.size, textDisplays:textDisplays.size, viewers: listeners.size, pendingParticles: queue.length }),
+    dispose() { if (disposed) return; disposed = true; unschedule(timer);for(const close of [...socketDisposers])close();for (const off of hooks) off(); maps.clear(); frames.clear();textEntities.clear();textDisplays.clear(); listeners.clear(); queue = []; }
   };
 }

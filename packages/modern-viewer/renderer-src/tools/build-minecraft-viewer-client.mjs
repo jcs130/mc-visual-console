@@ -13,6 +13,7 @@ import { assertMinimapArrowOrientation } from './minecraft-viewer-bundle-check.m
 import { normalizeUntintedLeafModels } from './minecraft-viewer-leaf-tints.mjs'
 import { writeViewerPages } from '../src/viewer-page.mjs'
 import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
+import { verifyTextDisplayAssets } from './text-display-assets.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -55,6 +56,7 @@ if (sourceManifest.minecraftVersion !== '1.20.6' || !sourceManifest.clientJarSha
   throw Error('请先从 1.20.6 客户端 JAR 导出资源')
 }
 const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256)
+const textDisplays = await verifyTextDisplayAssets(outputRoot,sourceManifest.clientJarSha256)
 const replacements = {
   'blockStatesModels.json': 'blockStatesModels.json',
   'blocksAtlases.json': 'blocksAtlases.json',
@@ -395,5 +397,6 @@ await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
   browserBundleSha256, mesherSha256, biomeCount: biomeWorker.biomeCount,
   preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null,
   viewerContent,
+  textDisplays,
 })}\n`)
 console.log(`1.20.6 modern viewer 已生成：${outputRoot}`)

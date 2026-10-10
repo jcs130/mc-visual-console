@@ -12,7 +12,7 @@
 | Citizens、FancyNpcs、NamedVillagers、NPCSpeak、Shopkeepers | 继续使用原版实体、玩家皮肤、名称、聊天和交易窗口合约。宿主仍须转发实体 metadata、装备、皮肤和窗口变化。本轮没有逐个插件进行剧情/交易实测。 |
 | Minepacks、公会箱、任务和技能菜单 | 继续转发本人真实窗口、槽位、完整物品组件、聊天和 `skillsState`；不会从插件名推测物品内容或技能资格。 |
 | MythicMobs、WorldEvents、MagicSpells、AuraSkills、BetonQuest、ConditionalEvents、Denizen | 原版实体/已支持粒子/声音/文字可走现有合约。插件脚本引入的其他粒子、特殊展示实体、资源包模型与非槽位界面须另行适配；安装插件本身不保证其全部效果可视化。 |
-| 探矿轮廓、文字/方块展示实体 | 目前没有完整 BlockDisplay/TextDisplay 与原版发光描边实现；已有粒子引导可使用新链路。不能用替代模型冒充这些效果。 |
+| 文字气泡、探矿轮廓、方块展示实体 | 2026-10-10 补齐玩家/NPC TextDisplay 气泡，见[接入与更新说明](text-display-bubbles.md)。其他 TextDisplay 格式、BlockDisplay 与原版发光描边尚未完整实现；已有粒子引导可用。 |
 | Geyser、Floodgate、ViaVersion、ViaBackwards | 属于服务端连接适配。此 Web 桥读取 Mineflayer 自己的 Java 1.20.6 包流，不能据此推断所有基岩版版本或控制台功能均已验收。 |
 
 图片严格来自该玩家实际收到的 128×128 原版调色板像素。ImageFrame 的虚拟地图编号可能不同于插件内部编号，必须使用 `map_id`；浏览器不重新访问上传链接，也不读取他人的照片。原图会经过原版地图调色板量化，不能期待完整 RGB 照片画质。未收到的像素保持透明/等待，不补造内容。
@@ -48,7 +48,7 @@ bot.once('end', () => content.dispose());
 
 ### Socket.IO 增量事件
 
-四个事件均带 `schemaVersion: 1` 与非负 `epoch`；切换维度/重生递增 epoch，清空旧缓存。浏览器忽略旧 epoch，不重播过去的粒子。
+事件均带 `schemaVersion: 1` 与非负 `epoch`；切换维度/重生递增 epoch，清空旧缓存。浏览器忽略旧 epoch，不重播过去的粒子。新增 `textDisplay` 共用这个重置和同连接受众边界。
 
 | 事件 | 主要字段 |
 | --- | --- |
@@ -56,6 +56,7 @@ bot.once('end', () => content.dispose());
 | `particleBatch` | `{ schemaVersion, epoch, atMs, events: [{ kind:'particle', name, position, spread, count, speed, exact, color?, colorEnd?, size? }] }` |
 | `mapPixels` | `{ schemaVersion, epoch, mapId, scale, locked, icons?, columns, rows?, x?, y?, data? }`；重连快照另外含 `snapshot:true, coverage` |
 | `mapFrame` | `{ schemaVersion, epoch, id, uuid?, name, position, normal, rotation, mapId, invisible }`；移除为 `{ schemaVersion, epoch, id, delete:true }` |
+| `textDisplay` | 实际文字显示实体的 ID、位置、文字 runs、样式和静态变换；字段与限制见[气泡说明](text-display-bubbles.md#增量事件与预算) |
 
 `data` 是原版调色板字节，大小为 columns×rows；columns=0 只更新元数据。Socket.IO 浏览器端二进制可能是 ArrayBuffer，已支持。快照是 16384 字节像素加 2048 字节覆盖位图；只有覆盖位为 1 的像素才是实际收到的内容。`position` 为原版展示框中心，桥已处理出生包的整数 TilePos 与后续 teleport 中心坐标的差异，宿主不得再加一次半格。
 

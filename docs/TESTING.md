@@ -40,6 +40,18 @@ are versioned in `asset-packs/`; private runtime captures stay outside Git.
 Tests read local resources and do not download them. Missing committed resources
 fail just like a missing external export.
 
+Java 1.20.6 bubbles have a focused suite, also included in `pnpm test`:
+
+```sh
+npm ci --prefix packages/modern-viewer/renderer-src
+npm run test:text-displays
+```
+
+It uses real protocol serialization and the committed original Unihex source.
+The resource-lifecycle test uses a synthetic canvas surface; actual pixels and
+player/NPC audiences require the isolated browser/game checks in the
+[bubble guide](../packages/modern-viewer/renderer-src/docs/text-display-bubbles.md).
+
 The root workspace includes only the root package. `hosts/cortico` is an
 optional host with a separate manifest, declared Cortico dependency and six
 integration tests. Its tests import the real SDK's dry-mount implementation,

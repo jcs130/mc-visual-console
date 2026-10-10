@@ -16,6 +16,7 @@ import { loadViewerBlockMapping, identityViewerBlockMapping } from './viewer-sta
 import { createViewerStaticResponder } from './viewer-static.mjs'
 import { ViewerSessionSlots } from './viewer-session-slots.mjs'
 import { createViewerContentBridge } from '../renderer-src/host/viewer-content.mjs'
+import { serveViewerAsset } from '../renderer-src/host/viewer-asset-server.mjs'
 
 // 依赖解析锚点：本包 src/ 下没有 node_modules（socket.io / prismarine-viewer / minecraft-data / vec3
 // 都装在宿主 viewer-service/ 里）。所以 require 锚在宿主的目录上，而不是 import.meta.url
@@ -1278,6 +1279,13 @@ if (!snap?.holder) {
       }
       if (rel === '/healthz') {
         send(200, 'application/json; charset=utf-8', JSON.stringify(health())); return
+      }
+      // Version-matched optional Paper content. These files come from the
+      // rebuilt package's public/, never a different version's proxy registry.
+      if (bot.version === '1.20.6' && (/^\/(?:viewer-content\.json|particle-content\.png|text-display-font\.json|fonts\/1\.20\.6\/unifont\.zip)$/.test(rel)
+          || /^\/textures\/1\.20\.6\/font\/[a-z_]+\.png$/.test(rel))) {
+        if (await serveViewerAsset(res, path.join(ASSET_ROOT, 'public'), rel.slice(1))) return
+        send(404, 'text/plain', 'Matching 1.20.6 content assets are missing'); return
       }
       // minecraft-renderer 网格化 worker 与 wasm：这些由 minecraft-renderer/dist 提供，
       // 不随 prismarine-viewer 分发。必须原样可寻址，否则客户端 new Worker('threeWorker.js'|'mesherWasm.js')
