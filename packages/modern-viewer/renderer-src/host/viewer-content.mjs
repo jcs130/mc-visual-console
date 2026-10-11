@@ -4,7 +4,9 @@ const finite = n => typeof n === 'number' && Number.isFinite(n);
 const integer = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
 const pos = p => p && [p.x, p.y, p.z].every(finite) ? { x: p.x, y: p.y, z: p.z } : null;
 const rgb = p => Array.isArray(p) && p.length === 3 && p.every(n => finite(n) && n >= 0 && n <= 1) ? p : null;
-export const VIEWER_CONTENT_LIMITS = Object.freeze({ maps: 64, frames: 128, textDisplays: 64, particleBatch: 64, flushMs: 50, range: 80 });
+// Keep complete 64-point guides after a spell's cosmetic burst, including two guides in one tick.
+// This remains a hard bound; match ServerParticles.batch at the browser boundary.
+export const VIEWER_CONTENT_LIMITS = Object.freeze({ maps: 64, frames: 128, textDisplays: 64, particleBatch: 256, flushMs: 50, range: 80 });
 
 export function transitionFieldOrder(protocol) {
   const fields = protocol?.types?.Particle?.[1]?.find(f => f.name === 'data')?.type?.[1]?.fields?.dust_color_transition?.[1];

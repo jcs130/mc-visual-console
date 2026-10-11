@@ -76,10 +76,22 @@ test('one raw observer batches the full 32-point skill geometry, without rate fi
 
 test('bounded batches, range filtering and failing viewer callbacks never interrupt the game protocol',()=>{
   const s=setup();s.subscribe();s.bridge.subscribe(()=>{throw Error('Viewer unavailable');});s.events.length=0;
-  for(let i=0;i<100;i++)s.protocol.emit('world_particles',particle());
+  for(let i=0;i<VIEWER_CONTENT_LIMITS.particleBatch+36;i++)s.protocol.emit('world_particles',particle());
   s.protocol.emit('world_particles',{...particle(),x:500});s.tick();
   assert.equal(s.events[0].value.events.length,VIEWER_CONTENT_LIMITS.particleBatch);
   assert.equal(s.bridge.stats().droppedParticles,36);assert.ok(s.bridge.stats().subscriberErrors>=2);s.bridge.dispose();
+});
+
+test('a spell burst plus two 64-point native guide lines preserves both targets in one batch',()=>{
+  const s=setup();s.subscribe();s.events.length=0;
+  for(let i=0;i<32;i++)s.protocol.emit('world_particles',particle());
+  for(let line=0;line<2;line++)for(let i=0;i<64;i++)s.protocol.emit('world_particles',{
+    ...particle('end_rod'),longDistance:true,x:11+i*.5,y:65,z:line?3:-3,amount:1,offsetX:0,offsetY:0,offsetZ:0,velocityOffset:0
+  });
+  s.tick();const events=s.events.find(e=>e.name==='particleBatch').value.events;
+  assert.equal(events.length,160);assert.equal(events.filter(e=>e.name==='end_rod').length,128);
+  assert.deepEqual(events[95].position,{x:42.5,y:65,z:-3});assert.deepEqual(events[159].position,{x:42.5,y:65,z:3});
+  assert.equal(s.bridge.stats().droppedParticles,0);s.bridge.dispose();
 });
 
 test('maps are retained before a viewer connects, with sparse coverage; particles are never replayed',()=>{

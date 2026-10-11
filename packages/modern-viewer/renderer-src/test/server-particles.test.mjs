@@ -19,11 +19,23 @@ test('a 32-point native star remains 32 distinct points; per-frame and total bud
   const s=setup(),p=s.particles;
   p.handleBatch({schemaVersion:1,events:Array.from({length:32},(_,i)=>({...event,position:{x:11+i*.005,y:65,z:-3}}))});p.tick();
   assert.equal(p.cloud.geometry.drawRange.count,32);assert.equal(new Set([...p.cloud.geometry.attributes.position.array.slice(0,96)].filter((_,i)=>i%3===0)).size,32);
-  assert.equal(p.handleBatch({schemaVersion:1,events:Array(65).fill(event)}),false);
+  assert.equal(p.handleBatch({schemaVersion:1,events:Array(PARTICLE_LIMITS.batch+1).fill(event)}),false);
   for(let i=0;i<60;i++)p.handleBatch({schemaVersion:1,events:[{...event,count:48}]});p.tick();
   assert.equal(p.stats().active,PARTICLE_LIMITS.active);assert.ok(p.stats().dropped>0);p.dispose();
 });
 test('unknown particles are explicit unsupported and dimension scene changes clear old geometry',()=>{
   const s=setup(),p=s.particles;p.spawn({...event,name:'mod_missing'});assert.equal(p.stats().unsupported,1);
   p.spawn(event);p.tick();s.world.scene=new Scene();p.tick();assert.equal(p.stats().active,0);assert.equal(p.cloud.geometry.drawRange.count,0);p.dispose();
+});
+
+test('cosmetics plus two full guide lines retain both target endpoints in GPU geometry',()=>{
+  const s=setup(),p=s.particles;
+  const lines=Array.from({length:128},(_,i)=>({...event,position:{x:11+(i%64)*.5,y:65,z:i<64?-3:3}}));
+  const cosmetics=Array.from({length:32},()=>event);
+  assert.equal(p.handleBatch({schemaVersion:1,events:[...cosmetics,...lines]}),true);p.tick();
+  const buffer=p.cloud.geometry.attributes.position.array;
+  assert.equal(p.cloud.geometry.drawRange.count,160);
+  for(const index of [32,95,96,159])assert.deepEqual([...buffer.slice(index*3,index*3+3)],
+    [lines[index-32].position.x-10,1,lines[index-32].position.z+5]);
+  assert.equal(p.stats().dropped,0);p.dispose();
 });
