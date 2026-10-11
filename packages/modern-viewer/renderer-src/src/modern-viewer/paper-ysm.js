@@ -114,5 +114,21 @@ export class PaperYsmPlayers {
       }).catch(error=>{if(this.pending.get(uuid)===marker)this.failures.set(uuid,error.message);}).finally(()=>{if(this.pending.get(uuid)===marker)this.pending.delete(uuid);});
     }
   }
-  stats(){return {states:this.states.size,rendered:this.actors.size,pending:this.pending.size,failed:this.failures.size,unavailable:[...this.states.values()].filter(r=>r.available&&!r.renderAvailable).length,errors:[...this.failures.values()],animationUnavailable:[...this.actors.values()].map(a=>a.actor.animationReason).filter(Boolean),assets:[...this.actors.values()].map(a=>a.actor.assetInfo)};}
+  stats(){const rows=[...this.states.values()];return {states:this.states.size,rendered:this.actors.size,pending:this.pending.size,failed:this.failures.size,unavailable:rows.filter(r=>r.available&&!r.renderAvailable).length,serverUnavailable:rows.filter(r=>r.available===false).length,unavailableReasons:[...new Set(rows.filter(r=>!r.renderAvailable).map(r=>r.reason??r.renderReason??r.webReason).filter(Boolean))],errors:[...this.failures.values()],animationUnavailable:[...this.actors.values()].map(a=>a.actor.animationReason).filter(Boolean),assets:[...this.actors.values()].map(a=>a.actor.assetInfo)};}
+}
+
+/** Server source state, asset transport and renderer failures are different stages. */
+export function paperYsmStatus(stats) {
+  if(stats.failed)return 'YSM 模型渲染失败：'+stats.errors[0];
+  if(stats.serverUnavailable)return stats.unavailableReasons.includes('YSM_WORKER_STATE_UNSUPPORTED')
+    ?'服务器 YSM 状态暂不支持（YSM_WORKER_STATE_UNSUPPORTED）'
+    :'服务器尚未提供 YSM 外观状态（YSM_WORKER_STATE_UNAVAILABLE）；当前为普通皮肤';
+  if(stats.unavailable) {
+    const reason=stats.unavailableReasons.find(reason=>reason!=='YSM_ASSET_PENDING');
+    if(reason==='YSM_SOURCE_NOT_REGISTERED')return '部分 YSM 模型缺少可公开原始资源，当前普通皮肤仅为回退画面';
+    if(reason)return 'YSM 原始模型资源不可用：'+reason;
+    return '正在等待服务器提供原 YSM 模型资源';
+  }
+  if(stats.pending)return '正在加载原 YSM 模型';
+  return stats.animationUnavailable.length?'YSM 原模型已显示；部分动画尚不支持':'';
 }

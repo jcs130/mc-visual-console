@@ -26,6 +26,20 @@ test('own actor and server unavailable status stay distinct from geometry suppor
   bot._client.emit('custom_payload',packet({...row,type:'remove'}));assert.equal(bridge.snapshot().length,0);bridge.dispose();
 });
 
+test('server unavailable and unsupported states cannot be reported as a pending asset transfer',()=>{
+  const writes=[];
+  const bot=Object.assign(new EventEmitter(),{_client:Object.assign(new EventEmitter(),{state:'play',write:(...args)=>writes.push(args)}),player:{uuid},entity:{id:7},entities:{}});
+  const bridge=createViewerAppearanceBridge(bot);const events=[];
+  bridge.subscribeSocket({emit:(name,value)=>events.push({name,value})});
+  for(const reason of ['YSM_WORKER_STATE_UNAVAILABLE','YSM_WORKER_STATE_UNSUPPORTED']) {
+    bot._client.emit('custom_payload',packet({...row,available:false,reason}));
+    assert.equal(bridge.snapshot()[0].renderReason,reason);
+    assert.equal(events.at(-1).value.renderAvailable,false);
+  }
+  assert.equal(writes.length,0);
+  bridge.dispose();
+});
+
 test('heartbeats expire and peer unavailability keeps only a verified native binding',()=>{
   let clock=1000;
   const bot=Object.assign(new EventEmitter(),{_client:new EventEmitter(),entities:{7:{id:7,uuid}}});

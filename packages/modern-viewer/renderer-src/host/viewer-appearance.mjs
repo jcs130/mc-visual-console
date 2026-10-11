@@ -33,7 +33,7 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
     if(!entity || typeof actualUuid!=='string' || actualUuid.toLowerCase()!==row.playerUuid || row.available && entity.id!==row.entityId)return null;
     const {receivedAt,...publicRow}=row;
     const asset=assets.get(row.assetSha256), renderAvailable=row.available===true && asset?.modelId===row.modelId && Object.hasOwn(asset.textures,row.texture);
-    return {...publicRow,entityId:entity.id,renderAvailable,renderReason:renderAvailable?null:errors.get(row.assetSha256)??row.webReason??'YSM_ASSET_PENDING',completeEntityParityVerified:false};
+    return {...publicRow,entityId:entity.id,renderAvailable,renderReason:renderAvailable?null:row.reason??errors.get(row.assetSha256)??row.webReason??'YSM_ASSET_PENDING',completeEntityParityVerified:false};
   }
   function payload(packet) {
     const row=parseAppearancePacket(packet);if(!row)return;

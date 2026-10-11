@@ -16,6 +16,8 @@ Server implementation: `minecraft-ai-friend/paper/integrations/freesia-optional/
 
 ## Browser renderer
 
+The host and browser distinguish `YSM_WORKER_STATE_UNAVAILABLE` / `YSM_WORKER_STATE_UNSUPPORTED` from pending asset transfer, unpublished source and model-rendering errors. Server `available=false` is displayed explicitly, sends no asset request and does not claim a geometry failure. A later valid state replaces the notice normally. These diagnostics do not assign a model or make unavailable server source renderable.
+
 `src/modern-viewer/paper-ysm.js` consumes arbitrary validated model IDs, original Bedrock1.12 geometry/UV and PNGs, through the shared geometry engine. Bone names retain bounded Unicode. Original faces are merged only within identical transforms. Actual entity UUID/ID and state revision guard asynchronous mounts; teardown restores hidden vanilla children. Names remain visible. Numeric original animation tracks and a small explicitly supported Molang subset are sampled; unknown tracks/controllers show an explicit unavailable reason and bind pose. No invented animation, equipment or native Java pixel parity claim.
 
 Real isolated tests photographed builtin geometry, a newly uploaded ZIP and a replaced texture; output PNG and bundle hashes changed with the real replacement. Human camera chat contained exactly start/complete notices, and2×2 delivered four actual maps.16 controlled Mineflayer4.37.1 connections received real gameplay replies and SHA-verified source bundles, without encrypted native YSM cache. These are controlled tests, not autonomous LLM play. Native Java comparison, equipment/all animation and Bedrock custom player model rendering remain unaccepted.
