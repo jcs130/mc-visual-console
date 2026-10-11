@@ -36,6 +36,9 @@ function cortiResetViewerPanels(clearSubject = false) {
   cortiMenuSignature = ''; cortiInventoryPlayerPreview?.reset();
   if (clearSubject) {
     cortiPanelAvatar = null; cortiPanelSkills = null;
+    cortiPanelMap = null; cortiMapCells.clear();
+    cortiMapDimension = ''; cortiMapSampleY = null;
+    cortiDrawMinimap();
     cortiAbilityCooldowns.clear(); cortiAbilityCastSequences.clear();
     cortiRenderSkills();
   }
@@ -750,9 +753,15 @@ function cortiRenderGenericContainer(parent, container) {
 function cortiDrawMinimap() {
   const canvas = document.querySelector('#corti-minimap canvas');
   const data = cortiPanelMap;
-  if (!canvas || !data) return;
+  if (!canvas) return;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+  if (!data) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const caption = document.querySelector('[data-map-caption]');
+    if (caption) caption.textContent = '等待地图同步';
+    return;
+  }
   const size = data.radius * 2 + 1;
   const tile = canvas.width / size;
   const position = cortiPanelAvatar?.entity?.pos || cortiPanelAvatar?.entity?.position;

@@ -1,10 +1,10 @@
 # Paper 1.20.6 observer HUD and OBS overlay
 
-2026-10-11 deployment status: the owner deferred this round's Paper restart. Production remains AgentFriend 0.4.13 / CortiEyeMirror 0.1.10, with only `ag_CorMy → ag_cormy_eye` hot registered. The features below require the candidate server release and an updated viewer host/bundle. Source publication does not install either deployment.
+2026-10-11 deployment status: Paper AgentFriend 0.4.19 / CortiEyeMirror 0.1.12 is deployed. The viewer host/bundle must also be updated independently; source publication does not install copied deployments or remote viewers.
 
-Use `/?obs=1` (also `?overlay=1`) as an OBS Browser Source above the game capture. The document background is transparent. World, mesher, minimap and player preview rendering are disabled; the original inventory icons, hotbar, health, food, armor, XP, mana, skills and messages remain. No extra Minecraft account or HTTP listener is created by this mode.
+Use `/?obs=1` (also `?overlay=1`) as an OBS Browser Source above the game capture. The document background is transparent. World, mesher and player preview rendering are disabled; the existing 2D minimap, original inventory icons, hotbar, health, food, armor, XP, mana, skills and messages remain. The minimap uses the host's existing `minimap` feed without starting a world renderer or requesting extra Minecraft chunks. Subject switches, detachment, disconnects and stream expiry clear the old terrain; it resumes with the next map update. A host must publish the same `minimap` feed it uses in the normal viewer. No extra Minecraft account or HTTP listener is created by this mode.
 
-The Paper host needs AgentFriend 0.4.14 and CortiEyeMirror 0.1.11. Automatic `<name>eye` / `<name>_eye` cameras and the privileged `live` camera receive native inventory snapshots from the player they actually spectate. Names are case insensitive. Login still requires the server's trusted ingress policy. `live` chooses its target in the normal spectator UI; it is never assigned a fixed player by the watcher.
+The Paper host needs AgentFriend 0.4.18+ and CortiEyeMirror 0.1.12+. Automatic `<name>eye` / `<name>_eye` cameras and the privileged `live` camera receive native inventory snapshots from the player they actually spectate. Names are case insensitive. Default suffix Eyes can connect once their corresponding Agent is successfully online, without IP matching; existing explicit access rules and the separate `live` grant retain priority. `live` chooses its target in the normal spectator UI; it is never assigned a fixed player by the watcher.
 
 ## Host adapter
 
