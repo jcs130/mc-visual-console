@@ -195,7 +195,7 @@ socket.emit('avatarState', {
 | `minimap` | `{ centerX, centerZ, radius: 12, sampleY, dimension, cells }`，`cells` 是 25×25 共 625 个字符，z 为行、x 为列；`?` 未加载，空格为空气，W 水、L 岩浆、F 树叶、T 树干、G 草地、P 路径、S 沙、N 雪冰、C 作物、R 石、B 土、H 建筑、X 其他 |
 | `biome` | `{ name, dimension, id }`，如 plains / minecraft:overworld；未知时 name 为 unknown，id 为 null |
 | `lightingState` | `{ sky, block }`，玩家眼前天空光/方块光，均为 0–15；数据暂不可用可发 null |
-| `gameMessage` | `{ kind, text }`；kind 支持 chat / system / whisper / advancement / title / subtitle / actionbar / death，text 为解析好的字符串 |
+| `gameMessage` | `{ kind, text }`；kind 支持 chat / system / whisper / advancement / title / subtitle / actionbar / death，text 为解析好的字符串；同一来源消息进入分类回看，详见[消息记录](docs/chat-history.md) |
 | `gameTitleTiming` | `{ fadeIn, stay, fadeOut }`，单位为游戏 tick |
 | `gameTitleClear` | 无数据；清空标题 |
 | `bossBars` | 完整数组 `[{ title, progress, color }]`，progress 0–1；最多 8 条，color 为 pink / blue / red / green / yellow / purple / white；删除时也要发送，全部消失发 `[]` |

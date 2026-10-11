@@ -44,9 +44,11 @@ function cortiInstallGameEvents(socket) {
   socket.on('gameMessage', (event) => {
     if (!event || !Object.hasOwn(labels, event.kind) ||
         typeof event.text !== 'string' || !event.text.trim()) return;
+    const archived = globalThis.MinecraftViewerChat?.receive(event);
     if (globalThis.MinecraftViewerDocuments?.consumeMessage(event)) return;
+    if (archived?.technical || archived?.suppressed) return;
     const kind = event.kind;
-    const message = event.text.slice(0, 160);
+    const message = event.text.length > 160 ? event.text.slice(0, 157) + '…' : event.text;
     if (kind === 'actionbar') {
       actionbar.hidden = false;
       actionbar.textContent = message;
@@ -111,8 +113,21 @@ function cortiInstallGameEvents(socket) {
   });
   // A reconnect or dimension reset starts a new view of the server state.
   // Clear the previous session's bars until its fresh snapshot arrives.
-  socket.on('viewerReset', () => bossBars.replaceChildren());
-  socket.on('disconnect', () => bossBars.replaceChildren());
+  const clearFeedback = () => {
+    feed.replaceChildren(); bossBars.replaceChildren(); clearTitle();
+    if (actionbarTimer !== null) clearTimeout(actionbarTimer);
+    actionbarTimer = null; actionbar.hidden = true; actionbar.textContent = '';
+    recentSystemMessages.clear(); systemWindowAt = 0; systemWindowCount = 0;
+  };
+  socket.on('viewerReset', clearFeedback);
+  socket.on('disconnect', clearFeedback);
+  let messageSubject = null;
+  socket.on('viewerSession', state => {
+    if (!state || !['self','observer'].includes(state.mode) || typeof state.attached !== 'boolean') return;
+    const next = state.attached ? `${state.mode}:${state.playerUuid ?? ''}:${state.entityId ?? ''}:${state.worldUuid ?? ''}` : null;
+    if (next !== messageSubject || !state.attached) clearFeedback();
+    messageSubject = next;
+  });
   const fire = document.createElement('div');
   fire.className = 'corti-self-fire';
   fire.hidden = true;

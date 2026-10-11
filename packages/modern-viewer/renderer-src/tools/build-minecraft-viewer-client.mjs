@@ -139,6 +139,7 @@ const castSource = await readFile(new URL('./minecraft-viewer-cast.js', import.m
 const combatSource = await readFile(new URL('./minecraft-viewer-combat.js', import.meta.url), 'utf8')
 const tacticsSource = await readFile(new URL('./minecraft-viewer-tactics.js', import.meta.url), 'utf8')
 const eventsSource = await readFile(new URL('./minecraft-viewer-events.js', import.meta.url), 'utf8')
+const chatSource = await readFile(new URL('./minecraft-viewer-chat.js', import.meta.url), 'utf8')
 const particleSource = await readFile(new URL('./minecraft-viewer-particles.js', import.meta.url), 'utf8')
 const contentSource = await readFile(new URL('./minecraft-viewer-content.js', import.meta.url), 'utf8')
 const presentationSource = await readFile(new URL('./minecraft-viewer-presentation.js', import.meta.url), 'utf8')
@@ -275,7 +276,7 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('  if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);\n  for (const event of pendingChunks.values())')) {
   throw Error('modern viewer 源码版本锚点已变化')
 }
-const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${eventsSource}\n${particleSource}\n${contentSource}\n${presentationSource}\n${soundSource}\n`
+const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${chatSource}\n${eventsSource}\n${particleSource}\n${contentSource}\n${presentationSource}\n${soundSource}\n`
 
 await mkdir(path.join(outputRoot, 'dist'), { recursive: true })
 await mkdir(path.join(outputRoot, 'public'), { recursive: true })

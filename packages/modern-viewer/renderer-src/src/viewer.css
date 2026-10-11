@@ -210,6 +210,33 @@ to{transform:scaleX(0)}
 .corti-event[data-kind="advancement"]{border-color:#eacb79}
 .corti-event[data-kind="advancement"] small{color:#f9dfa0}
 .corti-event[data-kind="death"]{border-color:#e59191}
+
+.corti-chat{position:fixed;z-index:18;left:14px;bottom:72px;color:#eff6f3;font:14px/1.5 system-ui;max-width:calc(100vw - 28px)}
+.corti-chat button{font:inherit;color:inherit;border:1px solid #b0ccb570;border-radius:6px;padding:5px 10px;background:#203b43;cursor:pointer}
+.corti-chat button:hover,.corti-chat button:focus-visible{background:#355761;outline:2px solid #c1e7db;outline-offset:1px}
+.corti-chat-toggle{box-shadow:0 3px 12px #0006}
+.corti-chat-panel{position:absolute;left:0;bottom:44px;display:flex;flex-direction:column;gap:9px;box-sizing:border-box;width:min(520px,calc(100vw - 28px));height:min(540px,calc(100dvh - 156px));min-height:180px;padding:14px;border:1px solid #b0ccb599;border-radius:12px;background:#10212af5;box-shadow:0 12px 36px #0009;backdrop-filter:blur(12px)}
+.corti-chat-panel[hidden]{display:none}
+.corti-chat-panel header{display:flex;align-items:center;gap:7px}
+.corti-chat-panel header strong{flex:1;font-size:16px}
+.corti-chat-panel nav{display:flex;gap:5px;flex-wrap:wrap}
+.corti-chat-panel nav button{padding:4px 8px;font-size:12px;background:transparent}
+.corti-chat-panel nav button[aria-pressed=true]{background:#8acbb338;border-color:#b8e4d4}
+.corti-chat-panel input{box-sizing:border-box;width:100%;padding:8px 10px;border:1px solid #a4c0c366;border-radius:6px;background:#08171d;color:#fff;font:inherit}
+.corti-chat-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:#6d949a #10212a}
+.corti-chat-message{padding:9px 10px;margin:0 0 6px;border-left:3px solid #93c2d1;border-radius:5px;background:#213740;color:#f3f8f5;overflow-wrap:anywhere}
+.corti-chat-message small{display:block;margin-bottom:4px;color:#b2cbd2;font-size:11px}
+.corti-chat-message p{margin:0;white-space:pre-wrap;user-select:text}
+.corti-chat-message[data-channel=whisper]{border-color:#cba5ef;background:#372d47}
+.corti-chat-message[data-channel=whisper] small{color:#e2c7ff}
+.corti-chat-message[data-channel=task]{border-color:#efd68f;background:#3d392c}
+.corti-chat-message[data-channel=task] small{color:#f6dfa7}
+.corti-chat-message[data-channel=raw]{background:#18282f;border-color:#778e98}
+.corti-chat-message pre{white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;user-select:text}
+.corti-chat-message summary{cursor:pointer;font-size:12px}
+.corti-chat-empty,.corti-chat-footer{color:#b2c3c8;font-size:12px}
+body[data-obs-overlay=true] .corti-chat:not([data-open=true]){opacity:.8}
+@media(max-width:720px){.corti-chat{left:10px;bottom:76px}.corti-chat-panel{width:min(520px,calc(100vw - 20px));padding:10px}.corti-chat-toggle{font-size:12px!important}}
 .corti-game-title{position:fixed;z-index:8;top:33%;left:50%;width:min(700px,90vw);transform:translateX(-50%);text-align:center;color:#fff5e9;font:800 clamp(28px,5vw,53px)/1.25 system-ui;text-shadow:0 3px 12px #000,0 0 22px #b8a2ed;pointer-events:none;animation:corti-title-in var(--corti-title-fade-in,.28s) ease-out}
 .corti-game-title[hidden]{display:none}
 .corti-game-title[data-kind="death"]{color:#f4a9a9;text-shadow:0 3px 12px #000,0 0 24px #eb6464}
