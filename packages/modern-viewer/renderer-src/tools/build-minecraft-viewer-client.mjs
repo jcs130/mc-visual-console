@@ -14,6 +14,7 @@ import { normalizeUntintedLeafModels } from './minecraft-viewer-leaf-tints.mjs'
 import { writeViewerPages } from '../src/viewer-page.mjs'
 import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
 import { verifyTextDisplayAssets } from './text-display-assets.mjs'
+import { viewerSourceDigest } from './viewer-build-source.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -395,6 +396,7 @@ await writeViewerPages(outputRoot)
 await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
   minecraftVersion: '1.20.6', clientJarSha256: sourceManifest.clientJarSha256,
   browserBundleSha256, mesherSha256, biomeCount: biomeWorker.biomeCount,
+  buildSource: await viewerSourceDigest(sourceRoot),
   preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null,
   viewerContent,
   textDisplays,
