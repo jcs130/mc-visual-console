@@ -8,11 +8,13 @@ const PAGE = readFileSync(new URL('./page-template.html', import.meta.url), 'utf
 export const VIEWER_CSS = readFileSync(new URL('./viewer.css', import.meta.url), 'utf8');
 
 /** @param {'first' | 'third' | 'dungeon'} [viewMode] */
-export function renderViewerPage(viewMode = 'first') {
+export function renderViewerPage(viewMode = 'first', { basePath = '/' } = {}) {
   if (!['first', 'third', 'dungeon'].includes(viewMode)) {
     throw new TypeError('Unsupported viewer mode');
   }
-  return PAGE.replace('__VIEW_MODE__', viewMode);
+  if (!/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(basePath)) throw new TypeError('Unsupported viewer base path');
+  const page = PAGE.replace('__VIEW_MODE__', viewMode);
+  return basePath === '/' ? page : page.replaceAll('href="/', `href="${basePath}`).replaceAll('src="/', `src="${basePath}`);
 }
 
 /** Emit page routes beside the exported textures and browser workers. */

@@ -1,11 +1,12 @@
 // Diagnostic route. The product console and this page share the same native renderer.
 import { mountNativeWorld } from './native-scene.js'
+import { nativeViewerUrl } from './native-url.js'
 import { playerHud } from './player-camera.js'
 import { renderAgentStatus, startAgentStatusPolling } from './agent-status.js'
 const el = id => document.getElementById(id)
 let player, playerUuid, scene
 const stopStatus = startAgentStatusPolling({
-  fetchStatus: signal => fetch('/status.json', { cache: 'no-store', credentials: 'same-origin', signal }),
+  fetchStatus: signal => fetch(nativeViewerUrl('status.json'), { cache: 'no-store', credentials: 'same-origin', signal }),
   onView: view => renderAgentStatus(view, el), expectedPlayer: () => player
 })
 const updateMode = mode => {

@@ -12,6 +12,7 @@ import { projectNativeYsmState } from '../src/native-viewer/native-ysm-state.js'
 import { projectNativePlayerRenderState } from '../src/native-viewer/native-player-render-state.js'
 import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
 import { nativePreviewAccess } from './native-preview-access.mjs'
+import { viewerSourceDigest } from './viewer-build-source.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
@@ -391,9 +392,16 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
     .map(([route, mode]) => [route, Buffer.from(renderViewerPage(mode))]))
   const viewerCss = Buffer.from(VIEWER_CSS)
   const manifestBytes = Buffer.from(JSON.stringify(manifest))
+  const buildInfo = { buildSource: await viewerSourceDigest(path.resolve(SOURCE, '../..')),
+    browserBundleSha256: createHash('sha256').update(bundle).digest('hex'),
+    consoleBundleSha256: createHash('sha256').update(consoleBundle).digest('hex'), registrySha256: hash }
   return {
     registrySha256: hash,
-    attach ({ bot, nativeStream, simplifyNBT, resolveDimension, expectedUsername, getAgentStatus = null, getPresentationState = null, logger = console, now = Date.now }) {
+    attach ({ bot, nativeStream, simplifyNBT, resolveDimension, expectedUsername, getAgentStatus = null, getPresentationState = null, logger = console, now = Date.now,
+      sourceMode = 'live_same_player_connection', basePath = '/' }) {
+      if (!['live_same_player_connection', 'numen_server_body'].includes(sourceMode)) throw Error('NATIVE_WORLD_SOURCE_INVALID')
+      const scopedPages = basePath === '/' ? pages : new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['dungeon/', 'dungeon'], ['dungeon', 'dungeon']]
+        .map(([route, mode]) => [route, Buffer.from(renderViewerPage(mode, { basePath }))]))
       // Mineflayer 4.37.1 fills bot.username in its login plugin. Attach before
       // that packet using the caller's createBot username, then verify it.
       const username = bot?.username || expectedUsername
@@ -448,7 +456,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       const sendIdentity = client => {
         const value = identity(), signature = JSON.stringify(value)
         if (client.identitySignature === signature) return true
-        if (!sendNativeWorldEvent(client, { type: 'identity', ...value, minecraftVersion: '1.21.1', registrySha256: hash, mode: 'live_same_player_connection' })) return false
+        if (!sendNativeWorldEvent(client, { type: 'identity', ...value, minecraftVersion: '1.21.1', registrySha256: hash, mode: sourceMode })) return false
         client.identitySignature = signature
         return true
       }
@@ -462,7 +470,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         // packet contains the unmodified effective base, never a fabricated 0.
         const armor = armorAttribute && !(armorAttribute.modifiers?.length) ? finiteNumber(armorAttribute.value) : null
         const injected = injectedPresentation(getPresentationState, player.uuid)
-        const value = { schemaVersion: 1, playerUuid: player.uuid, available: true, source: 'same_player_connection', sampledAt: now(),
+        const value = { schemaVersion: 1, playerUuid: player.uuid, available: true, source: sourceMode === 'numen_server_body' ? sourceMode : 'same_player_connection', sampledAt: now(),
           self: { ...player, saturation: finiteNumber(bot.foodSaturation), oxygen: finiteNumber(bot.oxygenLevel), armor,
             inWater: typeof bot.entity?.isInWater === 'boolean' ? bot.entity.isInWater : null,
             experienceLevel: finiteNumber(bot.experience?.level), experienceProgress: finiteNumber(bot.experience?.progress), experiencePoints: finiteNumber(bot.experience?.points),
@@ -478,7 +486,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         if (Buffer.byteLength(JSON.stringify(value)) > MAX_PRESENTATION_BYTES) return unavailable('PRESENTATION_TOO_LARGE')
         return value
       }
-      const status = () => ({ schemaVersion: 1, mode: 'live_same_player_connection', readOnly: true, identity: identity(),
+      const status = () => ({ schemaVersion: 1, mode: sourceMode, readOnly: true, build: buildInfo, identity: identity(),
         selfPlayer: selfPlayer(), presentation: presentation(),
         connection: { ended: connectionEnded, playerEntityAvailable: Boolean(bot.entity) },
         viewer: { available: !closed && !world.error, closed, state: world.error || closed ? 'unavailable' : world.dimension && world.pose ? 'snapshot' : 'waiting',
@@ -507,14 +515,15 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             return
           }
           let bytes, type
-          if (['status', 'status.json', 'health', 'health.json', 'healthz'].includes(requestPath)) {
+          if (requestPath === 'build.json') { bytes = Buffer.from(JSON.stringify(buildInfo)); type = 'application/json; charset=utf-8' }
+          else if (['status', 'status.json', 'health', 'health.json', 'healthz'].includes(requestPath)) {
             const value = status()
             if (requestPath.startsWith('health')) {
               value.ok = value.viewer.available && !connectionEnded
               value.ready = value.ok && Boolean(world.pose && world.dimension && world.columns.size)
             }
             bytes = Buffer.from(JSON.stringify(value)); type = 'application/json; charset=utf-8'
-          } else if (pages.has(requestPath)) { bytes = pages.get(requestPath); type = 'text/html; charset=utf-8' }
+          } else if (scopedPages.has(requestPath)) { bytes = scopedPages.get(requestPath); type = 'text/html; charset=utf-8' }
           else if (['diagnostics', 'diagnostics/'].includes(requestPath)) { bytes = diagnosticsPage; type = 'text/html; charset=utf-8' }
           else if (requestPath === 'viewer.css') { bytes = viewerCss; type = 'text/css; charset=utf-8' }
           else if (['index.js', 'native-console.js'].includes(requestPath)) { bytes = consoleBundle; type = 'text/javascript; charset=utf-8' }
@@ -631,7 +640,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             if (!sendIdentity(client) || client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
             if (snapshot || client.needsSnapshot) {
               const value = snapshot || cachedSnapshot
-              if (value && sendNativeWorldEvent(client, { ...value, entityState: injectTrackedMaidPresentation(world.entitySnapshot(value.bounds), ownPresentation, world.dimension?.name, player?.uuid), pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
+              if (value && sendNativeWorldEvent(client, { ...value, mode: sourceMode, entityState: injectTrackedMaidPresentation(world.entitySnapshot(value.bounds), ownPresentation, world.dimension?.name, player?.uuid), pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
             } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: playerPose(player), motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation, entityState: injectTrackedMaidPresentation(world.entitySnapshot(cachedSnapshot?.bounds), ownPresentation, world.dimension?.name, player?.uuid), time: world.time, packetSequence: world.lastSequence })
           }
         } catch (error) { world.unavailable(error) }
@@ -639,6 +648,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       timer.unref()
       return {
         world, server, status, registrySha256: hash,
+        activeViewers: () => clients.size,
         get port () { return currentPort },
         get url () { return server.listening ? `http://127.0.0.1:${currentPort}/` : null },
         listen () {

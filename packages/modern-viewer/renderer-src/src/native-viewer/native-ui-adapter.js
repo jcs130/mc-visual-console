@@ -207,7 +207,7 @@ export function nativeSlotRows (rows) {
 export function nativePresentationView (value, expectedUuid) {
   const expected = uuid(expectedUuid)
   if (!expected || value?.schemaVersion !== 1 || value.available !== true ||
-      value.source !== 'same_player_connection' || uuid(value.playerUuid) !== expected) {
+      !['same_player_connection', 'numen_server_body'].includes(value.source) || uuid(value.playerUuid) !== expected) {
     return unavailable(value?.reason || '本人展示状态未同步或身份不一致')
   }
   let inventory = null, nativeMenu = null

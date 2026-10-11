@@ -1,4 +1,5 @@
 import { mountNativeWorld } from './native-scene.js'
+import { nativeViewerUrl } from './native-url.js'
 import { createNativeInterface } from './native-ui-adapter.js'
 import { createAdaptiveQualityController } from '../modern-viewer/viewer-performance.js'
 import { renderAgentStatus, startAgentStatusPolling } from './agent-status.js'
@@ -18,7 +19,7 @@ function append (document, parent, tag, className, text) {
 }
 
 export async function bootNativeConsole ({ document = globalThis.document, window = globalThis.window,
-  mount = mountNativeWorld, fetchStatus = signal => fetch('/status.json', { cache: 'no-store', credentials: 'same-origin', signal }),
+  mount = mountNativeWorld, fetchStatus = signal => fetch(nativeViewerUrl('status.json'), { cache: 'no-store', credentials: 'same-origin', signal }),
   startStatus = startAgentStatusPolling, createInterface = createNativeInterface } = {}) {
   if (!document?.body || !window) throw Error('NATIVE_CONSOLE_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
@@ -41,7 +42,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const details = append(document, document.body, 'details', 'native-console-diagnostics')
   append(document, details, 'summary', '', '原生支持状态')
   const diagnostics = append(document, details, 'pre', '')
-  const diagnosticLink = append(document, details, 'a', '', '打开原生诊断页'); diagnosticLink.href = '/diagnostics'
+  const diagnosticLink = append(document, details, 'a', '', '打开原生诊断页'); diagnosticLink.href = nativeViewerUrl('diagnostics', document.baseURI || 'http://localhost/')
   const style = append(document, document.head, 'style', '')
   style.textContent = `
     .native-console-viewport{position:absolute;inset:0;overflow:hidden}
