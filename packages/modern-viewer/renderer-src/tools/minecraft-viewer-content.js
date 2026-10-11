@@ -38,7 +38,7 @@ cortiHeldMapCanvas.style.cssText='position:static;inset:auto;display:block;width
 cortiHeldMap.append(cortiHeldMapLabel,cortiHeldMapCanvas);document.body.append(cortiHeldMap);
 let cortiHeldMapKey=null;
 function cortiUpdateHeldMap() {
-  const state=pendingAvatarState;
+  const state=typeof isObsOverlay !== 'undefined' && isObsOverlay ? currentObsHandState() : pendingAvatarState;
   const selected=state ? selectedHotbarItem(state) : null;
   const id=heldMapId(selected)??heldMapId(state?.offhand);
   if(id===null){cortiHeldMap.style.display='none';cortiHeldMapKey=null;return;}
@@ -55,6 +55,7 @@ function cortiUpdateHeldMap() {
 }
 function cortiContentClear(epoch=null) {
   cortiContentEpoch=epoch;cortiNativeParticles.clear();cortiMapPhotos.reset(epoch);cortiTextDisplays.reset(epoch);
+  cortiHeldMap.style.display='none';cortiHeldMapKey=null;
 }
 socket.on('contentReset', event => {
   if(event?.schemaVersion!==1||!Number.isSafeInteger(event.epoch)||event.epoch<0)return;
@@ -66,6 +67,12 @@ socket.on('particleBatch', event => {
   cortiNativeParticles.handleBatch(event);
 });
 socket.on('mapPixels', event => cortiMapPhotos.handlePixels(event));
+// The OBS page deliberately has no native-world animation loop. Its 2D held
+// map/photo preview still follows real inventory/pixel events and clears with
+// the attested subject, without mounting item frames or rendering a world.
+if (typeof isObsOverlay !== 'undefined' && isObsOverlay) {
+  for (const name of ['avatarState', 'mapPixels', 'viewerSession']) socket.on(name, () => cortiUpdateHeldMap());
+}
 socket.on('mapFrame', event => cortiMapPhotos.handleFrame(event));
 socket.on('textDisplay', event => cortiTextDisplays.handle(event));
 const cortiAppearanceClear=()=>{cortiAppearances.clear();cortiYsmPlayers.clear();};

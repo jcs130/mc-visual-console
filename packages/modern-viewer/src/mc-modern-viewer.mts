@@ -586,7 +586,8 @@ export function serializeAvatarState(bot, sequence = 0) {
     locomotion: viewerAdvancedLocomotion({ movementState, horizontalSpeed, verticalSpeed: velocity.y, onGround, inWater, elytraFlying, riding }),
     velocity, horizontalSpeed, verticalSpeed: velocity.y,
     sprinting, sneaking, onGround, inWater, inLava, elytraFlying, riding, vehicleId,
-    usingHeldItem: bot.usingHeldItem === true,
+    usingHeldItem: bot.usingHeldItem === true || (Number(entity.metadata?.[8]) & 1) !== 0,
+    usingOffhand: (Number(entity.metadata?.[8]) & 2) !== 0,
     quickBarSlot: quickBarSlot ?? null,
     equipment,
     hotbar: Array.from({ length: 9 }, (_, index) => {

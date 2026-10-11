@@ -15,6 +15,7 @@ import { writeViewerPages } from '../src/viewer-page.mjs'
 import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
 import { verifyTextDisplayAssets } from './text-display-assets.mjs'
 import { viewerSourceDigest } from './viewer-build-source.mjs'
+import { patchObsRendererAlpha } from './minecraft-viewer-obs-alpha.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -337,7 +338,7 @@ const buildResult = await build({
           .replace(itemFallbackAnchor, 'let l=a=>a?.top??a;')
           .replace(itemUnknownAnchor,
             'return o??(o=l(e.currentResources.itemsRenderer.getItemTexture("unknown"))),o??={type:"gui",slice:[0,0,16,16]},"type"in o?')))
-        return { contents: patchRendererPlayerSkin(patchRendererEntityDamage(patchRendererEntityVisibility(corrected))), loader: 'js', resolveDir: path.dirname(file) }
+        return { contents: patchObsRendererAlpha(patchRendererPlayerSkin(patchRendererEntityDamage(patchRendererEntityVisibility(corrected)))), loader: 'js', resolveDir: path.dirname(file) }
       })
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]painting-variants\.js$/ }, () => ({ contents: changedPaintings, loader: 'js', resolveDir: path.dirname(paintingFile) }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]player-skins\.js$/ }, () => ({

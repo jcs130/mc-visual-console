@@ -7,6 +7,8 @@ import { io } from "socket.io-client";
 import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
+import { installObsLayout } from "./obs-layout.js";
+import { installObsHandsRenderer, HeldItemUseClock, installHeldItemUseMotion, obsHandAvatarState } from "./obs-hands.js";
 import {
   Box3,
   BoxGeometry,
@@ -133,20 +135,42 @@ import {
 const pageQuery = new URLSearchParams(window.location.search);
 const moduleQuery = new URL(import.meta.url).searchParams;
 const queryValue = (name) => (pageQuery.has(name) ? pageQuery.get(name) : moduleQuery.get(name));
-const viewMode = window.location.pathname.startsWith("/dungeon")
+const isPhotoView = queryValue("photo") === "1";
+const isObsOverlay = !isPhotoView && (queryValue("obs") === "1" || queryValue("overlay") === "1"
+  || window.location.pathname.startsWith("/obs/"));
+const viewMode = isObsOverlay ? "first" : window.location.pathname.startsWith("/dungeon")
   ? "dungeon"
   : window.location.pathname.startsWith("/third")
     ? "third"
     : "first";
 const isFirstPersonView = viewMode === "first";
-const isPhotoView = queryValue("photo") === "1";
-const isObsOverlay = !isPhotoView && (queryValue("obs") === "1" || queryValue("overlay") === "1"
-  || window.location.pathname.startsWith("/obs/"));
 if (isObsOverlay) {
   document.documentElement.dataset.obsOverlay = "true";
   document.body.dataset.obsOverlay = "true";
+  document.body.dataset.viewMode = "first";
 }
 let latestObserverState = null;
+const obsLayout = isObsOverlay ? installObsLayout({ document, window, query: pageQuery }) : null;
+const heldItemUseClock = new HeldItemUseClock();
+let obsSession = null, obsSubject = null, obsAvatarAt = -Infinity;
+const obsTrackedPlayers = new Map();
+function currentObsHandState() {
+  return obsHandAvatarState(pendingAvatarState, obsSession, obsTrackedPlayers.get(obsSession?.entityId));
+}
+function resetObsHands() {
+  if (!isObsOverlay) return;
+  pendingAvatarState = null; pendingPlayerEntity = null; obsAvatarAt = -Infinity;
+  heldItemUseClock.reset(); lastMainHandKey = null; lastOffHandKey = null;
+  if (viewer) {
+    viewer.playerState.reactive.heldItemMain = undefined;
+    viewer.playerState.reactive.heldItemOff = undefined;
+    viewer.playerState.reactive.itemUsageTicks = 0;
+    viewer.backend?.backendMethods?.changeHandSwingingState?.(false, false);
+    viewer.backend?.backendMethods?.changeHandSwingingState?.(false, true);
+  }
+  if (typeof cortiRangedUse !== 'undefined') cortiRangedUse = null;
+  if (typeof cortiWeaponSwings !== 'undefined') { cortiWeaponSwings.left = null; cortiWeaponSwings.right = null; }
+}
 const isFreeOrbitView = viewMode === "third";
 const isDungeonView = viewMode === "dungeon";
 const usesWorldAvatar = !isFirstPersonView;
@@ -644,6 +668,7 @@ const stopConnectionStatus = installViewerConnectionStatus(socket, {
   isRendererReady: () => rendererReady || isObsOverlay,
   reload: () => window.location.reload(),
   onDisconnect: () => {
+    resetObsHands(); obsSession = { mode: 'observer', attached: false }; obsTrackedPlayers.clear();
     fishingCatchHud.reset();
     latestObserverState = null;
     if (document.body.dataset.observedPlayer) {
@@ -654,6 +679,7 @@ const stopConnectionStatus = installViewerConnectionStatus(socket, {
 });
 window.addEventListener("beforeunload", stopConnectionStatus, { once: true });
 socket.on("viewerReset", () => {
+  resetObsHands();
   fishingCatchHud.reset();
   setTimeout(() => window.location.reload(), 250);
 });
@@ -668,12 +694,6 @@ socket.on("chunkStreamState", (state) => {
 });
 
 socket.on("version", (version) => {
-  if (isObsOverlay) {
-    document.body.dataset.overlayReady = "true";
-    setStatus("", false, true);
-    globalThis.modernViewerDiagnostics = { mode: "obs-overlay", worldRenderer: false, version: String(version) };
-    return;
-  }
   if (rendererReady || initializing) return;
   void initializeRenderer(String(version || "1.21.1"));
 });
@@ -697,6 +717,8 @@ socket.on("avatarState", (state) => {
   if (latestObserverState?.attached === true) state = { ...state, ...latestObserverState.vitals };
   const entity = normalizeEntity(state.entity);
   pendingAvatarState = { ...state, entity };
+  obsAvatarAt = performance.now();
+  heldItemUseClock.update(isObsOverlay ? currentObsHandState() : pendingAvatarState, obsAvatarAt);
   const previousMotion = normalizedAvatarMotion;
   normalizedAvatarMotion = normalizeMotionFrame(pendingAvatarState, previousMotion, Date.now());
   if (!normalizedAvatarMotion.teleported) accumulatedWalkDistance += normalizedAvatarMotion.horizontalDistance;
@@ -726,6 +748,26 @@ socket.on("observerState", (state) => {
     if (typeof renderCortiSurvivalHud === "function") renderCortiSurvivalHud(pendingAvatarState);
   }
 });
+
+socket.on('viewerSession', state => {
+  if (!isObsOverlay || !state || !['self', 'observer'].includes(state.mode) || typeof state.attached !== 'boolean') return;
+  const key = state.attached ? `${state.mode}:${state.playerUuid}:${state.entityId}:${state.worldUuid}` : null;
+  if (obsSubject !== key || !state.attached) resetObsHands();
+  obsSubject = key; obsSession = state;
+});
+function trackObsPlayer(update) {
+  if (!isObsOverlay || !update || update.id === undefined) return;
+  if (update.delete) { obsTrackedPlayers.delete(update.id); return; }
+  const previous = obsTrackedPlayers.get(update.id);
+  if (!previous && canonicalEntityName(update.name) !== 'player') return;
+  if (obsTrackedPlayers.size >= 64 && !previous) obsTrackedPlayers.delete(obsTrackedPlayers.keys().next().value);
+  obsTrackedPlayers.set(update.id, { ...previous, ...update });
+  if (update.id === obsSession?.entityId) {
+    heldItemUseClock.update(currentObsHandState(), performance.now()); applyAvatarState();
+  }
+}
+socket.on('entity', trackObsPlayer);
+socket.on('entityMoved', trackObsPlayer);
 
 socket.on("entityAnimation", (event) => applyEntityAnimation(event));
 socket.on("entityDamage", (event) => applyEntityDamage(event));
@@ -821,16 +863,18 @@ async function initializeRenderer(version) {
     globalThis.mcData = mcData;
     globalThis.loadedData = mcData;
 
-    const workers = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+    const workers = isObsOverlay ? 1 : Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
     viewer = new AppViewer(
       {
         config: {
+          obsOverlay: isObsOverlay,
           fpsLimit: 60,
           sceneBackground: isDungeonView ? "#253548" : "#8fc5ea",
           statsVisible: 0,
           timeoutRendering: false,
         },
         rendererConfig: {
+          paused: isObsOverlay,
           wasmMesher: useWasmMesher,
           mesherWorkers: workers,
           addChunksBatchWaitTime: 25,
@@ -851,6 +895,10 @@ async function initializeRenderer(version) {
       },
       resources,
     );
+    if (isObsOverlay) {
+      viewer.inWorldRenderingConfig.starfield = false;
+      viewer.inWorldRenderingConfig.defaultSkybox = false;
+    }
     viewer.playerState.reactive.eyeHeight = 1.62;
     viewer.playerState.reactive.perspective = usesWorldAvatar ? "third_person_back" : "first_person";
     viewer.playerState.reactive.username = pendingPlayerEntity?.username || "Codex";
@@ -862,6 +910,26 @@ async function initializeRenderer(version) {
       setBlockStateId: () => {},
     };
     await viewer.startWorld(emptyWorld, renderDistance, viewer.playerState.reactive, initial);
+    if (isObsOverlay) {
+      worldView = viewer.worldView;
+      const world = globalThis.world;
+      installObsHandsRenderer(world, {
+        active: () => socket.connected && performance.now() - obsAvatarAt < 3000 && !!currentObsHandState(),
+        visible: () => obsLayout.visible('hands'),
+      });
+      if (typeof cortiInitializeWeaponMotion === 'function') cortiInitializeWeaponMotion();
+      if (typeof cortiInitializeShield === 'function') cortiInitializeShield();
+      installHeldItemUseMotion(world, heldItemUseClock, { foods: mcData.foodsByName });
+      rendererReady = true;
+      applyAvatarState(); applyPosition(true);
+      world.renderer.domElement.dataset.obsHandsReady = 'true';
+      viewer.inWorldRenderingConfig.paused = false;
+      document.body.dataset.overlayReady = 'true';
+      globalThis.modernViewerDiagnostics = { mode: 'obs-overlay', worldRenderer: false,
+        handsRenderer: true, version, layout: () => obsLayout.snapshot() };
+      setStatus('', false, true);
+      return;
+    }
     if (isDungeonView && globalThis.world?.scene) {
       globalThis.world.scene.background = new Color("#253548");
       globalThis.world.scene.fog = new Fog(new Color("#253548"), 30, 68);
@@ -968,6 +1036,7 @@ function flushPendingWorld() {
 }
 
 function publishFirstPersonEntity(force = false) {
+  if (isObsOverlay) return false;
   if (!isFirstPersonView || !rendererReady || !worldView || !pendingPlayerEntity) return false;
   if (firstPersonEntityPublished && !force) return false;
   worldView.emit("playerEntity", rendererEntityEquipment(pendingPlayerEntity, globalThis.mcData?.itemsByName));
@@ -1028,6 +1097,10 @@ function returnCameraToAvatar({ announce = true, resetZoom = false } = {}) {
 
 function applyPosition(instant = false) {
   if (!rendererReady || !viewer || !latestPosition) return;
+  if (isObsOverlay) {
+    viewer.updateCamera(latestPosition.pos, latestPosition.yaw, latestPosition.pitch, { instant: true });
+    return;
+  }
   const { pos, yaw, pitch } = latestPosition;
   if (usesWorldAvatar) {
     if (!orbitInitialized) {
@@ -2624,7 +2697,26 @@ function publishCameraDataset() {
 function applyAvatarState() {
   if (!rendererReady || !viewer || !pendingAvatarState) return;
   const reactive = viewer.playerState.reactive;
-  const state = pendingAvatarState;
+  const state = isObsOverlay ? currentObsHandState() : pendingAvatarState;
+  if (!state) return;
+  if (isObsOverlay) {
+    reactive.username = state.entity?.username || obsSession?.playerName || '';
+    if (state.entity?.skinUrl && reactive.playerSkin !== state.entity.skinUrl) reactive.playerSkin = state.entity.skinUrl;
+    if (typeof cortiSetRangedUse === 'function') {
+      const hand = state.usingOffhand === true ? 'left' : 'right';
+      const item = hand === 'left' ? state.offhand : selectedHotbarItem(state);
+      const kind = String(item?.name || '').replace(/^minecraft:/, '');
+      // An Eye receives the observed body's metadata/arm packets, rather than
+      // that body's locally initiated rangedUse event. Derive the same pose
+      // only from that authenticated native use flag + current held item.
+      if (state.usingHeldItem && ['bow', 'crossbow', 'trident'].includes(kind)) {
+        if (cortiRangedUse?.phase !== 'draw' || cortiRangedUse.kind !== kind || cortiRangedUse.hand !== hand)
+          cortiSetRangedUse({ kind, hand, phase: 'draw' });
+      } else if (cortiRangedUse?.phase === 'draw') {
+        cortiSetRangedUse({ ...cortiRangedUse, phase: kind === cortiRangedUse.kind ? 'release' : 'cancel' });
+      }
+    }
+  }
   const motion = normalizedAvatarMotion ?? normalizeMotionFrame(state, null, Date.now());
   const movementState = normalizeMovementState(state.movementState);
   reactive.movementState = movementState;
@@ -2646,6 +2738,8 @@ function applyAvatarState() {
   updateHandItem("main", equipment?.[0] ?? selectedHotbarItem(state));
   updateHandItem("off", equipment?.[1]);
 
+  if (isObsOverlay) return;
+
   if (playerModelInstance && usesWorldAvatar) {
     playerModelInstance.root.visible = !isEntityInvisible(state.entity);
     playerModelInstance.controller.updateEntity(motion);
@@ -2666,6 +2760,12 @@ function applyAvatarState() {
 
 function applyEntityAnimation(event) {
   if (!rendererReady || !event || typeof event !== "object") return;
+  if (isObsOverlay) {
+    const state = currentObsHandState();
+    if (!state || (obsSession?.mode === 'observer' ? event.id !== obsSession.entityId : event.isSelf !== true)) return;
+    if (event.animation === 'oneSwing' && typeof cortiApplyFirstPersonSwing === 'function') cortiApplyFirstPersonSwing(event);
+    return;
+  }
   const animation = String(event.animation || "idle");
   const allowed = new Set(["walking", "running", "oneSwing", "idle", "crouch", "crouchWalking", "riding"]);
   if (!allowed.has(animation)) return;

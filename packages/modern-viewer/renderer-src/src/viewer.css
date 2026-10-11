@@ -1,8 +1,7 @@
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#080d12;color:#f3f5f6;font:14px/1.4 system-ui,sans-serif}
-/* OBS browser source: no world renderer or full-screen backgrounds. */
+/* OBS browser source: transparent original item/hand passes + configurable HUD. */
 html[data-obs-overlay=true],body[data-obs-overlay=true]{background:transparent!important}
-body[data-obs-overlay=true] #viewer-canvas,
-body[data-obs-overlay=true] .corti-crosshair,
+body[data-obs-overlay=true] #viewer-canvas:not([data-obs-hands-ready=true]),
 body[data-obs-overlay=true] .corti-status-vignette,
 body[data-obs-overlay=true] .corti-view-switch,
 body[data-obs-overlay=true] .corti-tactical-canvas,
@@ -12,6 +11,25 @@ body[data-obs-overlay=true] .viewer-audio-controls,
 body[data-obs-overlay=true] .corti-night-vision-toggle,
 body[data-obs-overlay=true] #corti-content-status{display:none!important}
 body[data-obs-overlay=true] .boot{inset:auto;top:12px;left:12px;max-width:480px;padding:8px;border-radius:6px;background:#14212bd9}
+body[data-obs-overlay=true] #viewer-canvas{background:transparent;pointer-events:none;z-index:1}
+.obs-layout-editor[hidden],.obs-layout-selection[hidden]{display:none!important}
+.obs-layout-editor{position:fixed;right:12px;top:12px;width:min(320px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;z-index:101;padding:12px;background:#14212bf5;border:1px solid #78bdcd;border-radius:8px;color:#eefaff;font:13px/1.5 system-ui}
+.obs-layout-editor header{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.obs-layout-editor p{color:#b7d0d8;font-size:12px}
+.obs-layout-editor button{padding:5px 8px;background:#233d49;border:1px solid #41626d;border-radius:4px;color:inherit;cursor:pointer;font:inherit}
+.obs-layout-list{max-height:38vh;overflow:auto;border-block:1px solid #41626d;margin-block:8px;padding-block:6px}
+.obs-layout-list>div{display:flex;align-items:center;gap:6px;margin:3px 0}
+.obs-layout-list button{flex:1;text-align:left}
+.obs-layout-list button[aria-pressed=true]{background:#386679;border-color:#a1e4ef}
+.obs-layout-editor label{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-block:6px}
+.obs-layout-editor input[type=number]{width:86px;padding:4px;background:#0c1b23;border:1px solid #41626d;color:inherit}
+.obs-layout-actions{display:flex;flex-wrap:wrap;gap:6px;margin-block:10px}
+.obs-layout-editor textarea{box-sizing:border-box;width:100%;height:65px;background:#0c1b23;color:#cde7ec}
+.obs-layout-editor output{display:block;font-size:12px;color:#b7d0d8}
+.obs-layout-selection{position:fixed;box-sizing:border-box;z-index:100;border:2px dashed #90edff;pointer-events:none;touch-action:none}
+.obs-layout-selection>span{position:absolute;left:0;top:0;max-width:calc(100% - 8px);padding:3px 6px;background:#174c65;color:white;font:12px/1.4 system-ui;white-space:nowrap;cursor:move;pointer-events:auto;touch-action:none}
+.obs-layout-resize{position:absolute;right:0;bottom:0;width:28px;height:28px;background:#174c65;color:white;border:1px solid #90edff;cursor:nwse-resize;pointer-events:auto;touch-action:none}
+body[data-obs-editing=true]{background-color:#27333e!important;background-image:linear-gradient(45deg,#354450 25%,transparent 25%),linear-gradient(-45deg,#354450 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#354450 75%),linear-gradient(-45deg,transparent 75%,#354450 75%)!important;background-size:24px 24px!important;background-position:0 0,0 12px,12px -12px,-12px 0!important}
 
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .boot{position:fixed;inset:0;z-index:5;display:grid;place-items:center;text-align:center;background:#080d12;color:#e6eeee;pointer-events:none}
