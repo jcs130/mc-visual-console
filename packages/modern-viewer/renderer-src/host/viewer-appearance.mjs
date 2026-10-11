@@ -1,4 +1,5 @@
 import {createYsmAssetReceiver} from './viewer-ysm-assets.mjs';
+import {createViewerYsmMotion} from './viewer-ysm-motion.mjs';
 /** Observe authoritative Freesia metadata on the existing action connection. */
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const APPEARANCE_CHANNEL='mcagent:appearance';
@@ -28,7 +29,8 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
   const errors=new Map();
   const assets=createYsmAssetReceiver(bot,{onAsset:bundle=>{emit('appearanceAsset',bundle);for(const row of records.values())if(row.assetSha256===bundle.assetSha256){const bound=binding(row);if(bound)emit('appearanceState',bound);}},onError:(row,reason)=>{errors.set(row.assetSha256,reason);const bound=binding(row);if(bound)emit('appearanceState',bound);}});
   const emit=(name,row)=>{for(const fn of listeners)try{fn(name,row);}catch{listeners.delete(fn);}};
-  const reset=()=>{records.clear();errors.clear();assets.reset();epoch=null;emit('appearanceReset',{schemaVersion:1});};
+  const motion=createViewerYsmMotion(bot,{now,emit,binding:id=>{for(const row of records.values())if(row.entityId===id && now()-row.receivedAt<=15000)return binding(row);return null;}});
+  const reset=()=>{records.clear();errors.clear();assets.reset();motion.reset();epoch=null;emit('appearanceReset',{schemaVersion:1});};
   function binding(row) {
     const ownUuid=bot._client.uuid??bot.player?.uuid;
     const own=ownUuid?.toLowerCase()===row.playerUuid;
@@ -47,7 +49,7 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
     // Reuse an ID only from this epoch's preceding state; binding still checks
     // the current connection's native entity UUID before emitting unavailable.
     if(!row.available)row.entityId=records.get(row.playerUuid)?.entityId;
-    records.set(row.playerUuid,{...row,receivedAt:now()});const bound=binding(row);if(bound){const bundle=assets.get(row.assetSha256);if(bundle)emit('appearanceAsset',bundle);emit('appearanceState',bound);if(listeners.size)assets.request(row);}
+    records.set(row.playerUuid,{...row,receivedAt:now()});const bound=binding(row);if(bound){const bundle=assets.get(row.assetSha256);if(bundle)emit('appearanceAsset',bundle);emit('appearanceState',bound);motion.send(bound);if(listeners.size)assets.request(row);}
   }
   const tracked=entity=>{
     const uuid=entity?.uuid?.toLowerCase();const row=uuid&&records.get(uuid);const bound=row&&binding(row);if(bound)emit('appearanceState',bound);
@@ -61,7 +63,7 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
   return {snapshot,subscribeSocket(socket){
     if(disposed)throw Error('viewer_appearance_disposed');
     const fn=(name,row)=>socket.emit(name,row);listeners.add(fn);
-    socket.emit('appearanceReset',{schemaVersion:1});for(const row of snapshot()){const bundle=assets.get(row.assetSha256);if(bundle)socket.emit('appearanceAsset',bundle);socket.emit('appearanceState',row);assets.request(row);}
+    socket.emit('appearanceReset',{schemaVersion:1});for(const row of snapshot()){const bundle=assets.get(row.assetSha256);if(bundle)socket.emit('appearanceAsset',bundle);socket.emit('appearanceState',row);motion.send(row);assets.request(row);}
     return()=>listeners.delete(fn);
-  },dispose(){if(disposed)return;disposed=true;assets.dispose();clearInterval(timer);bot._client.off('custom_payload',payload);bot.off('entitySpawn',tracked);bot.off('entityGone',gone);bot.off('login',reset);bot.off('respawn',reset);bot.off('end',reset);records.clear();listeners.clear();}};
+  },dispose(){if(disposed)return;disposed=true;assets.dispose();motion.dispose();clearInterval(timer);bot._client.off('custom_payload',payload);bot.off('entitySpawn',tracked);bot.off('entityGone',gone);bot.off('login',reset);bot.off('respawn',reset);bot.off('end',reset);records.clear();listeners.clear();}};
 }

@@ -1,56 +1,18 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {createNativeBedrockModel} from '../native-viewer/native-entity-model-bedrock.js';
+import {PaperYsmAnimation} from './paper-ysm-animation.js';
+import {PaperYsmHeldItems} from './paper-ysm-items.js';
+export {applyPaperYsmAnimation} from './paper-ysm-animation.js';
 
 const json=(bundle,path)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(bundle.files[path].base64),c=>c.charCodeAt(0))));
-const vector=v=>Array.isArray(v)&&v.length===3;
-function scalar(value,query) {
-  if(Number.isFinite(value))return value;
-  const expressions={
-    'ysm.is_close_eyes ? -1 : 0':()=>query.closeEyes?-1:0,'ysm.is_close_eyes ? 0 : 1':()=>query.closeEyes?0:1,
-    'ysm.head_yaw/180':()=>query.headYaw/180,'ysm.head_pitch/360':()=>query.headPitch/360
-  };
-  if(typeof value==='string' && Object.hasOwn(expressions,value))return expressions[value]();
-  throw Error('YSM_MOLANG_UNSUPPORTED');
-}
-function sample(track,seconds,query,channel) {
-  const read=v=>{if(channel==='scale' && Number.isFinite(v))v=[v,v,v];if(!vector(v))throw Error('YSM_KEYFRAME_UNSUPPORTED');return v.map(n=>scalar(n,query));};
-  if(vector(track)||Number.isFinite(track))return read(track);
-  if(!track||typeof track!=='object'||Object.keys(track).length>256)throw Error('YSM_KEYFRAME_UNSUPPORTED');
-  const entries=Object.entries(track).map(([time,v])=>{if(!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(time))throw Error('YSM_KEYFRAME_UNSUPPORTED');return {time:Number(time),v};}).sort((a,b)=>a.time-b.time);
-  if(!entries.length)throw Error('YSM_KEYFRAME_UNSUPPORTED');
-  if(seconds<=entries[0].time)return read(entries[0].v);
-  const last=entries.at(-1);if(seconds>=last.time)return read(last.v);
-  const index=entries.findIndex(v=>v.time>=seconds), a=entries[index-1],b=entries[index];
-  const from=read(a.v),to=read(b.v),weight=(seconds-a.time)/(b.time-a.time);
-  return from.map((v,i)=>v+(to[i]-v)*weight);
-}
-export function applyPaperYsmAnimation(model,definition,name,seconds,query) {
-  const clip=definition?.animations?.[name];
-  if(!clip || definition.format_version!=='1.8.0')throw Error('YSM_CLIP_UNAVAILABLE:'+name);
-  const length=clip.animation_length??0;
-  if(!Number.isFinite(length)||length<0||length>600)throw Error('YSM_CLIP_UNSUPPORTED');
-  const time=length?(clip.loop===true?seconds%length:Math.min(seconds,length)):0;
-  model.reset();
-  for(const [name,channels] of Object.entries(clip.bones??{})) {
-    const bone=model.bones.get(name),initial=model.initial.get(name);if(!bone)throw Error('YSM_ANIMATION_BONE_UNSUPPORTED');
-    for(const [channel,track] of Object.entries(channels)) {
-      const v=sample(track,time,query,channel);
-      if(!v.every(Number.isFinite))throw Error('YSM_ANIMATION_VALUE_INVALID');
-      if(channel==='rotation')bone.rotation.set(initial.rotation.x+v[0]*Math.PI/180,initial.rotation.y+v[1]*Math.PI/180,initial.rotation.z+v[2]*Math.PI/180,'ZYX');
-      else if(channel==='position')bone.position.set(initial.position.x+v[0]/16,initial.position.y-v[1]/16,initial.position.z+v[2]/16);
-      else if(channel==='scale')bone.scale.fromArray(v);
-      else throw Error('YSM_ANIMATION_CHANNEL_UNSUPPORTED');
-    }
-  }
-}
-export async function createPaperYsmActor(bundle,textureId) {
+export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTexture}={}) {
   const definition=json(bundle,'ysm.json'),geometry=json(bundle,bundle.model),animation=json(bundle,bundle.animation);
   const file=bundle.files[bundle.textures[textureId]];if(!file)throw Error('YSM_TEXTURE_UNAVAILABLE');
   if(definition.spec!==2 || definition.properties?.free!==true)throw Error('YSM_DEFINITION_UNSUPPORTED');
   const bounded=value=>{if(typeof value==='number' && (!Number.isFinite(value)||Math.abs(value)>65536))throw Error('YSM_GEOMETRY_VALUE_BUDGET');if(value && typeof value==='object')for(const child of Object.values(value))bounded(child);};
   bounded(geometry);
-  const texture=await new THREE.TextureLoader().loadAsync('data:image/png;base64,'+file.base64);
+  const texture=await (loadTexture??(url=>new THREE.TextureLoader().loadAsync(url)))('data:image/png;base64,'+file.base64);
   let material,model;
   try {
     texture.flipY=true;texture.colorSpace=THREE.SRGBColorSpace;texture.magFilter=THREE.NearestFilter;texture.minFilter=THREE.NearestFilter;texture.generateMipmaps=false;texture.needsUpdate=true;
@@ -64,55 +26,98 @@ export async function createPaperYsmActor(bundle,textureId) {
     });
     const root=new THREE.Group(),orientation=new THREE.Group(),content=new THREE.Group();
     root.add(orientation);orientation.add(content);orientation.scale.set(-1,-1,1);orientation.position.y=Math.fround(.01);content.position.y=-1.5;content.add(model.root);
-    const width=definition.properties?.width_scale??1,height=definition.properties?.height_scale??1;
+    // YSM2.4.1's documented omitted-property default is .7, not one.
+    const width=definition.properties?.width_scale??.7,height=definition.properties?.height_scale??.7;
     if(![width,height].every(n=>Number.isFinite(n)&&n>0&&n<=4))throw Error('YSM_SCALE_UNSUPPORTED');root.scale.set(width,height,width);
-    return {root,model,assetInfo:{modelId:bundle.modelId,assetSha256:bundle.assetSha256,sourceSha256:bundle.sourceSha256,texture:textureId,bones:model.bones.size,cubes:model.cubeCount,faces:model.faceCount,completeEntityParityVerified:false},
+    const extra=kind=>{const path=bundle.animations?.[kind]??definition.files?.player?.animation?.[kind];return path&&bundle.files[path]?json(bundle,path):null;};
+    const animationController=new PaperYsmAnimation(model,animation,{arm:extra('arm'),extra:extra('extra'),controllers:definition.files?.player?.animation_controllers??[]});
+    const held=new PaperYsmHeldItems(model,itemModels);
+    const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3());
+    return {root,model,assetInfo:{modelId:bundle.modelId,assetSha256:bundle.assetSha256,sourceSha256:bundle.sourceSha256,texture:textureId,bones:model.bones.size,cubes:model.cubeCount,faces:model.faceCount,scale:{width,height},bindSizeBlocks:size.toArray(),completeEntityParityVerified:false},
       animate(state,now) {
-        // Clip name comes from the actual Worker packet; no synthetic gait/controller state.
-        const clip=state.animation||'idle';
-        const query={closeEyes:false,headYaw:0,headPitch:(state.pitch??0)*180/Math.PI};
-        try{applyPaperYsmAnimation(model,animation,clip,now/1000,query);this.animationReason=null;}
-        catch(error){model.reset();this.animationReason=error.message;}
+        this.animationState=animationController.apply(state,now);this.animationReason=this.animationState.errors[0]??null;
+        held.apply(state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
       },
-      dispose(){model.dispose();for(const g of merged)g.dispose();material.dispose();texture.dispose();root.removeFromParent();root.clear();}};
+      dispose(){held.dispose();model.dispose();for(const g of merged)g.dispose();material.dispose();texture.dispose();root.removeFromParent();root.clear();}};
   } catch(error){model?.dispose();material?.dispose();texture.dispose();throw error;}
 }
 
 /** Mounted only onto a currently tracked vanilla player entity with the same UUID. */
 export class PaperYsmPlayers {
-  constructor({entity,rendered}={}){this.entity=entity;this.rendered=rendered;this.states=new Map();this.assets=new Map();this.assetSizes=new Map();this.assetBytes=0;this.actors=new Map();this.pending=new Map();this.failures=new Map();this.sequence=0;}
+  constructor({entity,rendered,itemModels={},createActor=createPaperYsmActor}={}){this.entity=entity;this.rendered=rendered;this.itemModels=itemModels;this.createActor=createActor;this.nametags=new WeakMap();this.motions=new Map();this.fallback=new Map();this.states=new Map();this.assets=new Map();this.assetSizes=new Map();this.assetBytes=0;this.actors=new Map();this.pending=new Map();this.failures=new Map();this.sequence=0;}
   asset(bundle){if(bundle?.schemaVersion!==1||bundle.format!=='ysm-bedrock-original'||!bundle.assetSha256)return;
     if(this.assets.has(bundle.assetSha256))return;
     const size=Object.values(bundle.files??{}).reduce((n,f)=>n+(f.base64?.length??0),0);if(size>8*1024*1024)return;
     while(this.assets.size>=32 || this.assetBytes+size>32*1024*1024){const key=this.assets.keys().next().value;this.assetBytes-=this.assetSizes.get(key);this.assetSizes.delete(key);this.assets.delete(key);}
     this.assets.set(bundle.assetSha256,bundle);this.assetSizes.set(bundle.assetSha256,size);this.assetBytes+=size;}
   state(row){if(row?.schemaVersion!==1||row.source!=='freesia_worker'||typeof row.playerUuid!=='string')return;
-    const previous=this.states.get(row.playerUuid);if(previous && (previous.assetSha256!==row.assetSha256||previous.texture!==row.texture||previous.entityId!==row.entityId||!row.available))this.remove(row.playerUuid);
+    const previous=this.states.get(row.playerUuid);if(previous && (previous.epoch!==row.epoch||previous.assetSha256!==row.assetSha256||previous.texture!==row.texture||previous.entityId!==row.entityId||!row.available))this.remove(row.playerUuid);
     if(this.states.size<40||this.states.has(row.playerUuid))this.states.set(row.playerUuid,row);}
-  remove(uuid){const actor=this.actors.get(uuid);if(actor){actor.actor.dispose();for(const [child,visible]of actor.hidden)child.visible=visible;this.actors.delete(uuid);}this.pending.delete(uuid);this.failures.delete(uuid);this.states.delete(uuid);}
+  motion(row,now=performance.now()) {
+    const state=this.states.get(row?.playerUuid),previous=this.motions.get(row?.playerUuid);
+    if(!state || row.schemaVersion!==1 || row.source!=='same_connection_java_protocol' || state.epoch!==row.epoch || state.entityId!==row.entityId || !Number.isSafeInteger(row.sequence) || previous && previous.row.sequence>=row.sequence || !Number.isFinite(row.horizontalSpeed) || row.horizontalSpeed<0 || row.horizontalSpeed>30)return;
+    this.motions.set(row.playerUuid,{row,at:now});
+  }
+  action(event,now=performance.now()) {
+    if(!event || event.animation!=='oneSwing')return;
+    for(const [uuid,row]of this.states)if(String(row.entityId)===String(event.id)) {
+      const prior=this.fallback.get(uuid)??{};prior.swing={hand:event.hand==='left'?'offhand':'mainhand',sequence:++this.sequence,at:now};this.fallback.set(uuid,prior);
+    }
+  }
+  motionFor(uuid,entity,now) {
+    const latest=this.motions.get(uuid),local=this.fallback.get(uuid)??{},pos=entity.pos??entity.position;
+    if(pos && local.position && now>local.at) {
+      const d=Math.hypot(pos.x-local.position.x,pos.z-local.position.z);
+      if(d>0){local.speed=d<3?Math.min(30,d*1000/(now-local.at)):0;local.movedAt=now;}
+    }
+    if(!local.movedAt || now-local.movedAt>250)local.speed=0;
+    local.position=pos?{...pos}:null;local.at=now;this.fallback.set(uuid,local);
+    const motion=latest && now-latest.at<2000?{...latest.row}:{horizontalSpeed:local.speed,equipment:entity.equipment,crouching:!!(Number(entity.metadata?.[0])&2),sprinting:!!(Number(entity.metadata?.[0])&8),pose:entity.metadata?.[6],headPitchDegrees:-(entity.pitch??0)*180/Math.PI};
+    if(latest?.row.swing)motion.swing={...latest.row.swing,ageSeconds:latest.row.swing.ageSeconds+(now-latest.at)/1000};
+    if(latest?.row.hurt)motion.hurt={...latest.row.hurt,ageSeconds:latest.row.hurt.ageSeconds+(now-latest.at)/1000};
+    // Legacy host action events cover the owner's locally initiated swing.
+    if(local.swing && (!motion.swing || motion.swing.ageSeconds>2))motion.swing={...local.swing,ageSeconds:(now-local.swing.at)/1000};
+    return motion;
+  }
+  restore(actor){actor.actor.dispose();for(const [child,visible]of actor.hidden)child.visible=visible;actor.rendered.traverse(part=>{const position=this.nametags.get(part);if(position){part.position.copy(position);this.nametags.delete(part);}});}
+  remove(uuid){const actor=this.actors.get(uuid);if(actor){this.restore(actor);this.actors.delete(uuid);}this.pending.delete(uuid);this.failures.delete(uuid);this.states.delete(uuid);this.motions.delete(uuid);this.fallback.delete(uuid);}
   clear(){for(const uuid of [...this.states.keys()])this.remove(uuid);this.assets.clear();this.assetSizes.clear();this.assetBytes=0;this.sequence++;}
   tick(now) {
     for(const [uuid,row]of this.states) {
       const entity=this.entity(row.entityId),rendered=this.rendered(row.entityId),bound=entity?.uuid?.toLowerCase()===uuid && rendered;
       const mounted=this.actors.get(uuid);
-      if(mounted && (!bound || mounted.rendered!==rendered)){mounted.actor.dispose();for(const [child,v]of mounted.hidden)child.visible=v;this.actors.delete(uuid);}
+      if(mounted && (!bound || mounted.rendered!==rendered)){this.restore(mounted);this.actors.delete(uuid);}
       if(!bound || !row.available)continue;
       const current=this.actors.get(uuid);
       if(current){
-        for(const child of rendered.children)if(child!==current.actor.root && (child.name==='mesh'||child.name.startsWith('geometry_armor_'))){if(!current.hidden.has(child))current.hidden.set(child,child.visible);child.visible=false;}
+        this.hideVanilla(rendered,current.actor.root,current.hidden,current.actor.assetInfo.bindSizeBlocks[1]);
         current.actor.root.visible=!entity.metadata?.[0] || (entity.metadata[0]&32)===0;
         // The renderer's native scene entity already carries this player's yaw.
-        current.actor.root.rotation.y=0;current.actor.animate({...row,pitch:entity.pitch},now);continue;
+        current.actor.root.rotation.y=0;current.actor.animate({...row,pitch:entity.pitch,equipment:entity.equipment,motion:this.motionFor(uuid,entity,now)},now);continue;
       }
       if(!row.renderAvailable || this.pending.has(uuid) || this.failures.has(uuid))continue;
       const bundle=this.assets.get(row.assetSha256);if(!bundle || bundle.modelId!==row.modelId)continue;
       const marker=++this.sequence;this.pending.set(uuid,marker);
-      void createPaperYsmActor(bundle,row.texture).then(actor=>{
+      void this.createActor(bundle,row.texture,{itemModels:this.itemModels}).then(actor=>{
         if(this.pending.get(uuid)!==marker || this.states.get(uuid)?.assetSha256!==row.assetSha256 || this.rendered(row.entityId)!==rendered || this.entity(row.entityId)?.uuid?.toLowerCase()!==uuid){actor.dispose();return;}
-        const hidden=new Map();for(const child of rendered.children)if(child.name==='mesh'||child.name.startsWith('geometry_armor_')){hidden.set(child,child.visible);child.visible=false;}
+        const hidden=new Map();this.hideVanilla(rendered,actor.root,hidden,actor.assetInfo.bindSizeBlocks[1]);
         rendered.add(actor.root);this.actors.set(uuid,{actor,rendered,hidden});
       }).catch(error=>{if(this.pending.get(uuid)===marker)this.failures.set(uuid,error.message);}).finally(()=>{if(this.pending.get(uuid)===marker)this.pending.delete(uuid);});
     }
   }
-  stats(){return {states:this.states.size,rendered:this.actors.size,pending:this.pending.size,failed:this.failures.size,unavailable:[...this.states.values()].filter(r=>r.available&&!r.renderAvailable).length,errors:[...this.failures.values()],animationUnavailable:[...this.actors.values()].map(a=>a.actor.animationReason).filter(Boolean),assets:[...this.actors.values()].map(a=>a.actor.assetInfo)};}
+  hideVanilla(rendered,actor,hidden,height) {
+    const hide=child=>{if(!hidden.has(child))hidden.set(child,child.visible);child.visible=false;};
+    for(const child of rendered.children)if(child!==actor) {
+      if(child.name==='mesh') {
+        // Player skin wrapper also contains the live nametag. Preserve the
+        // wrapper/tag and hide only its vanilla body and equipment subtree.
+        for(const part of child.children)if(part.name!=='nametag')hide(part);else if(Number.isFinite(height)) {
+          if(!this.nametags.has(part))this.nametags.set(part,part.position.clone());
+          const target=child.worldToLocal(rendered.localToWorld(new THREE.Vector3(0,height+.35,0)));
+          part.position.y=Math.max(this.nametags.get(part).y,target.y);
+        }
+      }else if(child.name.startsWith('geometry_armor_'))hide(child);
+    }
+  }
+  stats(){return {states:this.states.size,rendered:this.actors.size,pending:this.pending.size,failed:this.failures.size,unavailable:[...this.states.values()].filter(r=>r.available&&!r.renderAvailable).length,errors:[...this.failures.values()],animationUnavailable:[...this.actors.values()].map(a=>a.actor.animationReason).filter(Boolean),heldUnavailable:[...this.actors.values()].flatMap(a=>Object.values(a.actor.heldState??{}).filter(hand=>hand.status==='unavailable')),actors:[...this.actors].map(([uuid,a])=>({uuid,animation:a.actor.animationState,held:a.actor.heldState})),assets:[...this.actors.values()].map(a=>a.actor.assetInfo)};}
 }

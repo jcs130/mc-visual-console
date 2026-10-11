@@ -8,7 +8,7 @@ export function decodeYsmBundle(compressed,hash) {
   const raw=gunzipSync(compressed,{maxOutputLength:MAX_RAW});
   const bundle=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
   if(bundle.schemaVersion!==1 || bundle.ysmVersion!=='2.4.1' || bundle.format!=='ysm-bedrock-original'
-    || typeof bundle.modelId!=='string' || bundle.modelId.length>96 || !bundle.files || Object.keys(bundle.files).length>20)throw Error('YSM_ASSET_FORMAT_UNSUPPORTED');
+    || typeof bundle.modelId!=='string' || bundle.modelId.length>96 || !bundle.files || Object.keys(bundle.files).length>32)throw Error('YSM_ASSET_FORMAT_UNSUPPORTED');
   let total=0;
   for(const [path,file] of Object.entries(bundle.files)) {
     if(path.startsWith('/') || path.includes('\\') || path.includes(':') || path.split('/').includes('..') || typeof file.base64!=='string')throw Error('YSM_ASSET_PATH_INVALID');
@@ -16,7 +16,10 @@ export function decodeYsmBundle(compressed,hash) {
     if(total>MAX_RAW || bytes.length!==file.bytes || sha(bytes)!==file.sha256)throw Error('YSM_SOURCE_HASH_MISMATCH');
   }
   if(!bundle.files[bundle.model] || !bundle.files[bundle.animation] || !bundle.files['ysm.json']
-    || Object.values(bundle.textures??{}).some(path=>!bundle.files[path]))throw Error('YSM_SOURCE_MISSING');
+    || Object.values(bundle.textures??{}).some(path=>!bundle.files[path])
+    || Object.values(bundle.animations??{}).some(path=>typeof path!=='string'||!bundle.files[path])
+    || !Array.isArray(bundle.controllers??[]) || (bundle.controllers?.length??0)>8
+    || (bundle.controllers??[]).some(path=>typeof path!=='string'||!bundle.files[path]))throw Error('YSM_SOURCE_MISSING');
   return {...bundle,assetSha256:hash};
 }
 /** Opt-in asset requests over the existing Minecraft connection, serialized and bounded. */
