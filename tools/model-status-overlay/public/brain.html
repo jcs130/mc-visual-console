@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN" class="dashboard-root">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cortico · 大脑框架指标</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/dashboard.css">
+  <script src="/app.js" defer></script>
+</head>
+<body class="dashboard">
+<main class="dashboard-panel">
+  <header class="dashboard-heading"><div><div class="eyebrow">CORTICO / BRAIN METRICS</div><h1><span class="signal" id="signal"></span>大脑框架指标</h1><p>策略选择、资源消耗与执行结果</p></div><div class="dashboard-nav"><span id="monitor-state">只读监测</span><a href="/overlay">OBS 小窗 ↗</a></div></header>
+  <section class="config-card" aria-label="配置快照"><div><b>策略配置</b><span id="policy-source">读取中</span></div><p id="policy-summary">—</p><small id="active-connection">活动主连接 —</small></section>
+  <section class="detail-card" aria-label="逐次策略"><div class="card-heading"><h2 id="selection-title">本次策略</h2><span id="selection-source">逐次策略待接入</span></div><div class="detail-grid">
+    <div><label>请求通道 / 模型</label><b id="detail-route">—</b></div><div><label>选择来源</label><b id="detail-origin">—</b></div>
+    <div><label>阅读模式 · 建议 → 应用</label><b id="detail-reading">— → —</b></div><div><label>思考建议 → 请求档位</label><b id="detail-effort">— → —</b><small id="provider-confirmed">服务确认 —</small></div>
+    <div><label>历史预算 · 选择 → 应用</label><b id="detail-history">— → —</b></div><div><label>历史增长预算</label><b id="detail-growth">—</b></div>
+    <div><label>完整输入 · 框架估算</label><b id="detail-estimated">—</b></div><div><label>完整输入 · 已关联实测</label><b id="detail-actual">—</b></div>
+    <div><label>独立思考 token 预算</label><b id="detail-reasoning-budget">—</b></div><div><label>选择器耗时</label><b id="detail-selector">—</b></div>
+  </div><p class="note">历史预算允许保留完整新输入与工具调用组；实测输入须与同一请求关联。思考档位与输出 token 上限分别统计。</p></section>
+  <section class="detail-card" aria-label="近10分钟策略统计"><div class="card-heading"><h2>近10分钟</h2><span id="window-coverage">统计待接入</span></div><div class="metric-grid">
+    <div class="metric"><label>自适应采用</label><strong id="metric-adaptive">—</strong><small id="metric-adaptive-count">— / — 个适用请求</small></div>
+    <div class="metric"><label>选择器回退</label><strong id="metric-fallback">—</strong><small id="metric-fallback-count">— / — 次选择尝试</small></div>
+    <div class="metric"><label>模型调用失败</label><strong id="metric-failed">—</strong><small id="metric-failed-count">— / — 次调用</small></div>
+    <div class="metric"><label>额外重试调用</label><strong id="metric-retries">—</strong><small>同一决策内的调用次数</small></div>
+  </div><div class="distribution-grid"><div><label>应用阅读模式</label><p id="reading-distribution">—</p></div><div><label>请求思考档位</label><p id="effort-distribution">—</p></div><div><label>请求通道分布</label><p id="route-distribution">—</p></div></div></section>
+  <section class="detail-card" aria-label="上下文与思考预算统计"><div class="card-heading"><h2>长度与预算分布</h2><span>近10分钟 · P50 / P95</span></div><div class="distribution-grid lengths"><div><label>已应用历史预算</label><p id="history-percentiles">— / — tok · — 个样本</p></div><div><label>同一请求关联的完整实测输入</label><p id="input-percentiles">— / — tok · — 个样本</p></div><div><label>独立思考 token 预算</label><p id="reasoning-percentiles">— / — tok · — 个样本</p></div></div></section>
+  <section class="detail-card" aria-label="验证结果与成本"><div class="card-heading"><h2>执行效果与成本</h2><span>同一统计窗口</span></div><div class="metric-grid">
+    <div class="metric"><label>已验证任务成功</label><strong id="metric-success">—</strong><small id="metric-success-count">— / — 个已验证终态</small></div>
+    <div class="metric"><label>失败后恢复</label><strong id="metric-recovery">—</strong><small id="metric-recovery-count">— / — 个已结案失败案例</small></div>
+    <div class="metric"><label>终态待验证</label><strong id="metric-unknown">—</strong><small>不纳入已验证成功率分母</small></div>
+    <div class="metric"><label>输入 / 输出 / 思考 token</label><strong class="token-cost" id="metric-tokens">— / — / —</strong><small>思考是输出的子集，不重复相加</small></div>
+  </div><p class="note">任务成功来自环境验证，回退、重试或工具受理均不代表完成。恢复案例须保留原任务关联；零样本显示“—”。</p></section>
+  <section class="detail-card" aria-label="推理与语音资源"><div class="card-heading"><h2>模型与语音资源</h2><span>独立执行采样</span></div><div class="runtime-grid"><section class="model" id="main" aria-label="主模型"></section><section class="model" id="system1" aria-label="系统1决策模型"></section></div>
+    <section class="tts"><div class="tts-title"><span class="tiny-dot" id="tts-dot"></span><strong>TTS</strong><span id="tts-label">本地合成</span></div><div class="tts-values"><div><span>合成中</span><b id="tts-active">—</b></div><div><span>等待</span><b id="tts-waiting">—</b></div><div><span>上次合成</span><b id="tts-duration">—</b></div><div><span>待发项</span><b id="tts-pending">—</b></div></div></section>
+  </section>
+  <footer><div class="connections" title="已建立TCP入口连接，不代表调用次数或当前请求来源"><span>入口连接采样</span><b>NEKO <i id="neko">—</i></b><b>MC <i id="mc">—</i></b><b id="unclassified" hidden>其他 <i>—</i></b></div><time id="updated">更新 —</time></footer>
+</main>
+</body>
+</html>

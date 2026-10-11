@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>大脑状态 · OBS 小窗</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="panel" aria-label="大脑框架与本地模型运行状态">
+    <header class="top"><div class="heading"><span class="signal" id="signal"></span><h1>大脑状态</h1><span class="en">CORTICO</span></div><span id="monitor-state">只读监测</span></header>
+    <section class="brain-strip" aria-label="策略选择与近10分钟统计">
+      <div class="brain-line"><span id="brain-scope">本次策略</span><b id="brain-route">—</b><span>阅读 <strong id="brain-reading">—</strong></span><span>思考 <strong id="brain-effort">—</strong></span></div>
+      <div class="brain-line secondary"><span id="brain-budget">历史预算 — · 增长 —</span><span title="按实际决策事件统计，零样本时未知；不按网页刷新次数计数"><span id="brain-window">10分</span> 自适应 <b id="brain-adaptive">—</b> · 回退 <b id="brain-fallback">—</b></span></div>
+    </section>
+    <section class="model" id="main" aria-label="主模型"></section>
+    <section class="model" id="system1" aria-label="系统1决策模型"></section>
+    <section class="tts" aria-label="本地语音合成">
+      <div class="tts-title"><span class="tiny-dot" id="tts-dot"></span><strong>TTS</strong><span id="tts-label">本地合成</span></div>
+      <div class="tts-values"><div><span>合成中</span><b id="tts-active">—</b></div><div><span>等待</span><b id="tts-waiting">—</b></div><div title="上次单条合成执行耗时，不代表播放等待时间"><span>上次合成</span><b id="tts-duration">—</b></div><div title="已明确报告的待发项数量，不包含推测的播放时长"><span>待发项</span><b id="tts-pending">—</b></div></div>
+    </section>
+    <footer><div class="connections" title="入口端口的已建立TCP连接采样，不等于调用次数，也不代表当前请求来源"><span>入口采样</span><b>NEKO <i id="neko">—</i></b><b>MC <i id="mc">—</i></b><b id="unclassified" hidden>其他 <i>—</i></b></div><time id="updated">更新 —</time></footer>
+  </main>
+</body>
+</html>
