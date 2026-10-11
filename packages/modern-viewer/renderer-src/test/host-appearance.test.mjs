@@ -26,6 +26,21 @@ test('own actor and server unavailable status stay distinct from geometry suppor
   bot._client.emit('custom_payload',packet({...row,type:'remove'}));assert.equal(bridge.snapshot().length,0);bridge.dispose();
 });
 
+test('pending model and disconnected Worker diagnostics survive without asserting renderability',()=>{
+  const bot=Object.assign(new EventEmitter(),{_client:new EventEmitter(),player:{uuid},entity:{id:7},entities:{}});
+  const bridge=createViewerAppearanceBridge(bot);
+  for(const [stateStatus,workerConnected] of [['awaiting_model_state',true],['worker_offline',false]]) {
+    bot._client.emit('custom_payload',packet({...row,available:false,reason:'YSM_WORKER_STATE_UNAVAILABLE',stateStatus,workerConnected,message:'模型状态尚未确认'}));
+    const state=bridge.snapshot()[0];
+    assert.equal(state.stateStatus,stateStatus);assert.equal(state.workerConnected,workerConnected);
+    assert.equal(state.message,'模型状态尚未确认');assert.equal(state.renderAvailable,false);
+    assert.equal(state.renderReason,'YSM_WORKER_STATE_UNAVAILABLE');
+  }
+  const invalid=parseAppearancePacket(packet({...row,message:'bad\nmessage',stateStatus:'invented',workerConnected:'true'}));
+  assert.equal(invalid.message,undefined);assert.equal(invalid.stateStatus,undefined);assert.equal(invalid.workerConnected,undefined);
+  bridge.dispose();
+});
+
 test('heartbeats expire and peer unavailability keeps only a verified native binding',()=>{
   let clock=1000;
   const bot=Object.assign(new EventEmitter(),{_client:new EventEmitter(),entities:{7:{id:7,uuid}}});

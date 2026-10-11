@@ -11,6 +11,10 @@ export function parseAppearancePacket(packet) {
   if(value.type==='remove')return base;
   if(value.type!=='state' || typeof value.available!=='boolean' || value.ysmVersion!=='2.4.1' || value.protocolVersion!=='2.4.0' || value.jarSha256!==PAPER_YSM_JAR_SHA256)return null;
   Object.assign(base,{available:value.available,ysmVersion:value.ysmVersion,protocolVersion:value.protocolVersion,jarSha256:value.jarSha256});
+  // Older servers omit diagnostics; a connected Worker alone does not confirm a model.
+  if(typeof value.workerConnected==='boolean')base.workerConnected=value.workerConnected;
+  if(['confirmed','unsupported','awaiting_model_state','worker_offline','awaiting_initial_poll'].includes(value.stateStatus))base.stateStatus=value.stateStatus;
+  if(typeof value.message==='string' && value.message.length<=160 && !/[\u0000-\u001f\u007f]/.test(value.message))base.message=value.message;
   if(!value.available)return {...base,reason:value.reason==='YSM_WORKER_STATE_UNSUPPORTED'?'YSM_WORKER_STATE_UNSUPPORTED':'YSM_WORKER_STATE_UNAVAILABLE'};
   if(!Number.isSafeInteger(value.entityId) || value.entityId<0 || value.entityId>2147483647 || typeof value.mandatory!=='boolean'
     || !/^[\p{L}\p{N}_./-]{1,96}$/u.test(value.modelId??'') || value.modelId.includes('..') || value.modelId.startsWith('/') || !/^[\p{L}\p{N}_.-]{1,96}$/u.test(value.texture??'')
@@ -33,7 +37,7 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
     if(!entity || typeof actualUuid!=='string' || actualUuid.toLowerCase()!==row.playerUuid || row.available && entity.id!==row.entityId)return null;
     const {receivedAt,...publicRow}=row;
     const asset=assets.get(row.assetSha256), renderAvailable=row.available===true && asset?.modelId===row.modelId && Object.hasOwn(asset.textures,row.texture);
-    return {...publicRow,entityId:entity.id,renderAvailable,renderReason:renderAvailable?null:errors.get(row.assetSha256)??row.webReason??'YSM_ASSET_PENDING',completeEntityParityVerified:false};
+    return {...publicRow,entityId:entity.id,renderAvailable,renderReason:renderAvailable?null:errors.get(row.assetSha256)??row.webReason??row.reason??'YSM_ASSET_PENDING',completeEntityParityVerified:false};
   }
   function payload(packet) {
     const row=parseAppearancePacket(packet);if(!row)return;
