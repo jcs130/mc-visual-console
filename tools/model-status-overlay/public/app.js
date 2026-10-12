@@ -144,10 +144,41 @@ function renderBrain(age) {
   return fresh ? brainPhase[b.phase] : null;
 }
 
+function renderHarness(age) {
+  if (!$("harness-state")) return;
+  const h = current.harness, fresh = h && !expired(h, age) && h.source === "harness-metadata";
+  $("harness-state").textContent = fresh ? "运行时实测 + 宿主上报" : "独立宿主数据未验证";
+  setText("harness-run", fresh ? `运行 ${h.run || dash} · ${h.phase || dash}` : dash);
+  setText("harness-tools", fresh && h.tools ? [h.tools.calls, h.tools.returned, h.tools.errors].map(integer).join(" / ") : dash);
+  const msPair = d => d ? `${finite(d.p50) ? d.p50.toFixed(0) : dash} / ${finite(d.p95) ? d.p95.toFixed(0) : dash} ms` : dash;
+  setText("harness-latency", fresh ? msPair(h.tools?.elapsedMs) : dash);
+  setText("harness-coverage", fresh ? `${integer(h.window?.coveredSeconds)}s · ${h.window?.complete ? "完整" : "部分"}` : dash);
+  const stages = fresh ? h.learning?.stages : null;
+  setText("harness-learning", stages ? [stages.executed, stages.evaluated, stages.reused].map(integer).join(" / ") : dash);
+  const models = $("harness-models"); models.replaceChildren();
+  for (const m of fresh ? h.models || [] : []) {
+    const row = document.createElement("tr");
+    for (const value of [{ system1: "系统 1", system2: "系统 2", background: "后台" }[m.role] || dash,
+      `${integer(m.completed)} / ${integer(m.failed)}`, msPair(m.elapsedMs), msPair(m.ttftMs),
+      `${ratio(m.cacheRatio)} / ${integer(m.cacheSamples)}`, [m.inputTokens?.total, m.outputTokens?.total, m.reasoningTokens?.total].map(integer).join(" / ")]) {
+      const cell = document.createElement("td"); cell.textContent = value; row.append(cell);
+    }
+    models.append(row);
+  }
+  const list = $("harness-methods"); list.replaceChildren();
+  for (const m of fresh ? h.learning?.latest || [] : []) {
+    const item = document.createElement("div");
+    item.textContent = `${m.method || dash} · ${m.stage || dash} · 作者 ${m.author || dash} · ${m.sourceHash?.slice(0, 12) || dash} ← ${m.parentHash?.slice(0, 12) || dash} · 上报结果 ${m.outcome || dash} · 回执 ${m.receipt?.slice(0, 16) || dash}`;
+    item.title = `制品 ${m.artifact || dash}\n源码 ${m.sourceHash || dash}\n执行 ${m.executionId || dash}\n回执 ${m.receipt || dash}`;
+    list.append(item);
+  }
+}
+
 function render() {
   if (!current) return;
   const age = Math.max(0, (performance.now() - receivedAt) / 1000);
   const frameworkPhase = renderBrain(age);
+  renderHarness(age);
   for (const model of current.models) renderModel(model, age);
   const tts = expired(current.tts, age) ? { pending: current.tts?.pending, pendingSampledAt: current.tts?.pendingSampledAt } : current.tts;
   $("tts-active").textContent = integer(tts.synthesizing);

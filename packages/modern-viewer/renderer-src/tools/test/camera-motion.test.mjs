@@ -62,7 +62,7 @@ test('built observer camera continues between packets without re-streaming chunk
   const context = {
     Vec3, performance: { now: () => now }, document: { hidden: false },
     rendererReady: true, latestPosition: { pos: new Vec3(0, 64, 0), yaw: 0, pitch: 0 },
-    usesWorldAvatar: true, isFirstPersonView: false, isDungeonView: true,
+    usesWorldAvatar: true, isFirstPersonView: false, isDungeonView: true, isObsOverlay: false,
     orbitInitialized: true, orbitYaw: 2.35, orbitPitch: -0.82, orbitDistance: 16,
     focusedCharacterId: null, pendingPlayerEntity: null,
     viewer: { updateCamera: (pos, yaw, pitch, options) => camera.push({ x: pos.x, yaw, pitch, options }) },

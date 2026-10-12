@@ -14,6 +14,8 @@ import { normalizeUntintedLeafModels } from './minecraft-viewer-leaf-tints.mjs'
 import { writeViewerPages } from '../src/viewer-page.mjs'
 import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
 import { verifyTextDisplayAssets } from './text-display-assets.mjs'
+import { viewerSourceDigest } from './viewer-build-source.mjs'
+import { patchObsRendererAlpha } from './minecraft-viewer-obs-alpha.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -138,6 +140,7 @@ const castSource = await readFile(new URL('./minecraft-viewer-cast.js', import.m
 const combatSource = await readFile(new URL('./minecraft-viewer-combat.js', import.meta.url), 'utf8')
 const tacticsSource = await readFile(new URL('./minecraft-viewer-tactics.js', import.meta.url), 'utf8')
 const eventsSource = await readFile(new URL('./minecraft-viewer-events.js', import.meta.url), 'utf8')
+const chatSource = await readFile(new URL('./minecraft-viewer-chat.js', import.meta.url), 'utf8')
 const particleSource = await readFile(new URL('./minecraft-viewer-particles.js', import.meta.url), 'utf8')
 const contentSource = await readFile(new URL('./minecraft-viewer-content.js', import.meta.url), 'utf8')
 const presentationSource = await readFile(new URL('./minecraft-viewer-presentation.js', import.meta.url), 'utf8')
@@ -195,9 +198,9 @@ const adaptedClient = clientSource
   .replace('socket.on("entityAnimation", (event) => applyEntityAnimation(event));',
     'socket.on("digProgress", (event) => cortiApplyDigProgress(event));\n' +
     'socket.on("entityAnimation", (event) => applyEntityAnimation(event));')
-  .replace('socket.on("entity", (update) => handleEntity(update, false));',
+  .replace('socket.on("entity", (update) => { if (!isObsOverlay) handleEntity(update, false); });',
     'socket.on("biome", (event) => cortiSetBiome(event));\n' +
-    'socket.on("entity", (update) => handleEntity(update, false));')
+    'socket.on("entity", (update) => { if (!isObsOverlay) handleEntity(update, false); });')
   .replaceAll('    maybeApplyVillagerAppearance(entity);',
     '    maybeApplyVillagerAppearance(entity);\n    cortiApplySheepAppearance(entity);')
   .replace('  maybeApplyVillagerAppearance(normalized);',
@@ -274,7 +277,7 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('  if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);\n  for (const event of pendingChunks.values())')) {
   throw Error('modern viewer 源码版本锚点已变化')
 }
-const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${eventsSource}\n${particleSource}\n${contentSource}\n${presentationSource}\n${soundSource}\n`
+const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${chatSource}\n${eventsSource}\n${particleSource}\n${contentSource}\n${presentationSource}\n${soundSource}\n`
 
 await mkdir(path.join(outputRoot, 'dist'), { recursive: true })
 await mkdir(path.join(outputRoot, 'public'), { recursive: true })
@@ -335,7 +338,7 @@ const buildResult = await build({
           .replace(itemFallbackAnchor, 'let l=a=>a?.top??a;')
           .replace(itemUnknownAnchor,
             'return o??(o=l(e.currentResources.itemsRenderer.getItemTexture("unknown"))),o??={type:"gui",slice:[0,0,16,16]},"type"in o?')))
-        return { contents: patchRendererPlayerSkin(patchRendererEntityDamage(patchRendererEntityVisibility(corrected))), loader: 'js', resolveDir: path.dirname(file) }
+        return { contents: patchObsRendererAlpha(patchRendererPlayerSkin(patchRendererEntityDamage(patchRendererEntityVisibility(corrected)))), loader: 'js', resolveDir: path.dirname(file) }
       })
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]painting-variants\.js$/ }, () => ({ contents: changedPaintings, loader: 'js', resolveDir: path.dirname(paintingFile) }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]player-skins\.js$/ }, () => ({
@@ -395,6 +398,7 @@ await writeViewerPages(outputRoot)
 await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
   minecraftVersion: '1.20.6', clientJarSha256: sourceManifest.clientJarSha256,
   browserBundleSha256, mesherSha256, biomeCount: biomeWorker.biomeCount,
+  buildSource: await viewerSourceDigest(sourceRoot),
   preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null,
   viewerContent,
   textDisplays,

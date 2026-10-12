@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright-core");
 const root = path.dirname(fileURLToPath(import.meta.url));
+const base = process.env.QA_BASE_URL || "http://127.0.0.1:17840";
 const out = path.join(root, "outputs");
 await fs.mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
@@ -41,6 +42,11 @@ function fixture(change = {}, brainChange = {}) {
       contextTokens: 384, contextLimit: 65536, contextPercent: 384 / 65536 * 100 }],
     tts: { sampledAt: now, freshForSeconds: 16, connected: true, synthesizing: 1, waiting: 3, lastSynthesisSeconds: .82, pending: 2 },
     connections: { sampledAt: now, freshForSeconds: 16, NEKO: 3, MC: 8, unclassified: 5 },
+    harness: { source: "harness-metadata", sampledAt: now, sourceAt: now, freshForSeconds: 7, run: "fixture-run", phase: "started",
+      window: { coveredSeconds: 24, complete: false }, tools: { calls: 3, returned: 2, errors: 1, elapsedMs: { samples: 2, p50: 4, p95: 16 } },
+      models: [{ role: "system2", completed: 2, failed: 1, elapsedMs: { p50: 8500, p95: 12000 }, ttftMs: { p50: 6000, p95: 10000 },
+        cacheRatio: .8, cacheSamples: 1, inputTokens: { total: 20000 }, outputTokens: { total: null }, reasoningTokens: { total: null } }],
+      learning: { stages: { executed: 1, evaluated: 1, reused: 0 }, latest: [{ method: "rail", stage: "evaluated", author: "fixture-agent", sourceHash: "a".repeat(64), outcome: "unknown" }] } },
     brain, updatedAt: now, serverTime: now };
 }
 
@@ -75,7 +81,7 @@ try {
   const actual = await context.newPage();
   actual.on("pageerror", error => issues.push(error.message));
   actual.on("console", msg => { if (msg.type() === "error" && !msg.text().includes("favicon")) issues.push(msg.text()); });
-  await actual.goto("http://127.0.0.1:17840/overlay");
+  await actual.goto(`${base}/overlay`);
   await actual.waitForFunction(() => document.body.dataset.ready === "true");
   await verifyLayout(actual, "actual-440x290");
   await actual.close();
@@ -87,7 +93,7 @@ try {
   ]) {
     const page = await context.newPage();
     await page.route("**/api/state", route => route.fulfill({ json: fixture({}, brainChange) }));
-    await page.goto("http://127.0.0.1:17840/overlay");
+    await page.goto(`${base}/overlay`);
     await page.waitForFunction(() => document.querySelector("#main .model-name").textContent !== "—");
     await verifyLayout(page, name);
     assert.equal(await page.locator("#brain-adaptive").textContent(), "—");
@@ -107,7 +113,7 @@ try {
     const page = await context.newPage();
     page.on("pageerror", error => issues.push(error.message));
     await page.route("**/api/state", route => route.fulfill({ json: fixture(changes) }));
-    await page.goto("http://127.0.0.1:17840/overlay");
+    await page.goto(`${base}/overlay`);
     await page.waitForFunction(() => document.querySelector("#main .model-name").textContent !== "—");
     await verifyLayout(page, name);
     if (changes.contextPercent >= 90) {
@@ -126,7 +132,7 @@ try {
   const disconnected = await context.newPage();
   let samples = 0;
   await disconnected.route("**/api/state", route => ++samples === 1 ? route.fulfill({ json: fixture() }) : route.abort());
-  await disconnected.goto("http://127.0.0.1:17840/overlay");
+  await disconnected.goto(`${base}/overlay`);
   await disconnected.waitForFunction(() => document.querySelector("#main .model-name").textContent !== "—");
   await disconnected.clock.install();
   await disconnected.clock.fastForward(3000);
@@ -141,7 +147,7 @@ try {
     await page.setViewportSize({ width: 1040, height: 900 });
     page.on("pageerror", error => issues.push(error.message));
     if (useFixture) await page.route("**/api/state", route => route.fulfill({ json: fixture() }));
-    await page.goto("http://127.0.0.1:17840/brain");
+    await page.goto(`${base}/brain`);
     await page.waitForFunction(() => document.body.dataset.ready === "true");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
     await page.screenshot({ path: path.join(out, `${name}.png`), fullPage: true });
@@ -150,6 +156,9 @@ try {
       assert.equal(await page.locator("#metric-recovery").textContent(), "50%");
       assert.equal(await page.locator("#provider-confirmed").textContent(), "服务确认 —");
       assert.ok((await page.locator("#detail-origin").textContent()).includes("路由 配置 · 阅读 自动选择"));
+      assert.equal(await page.locator("#harness-tools").textContent(), "3 / 2 / 1");
+      assert.ok((await page.locator("#harness-models").textContent()).includes("8500 / 12000 ms"));
+      assert.ok((await page.locator("#harness-methods").textContent()).includes("fixture-agent"));
     } else if (await page.evaluate(() => !current.brain?.selection)) {
       assert.equal(await page.locator("#detail-history").textContent(), "— → —");
       assert.equal(await page.locator("#metric-adaptive").textContent(), "—");

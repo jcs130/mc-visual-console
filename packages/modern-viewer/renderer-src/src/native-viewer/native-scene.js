@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { nativeViewerUrl } from './native-url.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath } from './model-loader.js'
 import { createKineticActor } from './create-kinetics.js'
@@ -41,11 +42,11 @@ const kineticVisibility = () => {
 }
 document.addEventListener('visibilitychange', kineticVisibility)
 async function start () {
-  const response = await fetch('/manifest.json')
+  const response = await fetch(nativeViewerUrl('manifest.json'))
   if (!response.ok) throw Error('NATIVE_WORLD_MANIFEST_UNAVAILABLE')
   const manifest = await response.json()
   const reader = new NativeAssetReader(manifest, async path => {
-    const result = await fetch(`/${path}`)
+    const result = await fetch(nativeViewerUrl(path))
     if (!result.ok) throw Error(`NATIVE_ASSET_UNAVAILABLE:${path}`)
     return result.arrayBuffer()
   })
@@ -141,7 +142,7 @@ async function start () {
       publishFrame(now)
     } catch (error) { fail(error) }
   })
-  events = new EventSource('/events')
+  events = new EventSource(nativeViewerUrl('events'))
   events.onmessage = message => {
     try {
       const event = session.receive(JSON.parse(message.data)), value = event.value

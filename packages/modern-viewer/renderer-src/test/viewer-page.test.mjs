@@ -19,6 +19,7 @@ test('all camera modes mount the same survival and interaction HUD without a dep
     }
     assert.match(html, /src="\/index\.js"/);
     assert.match(html, /href="\/viewer\.css"/);
+    assert.match(html, /href="\/\?obs=1&amp;obsEdit=1"/);
     assert.doesNotMatch(html, /speech-bubble\.js|CortiLan|192\.168\.|127\.0\.0\.1|I:\\/);
   }
   assert.throws(() => renderViewerPage('<script>alert(1)</script>'), TypeError);

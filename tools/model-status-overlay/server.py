@@ -17,6 +17,7 @@ from pathlib import Path
 from metrics import blank_model, config_metadata, normalize_model_health, normalize_metadata, normalize_tts, stale_model, count, number
 from brain import blank_brain, configuration, normalize_brain, normalize_status, stale_brain
 from connections import sample_model_ingress
+from harness import blank_harness, normalize_harness, stale_harness
 
 ROOT = Path(__file__).resolve().parent
 MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -92,13 +93,14 @@ class Collector:
         self.tts = normalize_tts({}) | {"sampledAt": None, "connected": None}
         self.connections = {"sampledAt": None, "freshForSeconds": 16, "NEKO": None, "MC": None, "unclassified": None}
         self.brain = blank_brain()
-        self.counts = {"models": 0, "tts": 0, "connections": 0, "brain": 0}
+        self.harness = blank_harness()
+        self.counts = {"models": 0, "tts": 0, "connections": 0, "brain": 0, "harness": 0}
         self.clock_progress = {}
         self.threads = []
         self.started_at = time.time()
 
     def start(self):
-        for kind in ("models", "tts", "connections", "brain"):
+        for kind in ("models", "tts", "connections", "brain", "harness"):
             worker = threading.Thread(target=self.loop, args=(kind,), daemon=True, name="obs-" + kind)
             worker.start()
             self.threads.append(worker)
@@ -194,6 +196,19 @@ class Collector:
         with self.lock:
             self.brain = value
 
+    def sample_harness(self, cfg):
+        value = blank_harness()
+        url = cfg.get("harness", {}).get("metricsUrl")
+        if url:
+            try:
+                value = normalize_harness(get_json(url, {"/api/harness/metrics"}))
+                if self.frozen(url, value.get("sourceAt")):
+                    value = blank_harness() | {"source": "stale"}
+            except (OSError, ValueError, TypeError, urllib.error.URLError):
+                value["source"] = "unreachable"
+        with self.lock:
+            self.harness = value
+
     def loop(self, kind):
         while not self.stop.is_set():
             start = time.monotonic()
@@ -209,6 +224,9 @@ class Collector:
                 elif kind == "brain":
                     interval = max(2, cfg.get("brainIntervalSeconds", 2))
                     self.sample_brain(cfg)
+                elif kind == "harness":
+                    interval = 2
+                    self.sample_harness(cfg)
                 else:
                     interval = max(5, cfg.get("connectionsIntervalSeconds", 5))
                     value = sample_connections(cfg.get("connections", {}))
@@ -227,6 +245,7 @@ class Collector:
             models = [stale_model(copy.deepcopy(x), now) for x in self.models.values()]
             tts, connections = copy.deepcopy(self.tts), copy.deepcopy(self.connections)
             brain = stale_brain(copy.deepcopy(self.brain), now)
+            harness = stale_harness(copy.deepcopy(self.harness), now)
         if tts["sampledAt"] is None or now - tts["sampledAt"] > tts["freshForSeconds"]:
             tts.update(connected=None, synthesizing=None, waiting=None, lastSynthesisSeconds=None)
             if not tts.get("pendingSampledAt"):
@@ -235,8 +254,8 @@ class Collector:
             tts["pending"] = None
         if connections["sampledAt"] is None or now - connections["sampledAt"] > connections["freshForSeconds"]:
             connections.update(NEKO=None, MC=None, unclassified=None)
-        dates = [x["sampledAt"] for x in models + [tts, connections, brain] if x.get("sampledAt") is not None]
-        return {"models": models, "tts": tts, "connections": connections, "brain": brain,
+        dates = [x["sampledAt"] for x in models + [tts, connections, brain, harness] if x.get("sampledAt") is not None]
+        return {"models": models, "tts": tts, "connections": connections, "brain": brain, "harness": harness,
                 "updatedAt": max(dates) if dates else None, "serverTime": now}
 
 

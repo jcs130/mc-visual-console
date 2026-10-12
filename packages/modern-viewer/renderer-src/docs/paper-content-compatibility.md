@@ -1,5 +1,7 @@
 # Paper 插件内容接入 Web 画面（1.20.6）
 
+2026-10-12：完整引导线兼容修复。宿主与浏览器粒子批次上限同步为256，避免技能装饰与两条64点引导同帧时截掉线尾；保留2048活粒子、80格距离及有限缓存。15项桥接/GPU回归通过，含混合批次的两个准确终点。没有改变粒子素材或物理实现，也没有据此宣称远端画面已更新。远端必须同时更新宿主桥、重建网页资源并重启自己的可视化服务；只换其中一端仍受旧64事件限制。
+
 2026-10-09：新增同一 Mineflayer 行动连接的粒子、地图像素与地图展示框桥接，以及对应浏览器渲染。适用 Java **1.20.6 / protocol 766**；不把它用于 1.21.1 原生模组实验。远端局域网电脑尚未更新，本地验收不代表远端页面已经生效。
 
 ## 本轮范围
@@ -53,7 +55,7 @@ bot.once('end', () => content.dispose());
 | 事件 | 主要字段 |
 | --- | --- |
 | `contentReset` | `{ schemaVersion, epoch }` |
-| `particleBatch` | `{ schemaVersion, epoch, atMs, events: [{ kind:'particle', name, position, spread, count, speed, exact, color?, colorEnd?, size? }] }` |
+| `particleBatch` | `{ schemaVersion, epoch, atMs, events: [{ kind:'particle', name, position, spread, count, speed, exact, longDistance, color?, colorEnd?, size? }] }` |
 | `mapPixels` | `{ schemaVersion, epoch, mapId, scale, locked, icons?, columns, rows?, x?, y?, data? }`；重连快照另外含 `snapshot:true, coverage` |
 | `mapFrame` | `{ schemaVersion, epoch, id, uuid?, name, position, normal, rotation, mapId, invisible }`；移除为 `{ schemaVersion, epoch, id, delete:true }` |
 | `textDisplay` | 实际文字显示实体的 ID、位置、文字 runs、样式和静态变换；字段与限制见[气泡说明](text-display-bubbles.md#增量事件与预算) |
@@ -62,9 +64,13 @@ bot.once('end', () => content.dispose());
 
 1.20.6 的部分 minecraft-data 版本把 `dust_color_transition` 七个 float 的第四项误标为 scale。新桥检查实际字段布局，并按原生顺序 fromRGB → toRGB → scale 解释；兼容已经修正的布局，未知布局明确拒绝，避免错误颜色/大小进入画面。
 
+2026-10-12引导补充：宿主保留原始粒子包的 `longDistance === true`。普通粒子仍只接收80格内；该真实布尔值为true时按512格上限接收，保证长引导不被普通过滤器裁掉终点，不加载新世界区块。字符串 `"true"`、无字段及512格外的事件不会放宽范围。实际协议766序列化→宿主过滤→批次→GPU的64点/500格直线测试通过；原批次256、活粒子2048及缓存/接收者边界保持。用户看到的距离仍受游戏包、地形遮挡、浏览器相机等实际条件约束。
+
+此修复位于宿主 `viewer-content.mjs`；另一台电脑必须更新实际导入或复制的桥并重启画面服务，单换网页bundle或游戏服务器JAR不会更新旧宿主。涉及部署的资源目录仍用原版本和预设重新构建并核对摘要。集中回归：`node --test test/host-content.test.mjs test/server-particles.test.mjs test/text-displays.test.mjs`，25项通过，包含真实协议远距离位、原字体白底深色文字、单连接私有气泡及资源清理。
+
 ### 有界资源和慢浏览器
 
-每个行动连接缓存最多 64 张地图、128 个展示框，每 50ms 最多发送 64 个粒子事件，只取玩家 80 格内粒子。浏览器最多 2048 个活粒子、32 个照片框实例，共享每张地图的 GPU 纹理。缓存满会丢弃/淘汰内容，这些上限不是全世界照片档案。
+每个行动连接缓存最多 64 张地图、128 个展示框，每 50ms 最多发送 256 个粒子事件，只取玩家 80 格内粒子。浏览器最多 2048 个活粒子、32 个照片框实例，共享每张地图的 GPU 纹理。缓存满会丢弃/淘汰内容，这些上限不是全世界照片档案。
 
 `subscribeSocket` 在 Socket.IO transport 堵塞时丢弃粒子，仅按有限 map/frame ID 合并最新状态；恢复后每轮最多补发 4 个最新快照。不要改用无界广播队列。慢浏览器不会积压过期技能演出，也不会反压 Agent 的行动逻辑。这里只验证了该模块的限流与慢连接行为，**没有进行 16 个 LLM Agent 的联合压力测试**。
 

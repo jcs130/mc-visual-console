@@ -3,14 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Cortico · 大脑框架指标</title>
+  <title>Agent Harness · 决策与执行指标</title>
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/dashboard.css">
   <script src="/app.js" defer></script>
 </head>
 <body class="dashboard">
 <main class="dashboard-panel">
-  <header class="dashboard-heading"><div><div class="eyebrow">CORTICO / BRAIN METRICS</div><h1><span class="signal" id="signal"></span>大脑框架指标</h1><p>策略选择、资源消耗与执行结果</p></div><div class="dashboard-nav"><span id="monitor-state">只读监测</span><a href="/overlay">OBS 小窗 ↗</a></div></header>
+  <header class="dashboard-heading"><div><div class="eyebrow">AGENT HARNESS / OBSERVABILITY</div><h1><span class="signal" id="signal"></span>决策与执行指标</h1><p>系统 1、系统 2、方法演进与资源消耗</p></div><div class="dashboard-nav"><span id="monitor-state">只读监测</span><a href="/overlay">OBS 小窗 ↗</a></div></header>
+  <section class="detail-card" aria-label="独立 Agent 运行数据"><div class="card-heading"><h2>具身执行与方法演进</h2><span id="harness-state">独立宿主数据待接入</span></div><p id="harness-run" class="note">—</p><div class="metric-grid">
+    <div class="metric"><label>工具调用 / 返回 / 错误</label><strong class="token-cost" id="harness-tools">—</strong><small>运行时实测；返回不等于目标完成</small></div>
+    <div class="metric"><label>工具返回 P50 / P95</label><strong class="token-cost" id="harness-latency">—</strong><small>不等于游戏任务执行时长</small></div>
+    <div class="metric"><label>方法执行 / 评价 / 复用</label><strong class="token-cost" id="harness-learning">—</strong><small>宿主上报；不自动推断能力提升</small></div>
+    <div class="metric"><label>统计覆盖</label><strong class="token-cost" id="harness-coverage">—</strong><small>当前进程 · 近 10 分钟</small></div>
+  </div><div class="table-scroll"><table class="harness-table"><thead><tr><th>宿主上报通道</th><th>完成 / 失败</th><th>耗时 P50 / P95</th><th>首输出 P50 / P95</th><th>缓存复用 / 样本</th><th>输入 / 输出 / 思考</th></tr></thead><tbody id="harness-models"></tbody></table></div>
+  <div id="harness-methods" class="method-list"></div><p class="note">未上报的模型读数保持未知。方法作者、父版本和制品可追踪；真实改善需要展开执行回执、现场变化与可比样本。</p></section>
   <section class="config-card" aria-label="配置快照"><div><b>策略配置</b><span id="policy-source">读取中</span></div><p id="policy-summary">—</p><small id="active-connection">活动主连接 —</small></section>
   <section class="detail-card" aria-label="逐次策略"><div class="card-heading"><h2 id="selection-title">本次策略</h2><span id="selection-source">逐次策略待接入</span></div><div class="detail-grid">
     <div><label>请求通道 / 模型</label><b id="detail-route">—</b></div><div><label>选择来源</label><b id="detail-origin">—</b></div>

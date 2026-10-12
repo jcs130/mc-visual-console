@@ -3,19 +3,22 @@ import { MapPhotos, heldMapId } from './map-photos.js';
 import {TextDisplays} from './text-displays.js';
 import {loadTextDisplayFont} from './text-display-font.js';
 import {PaperYsmPlayers} from './paper-ysm.js';
+import paperYsmItemModels from 'mc-assets/dist/blockStatesModels.json';
 
 const cortiNativeParticles = new ServerParticles();
 const cortiMapPhotos = new MapPhotos();
 const cortiTextDisplays = new TextDisplays();
 let cortiTextDisplayError = null;
-loadTextDisplayFont().then(font=>{if(cortiContentDisposed){font.dispose();return;}cortiTextDisplays.setFont(font);})
+if (typeof isObsOverlay === 'undefined' || !isObsOverlay) loadTextDisplayFont().then(font=>{if(cortiContentDisposed){font.dispose();return;}cortiTextDisplays.setFont(font);})
   .catch(error=>{cortiTextDisplayError=String(error.message);});
 let cortiContentEpoch = null;
 let cortiContentDisposed = false;
 let cortiContentError = null;
 const cortiAppearances=new Map();
-const cortiYsmPlayers=new PaperYsmPlayers({entity:id=>entityCache.get(String(id))??(pendingAvatarState?.entity?.id===id?pendingAvatarState.entity:null),rendered:id=>globalThis.world?.entities?.entities?.[String(id)]});
+const cortiYsmPlayers=new PaperYsmPlayers({itemModels:paperYsmItemModels.models.latest,entity:id=>entityCache.get(String(id))??(pendingAvatarState?.entity?.id===id?pendingAvatarState.entity:null),rendered:id=>globalThis.world?.entities?.entities?.[String(id)]});
 socket.on('appearanceAsset',bundle=>cortiYsmPlayers.asset(bundle));
+socket.on('appearanceMotion',event=>cortiYsmPlayers.motion(event));
+socket.on('entityAnimation',event=>cortiYsmPlayers.action(event));
 socket.on('appearanceReset',()=>{cortiAppearances.clear();cortiYsmPlayers.clear();});
 socket.on('appearanceRemove',event=>{cortiAppearances.delete(event?.playerUuid);cortiYsmPlayers.remove(event?.playerUuid);});
 socket.on('appearanceState',event=>{
@@ -35,7 +38,7 @@ cortiHeldMapCanvas.style.cssText='position:static;inset:auto;display:block;width
 cortiHeldMap.append(cortiHeldMapLabel,cortiHeldMapCanvas);document.body.append(cortiHeldMap);
 let cortiHeldMapKey=null;
 function cortiUpdateHeldMap() {
-  const state=pendingAvatarState;
+  const state=typeof isObsOverlay !== 'undefined' && isObsOverlay ? currentObsHandState() : pendingAvatarState;
   const selected=state ? selectedHotbarItem(state) : null;
   const id=heldMapId(selected)??heldMapId(state?.offhand);
   if(id===null){cortiHeldMap.style.display='none';cortiHeldMapKey=null;return;}
@@ -52,6 +55,7 @@ function cortiUpdateHeldMap() {
 }
 function cortiContentClear(epoch=null) {
   cortiContentEpoch=epoch;cortiNativeParticles.clear();cortiMapPhotos.reset(epoch);cortiTextDisplays.reset(epoch);
+  cortiHeldMap.style.display='none';cortiHeldMapKey=null;
 }
 socket.on('contentReset', event => {
   if(event?.schemaVersion!==1||!Number.isSafeInteger(event.epoch)||event.epoch<0)return;
@@ -63,10 +67,17 @@ socket.on('particleBatch', event => {
   cortiNativeParticles.handleBatch(event);
 });
 socket.on('mapPixels', event => cortiMapPhotos.handlePixels(event));
+// The OBS page deliberately has no native-world animation loop. Its 2D held
+// map/photo preview still follows real inventory/pixel events and clears with
+// the attested subject, without mounting item frames or rendering a world.
+if (typeof isObsOverlay !== 'undefined' && isObsOverlay) {
+  for (const name of ['avatarState', 'mapPixels', 'viewerSession']) socket.on(name, () => cortiUpdateHeldMap());
+}
 socket.on('mapFrame', event => cortiMapPhotos.handleFrame(event));
 socket.on('textDisplay', event => cortiTextDisplays.handle(event));
-socket.on('disconnect', () => cortiContentClear());
-socket.on('viewerReset', () => cortiContentClear());
+const cortiAppearanceClear=()=>{cortiAppearances.clear();cortiYsmPlayers.clear();};
+socket.on('disconnect', () => {cortiContentClear();cortiAppearanceClear();});
+socket.on('viewerReset', () => {cortiContentClear();cortiAppearanceClear();});
 loadViewerContentAssets().then(({assets,texture})=>{
   if(cortiContentDisposed){texture.dispose();return;}
   cortiNativeParticles.setAssets(assets,texture);cortiMapPhotos.setAssets(assets);
@@ -77,7 +88,7 @@ function cortiAnimateNativeContent(now) {
   const photos=cortiMapPhotos.stats();
   const texts=cortiTextDisplays.stats();
   const ysm=cortiYsmPlayers.stats();
-  const ysmMessage=ysm.failed?'YSM 模型渲染失败：'+ysm.errors[0]:ysm.unavailable?'部分 YSM 模型缺少可公开原始资源，当前普通皮肤仅为回退画面':ysm.pending?'正在加载原 YSM 模型':ysm.animationUnavailable.length?'YSM 原模型已显示；部分动画尚不支持':'';
+  const ysmMessage=ysm.failed?'YSM 模型渲染失败：'+ysm.errors[0]:ysm.unavailable?'部分 YSM 模型缺少可公开原始资源，当前普通皮肤仅为回退画面':ysm.pending?'正在加载原 YSM 模型':ysm.animationUnavailable.length?'YSM 原模型已显示；部分动画尚不支持':ysm.heldUnavailable.length?'部分 YSM 手持物外观暂未适配：'+ysm.heldUnavailable[0].name:'';
   const message=cortiTextDisplayError?'文字气泡字库不可用，请更新匹配版本的网页资源包':texts.unavailable?'部分文字显示格式暂未适配':cortiContentError?'粒子／照片资源暂不可用，请更新匹配版本的网页资源包':photos.waiting?'尚未收到可用照片像素，请靠近展示框或重新手持地图':ysmMessage;
   cortiContentStatus.dataset.ysmStates=String(cortiAppearances.size);cortiContentStatus.dataset.ysmRendererReady=String(ysm.rendered>0);cortiContentStatus.dataset.ysmRendered=String(ysm.rendered);
   cortiContentStatus.dataset.textDisplays=String(texts.visible);cortiContentStatus.dataset.textDisplayReady=String(texts.ready);
@@ -91,6 +102,6 @@ function cortiAnimateNativeContent(now) {
   cortiContentStatus.textContent=message;cortiContentStatus.style.display=message?'block':'none';
   requestAnimationFrame(cortiAnimateNativeContent);
 }
-requestAnimationFrame(cortiAnimateNativeContent);
+if (typeof isObsOverlay === 'undefined' || !isObsOverlay) requestAnimationFrame(cortiAnimateNativeContent);
 window.cortiViewerContent={stats:()=>({ysm:cortiYsmPlayers.stats(),particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
 window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});

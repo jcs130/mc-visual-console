@@ -1,4 +1,5 @@
 import {createYsmAssetReceiver} from './viewer-ysm-assets.mjs';
+import {createViewerYsmMotion} from './viewer-ysm-motion.mjs';
 /** Observe authoritative Freesia metadata on the existing action connection. */
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const APPEARANCE_CHANNEL='mcagent:appearance';
@@ -11,6 +12,10 @@ export function parseAppearancePacket(packet) {
   if(value.type==='remove')return base;
   if(value.type!=='state' || typeof value.available!=='boolean' || value.ysmVersion!=='2.4.1' || value.protocolVersion!=='2.4.0' || value.jarSha256!==PAPER_YSM_JAR_SHA256)return null;
   Object.assign(base,{available:value.available,ysmVersion:value.ysmVersion,protocolVersion:value.protocolVersion,jarSha256:value.jarSha256});
+  // Older servers omit diagnostics; a connected Worker alone does not confirm a model.
+  if(typeof value.workerConnected==='boolean')base.workerConnected=value.workerConnected;
+  if(['confirmed','unsupported','awaiting_model_state','worker_offline','awaiting_initial_poll'].includes(value.stateStatus))base.stateStatus=value.stateStatus;
+  if(typeof value.message==='string' && value.message.length<=160 && !/[\u0000-\u001f\u007f]/.test(value.message))base.message=value.message;
   if(!value.available)return {...base,reason:value.reason==='YSM_WORKER_STATE_UNSUPPORTED'?'YSM_WORKER_STATE_UNSUPPORTED':'YSM_WORKER_STATE_UNAVAILABLE'};
   if(!Number.isSafeInteger(value.entityId) || value.entityId<0 || value.entityId>2147483647 || typeof value.mandatory!=='boolean'
     || !/^[\p{L}\p{N}_./-]{1,96}$/u.test(value.modelId??'') || value.modelId.includes('..') || value.modelId.startsWith('/') || !/^[\p{L}\p{N}_.-]{1,96}$/u.test(value.texture??'')
@@ -24,7 +29,8 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
   const errors=new Map();
   const assets=createYsmAssetReceiver(bot,{onAsset:bundle=>{emit('appearanceAsset',bundle);for(const row of records.values())if(row.assetSha256===bundle.assetSha256){const bound=binding(row);if(bound)emit('appearanceState',bound);}},onError:(row,reason)=>{errors.set(row.assetSha256,reason);const bound=binding(row);if(bound)emit('appearanceState',bound);}});
   const emit=(name,row)=>{for(const fn of listeners)try{fn(name,row);}catch{listeners.delete(fn);}};
-  const reset=()=>{records.clear();errors.clear();assets.reset();epoch=null;emit('appearanceReset',{schemaVersion:1});};
+  const motion=createViewerYsmMotion(bot,{now,emit,binding:id=>{for(const row of records.values())if(row.entityId===id && now()-row.receivedAt<=15000)return binding(row);return null;}});
+  const reset=()=>{records.clear();errors.clear();assets.reset();motion.reset();epoch=null;emit('appearanceReset',{schemaVersion:1});};
   function binding(row) {
     const ownUuid=bot._client.uuid??bot.player?.uuid;
     const own=ownUuid?.toLowerCase()===row.playerUuid;
@@ -33,7 +39,7 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
     if(!entity || typeof actualUuid!=='string' || actualUuid.toLowerCase()!==row.playerUuid || row.available && entity.id!==row.entityId)return null;
     const {receivedAt,...publicRow}=row;
     const asset=assets.get(row.assetSha256), renderAvailable=row.available===true && asset?.modelId===row.modelId && Object.hasOwn(asset.textures,row.texture);
-    return {...publicRow,entityId:entity.id,renderAvailable,renderReason:renderAvailable?null:errors.get(row.assetSha256)??row.webReason??'YSM_ASSET_PENDING',completeEntityParityVerified:false};
+    return {...publicRow,entityId:entity.id,renderAvailable,renderReason:renderAvailable?null:errors.get(row.assetSha256)??row.webReason??row.reason??'YSM_ASSET_PENDING',completeEntityParityVerified:false};
   }
   function payload(packet) {
     const row=parseAppearancePacket(packet);if(!row)return;
@@ -43,7 +49,7 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
     // Reuse an ID only from this epoch's preceding state; binding still checks
     // the current connection's native entity UUID before emitting unavailable.
     if(!row.available)row.entityId=records.get(row.playerUuid)?.entityId;
-    records.set(row.playerUuid,{...row,receivedAt:now()});const bound=binding(row);if(bound){const bundle=assets.get(row.assetSha256);if(bundle)emit('appearanceAsset',bundle);emit('appearanceState',bound);if(listeners.size)assets.request(row);}
+    records.set(row.playerUuid,{...row,receivedAt:now()});const bound=binding(row);if(bound){const bundle=assets.get(row.assetSha256);if(bundle)emit('appearanceAsset',bundle);emit('appearanceState',bound);motion.send(bound);if(listeners.size)assets.request(row);}
   }
   const tracked=entity=>{
     const uuid=entity?.uuid?.toLowerCase();const row=uuid&&records.get(uuid);const bound=row&&binding(row);if(bound)emit('appearanceState',bound);
@@ -57,7 +63,7 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
   return {snapshot,subscribeSocket(socket){
     if(disposed)throw Error('viewer_appearance_disposed');
     const fn=(name,row)=>socket.emit(name,row);listeners.add(fn);
-    socket.emit('appearanceReset',{schemaVersion:1});for(const row of snapshot()){const bundle=assets.get(row.assetSha256);if(bundle)socket.emit('appearanceAsset',bundle);socket.emit('appearanceState',row);assets.request(row);}
+    socket.emit('appearanceReset',{schemaVersion:1});for(const row of snapshot()){const bundle=assets.get(row.assetSha256);if(bundle)socket.emit('appearanceAsset',bundle);socket.emit('appearanceState',row);motion.send(row);assets.request(row);}
     return()=>listeners.delete(fn);
-  },dispose(){if(disposed)return;disposed=true;assets.dispose();clearInterval(timer);bot._client.off('custom_payload',payload);bot.off('entitySpawn',tracked);bot.off('entityGone',gone);bot.off('login',reset);bot.off('respawn',reset);bot.off('end',reset);records.clear();listeners.clear();}};
+  },dispose(){if(disposed)return;disposed=true;assets.dispose();motion.dispose();clearInterval(timer);bot._client.off('custom_payload',payload);bot.off('entitySpawn',tracked);bot.off('entityGone',gone);bot.off('login',reset);bot.off('respawn',reset);bot.off('end',reset);records.clear();listeners.clear();}};
 }

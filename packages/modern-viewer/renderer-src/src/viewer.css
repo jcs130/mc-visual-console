@@ -1,4 +1,35 @@
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#080d12;color:#f3f5f6;font:14px/1.4 system-ui,sans-serif}
+/* OBS browser source: transparent original item/hand passes + configurable HUD. */
+html[data-obs-overlay=true],body[data-obs-overlay=true]{background:transparent!important}
+body[data-obs-overlay=true] #viewer-canvas:not([data-obs-hands-ready=true]),
+body[data-obs-overlay=true] .corti-status-vignette,
+body[data-obs-overlay=true] .corti-view-switch,
+body[data-obs-overlay=true] .corti-tactical-canvas,
+body[data-obs-overlay=true] .corti-sound-toggle,
+body[data-obs-overlay=true] .corti-music-toggle,
+body[data-obs-overlay=true] .viewer-audio-controls,
+body[data-obs-overlay=true] .corti-night-vision-toggle,
+body[data-obs-overlay=true] #corti-content-status{display:none!important}
+body[data-obs-overlay=true] .boot{inset:auto;top:12px;left:12px;max-width:480px;padding:8px;border-radius:6px;background:#14212bd9}
+body[data-obs-overlay=true] #viewer-canvas{background:transparent;pointer-events:none;z-index:1}
+.obs-layout-editor[hidden],.obs-layout-selection[hidden]{display:none!important}
+.obs-layout-editor{position:fixed;right:12px;top:12px;width:min(320px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;z-index:101;padding:12px;background:#14212bf5;border:1px solid #78bdcd;border-radius:8px;color:#eefaff;font:13px/1.5 system-ui}
+.obs-layout-editor header{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.obs-layout-editor p{color:#b7d0d8;font-size:12px}
+.obs-layout-editor button{padding:5px 8px;background:#233d49;border:1px solid #41626d;border-radius:4px;color:inherit;cursor:pointer;font:inherit}
+.obs-layout-list{max-height:38vh;overflow:auto;border-block:1px solid #41626d;margin-block:8px;padding-block:6px}
+.obs-layout-list>div{display:flex;align-items:center;gap:6px;margin:3px 0}
+.obs-layout-list button{flex:1;text-align:left}
+.obs-layout-list button[aria-pressed=true]{background:#386679;border-color:#a1e4ef}
+.obs-layout-editor label{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-block:6px}
+.obs-layout-editor input[type=number]{width:86px;padding:4px;background:#0c1b23;border:1px solid #41626d;color:inherit}
+.obs-layout-actions{display:flex;flex-wrap:wrap;gap:6px;margin-block:10px}
+.obs-layout-editor textarea{box-sizing:border-box;width:100%;height:65px;background:#0c1b23;color:#cde7ec}
+.obs-layout-editor output{display:block;font-size:12px;color:#b7d0d8}
+.obs-layout-selection{position:fixed;box-sizing:border-box;z-index:100;border:2px dashed #90edff;pointer-events:none;touch-action:none}
+.obs-layout-selection>span{position:absolute;left:0;top:0;max-width:calc(100% - 8px);padding:3px 6px;background:#174c65;color:white;font:12px/1.4 system-ui;white-space:nowrap;cursor:move;pointer-events:auto;touch-action:none}
+.obs-layout-resize{position:absolute;right:0;bottom:0;width:28px;height:28px;background:#174c65;color:white;border:1px solid #90edff;cursor:nwse-resize;pointer-events:auto;touch-action:none}
+body[data-obs-editing=true]{background-color:#27333e!important;background-image:linear-gradient(45deg,#354450 25%,transparent 25%),linear-gradient(-45deg,#354450 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#354450 75%),linear-gradient(-45deg,transparent 75%,#354450 75%)!important;background-size:24px 24px!important;background-position:0 0,0 12px,12px -12px,-12px 0!important}
 
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .boot{position:fixed;inset:0;z-index:5;display:grid;place-items:center;text-align:center;background:#080d12;color:#e6eeee;pointer-events:none}
@@ -197,6 +228,33 @@ to{transform:scaleX(0)}
 .corti-event[data-kind="advancement"]{border-color:#eacb79}
 .corti-event[data-kind="advancement"] small{color:#f9dfa0}
 .corti-event[data-kind="death"]{border-color:#e59191}
+
+.corti-chat{position:fixed;z-index:18;left:14px;bottom:72px;color:#eff6f3;font:14px/1.5 system-ui;max-width:calc(100vw - 28px)}
+.corti-chat button{font:inherit;color:inherit;border:1px solid #b0ccb570;border-radius:6px;padding:5px 10px;background:#203b43;cursor:pointer}
+.corti-chat button:hover,.corti-chat button:focus-visible{background:#355761;outline:2px solid #c1e7db;outline-offset:1px}
+.corti-chat-toggle{box-shadow:0 3px 12px #0006}
+.corti-chat-panel{position:absolute;left:0;bottom:44px;display:flex;flex-direction:column;gap:9px;box-sizing:border-box;width:min(520px,calc(100vw - 28px));height:min(540px,calc(100dvh - 156px));min-height:180px;padding:14px;border:1px solid #b0ccb599;border-radius:12px;background:#10212af5;box-shadow:0 12px 36px #0009;backdrop-filter:blur(12px)}
+.corti-chat-panel[hidden]{display:none}
+.corti-chat-panel header{display:flex;align-items:center;gap:7px}
+.corti-chat-panel header strong{flex:1;font-size:16px}
+.corti-chat-panel nav{display:flex;gap:5px;flex-wrap:wrap}
+.corti-chat-panel nav button{padding:4px 8px;font-size:12px;background:transparent}
+.corti-chat-panel nav button[aria-pressed=true]{background:#8acbb338;border-color:#b8e4d4}
+.corti-chat-panel input{box-sizing:border-box;width:100%;padding:8px 10px;border:1px solid #a4c0c366;border-radius:6px;background:#08171d;color:#fff;font:inherit}
+.corti-chat-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:#6d949a #10212a}
+.corti-chat-message{padding:9px 10px;margin:0 0 6px;border-left:3px solid #93c2d1;border-radius:5px;background:#213740;color:#f3f8f5;overflow-wrap:anywhere}
+.corti-chat-message small{display:block;margin-bottom:4px;color:#b2cbd2;font-size:11px}
+.corti-chat-message p{margin:0;white-space:pre-wrap;user-select:text}
+.corti-chat-message[data-channel=whisper]{border-color:#cba5ef;background:#372d47}
+.corti-chat-message[data-channel=whisper] small{color:#e2c7ff}
+.corti-chat-message[data-channel=task]{border-color:#efd68f;background:#3d392c}
+.corti-chat-message[data-channel=task] small{color:#f6dfa7}
+.corti-chat-message[data-channel=raw]{background:#18282f;border-color:#778e98}
+.corti-chat-message pre{white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;user-select:text}
+.corti-chat-message summary{cursor:pointer;font-size:12px}
+.corti-chat-empty,.corti-chat-footer{color:#b2c3c8;font-size:12px}
+body[data-obs-overlay=true] .corti-chat:not([data-open=true]){opacity:.8}
+@media(max-width:720px){.corti-chat{left:10px;bottom:76px}.corti-chat-panel{width:min(520px,calc(100vw - 20px));padding:10px}.corti-chat-toggle{font-size:12px!important}}
 .corti-game-title{position:fixed;z-index:8;top:33%;left:50%;width:min(700px,90vw);transform:translateX(-50%);text-align:center;color:#fff5e9;font:800 clamp(28px,5vw,53px)/1.25 system-ui;text-shadow:0 3px 12px #000,0 0 22px #b8a2ed;pointer-events:none;animation:corti-title-in var(--corti-title-fade-in,.28s) ease-out}
 .corti-game-title[hidden]{display:none}
 .corti-game-title[data-kind="death"]{color:#f4a9a9;text-shadow:0 3px 12px #000,0 0 24px #eb6464}

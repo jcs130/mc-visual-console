@@ -1,4 +1,5 @@
 const MODES = {
+  external: '外部 Agent 控制', hosted: '服务器托管 Agent', offline: '身体休眠或离线',
   starting: '正在启动', waiting_for_player: '等待玩家进入游戏', thinking: '等待模型决策', acting: '执行动作',
   observing: '观察／等待下一轮', paused: '已暂停', paused_unknown: '结果未知，已暂停',
   paused_model: '模型接口受限，已暂停',
@@ -19,7 +20,7 @@ function timestamp (value) {
 // This view uses only the same host's injected Agent record. A positive receipt
 // is displayed as ok=true, never promoted to a verified Minecraft effect.
 export function agentStatusView (status, expectedPlayer = null) {
-  if (status?.mode !== 'live_same_player_connection' || !text(status?.identity?.player)) return unavailable('玩家连接身份不可用')
+  if (!['live_same_player_connection', 'numen_server_body'].includes(status?.mode) || !text(status?.identity?.player)) return unavailable('玩家连接身份不可用')
   if ((expectedPlayer && status.identity.player !== expectedPlayer) ||
       (text(status.agent?.details?.username) && status.agent.details.username !== status.identity.player)) return unavailable('Agent 身份与玩家连接不一致')
   if (status.agent?.available !== true || status.agent.source !== 'caller_injected') {

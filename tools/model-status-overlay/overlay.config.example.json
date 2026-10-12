@@ -4,6 +4,7 @@
   "ttsIntervalSeconds": 5,
   "connectionsIntervalSeconds": 5,
   "brainIntervalSeconds": 2,
+  "harness": {"metricsUrl": ""},
   "brain": {
     "metricsUrl": "",
     "metricsUrlEnv": "OBS_BRAIN_METRICS_URL",

@@ -1,6 +1,6 @@
 import { BufferGeometry, BufferAttribute, Points, ShaderMaterial, TextureLoader, NearestFilter, NormalBlending } from 'three';
 
-export const PARTICLE_LIMITS = Object.freeze({ active: 2048, batch: 64, pendingBatches: 4, distance: 80 });
+export const PARTICLE_LIMITS = Object.freeze({ active: 2048, batch: 256, pendingBatches: 4, distance: 80 });
 export class ServerParticles {
   constructor({ getWorld = () => globalThis.world, now = () => performance.now(), random = Math.random } = {}) {
     this.getWorld = getWorld; this.now = now; this.random = random; this.entries = []; this.assets = null; this.cloud = null;
