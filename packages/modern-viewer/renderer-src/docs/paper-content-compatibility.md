@@ -55,7 +55,7 @@ bot.once('end', () => content.dispose());
 | 事件 | 主要字段 |
 | --- | --- |
 | `contentReset` | `{ schemaVersion, epoch }` |
-| `particleBatch` | `{ schemaVersion, epoch, atMs, events: [{ kind:'particle', name, position, spread, count, speed, exact, color?, colorEnd?, size? }] }` |
+| `particleBatch` | `{ schemaVersion, epoch, atMs, events: [{ kind:'particle', name, position, spread, count, speed, exact, longDistance, color?, colorEnd?, size? }] }` |
 | `mapPixels` | `{ schemaVersion, epoch, mapId, scale, locked, icons?, columns, rows?, x?, y?, data? }`；重连快照另外含 `snapshot:true, coverage` |
 | `mapFrame` | `{ schemaVersion, epoch, id, uuid?, name, position, normal, rotation, mapId, invisible }`；移除为 `{ schemaVersion, epoch, id, delete:true }` |
 | `textDisplay` | 实际文字显示实体的 ID、位置、文字 runs、样式和静态变换；字段与限制见[气泡说明](text-display-bubbles.md#增量事件与预算) |
@@ -63,6 +63,10 @@ bot.once('end', () => content.dispose());
 `data` 是原版调色板字节，大小为 columns×rows；columns=0 只更新元数据。Socket.IO 浏览器端二进制可能是 ArrayBuffer，已支持。快照是 16384 字节像素加 2048 字节覆盖位图；只有覆盖位为 1 的像素才是实际收到的内容。`position` 为原版展示框中心，桥已处理出生包的整数 TilePos 与后续 teleport 中心坐标的差异，宿主不得再加一次半格。
 
 1.20.6 的部分 minecraft-data 版本把 `dust_color_transition` 七个 float 的第四项误标为 scale。新桥检查实际字段布局，并按原生顺序 fromRGB → toRGB → scale 解释；兼容已经修正的布局，未知布局明确拒绝，避免错误颜色/大小进入画面。
+
+2026-10-12引导补充：宿主保留原始粒子包的 `longDistance === true`。普通粒子仍只接收80格内；该真实布尔值为true时按512格上限接收，保证长引导不被普通过滤器裁掉终点，不加载新世界区块。字符串 `"true"`、无字段及512格外的事件不会放宽范围。实际协议766序列化→宿主过滤→批次→GPU的64点/500格直线测试通过；原批次256、活粒子2048及缓存/接收者边界保持。用户看到的距离仍受游戏包、地形遮挡、浏览器相机等实际条件约束。
+
+此修复位于宿主 `viewer-content.mjs`；另一台电脑必须更新实际导入或复制的桥并重启画面服务，单换网页bundle或游戏服务器JAR不会更新旧宿主。涉及部署的资源目录仍用原版本和预设重新构建并核对摘要。集中回归：`node --test test/host-content.test.mjs test/server-particles.test.mjs test/text-displays.test.mjs`，25项通过，包含真实协议远距离位、原字体白底深色文字、单连接私有气泡及资源清理。
 
 ### 有界资源和慢浏览器
 

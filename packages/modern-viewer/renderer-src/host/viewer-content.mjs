@@ -6,7 +6,7 @@ const pos = p => p && [p.x, p.y, p.z].every(finite) ? { x: p.x, y: p.y, z: p.z }
 const rgb = p => Array.isArray(p) && p.length === 3 && p.every(n => finite(n) && n >= 0 && n <= 1) ? p : null;
 // Keep complete 64-point guides after a spell's cosmetic burst, including two guides in one tick.
 // This remains a hard bound; match ServerParticles.batch at the browser boundary.
-export const VIEWER_CONTENT_LIMITS = Object.freeze({ maps: 64, frames: 128, textDisplays: 64, particleBatch: 256, flushMs: 50, range: 80 });
+export const VIEWER_CONTENT_LIMITS = Object.freeze({ maps: 64, frames: 128, textDisplays: 64, particleBatch: 256, flushMs: 50, range: 80, longDistanceRange: 512 });
 
 export function transitionFieldOrder(protocol) {
   const fields = protocol?.types?.Particle?.[1]?.find(f => f.name === 'data')?.type?.[1]?.fields?.dust_color_transition?.[1];
@@ -19,7 +19,9 @@ export function viewerParticlePacket(packet, { version = '1.20.6', protocol } = 
   if (!position || typeof name !== 'string' || !/^[a-z_]{1,64}$/.test(name)
       || !integer(packet.amount, 0, 4096) || ![packet.offsetX, packet.offsetY, packet.offsetZ, packet.velocityOffset].every(finite)) return null;
   const data = packet.particle.data;
-  const result = { kind: 'particle', name, position, spread: {
+  // Preserve the native force/long-distance bit. Guide endpoints can be beyond
+  // the ordinary content radius; dropping this bit silently clipped whole lines.
+  const result = { kind: 'particle', name, position, longDistance: packet.longDistance === true, spread: {
     x: Math.max(-8, Math.min(8, packet.offsetX)), y: Math.max(-8, Math.min(8, packet.offsetY)), z: Math.max(-8, Math.min(8, packet.offsetZ)) },
     count: Math.min(48, packet.amount), speed: Math.max(0, Math.min(4, packet.velocityOffset)), exact: packet.amount === 1
       && packet.offsetX === 0 && packet.offsetY === 0 && packet.offsetZ === 0 && packet.velocityOffset === 0 };
@@ -103,7 +105,7 @@ export function createViewerContentBridge(bot, { now = Date.now, schedule = setI
   const protocol = bot._client, maps = new Map(), frames = new Map(), textEntities=new Map(), textDisplays=new Map(), listeners = new Set(), hooks = [], socketDrainers=new Set(), socketDisposers=new Set();
   let epoch = 0, queue = [], disposed = false;
   const diagnostics = { particles: 0, droppedParticles: 0, mapPatches: 0, rejected: 0, subscriberErrors: 0, cachedFrames: 0, cachedTextDisplays:0, rejectedTextDisplays:0 };
-  const nearby = p => !bot.entity?.position || Math.hypot(p.x-bot.entity.position.x, p.y-bot.entity.position.y, p.z-bot.entity.position.z) <= VIEWER_CONTENT_LIMITS.range;
+  const nearby = (p, range = VIEWER_CONTENT_LIMITS.range) => !bot.entity?.position || Math.hypot(p.x-bot.entity.position.x, p.y-bot.entity.position.y, p.z-bot.entity.position.z) <= range;
   const deliver = (publish,name,value) => { try { publish(name,value); } catch { diagnostics.subscriberErrors++; } };
   const send = (name, value) => { for (const publish of listeners) deliver(publish,name,{ ...value, epoch }); };
   const on = (emitter, name, fn) => { emitter.on(name, fn); hooks.push(() => emitter.off(name, fn)); };
@@ -150,7 +152,7 @@ export function createViewerContentBridge(bot, { now = Date.now, schedule = setI
   on(protocol, 'world_particles', packet => {
     const event = viewerParticlePacket(packet, { version: bot.version, protocol: bot.registry?.protocol });
     if (!event) { diagnostics.rejected++; return; }
-    if (!nearby(event.position) || !listeners.size) return;
+    if (!nearby(event.position, event.longDistance ? VIEWER_CONTENT_LIMITS.longDistanceRange : VIEWER_CONTENT_LIMITS.range) || !listeners.size) return;
     if (queue.length >= VIEWER_CONTENT_LIMITS.particleBatch) { diagnostics.droppedParticles++; return; }
     queue.push(event); diagnostics.particles++;
   });
