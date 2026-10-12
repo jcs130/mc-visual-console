@@ -30,6 +30,7 @@
     "fixtures",
     "packages/modern-viewer/renderer-src",
     "packages/modern-viewer/asset-packs/java-1.20.6",
+    "packages/modern-viewer/asset-packs/qiandengji-items-1.20.6",
     "packages/modern-viewer/asset-packs/native-1.21.1",
     "tools/prepare-viewer-assets.mjs",
     "tools/model-status-overlay",

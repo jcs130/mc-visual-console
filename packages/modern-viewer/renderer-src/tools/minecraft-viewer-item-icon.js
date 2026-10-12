@@ -1,4 +1,10 @@
 /** Use the skin face from a validated Minecraft profile on player heads. */
+function cortiItemIconUrl(item) {
+  const name=String(item?.name || '').replace(/^minecraft:/,'');
+  if(typeof paperItemAppearances!=='undefined' && paperItemAppearances.reserved(item))
+    return paperItemAppearances.icon(item);
+  return /^[a-z0-9_]+$/.test(name)?`/icons/${name}.png`:null;
+}
 function cortiDurability(item) {
   const left = Number(item?.durability?.left);
   const max = Number(item?.durability?.max);
@@ -23,14 +29,15 @@ function cortiAppendEnchantmentGlint(slot, item, left) {
   if (item?.enchanted !== true) return;
   slot.classList.add('corti-enchanted');
   const name = String(item.name || '').replace(/^minecraft:/, '');
-  if (!/^[a-z0-9_]+$/.test(name)) {
+  const iconUrl=cortiItemIconUrl(item);
+  if (!iconUrl) {
     slot.classList.add('corti-enchanted-outline');
     return;
   }
   const glint = document.createElement('span');
   glint.className = 'corti-enchant-glint';
   glint.style.left = `${left}px`;
-  glint.style.maskImage = `url("/icons/${name}.png")`;
+  glint.style.maskImage = `url("${iconUrl}")`;
   slot.append(glint);
 }
 

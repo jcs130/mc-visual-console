@@ -13,6 +13,7 @@ import { installAgentVisualization } from "./agent-visual-overlay.js";
 import { createAgentWorldProjector } from "./agent-visual-projection.js";
 import { resolveObsCamera, horizontalFov } from "./obs-camera.js";
 import { installObsHandsRenderer, HeldItemUseClock, installHeldItemUseMotion, obsHandAvatarState } from "./obs-hands.js";
+import {paperItemAppearances,loadItemAppearancePack,installItemAppearanceRenderer,itemAppearanceKey} from './item-appearances.js';
 import {
   Box3,
   BoxGeometry,
@@ -925,6 +926,10 @@ async function initializeRenderer(version) {
       setBlockStateId: () => {},
     };
     await viewer.startWorld(emptyWorld, renderDistance, viewer.playerState.reactive, initial);
+    try { await loadItemAppearancePack(paperItemAppearances); }
+    catch (error) { paperItemAppearances.error=String(error.message); }
+    installItemAppearanceRenderer(globalThis.world,paperItemAppearances);
+    globalThis.itemAppearanceDiagnostics=()=>paperItemAppearances.stats();
     if (isObsOverlay) {
       worldView = viewer.worldView;
       const world = globalThis.world;
@@ -3047,7 +3052,7 @@ function unwrapHotbarSlot(slot) {
 }
 
 function updateHandItem(hand, item) {
-  const key = item ? `${item.name || ""}:${item.type ?? item.itemId ?? ""}:${item.metadata ?? ""}` : "empty";
+  const key = item ? `${itemAppearanceKey(item)}:${paperItemAppearances.revision}:${item.type ?? item.itemId ?? ""}:${item.metadata ?? ""}:${item.enchanted === true}` : "empty";
   if (hand === "main" && key === lastMainHandKey) return;
   if (hand === "off" && key === lastOffHandKey) return;
   const handItem = toHandItem(item);
@@ -5477,6 +5482,7 @@ function ensureHotbarNodes(hotbar) {
 function inventoryItemSignature(item) {
   if (!item || typeof item !== "object") return "";
   return [
+    itemAppearanceKey(item), paperItemAppearances.revision,
     item.name,
     item.displayName,
     item.customName,

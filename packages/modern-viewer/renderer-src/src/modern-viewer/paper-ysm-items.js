@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {bakeFaces} from '../native-viewer/model-loader.js';
 import {nativeGeneratedItemElements,nativeHeldItemTransform} from '../native-viewer/native-held-items.js';
+import {paperItemAppearances} from './item-appearances.js';
 
 export function resolvePaperHeldModel(models,name,ancestry=[]) {
   name=name.replace(/^minecraft:/,'');
@@ -42,9 +43,16 @@ const textureId=(textures,value)=>{
   const visited=new Set();while(value?.startsWith('#')){if(visited.has(value))throw Error('YSM_ITEM_TEXTURE_CYCLE');visited.add(value);value=textures[value.slice(1)];}
   if(!value)throw Error('YSM_ITEM_TEXTURE_UNAVAILABLE');return value.includes(':')?value:'minecraft:'+value;
 };
-export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTexture,readPixels=pixels}={}) {
+export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTexture,readPixels=pixels,itemAppearances=paperItemAppearances}={}) {
   const name=String(item?.name??'').replace(/^minecraft:/,'');if(!/^[a-z0-9_]{1,96}$/.test(name))throw Error('YSM_ITEM_NAMESPACE_UNSUPPORTED');
   if(item.visualDataUnavailable)throw Error('YSM_ITEM_COMPONENTS_UNAVAILABLE');
+  if(itemAppearances.reserved(item)) {
+    const result=itemAppearances.createRaw(item),display=result.model.display?.['thirdperson_'+arm+'hand']??{};
+    // Both custom and ordinary bakeFaces vertices are already centred. Use
+    // the same native locator transform; do not introduce a second offset.
+    result.root.applyMatrix4(paperYsmItemMount(display,arm));
+    return result;
+  }
   // These components select a different visual. Never show an ordinary item
   // while claiming its custom head/model/potion/leather appearance is correct.
   const components=item.components??[];
@@ -92,7 +100,7 @@ export class PaperYsmHeldItems {
   constructor(model,models,options={}){this.model=model;this.models=models;this.options=options;this.hands=new Map();this.disposed=false;}
   apply(equipment,mainArm='right') {
     for(const[index,arm]of [mainArm,mainArm==='right'?'left':'right'].entries()) {
-      const item=equipment?.[index],key=JSON.stringify(item??null);if(this.hands.get(arm)?.key===key)continue;
+      const item=equipment?.[index],key=JSON.stringify([item??null,(this.options.itemAppearances??paperItemAppearances).revision]);if(this.hands.get(arm)?.key===key)continue;
       this.hands.get(arm)?.item?.dispose();const record={key,name:item?.name??null,status:item?'pending':'empty',item:null};this.hands.set(arm,record);
       if(!item)continue;
       const anchors=[...this.model.bones].filter(([name])=>new RegExp('^'+(arm==='right'?'Right':'Left')+'HandLocator(?:[2-8])?$').test(name)).map(([,bone])=>bone);

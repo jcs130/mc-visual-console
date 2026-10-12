@@ -443,10 +443,10 @@ function cortiSlot(parent, x, y, item, label = '', slotIndex) {
   slot.title = item ? `${item.displayName || item.name} × ${item.count || 1}${item.enchanted === true ? ' · 附魔' : ''}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : label;
   if (item) {
     const name = String(item.name || '').replace(/^minecraft:/, '');
-    if (/^[a-z0-9_]+$/.test(name)) {
+    if (/^[a-z0-9_]+$/.test(name) && cortiItemIconUrl(item)) {
       const image = document.createElement('img');
       image.alt = '';
-      image.src = `/icons/${name}.png`;
+      image.src = cortiItemIconUrl(item);
       image.onerror = () => {
         if (!image.isConnected) return;
         image.remove();

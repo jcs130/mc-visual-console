@@ -1307,7 +1307,8 @@ if (!snap?.holder) {
       // Version-matched optional Paper content. These files come from the
       // rebuilt package's public/, never a different version's proxy registry.
       if (bot.version === '1.20.6' && (/^\/(?:viewer-content\.json|particle-content\.png|text-display-font\.json|fonts\/1\.20\.6\/unifont\.zip)$/.test(rel)
-          || /^\/textures\/1\.20\.6\/font\/[a-z_]+\.png$/.test(rel))) {
+          || /^\/textures\/1\.20\.6\/font\/[a-z_]+\.png$/.test(rel)
+          || /^\/item-appearances\/(?:manifest\.json|(?:models\/[a-z][a-z0-9_]{1,47}\.json|(?:textures|icons)\/[a-z][a-z0-9_]{1,47}\.png))$/.test(rel))) {
         if (await serveViewerAsset(res, path.join(ASSET_ROOT, 'public'), rel.slice(1))) return
         send(404, 'text/plain', 'Matching 1.20.6 content assets are missing'); return
       }

@@ -18,8 +18,8 @@ function renderCortiSurvivalHud(state) {
   const offhand = state.offhand ?? state.equipment?.[1];
   const signature = [state.health, state.maxHealth, state.absorption, state.food, state.armor, state.oxygen,
     state.inWater, state.experienceLevel, state.experienceProgress, state.quickBarSlot, cortiHudPoisoned,
-    `${offhand?.name ?? ''}:${offhand?.customName ?? ''}:${offhand?.headTextureHash ?? ''}:${offhand?.enchanted === true}:${offhand?.durability?.left ?? ''}`,
-    ...slots.map((row) => `${row?.item?.name ?? ''}:${row?.item?.count ?? ''}:${row?.item?.customName ?? ''}:${row?.item?.headTextureHash ?? ''}:${row?.item?.enchanted === true}:${row?.item?.durability?.left ?? ''}:${row?.item?.durability?.max ?? ''}`)].join('|');
+    `${offhand?.name ?? ''}:${cortiItemIconUrl(offhand)}:${offhand?.customName ?? ''}:${offhand?.headTextureHash ?? ''}:${offhand?.enchanted === true}:${offhand?.durability?.left ?? ''}`,
+    ...slots.map((row) => `${row?.item?.name ?? ''}:${cortiItemIconUrl(row?.item)}:${row?.item?.count ?? ''}:${row?.item?.customName ?? ''}:${row?.item?.headTextureHash ?? ''}:${row?.item?.enchanted === true}:${row?.item?.durability?.left ?? ''}:${row?.item?.durability?.max ?? ''}`)].join('|');
   if (signature === cortiHudSignature) return;
   cortiHudSignature = signature;
 
@@ -101,10 +101,10 @@ function renderCortiSurvivalHud(state) {
     offhandSlot.classList.toggle('corti-enchanted', offhand?.enchanted === true);
     const durability = cortiDurability(offhand);
     offhandSlot.title = offhand ? `副手：${offhand.displayName || name}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : '副手：空';
-    if (safe) {
+    if (safe && cortiItemIconUrl(offhand)) {
       const image = document.createElement('img');
       image.alt = '';
-      image.src = `/icons/${safe}.png`;
+      image.src = cortiItemIconUrl(offhand);
       image.onerror = () => {
         if (image.isConnected) image.remove();
       };
@@ -127,7 +127,7 @@ function renderCortiSurvivalHud(state) {
     const item = slots[i]?.item;
     const name = typeof item?.name === 'string' ? item.name.replace(/^minecraft:/, '') : '';
     const safe = /^[a-z0-9_]+$/.test(name) ? name : '';
-    const identity = `${name}:${item?.count ?? ''}:${item?.customName ?? ''}:${item?.headTextureHash ?? ''}:${item?.enchanted === true}:${item?.durability?.left ?? ''}:${item?.durability?.max ?? ''}`;
+    const identity = `${name}:${cortiItemIconUrl(item)}:${item?.count ?? ''}:${item?.customName ?? ''}:${item?.headTextureHash ?? ''}:${item?.enchanted === true}:${item?.durability?.left ?? ''}:${item?.durability?.max ?? ''}`;
     slot.classList.toggle('corti-enchanted', item?.enchanted === true);
     if (slot.dataset.identity === identity) continue;
     slot.dataset.identity = identity;
@@ -135,10 +135,10 @@ function renderCortiSurvivalHud(state) {
     const durability = cortiDurability(item);
     slot.title = item ? `${item.displayName || name} × ${item.count || 1}${item.enchanted === true ? ' · 附魔' : ''}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : `快捷栏 ${i + 1}`;
     if (!item) continue;
-    if (safe) {
+    if (safe && cortiItemIconUrl(item)) {
       const image = document.createElement('img');
       image.alt = '';
-      image.src = `/icons/${safe}.png`;
+      image.src = cortiItemIconUrl(item);
       image.onerror = () => {
         if (!image.isConnected) return;
         image.remove();
