@@ -12,8 +12,8 @@ const BOX_UV = [[1, 2, 6, 7], [2, 3, 7, 6], [1, 2, 7, 8], [4, 5, 7, 8], [0, 1, 7
 const MIRROR_UV = [[2, 1, 6, 7], [3, 2, 7, 6], [2, 1, 7, 8], [5, 4, 7, 8], [4, 2, 7, 8], [1, 0, 7, 8]]
 const known = (value, keys) => Object.keys(value).every(key => keys.includes(key))
 
-export function nativeBedrockCubeFaces (cube, dimensions) {
-  if (!cube || !vector(cube.origin) || !vector(cube.size) || cube.size.some(value => value < 0) ||
+export function nativeBedrockCubeFaces (cube, dimensions, { allowNegativeSizes = false } = {}) {
+  if (typeof allowNegativeSizes !== 'boolean' || !cube || !vector(cube.origin) || !vector(cube.size) || (!allowNegativeSizes && cube.size.some(value => value < 0)) ||
       !vector(dimensions, 2) || !dimensions.every(value => Number.isInteger(value) && value > 0 && value <= 4096) ||
       !Number.isFinite(cube.inflate ?? 0) || Math.abs(cube.inflate ?? 0) > 16 || (cube.mirror !== undefined && typeof cube.mirror !== 'boolean')) throw Error('NATIVE_BEDROCK_CUBE_INVALID')
   const origin = cube.origin.map(F), size = cube.size.map(F), delta = F(cube.inflate ?? 0)
@@ -49,17 +49,21 @@ export function nativeBedrockCubeFaces (cube, dimensions) {
   return faces
 }
 
-export function createNativeBedrockModel (definition, material) {
+export function createNativeBedrockModel (definition, material, { maxBones = 128, maxCubesPerBone = 64, maxCubes = 8192, allowNegativeSizes = false } = {}) {
+  // Different source formats use different rig sizes. Keep the original native
+  // defaults; uploaded YSM actors opt into a larger, still bounded hierarchy.
+  if (![maxBones, maxCubesPerBone, maxCubes].every(Number.isInteger) ||
+      maxBones < 1 || maxBones > 512 || maxCubesPerBone < 1 || maxCubesPerBone > 256 || maxCubes < 1 || maxCubes > 8192 || typeof allowNegativeSizes !== 'boolean') throw Error('NATIVE_BEDROCK_BUDGET_INVALID')
   const geometry = definition?.['minecraft:geometry']?.[0]
   if (definition?.format_version !== '1.12.0' || !known(definition, ['format_version', 'minecraft:geometry']) || definition['minecraft:geometry'].length !== 1 ||
-      !geometry || !known(geometry, ['description', 'bones']) || !Array.isArray(geometry.bones) || geometry.bones.length > 128 || !material?.isMaterial) throw Error('NATIVE_BEDROCK_MODEL_UNSUPPORTED')
+      !geometry || !known(geometry, ['description', 'bones']) || !Array.isArray(geometry.bones) || geometry.bones.length > maxBones || !material?.isMaterial) throw Error('NATIVE_BEDROCK_MODEL_UNSUPPORTED')
   const description = geometry.description, dimensions = [description?.texture_width, description?.texture_height]
   if (!vector(dimensions, 2) || !dimensions.every(value => Number.isInteger(value) && value > 0 && value <= 4096)) throw Error('NATIVE_BEDROCK_TEXTURE_DIMENSIONS_INVALID')
   const root = new THREE.Group(), bones = new Map(), source = new Map(), geometries = new Set(), initial = new Map()
-  let cubeCount = 0, faceCount = 0, zeroThicknessCubes = 0
+  let cubeCount = 0, faceCount = 0, zeroThicknessCubes = 0, declaredCubes = 0
   const rotation = value => F(F(value) * Math.PI / 180)
   function meshCube (parent, cube) {
-    for (const face of nativeBedrockCubeFaces(cube, dimensions)) {
+    for (const face of nativeBedrockCubeFaces(cube, dimensions, { allowNegativeSizes })) {
       const geometry = new THREE.BufferGeometry(); geometries.add(geometry)
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(face.position, 3))
       geometry.setAttribute('normal', new THREE.Float32BufferAttribute(Array(4).fill(face.normal).flat(), 3))
@@ -70,7 +74,9 @@ export function createNativeBedrockModel (definition, material) {
   try {
     for (const item of geometry.bones) {
       if (!item || !known(item, ['name', 'parent', 'pivot', 'rotation', 'mirror', 'cubes']) || !/^[\p{L}\p{N}_ .-]{1,96}$/u.test(item.name ?? '') || bones.has(item.name) || !vector(item.pivot) ||
-          (item.rotation !== undefined && !vector(item.rotation)) || (item.mirror !== undefined && typeof item.mirror !== 'boolean') || (item.cubes !== undefined && (!Array.isArray(item.cubes) || item.cubes.length > 64))) throw Error('NATIVE_BEDROCK_BONE_INVALID')
+          (item.rotation !== undefined && !vector(item.rotation)) || (item.mirror !== undefined && typeof item.mirror !== 'boolean') || (item.cubes !== undefined && (!Array.isArray(item.cubes) || item.cubes.length > maxCubesPerBone))) throw Error('NATIVE_BEDROCK_BONE_INVALID')
+      declaredCubes += item.cubes?.length ?? 0
+      if (declaredCubes > maxCubes) throw Error('NATIVE_BEDROCK_GEOMETRY_BUDGET')
       const bone = new THREE.Group(); bone.name = item.name; bones.set(item.name, bone); source.set(item.name, item)
     }
     for (const item of geometry.bones) {

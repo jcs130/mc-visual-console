@@ -11,7 +11,8 @@ const functions = Object.freeze({
 });
 const cache = new Map();
 const canonical = name => name.replace(/^v\./, 'variable.').replace(/^q\./, 'query.').replace(/^t\./, 'temp.');
-const validVariable = name => /^(?:variable|temp)\.[a-z_][a-z_\d]*$/.test(name);
+// Roaming structs are stored as bounded, flat keys. Never traverse JS objects.
+const validVariable = name => /^(?:variable|temp)\.[a-z_][a-z_\d]*(?:\.[a-z_][a-z_\d]*){0,7}$/.test(name) && !name.split('.').some(part => ['__proto__','prototype','constructor'].includes(part));
 const fail = () => { throw Error('YSM_MOLANG_UNSUPPORTED'); };
 const truth = x => x !== 0;
 const finite = x => { if (!Number.isFinite(x) || Math.abs(x) > 1e12) throw Error('YSM_MOLANG_VALUE_INVALID'); return x; };
@@ -21,7 +22,7 @@ export function compilePaperMolang(source) {
   if (typeof source !== 'string' || source.length > 4096) return fail();
   if (cache.has(source)) return cache.get(source);
   // Comments and strings are not needed by this bounded expression profile.
-  const tokens = source.toLowerCase().match(/(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|[a-z_][a-z_\d]*(?:\.[a-z_][a-z_\d]*)?|==|!=|<=|>=|&&|\|\||[+\-*/%<>=!?:(),;]/g) ?? [];
+  const tokens = source.toLowerCase().match(/(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|[a-z_][a-z_\d]*(?:\.[a-z_][a-z_\d]*)*|==|!=|<=|>=|&&|\|\||[+\-*/%<>=!?:(),;]/g) ?? [];
   if (tokens.length > 1024 || tokens.join('') !== source.toLowerCase().replace(/\s/g, '')) return fail();
   let at = 0, depth = 0;
   const peek = () => tokens[at], take = () => tokens[at++];
@@ -40,7 +41,7 @@ export function compilePaperMolang(source) {
         take(); const args = []; if (peek() !== ')') do { args.push(expression()); if (peek() !== ',') break; take(); } while (args.length < 9);
         expect(')'); node = { kind: 'call', name, args };
       } else {
-        if (!validVariable(name) && !/^(?:query|ysm)\.[a-z_][a-z_\d]*$/.test(name) && !['true', 'false', 'math.pi', 'math.e'].includes(name)) fail();
+        if (!validVariable(name) && !/^(?:query|ysm|tlm)\.[a-z_][a-z_\d]*$/.test(name) && !['true', 'false', 'math.pi', 'math.e'].includes(name)) fail();
         node = { kind: 'read', name };
       }
     } else fail();

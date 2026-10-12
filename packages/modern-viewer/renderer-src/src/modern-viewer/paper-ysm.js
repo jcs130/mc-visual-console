@@ -17,7 +17,7 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
   try {
     texture.flipY=true;texture.colorSpace=THREE.SRGBColorSpace;texture.magFilter=THREE.NearestFilter;texture.minFilter=THREE.NearestFilter;texture.generateMipmaps=false;texture.needsUpdate=true;
     material=new THREE.MeshLambertMaterial({map:texture,side:THREE.DoubleSide,alphaTest:.1});
-    model=createNativeBedrockModel(geometry,material);
+    model=createNativeBedrockModel(geometry,material,{maxBones:512,maxCubesPerBone:256,maxCubes:2048,allowNegativeSizes:true});
     if(model.cubeCount>2048)throw Error('YSM_GEOMETRY_BUDGET');
     // Batch original faces within each identical bone/cube transform; retain exact UV and vertices.
     const merged=[];model.root.traverse(group=>{const meshes=group.children.filter(c=>c.isMesh);if(meshes.length<2)return;

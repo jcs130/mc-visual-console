@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {PaperYsmPlayers,applyPaperYsmAnimation} from '../../src/modern-viewer/paper-ysm.js';
+import {PaperYsmPlayers,applyPaperYsmAnimation,createPaperYsmActor} from '../../src/modern-viewer/paper-ysm.js';
+
+test('uploaded YSM actors mount a complex original rig without dropping bones or cubes',async()=>{
+ const cube={origin:[0,0,0],size:[1,1,-1],uv:[0,0]};
+ const bones=Array.from({length:272},(_,i)=>({name:`rig_${i}`,pivot:[0,i/10,0],...(i?{parent:'rig_0'}:{cubes:Array(83).fill(cube)})}));
+ const encode=value=>({base64:Buffer.from(JSON.stringify(value)).toString('base64')});
+ const bundle={modelId:'uploaded-complex',assetSha256:'test',model:'model.json',animation:'animation.json',textures:{main:'texture.png'},files:{
+   'ysm.json':encode({spec:2,properties:{free:true}}),'model.json':encode({format_version:'1.12.0','minecraft:geometry':[{description:{texture_width:128,texture_height:128},bones}]}),
+   'animation.json':encode({format_version:'1.8.0',animations:{idle:{loop:true,bones:{}}}}),'texture.png':{base64:''}}};
+ const actor=await createPaperYsmActor(bundle,'main',{loadTexture:async()=>new THREE.Texture()});
+ assert.equal(actor.assetInfo.bones,272);assert.equal(actor.assetInfo.cubes,83);assert.equal(actor.model.bones.get('rig_271').parent.name,'rig_0');
+ actor.animate({animation:'idle'},0);assert.equal(actor.assetInfo.completeEntityParityVerified,false);actor.dispose();
+});
 test('YSM original animation is sampled without eval; unknown Molang is explicitly unavailable',()=>{
  const bone=new THREE.Group(),initial={position:bone.position.clone(),rotation:bone.rotation.clone()};
  const model={bones:new Map([['head',bone]]),initial:new Map([['head',initial]]),reset(){bone.position.copy(initial.position);bone.rotation.copy(initial.rotation);}};

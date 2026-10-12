@@ -20,6 +20,32 @@ test('Molang cannot execute host code or silently guess an unknown native query'
   assert.throws(()=>compilePaperMolang('query.unavailable')(context()),/INPUT_UNAVAILABLE/);
   assert.throws(()=>compilePaperMolang('1/0')(context()),/VALUE_INVALID/);
 });
+
+test('roaming paths are inert flat variables and optional foreign queries retain short-circuit semantics',()=>{
+  const c=context();
+  assert.equal(compilePaperMolang('v.roaming.umbrella=1; v.roaming.umbrella')(c),1);
+  assert.equal(c.variables['variable.roaming.umbrella'],1);
+  assert.equal(Object.hasOwn(c.variables,'variable.roaming'),false);
+  assert.equal(compilePaperMolang('0 && tlm.is_sitting')(c),0);
+  assert.throws(()=>compilePaperMolang('tlm.is_sitting')(c),/INPUT_UNAVAILABLE/);
+  for(const value of ['v.roaming.__proto__','v.roaming.constructor','v.roaming.prototype'])assert.throws(()=>compilePaperMolang(value),/UNSUPPORTED/);
+});
+
+test('shared clips ignore absent optional bones and keep known channels when a timeline query is unavailable',()=>{
+  const m=model(),main={format_version:'1.8.0',animations:{
+    pre_parallel0:{loop:'hold_on_last_frame',animation_length:1000,bones:{Root:{position:[0,16,0]},RemovedProp:{scale:0}},timeline:{0:'query.health'}},
+    idle:{bones:{Head:{rotation:['ysm.has_offhand?30:10',0,0]}}}
+  }};
+  const state=new PaperYsmAnimation(m,main).apply({motion:{onGround:true,equipment:[null,{name:'torch'}]}},1000);
+  assert.deepEqual(state.ignoredBones,['RemovedProp']);assert.equal(m.bones.get('Root').position.y,-1);
+  assert.ok(Math.abs(m.bones.get('Head').rotation.x-Math.PI/6)<1e-10);
+  assert.deepEqual(state.errors,['YSM_MOLANG_INPUT_UNAVAILABLE:query.health']);
+  assert.equal(state.completeEntityParityVerified,false);
+  const clip=compilePaperYsmClip(main,'pre_parallel0',m.bones);
+  assert.throws(()=>samplePaperYsmClip(clip,0,context()),/INPUT_UNAVAILABLE/);
+  const known=new PaperYsmAnimation(m,main).apply({motion:{onGround:true,health:18,maxHealth:20}},1000);
+  assert.deepEqual(known.errors,[]);
+});
 test('original pre/post discontinuity, Catmull-Rom curve and timeline trigger once per action',()=>{
   const m=model(),d={format_version:'1.8.0',animations:{swing:{animation_length:2,bones:{RightArm:{position:{0:[0,0,0],1:{pre:[16,0,0],post:[32,0,0],lerp_mode:'catmullrom'},2:[48,0,0]}}},timeline:{0:'v.count=v.count+1;',1:'v.count=v.count+1;'}}}};
   const c=context(),clip=compilePaperYsmClip(d,'swing',m.bones),cursor={cycle:-1,time:-1};

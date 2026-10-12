@@ -36,10 +36,13 @@ export function compilePaperYsmClip(definition, name, bones) {
   const clip = definition?.animations?.[name];
   if (!clip || definition.format_version !== '1.8.0') throw Error('YSM_CLIP_UNAVAILABLE:'+name);
   const length = clip.animation_length ?? 0;
-  if (!Number.isFinite(length) || length < 0 || length > 600 || ![undefined,false,true,'hold_on_last_frame'].includes(clip.loop) ||
-      Object.keys(clip.bones??{}).length > 128) throw Error('YSM_CLIP_UNSUPPORTED');
-  const tracks = Object.entries(clip.bones??{}).map(([bone, channels]) => {
-    if (!bones.has(bone) || !object(channels) || Object.keys(channels).some(c => !['rotation','position','scale'].includes(c))) throw Error('YSM_ANIMATION_BONE_UNSUPPORTED:'+bone);
+  if (!Number.isFinite(length) || length < 0 || length > 3600 || ![undefined,false,true,'hold_on_last_frame'].includes(clip.loop) ||
+      Object.keys(clip.bones??{}).length > 512) throw Error('YSM_CLIP_UNSUPPORTED');
+  // Shared animation files may include optional bones absent from this model.
+  // Bind only actual bones, retaining the omitted names for diagnostics.
+  const ignoredBones = Object.keys(clip.bones??{}).filter(bone => !bones.has(bone));
+  const tracks = Object.entries(clip.bones??{}).filter(([bone]) => bones.has(bone)).map(([bone, channels]) => {
+    if (!object(channels) || Object.keys(channels).some(c => !['rotation','position','scale'].includes(c))) throw Error('YSM_ANIMATION_BONE_UNSUPPORTED:'+bone);
     return [bone, Object.fromEntries(Object.entries(channels).map(([channel, track]) => [channel,compileTrack(track,channel)]))];
   });
   const timeline = Object.entries(clip.timeline??{}).map(([t, commands]) => {
@@ -49,7 +52,7 @@ export function compilePaperYsmClip(definition, name, bones) {
     return {time:Number(t), commands:commands.map(compilePaperMolang)};
   }).sort((a,b)=>a.time-b.time);
   if(timeline.length>128) throw Error('YSM_TIMELINE_BUDGET');
-  return {name,length,loop:clip.loop===true,hold:clip.loop==='hold_on_last_frame',tracks,timeline};
+  return {name,length,loop:clip.loop===true,hold:clip.loop==='hold_on_last_frame',tracks,timeline,ignoredBones};
 }
 export function samplePaperYsmClip(clip, seconds, context, cursor={cycle:-1,time:-1}) {
   const cycle = clip.loop && clip.length ? Math.floor(seconds/clip.length) : 0;
@@ -58,9 +61,10 @@ export function samplePaperYsmClip(clip, seconds, context, cursor={cycle:-1,time
   // a fresh cursor while Molang variables persist for original sword combos.
   const start = cycle === cursor.cycle && time >= cursor.time ? cursor.time : -1;
   context.queries['query.anim_time'] = time;
-  for (const event of clip.timeline) if (event.time>start && event.time<=time) for (const command of event.commands) command(context);
+  const read = fn => {try{return fn();}catch(error){if(!Array.isArray(context.errors))throw error;context.errors.push(error.message);return undefined;}};
+  for (const event of clip.timeline) if (event.time>start && event.time<=time) for (const command of event.commands) read(()=>command(context));
   cursor.cycle=cycle;cursor.time=time;
-  return new Map(clip.tracks.map(([bone,channels])=>[bone,Object.fromEntries(Object.entries(channels).map(([channel,read])=>[channel,read(time,context)]))]));
+  return new Map(clip.tracks.map(([bone,channels])=>[bone,Object.fromEntries(Object.entries(channels).map(([channel,sample])=>[channel,read(()=>sample(time,context))]).filter(([,value])=>value!==undefined))]));
 }
 export function applyPaperYsmPose(model, pose, additiveRotation=false) {
   for (const [name,channels] of pose) {
@@ -108,11 +112,14 @@ export class PaperYsmAnimation {
       pose==='swimming'?'swim':m.flying===true?'fly':m.onGround===false?'jump':m.crouching===true?(speed>.05?'sneak':'sneaking'):speed>.05?(m.sprinting===true?'run':'walk'):'idle';
     const queries={'query.life_time':(now-this.start)/1000,'query.ground_speed':speed,'query.is_jumping':Number(m.onGround===false),
       'ysm.head_yaw':m.headYawDegrees??0,'ysm.head_pitch':m.headPitchDegrees??(state.pitch??0)*180/Math.PI,'ysm.is_close_eyes':0};
-    const context={queries,variables:this.variables};const keep=new Set();
+    const equipment=m.equipment??state.equipment??[];
+    queries['ysm.has_mainhand']=Number(!!equipment[0]);queries['ysm.has_offhand']=Number(!!equipment[1]);
+    for(const [field,query]of [['health','query.health'],['maxHealth','query.max_health'],['verticalSpeed','query.vertical_speed']])if(Number.isFinite(m[field]))queries[query]=m[field];
+    const context={queries,variables:this.variables,errors:this.errors};const keep=new Set(),ignoredBones=new Set();
     const layer=(key,definition,name,{token=name,seconds,loop=false,additiveRotation=false}={})=>{
       if(!name)return false;keep.add(key);
       try {
-        const clip=this.clip(definition,name);let row=this.layers.get(key);
+        const clip=this.clip(definition,name);for(const bone of clip.ignoredBones)ignoredBones.add(bone);let row=this.layers.get(key);
         if(!row||row.name!==name||row.token!==token){row={name,token,started:now,cursor:{cycle:-1,time:-1}};this.layers.set(key,row);}
         const age=seconds??(now-row.started)/1000;
         const sampled=samplePaperYsmClip(loop&&!clip.hold?{...clip,loop:true}:clip,age,context,row.cursor);
@@ -121,7 +128,6 @@ export class PaperYsmAnimation {
     };
     for(let n=0;n<8;n++)if(this.main.animations?.['pre_parallel'+n])layer('pre'+n,this.main,'pre_parallel'+n,{loop:true});
     layer('main',this.main,base,{loop:base!=='death'});
-    const equipment=m.equipment??state.equipment??[];
     for(const [index,hand]of ['mainhand','offhand'].entries()) {
       const item=equipment[index],hold=item?selectArmClip(this.arm,'hold',hand,item):Object.hasOwn(this.arm?.animations??{},'hold_'+hand+':empty')?'hold_'+hand+':empty':null;
       if(hold)layer('hold'+index,this.arm,hold,{loop:true,token:JSON.stringify(item??null)});
@@ -151,6 +157,6 @@ export class PaperYsmAnimation {
     const head=this.model.bones.get('Head');if(head){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
     for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
     if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
-    return {base,clips:[...this.selected],errors:[...new Set(this.errors)],completeEntityParityVerified:false};
+    return {base,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
   }
 }

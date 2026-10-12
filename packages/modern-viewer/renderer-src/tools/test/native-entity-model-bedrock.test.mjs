@@ -15,6 +15,33 @@ test('uploaded model bone names preserve bounded Unicode names and parent links'
   model.dispose(); material.dispose()
 })
 
+test('large uploaded rigs retain their full hierarchy with explicit geometry budgets', () => {
+  const material = new THREE.MeshBasicMaterial()
+  const cube = { origin: [0, 0, 0], size: [1, 1, 1], uv: [0, 0] }
+  const bones = Array.from({ length: 272 }, (_, i) => ({ name: `rig_${i}`, pivot: [0, i / 10, 0],
+    ...(i ? { parent: 'rig_0' } : { cubes: Array.from({ length: 83 }, () => cube) }) }))
+  assert.throws(() => createNativeBedrockModel(definition(bones), material), /MODEL_UNSUPPORTED/)
+  const model = createNativeBedrockModel(definition(bones), material, { maxBones: 512, maxCubesPerBone: 256, maxCubes: 2048 })
+  assert.equal(model.bones.size, 272)
+  assert.equal(model.bones.get('rig_271').parent, model.bones.get('rig_0'))
+  assert.equal(model.cubeCount, 83)
+  assert.equal(model.faceCount, 498)
+  model.dispose(); material.dispose()
+})
+
+test('geometry budgets reject excessive uploads before constructing any cube faces', () => {
+  const material = new THREE.MeshBasicMaterial()
+  const cube = { origin: [0, 0, 0], size: [1, 1, 1], uv: [0, 0] }
+  const limits = { maxBones: 512, maxCubesPerBone: 256, maxCubes: 2048 }
+  assert.throws(() => createNativeBedrockModel(definition([]), material, { maxBones: 513 }), /BUDGET_INVALID/)
+  assert.throws(() => createNativeBedrockModel(definition([]), material, { maxCubes: Infinity }), /BUDGET_INVALID/)
+  assert.throws(() => createNativeBedrockModel(definition(Array.from({ length: 513 }, (_, i) => ({ name: `b${i}`, pivot: [0, 0, 0] }))), material, limits), /MODEL_UNSUPPORTED/)
+  assert.throws(() => createNativeBedrockModel(definition([{ name: 'body', pivot: [0, 0, 0], cubes: Array(257).fill(cube) }]), material, limits), /BONE_INVALID/)
+  const crowded = Array.from({ length: 9 }, (_, i) => ({ name: `b${i}`, pivot: [0, 0, 0], cubes: Array(256).fill(cube) }))
+  assert.throws(() => createNativeBedrockModel(definition(crowded), material, limits), /GEOMETRY_BUDGET/)
+  material.dispose()
+})
+
 test('original Bedrock box UVs floor fractional extents without changing zero-thickness geometry', () => {
   const faces = nativeBedrockCubeFaces({ origin: [-3, -4, -4.01], size: [6, 3.5, 0], uv: [24, 0] }, [128, 128])
   assert.equal(faces.length, 6)
@@ -25,6 +52,25 @@ test('original Bedrock box UVs floor fractional extents without changing zero-th
   const mirrored = nativeBedrockCubeFaces({ origin: [0, 0, 0], size: [6, 8, 2], uv: [0, 0], mirror: true }, [128, 128])
   assert.deepEqual(mirrored[4].uv, [8 / 128, 1 - 2 / 128, 10 / 128, 1 - 2 / 128, 10 / 128, 1 - 10 / 128, 8 / 128, 1 - 10 / 128])
   assert.deepEqual(mirrored[4].normal, [-1, 0, 0], 'Bedrock mirror changes original UV table, not geometric normals')
+})
+
+test('YSM signed extents preserve source vertices and box UV direction with explicit opt-in', () => {
+  const cube = { origin: [0, 0, 0], size: [1, 2, -2], uv: [16, 16] }
+  assert.throws(() => nativeBedrockCubeFaces(cube, [128, 128]), /CUBE_INVALID/)
+  const faces = nativeBedrockCubeFaces(cube, [128, 128], { allowNegativeSizes: true })
+  assert.equal(faces.length, 6)
+  const depths = faces.flatMap(face => face.position.filter((_, i) => i % 3 === 2))
+  assert.equal(Math.min(...depths), -2 / 16)
+  assert.equal(Math.max(...depths), 0)
+  const north = faces.find(face => face.direction === 'north')
+  assert.deepEqual(north.uv, [15 / 128, 1 - 14 / 128, 14 / 128, 1 - 14 / 128, 14 / 128, 1 - 16 / 128, 15 / 128, 1 - 16 / 128])
+  const material = new THREE.MeshBasicMaterial()
+  const source = definition([{ name: 'outline', pivot: [0, 0, 0], cubes: [cube] }])
+  assert.throws(() => createNativeBedrockModel(source, material), /CUBE_INVALID/)
+  const model = createNativeBedrockModel(source, material, { allowNegativeSizes: true })
+  assert.equal(model.cubeCount, 1); assert.equal(model.faceCount, 6)
+  assert.deepEqual(source['minecraft:geometry'][0].bones[0].cubes[0], cube)
+  model.dispose(); material.dispose()
 })
 
 test('original per-face UV rotation and both-zero empty-mask semantics are exact', () => {

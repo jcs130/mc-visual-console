@@ -26,6 +26,14 @@ Earlier isolated tests photographed builtin geometry, a newly uploaded ZIP and a
 
 ## Updating a consumer
 
+### Complex uploaded rigs
+
+Uploaded Paper YSM models opt into a bounded 512-bone, 256-cubes-per-bone and 2048-total-cube profile. The shared native Bedrock engine retains its previous defaults for other integrations. Signed cube extents are preserved for YSM outline geometry rather than normalized, removed or replaced. Preflight cube limits apply before allocating face geometries.
+
+Shared animation files bind only bones present in the uploaded model; `ignoredBones` exposes absent optional prop names. Original clips up to 3600 seconds and nested roaming variable names are supported. Roaming paths are inert flat keys, never JavaScript property traversal. Unknown input queries remain explicit errors; a missing optional timeline or channel input does not freeze independent known channels. Actual equipment supplies hand-presence queries; health and vertical speed are used only when supplied, never invented. These changes do not assert native Java pixel or full animation parity.
+
+The complex-rig regression includes 272 bones, 83 cubes in one bone, signed extents, missing optional animation bones, roaming keys and unavailable queries. The related Paper/native regression set passes 45 tests with original SHA-verified native fixtures. Consumer rebuild and actual pixels are still separate acceptance steps.
+
 Pull both shared host source and renderer changes, including the new `host/viewer-ysm-motion.mjs`. Run `npm run test:appearance`; build the consumer's existing original1.20.6/qiandengji asset directory using `tools/build-minecraft-viewer-client.mjs <renderer-src> <assets-root> --preset=qiandengji`. Restart that consumer's existing host and verify its served bundle hash. Source changes do not update another computer's LAN viewer. Server-side AgentAppearance0.3.2 is required for the previously omitted arm/extra source animations; a renderer-only update cannot recover files never sent. Camera prepares a fresh pinned runtime with `paper/ops/prepare-photo-camera.mjs`; never overwrite an accepted runtime.
 
 Known-model size calibration is an explicit source-definition change, not automatic normalization of every upload: the candidate Cormy scale is .82 and NEKO1.0 (uniform XYZ), giving approximately2.22/2.20 blocks including ears. No collision box, gameplay coordinates or original geometry/UV/PNG is changed. Production source definitions and remote viewers are unchanged until their deployment is approved.
