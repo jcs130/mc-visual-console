@@ -8,6 +8,7 @@ import { createRequire } from 'node:module'
 import { readFile, stat, readdir } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { observerEquipmentSlot, observerItemIdentity } from './observer-inventory.mts'
@@ -17,6 +18,8 @@ import { createViewerStaticResponder } from './viewer-static.mjs'
 import { ViewerSessionSlots } from './viewer-session-slots.mjs'
 import { createViewerContentBridge } from '../renderer-src/host/viewer-content.mjs'
 import { createViewerObserverBridge } from '../renderer-src/host/viewer-observer.mjs'
+import { createViewerAgentBridge } from '../renderer-src/host/viewer-agent.mjs'
+export { createViewerAgentBridge, createViewerAgentHub, publishAgentVisualization } from '../renderer-src/host/viewer-agent.mjs'
 import { createViewerAppearanceBridge } from '../renderer-src/host/viewer-appearance.mjs'
 import { serveViewerAsset } from '../renderer-src/host/viewer-asset-server.mjs'
 
@@ -1001,6 +1004,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   if (gateTranslated) console.log('[render-bridge] 门翻译模式：跳过 mod 注册表注入与本地号归一化（收到的已是原版号）')
   else { console.warn('[render-bridge] ⚠ 裸连模式（本地号表）：与门/基岩/Agent 不是同一张表，仅限调试'); injectModBlockRegistry(bot) }
   const serveViewerStatic = createViewerStaticResponder()
+  const styleNonce = randomBytes(18).toString('base64')
 
   // ---------- settle 村民实体流（2026-08-29 II：9090 村民=盔甲架修复） ----------
   // mineflayer 把 settlements:base_villager 错认成 unknown/armor stand → 3D 画面村民隐身或成盔甲架。
@@ -1055,6 +1059,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   const observerBridge = bot.version === '1.20.6' ? createViewerObserverBridge(bot, {
     serializeWindow: window => serializeViewerWindow(bot, window),
   }) : null
+  const agentBridge = createViewerAgentBridge(bot, { getViewerSession: () => observerBridge?.snapshot()?.viewerSession ?? null })
   const fishingOwners = createFishingBobberOwnerTracker(bot, entity => {
     for (const session of sessions) session.entityStream.queue(entity, true)
   })
@@ -1134,7 +1139,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
       res.setHeader('Content-Security-Policy', [
         "default-src 'none'",
         "script-src 'self' 'unsafe-eval'", // prismarine 协议编译器解码区块要用 eval
-        "style-src 'self'",
+        `style-src 'self' 'nonce-${styleNonce}'`,
         "img-src 'self' data: blob:",
         "font-src 'self'",
         `connect-src 'self' data: blob: ${publicOrigin.replace(/^http/, 'ws')}`,
@@ -1264,7 +1269,8 @@ if (!snap?.holder) {
       }
       // 页面
       if (rel === '/' || rel === '') {
-        send(200, 'text/html; charset=utf-8', viewerHtml(firstPersonFov, dashboardOrigin)); return
+        send(200, 'text/html; charset=utf-8', viewerHtml(firstPersonFov, dashboardOrigin)
+          .replace('</head>', `<meta name="viewer-style-nonce" content="${styleNonce}"></head>`)); return
       }
       if (rel === '/legacy/' || rel === '/legacy') {
         send(200, 'text/html; charset=utf-8', '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>画面兼容说明</title><body><h1>兼容画面入口尚未启用</h1><p>当前统一画面已修正服务器方块编号映射。独立降级引擎需要配套资产，暂未提供。</p><p><a href="/">返回现代画面</a></p></body></html>'); return
@@ -1608,6 +1614,7 @@ if (!snap?.holder) {
     const session = {
       socket, worldView, entityStream, mode, viewMode, avatarTimer, locomotionKeepalive, settleTimer, movementAnimations,
       releaseSlot, captureTimer: null, observerOff: undefined as undefined | (() => void), appearanceOff: undefined as undefined | (() => void),
+      agentOff: undefined as undefined | (() => void),
       botPosition, botTime, botWeather, botAvatarState, botEntitySpawn, botEntityMoved, botEntityRefresh,
       botEntitySwingArm, botEntityHurt, botParticle, botSoundEffect, botHardcodedSoundEffect, botEntityDead,
       botEntityCrouch, botEntityUncrouch,
@@ -1624,6 +1631,7 @@ if (!snap?.holder) {
     session.contentOff = mode === 'modern' ? contentBridge?.subscribeSocket(socket) : undefined
     session.appearanceOff = mode === 'modern' ? appearanceBridge?.subscribeSocket(socket) : undefined
     session.observerOff = mode === 'modern' ? observerBridge?.subscribeSocket(socket) : undefined
+    session.agentOff = mode === 'modern' ? agentBridge.subscribeSocket(socket) : undefined
     socket.emit('viewerProtocol', { schema: 1, blockStates: mode === 'modern' ? 'canonical-vanilla-and-runtime-mod' : 'canonical-vanilla-approximation',
       worldConfigSource: 'loaded-column', maxVisibleColumns: (VIEW_DISTANCE_CHUNKS * 2 - 1) ** 2 })
     emitOwnEntity()
@@ -1671,6 +1679,7 @@ if (!snap?.holder) {
     session.contentOff?.()
     session.appearanceOff?.()
     session.observerOff?.()
+    session.agentOff?.()
     clearTimeout(session.captureTimer)
     session.releaseSlot()
     clearInterval(session.avatarTimer)
@@ -1729,6 +1738,7 @@ if (!snap?.holder) {
     contentBridge?.dispose()
     appearanceBridge?.dispose()
     observerBridge?.dispose()
+    agentBridge.dispose()
     for (const session of [...sessions]) closeSession(session)
     server.closeAllConnections()
     closing = Promise.all([firstIo, thirdIo].map(io => new Promise(resolve => io.close(() => resolve())))).then(() => {})

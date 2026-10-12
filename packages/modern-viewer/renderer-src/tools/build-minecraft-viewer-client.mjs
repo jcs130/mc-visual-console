@@ -138,7 +138,9 @@ const thirdPersonSwingSource = await readFile(new URL('./minecraft-viewer-third-
 const droppedItemsSource = await readFile(new URL('./minecraft-viewer-dropped-items.js', import.meta.url), 'utf8')
 const castSource = await readFile(new URL('./minecraft-viewer-cast.js', import.meta.url), 'utf8')
 const combatSource = await readFile(new URL('./minecraft-viewer-combat.js', import.meta.url), 'utf8')
-const tacticsSource = await readFile(new URL('./minecraft-viewer-tactics.js', import.meta.url), 'utf8')
+// agent-visual-overlay.js now owns the tactical canvases and legacy events too.
+// Do not install the old independent RAF loop on the same canvas.
+const tacticsSource = ''
 const eventsSource = await readFile(new URL('./minecraft-viewer-events.js', import.meta.url), 'utf8')
 const chatSource = await readFile(new URL('./minecraft-viewer-chat.js', import.meta.url), 'utf8')
 const particleSource = await readFile(new URL('./minecraft-viewer-particles.js', import.meta.url), 'utf8')

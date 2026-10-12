@@ -27,3 +27,13 @@ test('drag offsets are relative to the viewport and size/position are bounded', 
   const layout = normalizeObsLayout({ version: 1, components: { hands: { ...row, scale: 10 } } });
   assert.equal(layout.components.hands.scale, 3); assert.equal(row.x, 0);
 });
+test('Agent components migrate into old layouts and camera calibration survives component edits and portable URLs', () => {
+  const old = normalizeObsLayout({ version: 1, components: { minimap: { visible: false, x: 2 } } });
+  for (const id of ['agentIntent', 'agentRoute', 'agentOperations', 'worldPaths', 'worldActions', 'worldMarkers', 'agentPointer', 'agentPresentation']) assert.equal(old.components[id].visible, true);
+  assert.equal(old.components.minimap.visible, false);
+  const calibrated = normalizeObsLayout({ ...old, camera: { fov: 85, aspect: 4 / 3, followAgent: false } });
+  calibrated.components.agentPresentation.x = -10;
+  const url = new URL(obsLayoutUrl('http://viewer.test/?fov=90&obsEdit=1', calibrated));
+  assert.deepEqual(readObsLayout({ query: url.searchParams }), calibrated);
+  assert.deepEqual(normalizeObsLayout({ version: 1, camera: { fov: '70);alert(1)', aspect: Infinity } }).camera, { fov: null, aspect: null, followAgent: true });
+});

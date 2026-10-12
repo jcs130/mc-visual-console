@@ -30,6 +30,15 @@ test('OBS clears every frame and draws ONLY the two original hand passes', () =>
   renderer.getContext = () => ({ getContextAttributes: () => ({ alpha: false }) });
   assert.throws(() => installObsHandsRenderer(world), /ALPHA_UNAVAILABLE/);
 });
+test('OBS camera calibration applies after renderer FOV smoothing and before both hand passes', () => {
+  const captured = [], renderer = { getContext: () => ({ getContextAttributes: () => ({ alpha: true }) }), setClearColor() {},
+    getSize: v => v.set(1920, 1080), setViewport() {}, setScissorTest() {}, clear() {}, domElement: { dataset: {} } };
+  const hand = () => ({ cameraGroup: {}, render(camera) { captured.push([camera.fov, camera.aspect]); } });
+  const world = { renderer, render() {}, camera: { fov: 110, updateProjectionMatrix() {} }, holdingBlock: hand(), holdingBlockLeft: hand(),
+    updateSmoothFov() { world.camera.fov = 120; } };
+  const dispose = installObsHandsRenderer(world, { camera: () => ({ fov: 70, aspect: 4 / 3 }) });
+  world.render(); assert.deepEqual(captured, [[70, 4 / 3], [70, 4 / 3]]); dispose();
+});
 const state = (using = true, name = 'bread') => ({ usingHeldItem: using, quickBarSlot: 0, hotbar: [{ item: { name } }] });
 test('use time advances with wall time, repeated snapshots do not restart, stale/disconnect/switch stop use', () => {
   const clock = new HeldItemUseClock(); clock.update(state(), 100); clock.update(state(), 900);

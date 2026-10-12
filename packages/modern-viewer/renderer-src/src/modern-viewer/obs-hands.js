@@ -2,7 +2,7 @@ import { Vector2, Matrix4 } from 'three';
 
 /** Only render the existing native item/hand passes. Never draw the terrain,
  * sky, entities, postprocessing or cursor into the transparent OBS canvas. */
-export function installObsHandsRenderer(world, { active = () => true, visible = () => true, now = () => performance.now() } = {}) {
+export function installObsHandsRenderer(world, { active = () => true, visible = () => true, camera = null, now = () => performance.now() } = {}) {
   const renderer = world.renderer, original = world.render;
   if (renderer.getContext().getContextAttributes()?.alpha !== true) throw Error('OBS_HANDS_ALPHA_UNAVAILABLE');
   const size = new Vector2();
@@ -17,6 +17,11 @@ export function installObsHandsRenderer(world, { active = () => true, visible = 
     // EVERY frame, including detachment and hiding, to avoid ghost items.
     renderer.clear(true, true, true);
     world.updateSmoothFov?.();
+    const calibration = camera?.();
+    if (calibration) {
+      world.camera.fov = calibration.fov; world.camera.aspect = calibration.aspect;
+      world.camera.updateProjectionMatrix();
+    }
     const show = active() && visible();
     // Keep swap clocks advancing while detached/hidden, without drawing old
     // meshes. A new subject must not display the previous subject during equip.

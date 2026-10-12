@@ -20,7 +20,8 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./protocol": "./src/protocol.ts"
+    "./protocol": "./src/protocol.ts",
+    "./agent-visuals": "./packages/modern-viewer/renderer-src/host/viewer-agent.mjs"
   },
   "files": [
     "src",
@@ -37,10 +38,11 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "vitest run && node --test packages/modern-viewer/renderer-src/test/renderer-equipment.test.mjs packages/modern-viewer/renderer-src/test/fishing-visuals.test.mjs packages/modern-viewer/renderer-src/test/fishing-catch.test.mjs packages/modern-viewer/renderer-src/test/host-presentation-bridge.test.mjs packages/modern-viewer/renderer-src/test/host-assets.test.mjs packages/modern-viewer/renderer-src/test/viewer-page.test.mjs packages/modern-viewer/renderer-src/test/photo-page.test.mjs packages/modern-viewer/renderer-src/test/host-content.test.mjs packages/modern-viewer/renderer-src/test/host-appearance.test.mjs packages/modern-viewer/renderer-src/test/ysm-assets.test.mjs packages/modern-viewer/renderer-src/test/map-photos.test.mjs packages/modern-viewer/renderer-src/test/server-particles.test.mjs packages/modern-viewer/renderer-src/test/text-displays.test.mjs && tsx --test packages/modern-viewer/test/fishing-owner.test.mjs packages/modern-viewer/test/viewer-session-slots.test.mjs && npm run --prefix packages/modern-viewer/renderer-src test:tools",
+    "test": "vitest run && node --test packages/modern-viewer/renderer-src/test/renderer-equipment.test.mjs packages/modern-viewer/renderer-src/test/fishing-visuals.test.mjs packages/modern-viewer/renderer-src/test/fishing-catch.test.mjs packages/modern-viewer/renderer-src/test/host-presentation-bridge.test.mjs packages/modern-viewer/renderer-src/test/host-assets.test.mjs packages/modern-viewer/renderer-src/test/viewer-page.test.mjs packages/modern-viewer/renderer-src/test/photo-page.test.mjs packages/modern-viewer/renderer-src/test/host-content.test.mjs packages/modern-viewer/renderer-src/test/host-appearance.test.mjs packages/modern-viewer/renderer-src/test/viewer-agent.test.mjs packages/modern-viewer/renderer-src/test/ysm-assets.test.mjs packages/modern-viewer/renderer-src/test/map-photos.test.mjs packages/modern-viewer/renderer-src/test/server-particles.test.mjs packages/modern-viewer/renderer-src/test/text-displays.test.mjs && tsx --test packages/modern-viewer/test/fishing-owner.test.mjs packages/modern-viewer/test/viewer-session-slots.test.mjs && npm run --prefix packages/modern-viewer/renderer-src test:tools",
     "test:text-displays": "node --test packages/modern-viewer/renderer-src/test/text-displays.test.mjs",
     "test:obs": "node --test packages/modern-viewer/renderer-src/tools/test/obs-hands.test.mjs packages/modern-viewer/renderer-src/tools/test/obs-layout.test.mjs packages/modern-viewer/renderer-src/test/viewer-observer.test.mjs packages/modern-viewer/renderer-src/test/viewer-page.test.mjs && tsx --test packages/modern-viewer/test/avatar-use-state.test.mjs",
     "test:appearance": "node --test packages/modern-viewer/renderer-src/test/host-appearance.test.mjs packages/modern-viewer/renderer-src/test/ysm-assets.test.mjs packages/modern-viewer/renderer-src/test/ysm-motion.test.mjs packages/modern-viewer/renderer-src/tools/test/paper-ysm.test.mjs packages/modern-viewer/renderer-src/tools/test/paper-ysm-actions.test.mjs",
+    "test:agent-visuals": "node --test packages/modern-viewer/renderer-src/test/viewer-agent.test.mjs packages/modern-viewer/renderer-src/tools/test/agent-visuals.test.mjs packages/modern-viewer/renderer-src/tools/test/agent-visual-overlay.test.mjs packages/modern-viewer/renderer-src/tools/test/obs-layout.test.mjs",
     "test:watch": "vitest",
     "test:cortico": "vitest run --config vitest.cortico.config.ts",
     "assets:prepare": "node tools/prepare-viewer-assets.mjs",

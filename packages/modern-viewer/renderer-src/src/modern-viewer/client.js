@@ -8,6 +8,9 @@ import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
 import { installObsLayout } from "./obs-layout.js";
+import { installAgentVisualization } from "./agent-visual-overlay.js";
+import { createAgentWorldProjector } from "./agent-visual-projection.js";
+import { resolveObsCamera, horizontalFov } from "./obs-camera.js";
 import { installObsHandsRenderer, HeldItemUseClock, installHeldItemUseMotion, obsHandAvatarState } from "./obs-hands.js";
 import {
   Box3,
@@ -174,7 +177,7 @@ function resetObsHands() {
 const isFreeOrbitView = viewMode === "third";
 const isDungeonView = viewMode === "dungeon";
 const usesWorldAvatar = !isFirstPersonView;
-const firstPersonFov = clampQueryNumber(queryValue("fov"), 30, 140, 120);
+const firstPersonFov = clampQueryNumber(queryValue("fov"), 30, 140, isObsOverlay ? 70 : 120);
 const dungeonFov = clampQueryNumber(queryValue("dungeonFov"), 38, 62, 48);
 const renderDistance = clampQueryNumber(queryValue("distance"), 2, 12, 4);
 const qualityPreference = normalizeQualityPreference(queryValue("quality"));
@@ -653,6 +656,15 @@ const socket = io({
   transports: ["websocket", "polling"],
 });
 
+const agentVisualization = installAgentVisualization({
+  socket, document, window, photo: isPhotoView,
+  visible: id => obsLayout?.visible(id) !== false,
+  position: () => pendingAvatarState?.entity?.position ?? latestPosition?.pos,
+  project: createAgentWorldProjector(() => globalThis.world,
+    () => ({ width: window.innerWidth, height: window.innerHeight })),
+});
+window.addEventListener("beforeunload", () => agentVisualization.dispose(), { once: true });
+
 const fishingCatchHud = new FishingCatchHud({
   root: document.getElementById("viewer-fishing-catch"),
   renderIcon(slot, item) {
@@ -916,6 +928,12 @@ async function initializeRenderer(version) {
       installObsHandsRenderer(world, {
         active: () => socket.connected && performance.now() - obsAvatarAt < 3000 && !!currentObsHandState(),
         visible: () => obsLayout.visible('hands'),
+        camera: () => {
+          const calibration = resolveObsCamera(obsLayout.camera(), agentVisualization.snapshot()?.camera,
+            { fov: firstPersonFov, aspect: window.innerWidth / Math.max(1, window.innerHeight) });
+          obsLayout.cameraStatus(`当前垂直 ${calibration.fov.toFixed(1)}° · 水平 ${horizontalFov(calibration.fov, calibration.aspect).toFixed(1)}° · ${calibration.source === 'agent' ? 'Agent 实时上报' : '基础 FOV（动态未同步）'}`);
+          return calibration;
+        },
       });
       if (typeof cortiInitializeWeaponMotion === 'function') cortiInitializeWeaponMotion();
       if (typeof cortiInitializeShield === 'function') cortiInitializeShield();
@@ -2726,7 +2744,7 @@ function applyAvatarState() {
   reactive.flying = state.flying === true || state.elytraFlying === true;
   reactive.inWater = state.inWater === true;
   reactive.itemUsageTicks = state.usingHeldItem === true ? Math.max(1, finiteOr(reactive.itemUsageTicks, 0) + 1) : 0;
-  reactive.fovMultiplier = reactive.sprinting ? 1.04 : 1;
+  reactive.fovMultiplier = isObsOverlay ? 1 : reactive.sprinting ? 1.04 : 1;
 
   reactive.prevWalkDist = finiteOr(reactive.walkDist, accumulatedWalkDistance);
   reactive.walkDist = accumulatedWalkDistance;

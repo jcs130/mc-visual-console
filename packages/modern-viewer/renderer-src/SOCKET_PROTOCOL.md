@@ -207,6 +207,9 @@ socket.emit('avatarState', {
 | `presentationEvent` | 原版 `particle` / `explosion` / `world_event` / `pickup` / `effect` / `cooldown` 或自定义提示事件 |
 | `tacticalRoute` | `{ points: [{x,y,z}], goal: {x,y,z} 或 null, status }`，最多 64 点；任务结束发空 points 和 null goal |
 | `tacticalAttack` | `{ id, name, position }`，表示真实发出的攻击指令 |
+| `agentVisualization` | schemaVersion=1，绑定 subject UUID/entityId、epoch/sequence 的公开意图、实际操作、路线/候选、点线面 marker、媒体引用。最多10Hz，3.5秒本地过期清空。 |
+| `agentPresentation` | 绑定同 subject/epoch/revision 的 PNG/JPEG/GIF/WebP、纯文本或声明式动画；媒体仅在修订变化/新订阅时下发。 |
+| `agentVisualUpdate`（上行，可选） | 接入已有宿主授权后提交公开可视化 JSON；默认拒绝。回执仅返回提交者，最多5次/秒。详见 [完整 Marker/展示 API](docs/agent-visualization.md)。 |
 | `combatFeedback` | `{ id, amount, critical }`，真实命中的目标 ID、实际伤害和暴击；不知伤害可省略 amount，显示“命中” |
 
 状态效果示例（durationTicks 为游戏 tick，amplifier 从 0 开始）：
