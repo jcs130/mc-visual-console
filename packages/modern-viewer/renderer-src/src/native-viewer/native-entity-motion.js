@@ -5,7 +5,7 @@ const F=Math.fround, clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 const wrap=v=>((v+180)%360+360)%360-180
 const relative=(a,b,max)=>F(b-clamp(wrap(b-a),-max,max))
 export const NATIVE_MOB_MOTION_SOURCE='same_connection_entity_ticks'
-export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid'])
+export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','wandscape:wandscape_npc'])
 const types=new Set(NATIVE_MOB_TYPES)
 
 export function createNativeEntityMotion(entity) {

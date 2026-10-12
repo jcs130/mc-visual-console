@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "project": "https://github.com/CheesePaste/Wandscape",
+  "release": "2.1.3-1211",
+  "commit": "a93cca08452f16b1100a0328cdc0962aa708c05b",
+  "jarSha256": "b9ff4debb039f1fbcac006fd8b53d306e49f8042611b9eb385f292f8c75f0788",
+  "license": "MIT",
+  "files": {
+    "assets/wandscape/textures/entity/wizard_hat.png": {
+      "sha256": "b6aa0d228a52f361ee65b9a7451aeddfc0bb9258a3be9bb8fc93821764f2ecbc",
+      "bytes": 1429
+    },
+    "assets/wandscape/textures/entity/wizard/wizard01.png": {
+      "sha256": "7f3e166b68fcd712339e8f5ee162bc94fc01130c530dbdb990bbbbd26d51364a",
+      "bytes": 7128
+    },
+    "assets/wandscape/textures/entity/wizard/wizard02.png": {
+      "sha256": "7b3c954b3a963e9e481764e9737ddfcbb7903059918db5d61ed1c94fa758365c",
+      "bytes": 5966
+    },
+    "assets/wandscape/textures/entity/wizard/wizard03.png": {
+      "sha256": "f0fd633d48e06d1183e36de5aa9ccca5dc8aba351ba8da37fde6c1f8634c2c14",
+      "bytes": 6451
+    },
+    "assets/wandscape/textures/entity/wizard/wizard04.png": {
+      "sha256": "2ed18fdfedc2fb3aa0ff878ce95376842c318afccae569ed28032042536764dd",
+      "bytes": 6117
+    },
+    "assets/wandscape/textures/entity/wizard/wizard05.png": {
+      "sha256": "30850f1360c0c371f7d78182b9805283077cd17e185001ec802a51be97458a29",
+      "bytes": 6690
+    },
+    "assets/wandscape/textures/entity/wizard/wizard06.png": {
+      "sha256": "502101951dc2bccca702c386e39d93e63cd5b215f08e2961e4fe2c6dbb3d6195",
+      "bytes": 6262
+    },
+    "assets/wandscape/textures/entity/wizard/wizard07.png": {
+      "sha256": "6681d3393c46ba88592e35fb4a916458b990b641c54c154f377e2dff3be76d44",
+      "bytes": 6733
+    },
+    "assets/wandscape/textures/entity/wizard/wizard08.png": {
+      "sha256": "2b2bc13785ce0358d0a68d5304e131e16bce32adfbdc7e11c90b7b6773812360",
+      "bytes": 6613
+    },
+    "assets/wandscape/textures/entity/wizard/wizard09.png": {
+      "sha256": "6882e69cbe197ac8784549bbc13b45d822cc0ef12e682cc282c4ae9da32055a9",
+      "bytes": 6484
+    },
+    "assets/wandscape/textures/entity/wizard/wizard10.png": {
+      "sha256": "c8040c2a3f779bc0d58001dc2a0d6ed502b546772093188a07fe3ce6ad087d23",
+      "bytes": 8003
+    },
+    "assets/wandscape/textures/entity/wizard/wizard11.png": {
+      "sha256": "19a8c8e2f25e864866928211c57110a7d519b237a1d2d64d67babea02c0352c5",
+      "bytes": 6966
+    },
+    "assets/wandscape/textures/entity/wizard/wizard12.png": {
+      "sha256": "3070946620d41ceb4d950fdc96051bf86dfe9e07bf1b69be48bef6df193e2ba3",
+      "bytes": 6083
+    },
+    "assets/wandscape/textures/entity/wizard/wizard13.png": {
+      "sha256": "44bcb6adb7e1f6f0225331aa5626bc41f417a225a7f4aa5b5bb79817fd772e98",
+      "bytes": 6534
+    },
+    "assets/wandscape/textures/entity/wizard/wizard14.png": {
+      "sha256": "156e2833415bc9ed32c1dec37fd79148427daed5301ef9363f3b9debeed4237c",
+      "bytes": 6029
+    },
+    "assets/wandscape/textures/entity/wizard/wizard15.png": {
+      "sha256": "19b381487b4b195b4fdb35beef914e9c4d0cc83b7e0e2cc217af9682a5616887",
+      "bytes": 6257
+    },
+    "assets/wandscape/textures/entity/wizard/wizard16.png": {
+      "sha256": "841ce2cf2a51dab688e23b34c08d66bcdaa068ff628a938ee3e5bfce4d5a7e74",
+      "bytes": 6697
+    },
+    "assets/wandscape/textures/entity/wizard/wizard17.png": {
+      "sha256": "12bc1f15809438a6e2f9b7db970020fb54b5b903c0d06f6e93b965bbda596e54",
+      "bytes": 6794
+    },
+    "assets/wandscape/textures/entity/wizard/wizard18.png": {
+      "sha256": "023c75ea86d1bbab8d46cd3c4d3823f61a2329895f72a42e6bdceb369efd3682",
+      "bytes": 6273
+    },
+    "assets/wandscape/textures/entity/wizard/wizard19.png": {
+      "sha256": "2898e2b2a9575cec3e1bf831c9606ec728d18836bba2edc6a9d2be4b67400449",
+      "bytes": 6928
+    },
+    "assets/wandscape/textures/entity/wizard/wizard20.png": {
+      "sha256": "66a6ef45591cde45194836a65ceadc5b9fde4845be4795299a892ba92b4d6b61",
+      "bytes": 6386
+    },
+    "assets/wandscape/textures/entity/wizard/wizard21.png": {
+      "sha256": "8efd7357988477c26014280349f9d40b01409aa3625ff2f8e2d874c275464da6",
+      "bytes": 6116
+    },
+    "model-parts.json": {
+      "sha256": "7e5b2b1730df496caf2c894824e36eb069b87dfe5b5aa37f351f3a4e60b7a862",
+      "bytes": 8080
+    },
+    "LICENSE": {
+      "sha256": "a95d1aa19e1cb4b02caedab433ec9694fbdf461ad9626c992278ddcf5ab09221",
+      "bytes": 1068
+    }
+  },
+  "geometryIsDirectJavaModelPort": true,
+  "completeRendererParityVerified": false
+}
