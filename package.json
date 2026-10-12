@@ -33,6 +33,7 @@
     "packages/modern-viewer/asset-packs/native-1.21.1",
     "tools/prepare-viewer-assets.mjs",
     "tools/model-status-overlay",
+    "tools/client-console",
     "README.md",
     "LICENSE"
   ],
@@ -43,6 +44,7 @@
     "test:obs": "node --test packages/modern-viewer/renderer-src/tools/test/obs-hands.test.mjs packages/modern-viewer/renderer-src/tools/test/obs-layout.test.mjs packages/modern-viewer/renderer-src/test/viewer-observer.test.mjs packages/modern-viewer/renderer-src/test/viewer-page.test.mjs && tsx --test packages/modern-viewer/test/avatar-use-state.test.mjs",
     "test:appearance": "node --test packages/modern-viewer/renderer-src/test/host-appearance.test.mjs packages/modern-viewer/renderer-src/test/ysm-assets.test.mjs packages/modern-viewer/renderer-src/test/ysm-motion.test.mjs packages/modern-viewer/renderer-src/tools/test/paper-ysm.test.mjs packages/modern-viewer/renderer-src/tools/test/paper-ysm-actions.test.mjs",
     "test:agent-visuals": "node --test packages/modern-viewer/renderer-src/test/viewer-agent.test.mjs packages/modern-viewer/renderer-src/tools/test/agent-visuals.test.mjs packages/modern-viewer/renderer-src/tools/test/agent-visual-overlay.test.mjs packages/modern-viewer/renderer-src/tools/test/obs-layout.test.mjs",
+    "test:client-console": "node --test tools/client-console/test/console.test.mjs",
     "test:watch": "vitest",
     "test:cortico": "vitest run --config vitest.cortico.config.ts",
     "assets:prepare": "node tools/prepare-viewer-assets.mjs",
