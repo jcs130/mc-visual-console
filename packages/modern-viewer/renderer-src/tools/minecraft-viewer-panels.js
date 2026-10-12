@@ -440,13 +440,13 @@ function cortiSlot(parent, x, y, item, label = '', slotIndex) {
   slot.style.left = `${x * 2}px`;
   slot.style.top = `${y * 2}px`;
   const durability = cortiDurability(item);
-  slot.title = item ? `${item.displayName || item.name} × ${item.count || 1}${item.enchanted === true ? ' · 附魔' : ''}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : label;
+  slot.title = item ? `${cortiItemLabel(item)} × ${item.count || 1}${item.enchanted === true ? ' · 附魔' : ''}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : label;
   if (item) {
     const name = String(item.name || '').replace(/^minecraft:/, '');
-    if (/^[a-z0-9_]+$/.test(name)) {
+    if (/^[a-z0-9_]+$/.test(name) && cortiItemIconUrl(item)) {
       const image = document.createElement('img');
       image.alt = '';
-      image.src = `/icons/${name}.png`;
+      image.src = cortiItemIconUrl(item);
       image.onerror = () => {
         if (!image.isConnected) return;
         image.remove();
@@ -470,7 +470,7 @@ function cortiSlot(parent, x, y, item, label = '', slotIndex) {
 function cortiSlotFallback(slot, item) {
   const fallback = document.createElement('span');
   fallback.className = 'corti-item-fallback';
-  fallback.textContent = String(item.displayName || item.name).slice(0, 2);
+  fallback.textContent = String(cortiItemLabel(item)).slice(0, 2);
   slot.prepend(fallback);
 }
 
@@ -710,7 +710,7 @@ function cortiRenderLectern(parent, container) {
   next.textContent = '›';
   let index = 0;
   const render = () => {
-    page.textContent = pages[index] || (item ? item.displayName || item.name : '书本尚未同步');
+    page.textContent = pages[index] || (item ? cortiItemLabel(item) : '书本尚未同步');
     footer.textContent = '';
     previous.disabled = index === 0;
     next.disabled = index >= pages.length - 1;

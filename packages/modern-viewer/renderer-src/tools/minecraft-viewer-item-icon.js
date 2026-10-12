@@ -1,4 +1,17 @@
 /** Use the skin face from a validated Minecraft profile on player heads. */
+function cortiItemLabel(item) {
+  return typeof itemDisplayName === 'function' ? itemDisplayName(item) : item?.customName || item?.displayName || item?.name || '';
+}
+function cortiHeadKey(item) {
+  return typeof paperItemHeads !== 'undefined' ? paperItemHeads.key(item) : item?.headTextureHash || '';
+}
+function cortiItemIconUrl(item) {
+  const name=String(item?.name || '').replace(/^minecraft:/,'');
+  if (typeof paperItemHeads !== 'undefined' && paperItemHeads.reserved(item)) return null;
+  if(typeof paperItemAppearances!=='undefined' && paperItemAppearances.reserved(item))
+    return paperItemAppearances.icon(item);
+  return /^[a-z0-9_]+$/.test(name)?`/icons/${name}.png`:null;
+}
 function cortiDurability(item) {
   const left = Number(item?.durability?.left);
   const max = Number(item?.durability?.max);
@@ -23,34 +36,39 @@ function cortiAppendEnchantmentGlint(slot, item, left) {
   if (item?.enchanted !== true) return;
   slot.classList.add('corti-enchanted');
   const name = String(item.name || '').replace(/^minecraft:/, '');
-  if (!/^[a-z0-9_]+$/.test(name)) {
+  const iconUrl=cortiItemIconUrl(item);
+  if (!iconUrl) {
     slot.classList.add('corti-enchanted-outline');
     return;
   }
   const glint = document.createElement('span');
   glint.className = 'corti-enchant-glint';
   glint.style.left = `${left}px`;
-  glint.style.maskImage = `url("/icons/${name}.png")`;
+  glint.style.maskImage = `url("${iconUrl}")`;
   slot.append(glint);
 }
 
 function cortiAppendHeadFace(slot, item, left) {
-  const hash = item?.headTextureHash;
-  if (String(item?.name || '').replace(/^minecraft:/, '') !== 'player_head' ||
-      typeof hash !== 'string' || !/^[0-9a-f]{40,64}$/.test(hash)) return;
-  const face = document.createElement('span');
-  face.className = 'corti-head-face';
-  face.style.position = 'absolute';
-  face.style.top = '2px';
-  face.style.left = `${left}px`;
-  face.style.width = '32px';
-  face.style.height = '32px';
-  const image = `url("/head-texture/${hash}.png")`;
-  face.style.backgroundImage = `${image}, ${image}`;
-  face.style.backgroundSize = '256px auto';
-  face.style.backgroundPosition = '-160px -32px, -32px -32px';
-  face.style.backgroundRepeat = 'no-repeat';
-  face.style.imageRendering = 'pixelated';
-  face.style.pointerEvents = 'none';
-  slot.append(face);
+  if (!paperItemHeads.reserved(item)) return;
+  // Some transient panels created a vanilla icon before calling this hook.
+  // Remove it immediately, including while the original texture is loading.
+  slot.querySelectorAll('img').forEach(node => node.remove());
+  if (!slot.querySelector('.corti-item-fallback')) {
+    const fallback = document.createElement('span'); fallback.className = 'corti-item-fallback';
+    fallback.textContent = cortiItemLabel(item).slice(0, 2); slot.append(fallback);
+  }
+  const token = {}; slot.cortiHeadToken = token;
+  slot.dataset.headStatus = 'pending';
+  slot.title = cortiItemLabel(item) + ` × ${item.count || 1}`;
+  void paperItemHeads.icon(item).then(url => {
+    if (!slot.isConnected || slot.cortiHeadToken !== token ||
+        !slot.dataset.identity?.includes(paperItemHeads.key(item)) && slot.classList.contains('corti-slot') && slot.dataset.identity) return;
+    slot.querySelectorAll('img,.corti-item-fallback').forEach(node => node.remove());
+    const image = document.createElement('img'); image.className = 'corti-head-icon';
+    image.alt = cortiItemLabel(item); image.style.left = `${left}px`; image.src = url;
+    slot.prepend(image); slot.dataset.headStatus = 'ready';
+  }).catch(() => {
+    if (!slot.isConnected || slot.cortiHeadToken !== token) return;
+    slot.dataset.headStatus = 'unavailable'; slot.title = cortiItemLabel(item) + ' · 原物品贴图暂不可用';
+  });
 }

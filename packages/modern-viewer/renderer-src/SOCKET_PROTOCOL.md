@@ -136,7 +136,7 @@ const sword = {
 };
 ```
 
-自定义名称用 `customName`，并让 `displayName` 优先显示它。玩家头可以带 `headTextureHash`，宿主提供 `/head-texture/<hash>.png`。保留经过范围限制和序列化的 `components` / `nbt` 可帮助渲染实际物品；不要直接传含 `Map` 或循环引用的 Mineflayer 对象。`enchanted` 和 `durability` 是明确的显示事实，不能仅凭物品类型推断。
+自定义名称用 `customName`，并让 `displayName` 优先显示它。玩家头保留完整 `profile.properties`，浏览器也可直接读取；兼容宿主字段 `headTextureHash`，由宿主提供 `/head-texture/<hash>.png`。不要把嵌套属性截断为四层。共享 `serializeViewerItem` 与 `createViewerHeadTextures` 已处理名称、预算和原纹理代理，接入见 [自定义头颅物品](docs/item-heads.md)。已知自定义 profile 加载失败时明确不可用，不回退成普通玩家头。保留经过范围限制和序列化的 `components` / `nbt`；不要直接传含 `Map` 或循环引用的 Mineflayer 对象。`enchanted` 和 `durability` 是明确的显示事实，不能仅凭物品类型推断。
 
 ### 动作事件
 

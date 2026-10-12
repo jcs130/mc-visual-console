@@ -16,6 +16,7 @@ import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
 import { verifyTextDisplayAssets } from './text-display-assets.mjs'
 import { viewerSourceDigest } from './viewer-build-source.mjs'
 import { patchObsRendererAlpha } from './minecraft-viewer-obs-alpha.mjs'
+import { verifyItemAppearanceAssets } from './item-appearance-assets.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -59,6 +60,7 @@ if (sourceManifest.minecraftVersion !== '1.20.6' || !sourceManifest.clientJarSha
 }
 const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256)
 const textDisplays = await verifyTextDisplayAssets(outputRoot,sourceManifest.clientJarSha256)
+const itemAppearances = await verifyItemAppearanceAssets(outputRoot)
 const replacements = {
   'blockStatesModels.json': 'blockStatesModels.json',
   'blocksAtlases.json': 'blocksAtlases.json',
@@ -195,8 +197,6 @@ const adaptedClient = clientSource
     '    isMove ? renderEntity : rendererEntityEquipment(renderEntity, globalThis.mcData?.itemsByName));')
   .replace('  renderMotionHud();\n}\n\nfunction applyEntityAnimation',
     '  cortiAlignAvatarArmor(state.entity);\n  cortiSyncAvatarShield(state.entity, state.offhand ?? equipment?.[1]);\n  renderMotionHud();\n}\n\nfunction applyEntityAnimation')
-  .replace('  const key = item ? `${item.name || ""}:${item.type ?? item.itemId ?? ""}:${item.metadata ?? ""}` : "empty";',
-    '  const key = item ? `${item.name || ""}:${item.type ?? item.itemId ?? ""}:${item.metadata ?? ""}:${item.enchanted === true}` : "empty";')
   .replace('socket.on("entityAnimation", (event) => applyEntityAnimation(event));',
     'socket.on("digProgress", (event) => cortiApplyDigProgress(event));\n' +
     'socket.on("entityAnimation", (event) => applyEntityAnimation(event));')
@@ -266,6 +266,7 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('installDungeonObserverControls({')
     || changedClient.includes('    record.mode = "plane";')
     || !changedClient.includes('${item.enchanted === true}` : "empty";')
+    || !changedClient.includes('${itemAppearanceKey(item)}:${paperItemAppearances.revision}:')
     || !changedClient.includes('    cortiApplySheepAppearance(entity);')
     || !changedClient.includes('  cortiApplySheepAppearance(normalized);')
     || !changedClient.includes('    cortiApplyFirstPersonSwing(event);')
@@ -284,7 +285,10 @@ const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryP
 await mkdir(path.join(outputRoot, 'dist'), { recursive: true })
 await mkdir(path.join(outputRoot, 'public'), { recursive: true })
 const buildResult = await build({
-  entryPoints: [clientFile], bundle: true, define: { 'process.env.NODE_ENV': '"production"' },
+  entryPoints: [clientFile], bundle: true, define: {
+    'process.env.NODE_ENV': '"production"',
+    'globalThis.itemAppearancePackAvailable': JSON.stringify(itemAppearances !== null),
+  },
   format: 'esm', legalComments: 'none', loader: { '.png': 'dataurl' }, minify: true,
   outfile: path.join(outputRoot, 'dist', 'modern-viewer.js'), platform: 'browser',
   plugins: [
@@ -404,5 +408,6 @@ await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
   preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null,
   viewerContent,
   textDisplays,
+  itemAppearances,
 })}\n`)
 console.log(`1.20.6 modern viewer 已生成：${outputRoot}`)
