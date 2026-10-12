@@ -6,6 +6,10 @@
 
 ## 显示与受众
 
+后续半透明调整：AgentFriend0.4.30候选默认白底ARGB为`0xb4ffffff`（背景180/255，约71%不透明）。Web已有原生ARGB支持，直接显示服务器实际透明度；文字继续255/255，不降低整块材质的透明度。可在服务端`text-bubbles.yml`设置`background-opacity: 180`后控制台重载（范围0–255）；旧配置缺省为180。此项需要先更新游戏插件，正式服尚未替换；现役Geyser仍只显示文字标签，没有背景框。
+
+隔离验证：Paper 1.20.6真实连接28项通过，包含玩家、NPC、实际附身Eye、透明度边界和无效热重载；Web `npm run test:text-displays` 8项通过，检查原始ARGB和背景/字形独立透明度。没有改写网页里其他TextDisplay的配色，也不宣称已做浏览器像素或基岩背景框验收。
+
 - 第一人称、第三人称与地下城 2.5D 共用这条链路。文字显示实体原版宽高为 0，使用独立显示层，不经过生物碰撞尺寸过滤，也不生成替代身体。
 - 读取当前行动 bot 实际收到的出生、NBT metadata、移动和销毁，保留实体 ID、位置、显式换行、文字颜色、ARGB 背景、opacity、阴影、对齐、billboard、原版 0.025 文字比例、静态 translation/scale 和位置插值。
 - 中文、拉丁字和 `▼` 使用匹配 1.20.6 的原始 bitmap/Unihex 字形，包含 asset index 覆盖的 `include/unifont.json` 和原始 `unifont.zip`（内含许可证）。使用中文/非日文、非强制统一字体，不用系统字体代替。
