@@ -81,17 +81,24 @@ test('original 1.20.6 Unihex glyph pixels and override metrics support Chinese a
   assert.ok(spec.mask.some(n=>n===255));assert.equal(font.glyph('萌'),spec);assert.ok(font.glyph('▼'));
   const display=state(),layout=textDisplayLayout(display,font);assert.equal(layout.lines.length,3);assert.ok(layout.width>0);font.dispose();
 });
-test('opaque white native bubbles preserve dark and NPC-colored glyphs all the way to the drawing surface',()=>{
-  const e=entity();e.metadata[25]=-1;e.metadata[27]=0;
+test('translucent native bubbles preserve background alpha separately from opaque player and NPC glyphs',()=>{
+  const e=entity();e.metadata[25]=0xb4ffffff|0;e.metadata[27]=0;
   e.metadata[23]={text:'\n  大家准备出发了吗？  ',color:'#1f2937',extra:[{text:'\n▼',color:'#64748b'}]};
-  const display=decodeTextDisplay(e,registry);assert.equal(display.background,0xffffffff);assert.equal(display.flags,0);
+  const display=decodeTextDisplay(e,registry);assert.equal(display.background,0xb4ffffff);assert.equal(display.flags,0);
   assert.deepEqual(display.runs.map(r=>r.color),['#1f2937','#64748b']);
   const calls=[],context={fillRect(...args){calls.push({style:this.fillStyle,args});}};
   const canvas={getContext:()=>context},font=originalFont();paintTextDisplay(canvas,display,font);
-  assert.equal(calls[0].style,'rgba(255,255,255,1)');assert.ok(calls.some(c=>c.style==='rgba(31,41,55,1)'));
+  assert.equal(calls[0].style,`rgba(255,255,255,${180/255})`);assert.ok(calls.some(c=>c.style==='rgba(31,41,55,1)'));
   assert.ok(calls.some(c=>c.style==='rgba(100,116,139,1)'));assert.equal(context.imageSmoothingEnabled,false);
   e.metadata[23]={text:'欢迎来到公会。\n▼',color:'#1d4ed8'};calls.length=0;
-  paintTextDisplay(canvas,decodeTextDisplay(e,registry),font);assert.ok(calls.some(c=>c.style==='rgba(29,78,216,1)'));font.dispose();
+  paintTextDisplay(canvas,decodeTextDisplay(e,registry),font);assert.ok(calls.some(c=>c.style==='rgba(29,78,216,1)'));
+  for(const alpha of [0,128,255]) {
+    e.metadata[25]=(alpha<<24|0xffffff);calls.length=0;
+    paintTextDisplay(canvas,decodeTextDisplay(e,registry),font);
+    assert.equal(calls[0].style,`rgba(255,255,255,${alpha/255})`);
+    assert.ok(calls.some(c=>c.style==='rgba(29,78,216,1)'), 'background transparency cannot fade the text');
+  }
+  font.dispose();
 });
 test('moving 16 displays reuses textures; replacement, destroy, world reset and disposal release GPU resources',()=>{
   let now=0;const scene=new Scene(),camera=new PerspectiveCamera(),origin={toSceneX:x=>x-100,toSceneY:y=>y-64,toSceneZ:z=>z};camera.position.set(-100,3,8);
