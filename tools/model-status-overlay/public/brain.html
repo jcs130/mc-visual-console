@@ -32,10 +32,12 @@
   <section class="config-card" aria-label="配置快照"><div><b>策略配置</b><span id="policy-source">读取中</span></div><p id="policy-summary">—</p><small id="active-connection">活动主连接 —</small></section>
   <section class="detail-card" aria-label="逐次策略"><div class="card-heading"><h2 id="selection-title">本次策略</h2><span id="selection-source">逐次策略待接入</span></div><div class="detail-grid">
     <div><label>请求通道 / 模型</label><b id="detail-route">—</b></div><div><label>选择来源</label><b id="detail-origin">—</b></div>
-    <div><label>阅读模式 · 建议 → 应用</label><b id="detail-reading">— → —</b></div><div><label>思考建议 → 请求档位</label><b id="detail-effort">— → —</b><small id="provider-confirmed">服务确认 —</small></div>
+    <div><label>阅读模式 · 建议 → 应用</label><b id="detail-reading">— → —</b></div><div><label>思考建议 → 请求档位</label><b id="detail-effort">— → —</b></div>
+    <div><label>引擎生效思考档位</label><b id="detail-effective-effort">—</b><small id="provider-confirmed">服务确认 —</small></div>
     <div><label>历史预算 · 选择 → 应用</label><b id="detail-history">— → —</b></div><div><label>历史增长预算</label><b id="detail-growth">—</b></div>
     <div><label>完整输入 · 框架估算</label><b id="detail-estimated">—</b></div><div><label>完整输入 · 已关联实测</label><b id="detail-actual">—</b></div>
-    <div><label>独立思考 token 预算</label><b id="detail-reasoning-budget">—</b></div><div><label>选择器耗时</label><b id="detail-selector">—</b></div>
+    <div><label>独立思考预算 · 请求 → 生效</label><b id="detail-reasoning-budget">— → —</b></div><div><label>选择器耗时</label><b id="detail-selector">—</b></div>
+    <div><label>关联请求 · 执行 / 排队</label><b id="detail-timing">— / —</b></div><div><label>关联请求 · 思考 token</label><b id="detail-reasoning-tokens">—</b></div>
   </div><p class="note">历史预算允许保留完整新输入与工具调用组；实测输入须与同一请求关联。思考档位与输出 token 上限分别统计。</p></section>
   <section class="detail-card" aria-label="近10分钟策略统计"><div class="card-heading"><h2>近10分钟</h2><span id="window-coverage">统计待接入</span></div><div class="metric-grid">
     <div class="metric"><label>自适应采用</label><strong id="metric-adaptive">—</strong><small id="metric-adaptive-count">— / — 个适用请求</small></div>
@@ -51,6 +53,7 @@
     <div class="metric"><label>输入 / 输出 / 思考 token</label><strong class="token-cost" id="metric-tokens">— / — / —</strong><small id="usage-coverage">主模型与后台通道 · 思考是输出的子集</small></div>
   </div><p class="note">任务成功来自环境验证，回退、重试或工具受理均不代表完成。恢复案例须保留原任务关联；零样本显示“—”。</p></section>
   </div><section id="service-details" class="detail-card" aria-label="推理与语音资源" hidden><div class="card-heading"><h2>模型服务与语音</h2><span>共享服务采样</span></div><div class="runtime-grid"><section class="model" id="main" aria-label="主模型服务"></section><section class="model" id="system1" aria-label="系统1模型服务"></section></div>
+    <div class="service-metadata"><p id="service-request-scope" class="section-caption">共享主模型服务 · 请求元数据</p><div class="detail-grid"><div><label>请求思考 → 引擎生效</label><b id="service-reasoning">— → —</b><small id="service-confirmation">服务确认 —</small></div><div><label>独立思考预算 · 请求 → 生效</label><b id="service-budget">— → —</b></div><div><label>执行 / 排队</label><b id="service-timing">— / —</b></div><div><label>实际思考 token</label><b id="service-reasoning-tokens">—</b></div></div><div id="service-active-requests" class="request-list"></div></div>
     <section class="tts"><div class="tts-title"><span class="tiny-dot" id="tts-dot"></span><strong>TTS</strong><span id="tts-label">本地合成</span></div><div class="tts-values"><div><span>合成中</span><b id="tts-active">—</b></div><div><span>等待</span><b id="tts-waiting">—</b></div><div><span>上次合成</span><b id="tts-duration">—</b></div><div><span>待发项</span><b id="tts-pending">—</b></div></div></section>
   </section>
   <footer id="connection-details" hidden><div class="connections" title="已建立TCP入口连接，不代表调用次数或当前请求来源"><span>入口连接采样</span><b>NEKO <i id="neko">—</i></b><b>MC <i id="mc">—</i></b><b id="unclassified" hidden>其他 <i>—</i></b></div></footer></div></details>

@@ -65,16 +65,20 @@
 - `gateway_duration_ms`、`gateway_ttft_ms` 包含网关往返与队列，不能替代引擎执行耗时或用于反算引擎 tok/s。
 - 如客户端以后按会话聚合，须按 `request_id` 去重并用最新快照覆盖；缓存复用率为总复用输入 / 总输入，不平均各轮比例。流式客户端须读到最终 usage 数据块。
 
-### 网关执行计时补充
+### 引擎计时与思考确认
 
-当前统一网关明确返回 `execution_ms: null`、`queue_ms: null`。补充这两项需要在引擎执行资源边界记录单调时间，只有网关入口与 HTTP 完成时间不够。
+统一网关使用 `obs-inference-v1` 投影，`metadata_version=engine-metadata-v1`。`execution_ms`、`queue_ms` 来自引擎执行资源边界，`timing_status` 和 `segments` 描述计时来源。缺失或显式 null 不从网关入口与 HTTP 完成时间推算。
 
 1. 入队时记录 `enqueued_at`；取得引擎执行槽并开始输入处理时记录 `execution_started_at`。
 2. 本次生成完成、失败或取消并确认引擎停止后记录 `execution_ended_at`。排队时间为开始减入队；执行时间为结束减开始。跨进程时应传递时长，避免相减不同进程的单调时钟读数。
 3. 普通响应和最终 SSE usage 的 `inference_stats` 提供 `execution_ms`、`queue_ms`，使用原有同一 `request_id`。取消与失败保留真实终态，不用响应发送耗时延长执行计时。
 4. `/metrics` 的单请求 `live.execution_seconds` 为当前单调时间减执行开始；`last.execution_seconds` 为已结束的执行时长。并发缺少单请求关联时保持 null。
 
-无需新增推理接口或恢复独立服务；保持现有 Flash 引擎、上下文、并发与缓存配置。模型客户端已支持读取这两个字段，服务端补充后即可随原有业务请求关联。
+计时沿用现有推理响应和只读接口，保持 Flash 引擎、上下文、并发与缓存配置；客户端按原业务请求身份关联这些字段。
+
+`active_requests` 是逐请求实时快照，使用 `request_id` 关联；`session_id` 只用于分组。小窗保留各请求独立的上下文、速度、计时和思考参数，不从近期 `requests` 列表拼接当前值。多个请求执行时，OBS 摘要的单请求字段保持未知，详情逐项显示。单个实时记录超过7秒、整个 `gateway_snapshot_age_ms` 超过7秒或本地缓存过期时清空对应运行数值。
+
+`reasoning.requested` 与 `reasoning.effective` 包含 `thinking / reasoning_effort / budget_tokens`；生效项可附带 `native_reasoning_effort / budget_status`。`reasoning.confirmation=serving_template_and_budget_policy` 表示服务端确认模板与预算策略。收到参数不等于确认生效。`budget_status=disabled` 保留 null 预算并显示关闭，不把输出上限或实际思考 token 当作独立预算。
 
 ## 系统1 StartLux-Decision 的特别说明
 

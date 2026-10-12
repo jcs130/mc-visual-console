@@ -42,6 +42,50 @@ def label(value):
     return re.sub(r"[\x00-\x1f\x7f]", "", value).strip()[:128] or None
 
 
+EFFORTS = {"none", "off", "minimal", "low", "medium", "high", "xhigh", "max", "default"}
+CONFIRMATIONS = {"serving_template_and_budget_policy", "serving_template", "engine", "engine_effective", "engine_confirmed"}
+BUDGET_STATUSES = {"disabled", "not_requested", "not_configured", "unsupported", "applied", "configured", "default", "unlimited", "unknown", "enabled", "independent", "inherited"}
+
+
+def enum(value, allowed):
+    return value if isinstance(value, str) and value in allowed else None
+
+
+def normalize_reasoning(raw):
+    if not isinstance(raw, dict):
+        return None
+    requested, effective = obj(raw.get("requested")), obj(raw.get("effective"))
+    def parameters(source):
+        return {"thinking": source.get("thinking") if isinstance(source.get("thinking"), bool) else None,
+                "effort": enum(source.get("reasoning_effort"), EFFORTS),
+                "budgetTokens": count(source.get("budget_tokens"))}
+    requested, effective = parameters(requested), parameters(effective) | {
+        "nativeEffort": enum(effective.get("native_reasoning_effort"), EFFORTS),
+        "budgetStatus": enum(effective.get("budget_status"), BUDGET_STATUSES)}
+    confirmation = enum(raw.get("confirmation"), CONFIRMATIONS | {"requested_only", "unconfirmed"})
+    confirmed = True if confirmation in CONFIRMATIONS and any(effective[k] is not None for k in ("thinking", "effort", "budgetTokens")) else False if confirmation in {"requested_only", "unconfirmed"} else None
+    if effective["thinking"] is False or effective["budgetStatus"] == "disabled":
+        effective["budgetTokens"] = None
+    return {"requested": requested, "effective": effective, "confirmation": confirmation, "confirmed": confirmed}
+
+
+def request_metadata(raw):
+    """Project one request without retaining arbitrary fields or response content."""
+    raw = obj(raw)
+    state = enum(raw.get("state"), STATES | {"queued"})
+    execution = number(raw.get("execution_seconds")) if "execution_seconds" in raw else number(raw.get("execution_ms"))
+    if "execution_seconds" not in raw and execution is not None:
+        execution /= 1000
+    queue = number(raw.get("queue_ms"))
+    return {"requestId": label(raw.get("request_id")), "sessionId": label(raw.get("session_id")),
+            "attemptId": label(raw.get("attempt_id")), "state": state, "sampleAgeMs": number(raw.get("sample_age_ms")),
+            "contextTokens": count(raw.get("context_tokens")) if "context_tokens" in raw else count(raw.get("input_tokens")),
+            "executionSeconds": execution, "queueSeconds": queue / 1000 if queue is not None else None,
+            "inputTps": throughput(raw, "input_tok_s", "input_processed_tokens", "input_processing_seconds"),
+            "outputTps": throughput(raw, "output_tok_s", "output_tokens", "decode_seconds") if "output_tok_s" in raw or "decode_seconds" in raw else number(raw.get("decode_tok_s")),
+            "reasoningTokens": count(raw.get("reasoning_tokens")), "reasoning": normalize_reasoning(raw.get("reasoning"))}
+
+
 def quantization(value):
     text = label(value)
     if not text:
@@ -88,6 +132,8 @@ def blank_model(spec, sampled_at=None, reason="not-configured", state="disconnec
         "executionSeconds": None, "executionKind": "current",
         "prefixReuseRatio": None, "contextTokens": None, "contextLimit": None,
         "contextPercent": None, "contextKind": "current", "running": None,
+        "requestId": None, "queueSeconds": None, "reasoning": None, "reasoningTokens": None,
+        "activeRequests": [], "activeRequestsTruncated": False,
     }
 
 
@@ -187,26 +233,47 @@ def normalize_metadata(raw, spec, sampled_at=None, metadata=None):
     if state in STATES:
         result.update(state=state, reason=None)
     result["queue"] = count(live.get("queued"))
+    result["running"] = count(live.get("running"))
+    snapshot_age = number(raw.get("gateway_snapshot_age_ms"))
+    if snapshot_age is not None and snapshot_age > result["freshForSeconds"] * 1000:
+        return blank_model(spec, at, "stale", "disconnected")
+    active_rows = raw.get("active_requests") if isinstance(raw.get("active_requests"), list) else []
+    projected_rows = [request_metadata(row) for row in active_rows]
+    unique = {row["requestId"]: row for row in projected_rows if row["requestId"]}
+    result["activeRequestsTruncated"] = len(unique) > 32
+    for row in list(unique.values())[:32]:
+        if row["sampleAgeMs"] is not None and row["sampleAgeMs"] > result["freshForSeconds"] * 1000:
+            row.update(state="unknown", contextTokens=None, executionSeconds=None, queueSeconds=None,
+                       inputTps=None, outputTps=None, reasoningTokens=None, reasoning=None)
+        result["activeRequests"].append(row)
     total, reused = count(previous.get("context_tokens")), count(previous.get("reused_tokens"))
     if total and reused is not None and reused <= total:
         result["prefixReuseRatio"] = reused / total
     if state in ACTIVE:
         result["running"] = count(live.get("running"))
-        if result["running"] is not None and result["running"] > 1:
+        if (result["running"] is not None and result["running"] > 1) or sum(row["state"] in ACTIVE for row in result["activeRequests"]) > 1:
             result["reason"] = "multiple-active-requests"
             return result
-        if label(live.get("request_id")):
-            result.update(contextTokens=count(live.get("context_tokens")),
-                          executionSeconds=number(live.get("execution_seconds")),
-                          inputTps=throughput(live, "input_tok_s", "input_processed_tokens", "input_processing_seconds"),
-                          outputTps=throughput(live, "output_tok_s", "output_tokens", "decode_seconds") if state == "generating" else None)
-        else:
-            result["reason"] = "missing-request-id"
+        result["reason"] = "missing-request-id"
+        current = None
+        if result["activeRequests"]:
+            live_id = label(live.get("request_id"))
+            candidates = [row for row in result["activeRequests"] if row["state"] in ACTIVE and (not live_id or row["requestId"] == live_id)]
+            if len(candidates) == 1:
+                current = candidates[0]
+        elif label(live.get("request_id")):
+            current = request_metadata(live)
+        if current:
+            result.update({key: current[key] for key in ("requestId", "contextTokens", "executionSeconds", "queueSeconds", "inputTps", "reasoning", "reasoningTokens")})
+            result["outputTps"] = current["outputTps"] if state == "generating" else None
+            result["reason"] = None
     elif state == "idle":
         result.update(inputSpeedKind="last", outputSpeedKind="last", executionKind="last", contextKind="last",
                       contextTokens=total, executionSeconds=number(previous.get("execution_seconds")),
                       inputTps=throughput(previous, "input_tok_s", "input_processed_tokens", "input_processing_seconds"),
                       outputTps=throughput(previous, "output_tok_s", "output_tokens", "decode_seconds"))
+        previous_meta = request_metadata(previous)
+        result.update({key: previous_meta[key] for key in ("requestId", "queueSeconds", "reasoning", "reasoningTokens")})
     if result["contextTokens"] is not None and result["contextLimit"] is not None:
         result["contextPercent"] = result["contextTokens"] / result["contextLimit"] * 100
     return result

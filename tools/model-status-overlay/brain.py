@@ -83,6 +83,9 @@ def normalize_selection(raw):
     sources = obj(raw.get("sources"))
     request_id = label(raw.get("request_id"))
     matched = request_id is not None and request_id == label(raw.get("inference_request_id"))
+    confirmed = boolean(raw.get("provider_confirmed")) if matched else None
+    effective = obj(raw.get("provider_effective")) if matched and confirmed is True else {}
+    requested = obj(raw.get("provider_requested")) if matched else {}
     confidence = number(raw.get("confidence"))
     result = {"scope": raw["scope"], "round": count(raw.get("round")),
               "role": choice(applied.get("role"), ROLES), "model": label(applied.get("model")),
@@ -93,8 +96,16 @@ def normalize_selection(raw):
               "proposedReading": choice(proposed.get("reading"), READING),
               "proposedReasoning": choice(proposed.get("reasoning"), {"immediate", "routine", "deliberate"}),
               "thinking": boolean(applied.get("thinking")), "effort": label(applied.get("effort")),
-              "proposedEffort": label(proposed.get("effort")), "providerConfirmed": boolean(raw.get("provider_confirmed")),
+              "proposedEffort": label(proposed.get("effort")), "providerConfirmed": confirmed,
               "reasoningBudgetTokens": count(applied.get("reasoning_budget_tokens")),
+              "providerRequestedThinking": boolean(requested.get("thinking")), "providerRequestedEffort": label(requested.get("effort")),
+              "providerRequestedBudgetTokens": count(requested.get("budgetTokens")),
+              "effectiveThinking": boolean(effective.get("thinking")), "effectiveEffort": label(effective.get("effort")),
+              "effectiveNativeEffort": label(effective.get("nativeEffort")), "effectiveReasoningBudgetTokens": count(effective.get("budgetTokens")),
+              "effectiveBudgetStatus": label(effective.get("budgetStatus")),
+              "executionSeconds": number(raw.get("execution_ms")) / 1000 if matched and number(raw.get("execution_ms")) is not None else None,
+              "queueSeconds": number(raw.get("queue_ms")) / 1000 if matched and number(raw.get("queue_ms")) is not None else None,
+              "reasoningTokens": count(raw.get("reasoning_tokens")) if matched else None,
               "requestedHistoryTokens": count(context.get("requested_history_tokens")),
               "historyTokens": count(context.get("applied_history_tokens")), "growthTokens": count(context.get("growth_tokens")),
               "protectedTokens": count(context.get("protected_tokens")),

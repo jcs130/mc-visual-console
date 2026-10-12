@@ -143,6 +143,8 @@ LiteLLM 统一接入的 `inference_stats.request_id` 与 `x-litellm-call-id` 相
 实际输入必须是完整输入、包含复用前缀、排除生成输出。完整输入估算不得替换实测；历史预算也不是全输入上限。
 `reasoning_budget_tokens` 必须来自独立思考预算字段，不能拿 `max_output_tokens`、实际 reasoning token 数或 effort 名字推算。
 
+框架的 `applied` 继续表示本次发送参数。`provider_requested / provider_effective` 分别保存网关收到与引擎生效的思考参数；只有同一 `inference_request_id` 且 `provider_confirmed=true` 时显示生效值。确认范围为 reasoning，不能扩展到阅读预算或任务成功。生效独立预算的分位数只采已关联且确认的非空预算。
+
 ## 框架接线位置
 
 1. `beforeDecision` / `ForegroundAdviser` 输出分类尝试结果，记录超时、低概率、过期等枚举，不附场景正文。

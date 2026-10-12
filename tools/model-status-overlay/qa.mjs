@@ -59,6 +59,21 @@ function fixture(change = {}, brainChange = {}) {
     brain, updatedAt: now, serverTime: now };
 }
 
+function engineFixture(parallel = false) {
+  const data = fixture();
+  const reasoning = { requested: { thinking: true, effort: "high", budgetTokens: 4096 },
+    effective: { thinking: true, effort: "medium", nativeEffort: "medium", budgetTokens: 1024, budgetStatus: "applied" },
+    confirmed: true, confirmation: "serving_template_and_budget_policy" };
+  Object.assign(data.models[0], { requestId: "call-engine-1", queueSeconds: .03, reasoning, reasoningTokens: 20 });
+  Object.assign(data.brain.selection, { effort: "high", providerConfirmed: true, effectiveThinking: true, effectiveEffort: "medium",
+    providerRequestedBudgetTokens: 4096, effectiveReasoningBudgetTokens: 1024, effectiveBudgetStatus: "applied", executionSeconds: 1.5, queueSeconds: .03, reasoningTokens: 20 });
+  if (parallel) Object.assign(data.models[0], { reason: "multiple-active-requests", running: 2, contextTokens: null, contextPercent: null,
+    inputTps: null, outputTps: null, executionSeconds: null, reasoning: null, reasoningTokens: null, queueSeconds: null,
+    activeRequests: [1, 2].map(n => ({ requestId: `call-engine-${n}`, state: "generating", contextTokens: n * 1200,
+      executionSeconds: n * 1.5, queueSeconds: .03, inputTps: n * 400, outputTps: n * 20, reasoning })) });
+  return data;
+}
+
 async function verifyLayout(page, label) {
   const result = await page.evaluate(() => {
     const panel = document.querySelector(".panel");
@@ -117,6 +132,8 @@ try {
     ["fixture-90percent", { contextTokens: 117965, contextPercent: 90 }],
     ["fixture-large-context", { contextTokens: 1992294, contextLimit: 2097152, contextPercent: 95, inputTps: 100000, outputTps: 100000 }],
     ["fixture-missing-current", { contextTokens: null, contextPercent: null, inputTps: null, outputTps: null, executionSeconds: null, queue: null }],
+    ["fixture-parallel", { reason: "multiple-active-requests", running: 2, contextTokens: null, contextPercent: null, inputTps: null, outputTps: null, executionSeconds: null,
+      activeRequests: engineFixture(true).models[0].activeRequests }],
     ["fixture-stale", { sampledAt: Date.now() / 1000 - 20 }],
   ]) {
     const page = await context.newPage();
@@ -154,6 +171,8 @@ try {
   const cases = [
     ["brain-dashboard-actual", null],
     ["brain-dashboard-fixture", fixture],
+    ["brain-dashboard-engine-confirmed", engineFixture],
+    ["brain-dashboard-parallel", () => engineFixture(true)],
     ["brain-dashboard-services-only", () => ({ ...fixture(), brain: null, harness: null })],
     ["brain-dashboard-mixed-sources", () => {
       const data = fixture(); data.harness.models = []; return data;
@@ -210,6 +229,21 @@ try {
       assert.equal(await page.locator("#diagnostics").getAttribute("open"), "");
       await page.locator("#learning-panel > summary").click();
       await page.locator("#diagnostics > summary").click();
+    } else if (name === "brain-dashboard-engine-confirmed" || name === "brain-dashboard-parallel") {
+      await page.locator("#diagnostics > summary").click();
+      assert.equal(await page.locator("#detail-effective-effort").textContent(), "medium");
+      assert.equal(await page.locator("#detail-reasoning-budget").textContent(), "4,096 tok → 1,024 tok");
+      assert.equal(await page.locator("#detail-timing").textContent(), "1.5s / 0.03s");
+      if (name.endsWith("parallel")) {
+        assert.equal(await page.locator("#main .status").textContent(), "并发 2");
+        assert.equal(await page.locator("#main .context-numbers").textContent(), "— / 131,072");
+        assert.equal(await page.locator("#service-active-requests > div").count(), 2);
+        assert.match(await page.locator("#service-active-requests > div").nth(0).textContent(), /call-engine-1.*1,200 tok.*1\.5s/);
+        assert.match(await page.locator("#service-active-requests > div").nth(1).textContent(), /call-engine-2.*2,400 tok.*3\.0s/);
+      } else {
+        assert.equal(await page.locator("#service-reasoning").textContent(), "high → medium");
+        assert.equal(await page.locator("#service-budget").textContent(), "4,096 tok → 1,024 tok");
+      }
     } else if (name === "brain-dashboard-mixed-sources") {
       assert.match(await page.locator("#overview-issues").textContent(), /模型调用：2 \/ 20 次失败/);
     } else if (name === "brain-dashboard-services-only" || name === "brain-dashboard-stale") {

@@ -19,7 +19,7 @@ const setText = (id, value) => { const node = $(id); if (node) node.textContent 
 const tokens = (n) => finite(n) ? `${integer(n)} tok` : dash;
 const shortTokens = (n) => finite(n) ? n >= 1000 ? `${(n / 1000).toFixed(n % 1000 ? 1 : 0)}k` : integer(n) : dash;
 const ratio = (n) => finite(n) && n <= 1 ? percent(n * 100) : dash;
-const effort = (s) => s?.thinking === false ? "关闭" : s?.thinking === true ? s.effort || "端点默认" : dash;
+const effort = (s) => s?.thinking === false ? "关闭" : s?.effort || (s?.thinking === true ? "端点默认" : dash);
 
 function setupModel(id, role) {
   const node = $(id);
@@ -55,7 +55,7 @@ function renderModel(model, age) {
   node.querySelector(".model-name").textContent = m.name || dash;
   node.querySelector(".model-name").title = m.name || "尚无模型身份指标";
   node.querySelector(".quant").textContent = m.quant || dash;
-  node.querySelector(".status").textContent = phase[m.state] || "状态未知";
+  node.querySelector(".status").textContent = m.reason === "multiple-active-requests" ? finite(m.running) ? `并发 ${integer(m.running)}` : "多请求" : phase[m.state] || "状态未知";
   node.querySelector(".status").title = m.reason === "metrics-unavailable" ? "服务可连接，缺少独立推理指标" : m.reason === "multiple-active-requests" ? `${m.running} 个请求同时运行；未混用不同请求的数据` : m.reason === "not-configured" ? "尚未配置指标地址" : "模型执行状态";
   node.querySelector(".input-kind").textContent = m.inputSpeedKind === "last" ? "上轮" : "实时";
   node.querySelector(".input-kind").title = m.inputSpeedKind === "last" ? "上次推理的输入阶段均速" : "本次请求已读取的新token / 本次输入阶段执行时间";
@@ -108,11 +108,14 @@ function renderBrain(age) {
   setText("detail-reading", `${readings[s?.proposedReading] || dash} → ${readings[s?.reading] || dash}`);
   setText("detail-effort", `${({ immediate: "即时", routine: "常规", deliberate: "深入" })[s?.proposedReasoning] || dash} → ${effort(s)}`);
   setText("provider-confirmed", `服务确认 ${s?.providerConfirmed === true ? "已确认" : s?.providerConfirmed === false ? "未确认" : dash}`);
+  setText("detail-effective-effort", s?.providerConfirmed === true ? effort({ thinking: s.effectiveThinking, effort: s.effectiveEffort }) : dash);
   setText("detail-history", `${tokens(s?.requestedHistoryTokens)} → ${tokens(s?.historyTokens)}`);
   setText("detail-growth", tokens(s?.growthTokens));
   setText("detail-estimated", tokens(s?.estimatedInputTokens));
   setText("detail-actual", tokens(s?.actualInputTokens));
-  setText("detail-reasoning-budget", tokens(s?.reasoningBudgetTokens));
+  setText("detail-reasoning-budget", `${tokens(s?.providerRequestedBudgetTokens ?? s?.reasoningBudgetTokens)} → ${s?.effectiveBudgetStatus === "disabled" ? "关闭" : tokens(s?.effectiveReasoningBudgetTokens)}`);
+  setText("detail-timing", `${duration(s?.executionSeconds)} / ${duration(s?.queueSeconds)}`);
+  setText("detail-reasoning-tokens", integer(s?.reasoningTokens));
   setText("detail-selector", finite(s?.selectorMs) ? `${rate(s.selectorMs)} ms` : dash);
 
   const coverage = !w ? "统计待接入" : w.complete === true ? "完整窗口 · 600秒" : finite(w.coveredSeconds) ? `部分覆盖 · ${integer(w.coveredSeconds)} / 600秒` : "覆盖时长未知";
@@ -142,6 +145,33 @@ function renderBrain(age) {
   setText("policy-summary", finite(cfg.sampledAt) ? `自适应阅读 ${automatic(cfg.automaticReading)}；聚焦历史 ${tokens(cfg.focusedHistoryTokens)}，常规历史 ${tokens(cfg.standardHistoryTokens)}，增长预算 ${cfg.growthTokens === 0 ? "随应用历史预算" : tokens(cfg.growthTokens)}。自动思考档位 ${automatic(cfg.automaticReasoning)}。` : dash);
   setText("active-connection", fresh ? `活动主连接 ${b.activeConnection?.name || dash} / ${b.activeConnection?.model || dash} · 阶段预算 ${tokens(b.stageBudgetTokens)} · 框架输入硬限 ${tokens(b.inputHardLimit)}` : "活动主连接 —");
   return fresh ? brainPhase[b.phase] : null;
+}
+
+function duration(value) { return finite(value) ? `${seconds(value)}s` : dash; }
+
+function renderServiceMetadata(age) {
+  if (!$("service-reasoning")) return;
+  const model = current.models.find(m => m.id === "main");
+  const m = model && !expired(model, age) ? model : {};
+  const r = m.reasoning;
+  const effective = r?.confirmed === true ? r.effective : null;
+  const budget = (parameters) => parameters?.budgetStatus === "disabled" ? "关闭" : tokens(parameters?.budgetTokens);
+  setText("service-request-scope", `共享主模型服务 · ${m.reason === "multiple-active-requests" ? "并发请求分别列出" : m.contextKind === "last" ? "上次请求" : "本次请求"} · 来源不代表当前 Agent`);
+  setText("service-reasoning", `${effort(r?.requested)} → ${effective ? effort(effective) : dash}`);
+  setText("service-confirmation", `服务确认 ${r?.confirmed === true ? "已确认思考参数" : r?.confirmed === false ? "未确认" : dash}`);
+  setText("service-budget", `${budget(r?.requested)} → ${budget(effective)}`);
+  setText("service-timing", `${duration(m.executionSeconds)} / ${duration(m.queueSeconds)}`);
+  setText("service-reasoning-tokens", integer(m.reasoningTokens));
+  const list = $("service-active-requests"), rows = m.activeRequests || [];
+  list.replaceChildren(); list.hidden = rows.length === 0;
+  for (const row of rows) {
+    const item = document.createElement("div"), identity = document.createElement("b"), values = document.createElement("span");
+    identity.textContent = `${row.requestId.slice(0, 14)} · ${row.state === "queued" ? "排队" : phase[row.state] || "状态未知"}`;
+    identity.title = row.requestId;
+    const parameters = row.reasoning?.confirmed === true ? row.reasoning.effective : null;
+    values.textContent = `输入 ${tokens(row.contextTokens)} · 执行 ${duration(row.executionSeconds)} · 排队 ${duration(row.queueSeconds)} · 输入/生成 ${rate(row.inputTps)} / ${rate(row.outputTps)} tok/s · 思考 ${parameters ? effort(parameters) : dash}`;
+    item.append(identity, values); list.append(item);
+  }
 }
 
 function renderHarness(age) {
@@ -257,6 +287,7 @@ function render() {
   $("monitor-state").textContent = age > 7 ? "数据已过期" : disconnected ? "连接中断" : frameworkPhase || "只读监测";
   $("updated").textContent = finite(current.updatedAt) ? `更新 ${new Date(current.updatedAt * 1000).toLocaleTimeString("zh-CN", { hour12: false })}` : "更新 —";
   renderOverview(age);
+  renderServiceMetadata(age);
 }
 
 async function refresh() {
