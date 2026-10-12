@@ -132,6 +132,19 @@ test('preview release only disposes cloned skeleton storage, leaving shared worl
   assert.equal(cleanups, 0);
 });
 
+test('YSM inventory preview retains its facing and never revives the hidden classic body or equipment', () => {
+  const source=avatar();source.playerObject.visible=false;
+  source.getObjectByName('geometry_armor_head').visible=false;
+  const custom=new THREE.Group();custom.name='paper-ysm-player';custom.rotation.x=.15;source.add(custom);
+  const mirror=mirrorInventoryPlayer(THREE,source);poseInventoryPlayer(mirror,.25,.1);
+  assert.equal(mirror.nodes.get(source.playerObject).visible,false);
+  assert.equal(mirror.nodes.get(custom).visible,true);assert.equal(mirror.nodes.get(custom).rotation.x,.15);
+  assert.equal(mirror.root.getObjectByName('geometry_armor_head').visible,false);
+  const forward=new THREE.Vector3(0,0,-1).applyEuler(mirror.root.rotation);
+  assert.ok(forward.z>0,'original YSM -Z front faces the +Z inventory camera');
+  assert.equal(source.rotation.y,2.1);
+});
+
 function browserHarness(source = avatar(), options = {}) {
   const frames = new Map();
   let serial = 0;

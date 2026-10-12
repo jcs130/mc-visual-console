@@ -10,7 +10,7 @@ export async function viewerSourceDigest(rendererRoot) {
       if (entry.name.startsWith('.') || ['node_modules', 'assets', 'asset-packs', 'public', 'dist', 'test'].includes(entry.name)) continue;
       const file = path.join(folder, entry.name);
       if (entry.isDirectory()) await walk(file);
-      else if (entry.isFile() && /\.(?:mjs|mts|js|ts|json)$/.test(entry.name)) files.push(file);
+      else if (entry.isFile() && /\.(?:mjs|mts|js|ts|json|css|html)$/.test(entry.name)) files.push(file);
     }
   }
   await walk(root);

@@ -18,13 +18,12 @@ export function paperYsmItemMount(display,arm) {
   const transform=nativeHeldItemTransform(display,arm);
   // Locked original YSM2.4.1 o000O0o0O00OOo0o0o0oo0O0 item layer:
   // locator -> translate(0,-.0625,-.1) -> Rx(-90deg) -> native ItemTransform.
-  // The geometry helper's bone coordinates are Y-down; ItemRenderer centres
-  // original Java baked vertices at(-.5,-.5,-.5) after its display transform.
+  // The geometry helper's bone coordinates are Y-down. bakeFaces already
+  // centres original Java vertices at (-.5,-.5,-.5); never centre them twice.
   return new THREE.Matrix4().makeTranslation(0,-.0625,-.1)
     .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
     .multiply(new THREE.Matrix4().compose(new THREE.Vector3(...transform.translation),
-      new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.radians,'XYZ')),new THREE.Vector3(...transform.scale)))
-    .multiply(new THREE.Matrix4().makeTranslation(-.5,-.5,-.5));
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.radians,'XYZ')),new THREE.Vector3(...transform.scale)));
 }
 async function loadTexture(id) {
   if(!/^minecraft:(?:item|block)\/[a-z0-9_/-]{1,128}$/.test(id)||id.includes('..'))throw Error('YSM_ITEM_TEXTURE_UNSUPPORTED');

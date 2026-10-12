@@ -56,10 +56,16 @@ test('actual host packets reach the mounted overlay: route/candidate/gather colo
     assert.equal(h.byId('agent-route-map').hidden, false);
     assert.equal(h.byId('agent-operations').querySelector('.agent-recent-operations').dataset.role, 'gather');
     assert.equal(h.byId('agent-operations').querySelector('.agent-mouse').children[0].dataset.active, 'true');
+    const pointer=h.byId('agent-pointer'),click=h.byId('agent-click-marker');
+    assert.equal(pointer.hidden,false);assert.equal(pointer.dataset.source,'world');
+    assert.equal(click.style.left,'620px');assert.equal(click.hidden,false);
+    assert.notEqual(pointer.style.left,click.style.left,'pointer eases toward the exact click marker');
     for (const color of ['#4ee6b1', '#a6b7d4', '#ffbe55']) assert.ok(h.draws.some(row => row[0] === 'stroke' && row[1] === color));
     const check = h.document.querySelectorAll('input').find(el => el.getAttribute('aria-label') === '显示攻击、采集和交互标记');
     check.checked = false; check.dispatch('change'); h.step(40);
     assert.equal(h.byId('agent-action-markers').width, 1, 'hidden full-screen layers release backing storage');
+    const cursorCheck=h.document.querySelectorAll('input').find(el=>el.getAttribute('aria-label')==='显示虚拟指针与点击反馈');
+    cursorCheck.checked=false;cursorCheck.dispatch('change');h.step(40);assert.equal(pointer.hidden,true);assert.equal(click.hidden,true);
   } finally { h.dispose(); }
   assert.equal(h.frames.size, 0); assert.equal(h.intervals.size, 0); assert.equal(h.socket.listenerCount('agentVisualization'), 0);
 });

@@ -8,7 +8,7 @@ export const OBS_COMPONENTS = Object.freeze([
   ['worldPaths', '场景中的路径和流动箭头', '#corti-tactical-canvas, #corti-tactical-legend'],
   ['worldActions', '攻击、采集和交互标记', '#agent-action-markers'],
   ['worldMarkers', '开发者自定义点线面', '#agent-custom-markers'],
-  ['agentPointer', 'Agent 提交的屏幕指针', '#agent-pointer'],
+  ['agentPointer', '虚拟指针与点击反馈', '#agent-pointer, #agent-click-marker'],
   ['agentPresentation', 'Agent 图文和动画展示', '#agent-presentation'],
   ['skills', '技能面板', '#corti-skills'],
   ['chat', '聊天记录', '.corti-chat'],

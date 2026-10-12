@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import {compilePaperMolang} from '../../src/modern-viewer/paper-ysm-molang.js';
 import {compilePaperYsmClip,samplePaperYsmClip,PaperYsmAnimation} from '../../src/modern-viewer/paper-ysm-animation.js';
 import {PaperYsmPlayers} from '../../src/modern-viewer/paper-ysm.js';
-import {createPaperHeldItem,resolvePaperHeldModel,PaperYsmHeldItems} from '../../src/modern-viewer/paper-ysm-items.js';
+import {createPaperHeldItem,resolvePaperHeldModel,PaperYsmHeldItems,paperYsmItemMount} from '../../src/modern-viewer/paper-ysm-items.js';
 const context=()=>({variables:Object.create(null),queries:{'query.anim_time':.25,'ysm.head_pitch':30},random:()=>.5});
 const model=()=>{const bones=new Map(['Root','Head','RightArm','LeftArm','RightHandLocator','LeftHandLocator'].map(n=>[n,new THREE.Group()]));const initial=new Map([...bones].map(([n,b])=>[n,{position:b.position.clone(),rotation:b.rotation.clone()}]));return {bones,initial,reset(){for(const[n,b]of bones){b.position.copy(initial.get(n).position);b.rotation.copy(initial.get(n).rotation);b.scale.setScalar(1);}}};};
 test('bounded Molang arithmetic, degrees, aliases, optional ternary and original combo variables',()=>{
@@ -64,6 +64,21 @@ const itemModels={
   'block/stone':{textures:{all:'block/stone'},elements:[{from:[0,0,0],to:[16,16,16],faces:{north:{texture:'#all'},south:{texture:'#all'}}}]}
 };
 const itemOptions={textureLoader:async()=>new THREE.Texture({width:2,height:2}),readPixels:async()=>({width:2,height:2,pixels:new Uint8Array([255,255,255,255,0,0,0,0,255,255,255,255,255,255,255,255])})};
+
+test('original centred block vertices stay at the grip, with only one Java centre translation',async()=>{
+  const block=await createPaperHeldItem(itemModels,{name:'stone'},'right',itemOptions);
+  const center=new THREE.Box3().setFromObject(block.root).getCenter(new THREE.Vector3());
+  assert.ok(center.distanceTo(new THREE.Vector3(0,-.0625,-.1))<1e-6);
+  for(const yaw of [0,Math.PI/2,Math.PI,-Math.PI/2]){
+    const forward=new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+    assert.ok(forward.distanceTo(new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)))<1e-8);
+    const transform=paperYsmItemMount({translation:[3,4,5]},'right');
+    const left=paperYsmItemMount({translation:[3,4,5]},'left');
+    const rightOrigin=new THREE.Vector3().applyMatrix4(transform),leftOrigin=new THREE.Vector3().applyMatrix4(left);
+    assert.ok(Math.abs(rightOrigin.x+leftOrigin.x)<1e-8);
+  }
+  block.dispose();
+});
 test('held geometry uses inherited original transforms and alpha edge extrusion, not a GUI plane',async()=>{
   assert.equal(resolvePaperHeldModel(itemModels,'item/sword').generated,true);
   const sword=await createPaperHeldItem(itemModels,{name:'sword'},'right',itemOptions),block=await createPaperHeldItem(itemModels,{name:'stone'},'left',itemOptions);

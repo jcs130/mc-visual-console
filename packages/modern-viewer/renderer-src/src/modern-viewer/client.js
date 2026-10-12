@@ -8,6 +8,7 @@ import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
 import { installObsLayout } from "./obs-layout.js";
+import { installViewerLayout } from "./viewer-layout.js";
 import { installAgentVisualization } from "./agent-visual-overlay.js";
 import { createAgentWorldProjector } from "./agent-visual-projection.js";
 import { resolveObsCamera, horizontalFov } from "./obs-camera.js";
@@ -154,6 +155,7 @@ if (isObsOverlay) {
 }
 let latestObserverState = null;
 const obsLayout = isObsOverlay ? installObsLayout({ document, window, query: pageQuery }) : null;
+const viewerLayout = installViewerLayout({ document, window, photo: isPhotoView, overlay: isObsOverlay });
 const heldItemUseClock = new HeldItemUseClock();
 let obsSession = null, obsSubject = null, obsAvatarAt = -Infinity;
 const obsTrackedPlayers = new Map();
@@ -658,7 +660,8 @@ const socket = io({
 
 const agentVisualization = installAgentVisualization({
   socket, document, window, photo: isPhotoView,
-  visible: id => obsLayout?.visible(id) !== false,
+  visible: id => obsLayout?.visible(id) !== false && viewerLayout.visible(id),
+  firstPerson: isFirstPersonView,
   position: () => pendingAvatarState?.entity?.position ?? latestPosition?.pos,
   project: createAgentWorldProjector(() => globalThis.world,
     () => ({ width: window.innerWidth, height: window.innerHeight })),

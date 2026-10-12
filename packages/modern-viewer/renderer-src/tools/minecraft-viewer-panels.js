@@ -383,6 +383,7 @@ function cortiRenderMenu() {
     return;
   }
   const source = container ? 'container' : cortiInventoryOpen ? 'manual' : 'idle';
+  root.dataset.windowId = String(container?.id ?? 0);
   root.dataset.inventorySource = source;
   root.dataset.compact = String(performance.now() < cortiCombatUntil);
   const signature = JSON.stringify([source, container || cortiPanelAvatar?.inventory || []]);
@@ -432,9 +433,10 @@ function cortiVanillaBackground(parent, name, width = 176, height = 166) {
   return body;
 }
 
-function cortiSlot(parent, x, y, item, label = '') {
+function cortiSlot(parent, x, y, item, label = '', slotIndex) {
   const slot = document.createElement('div');
   slot.className = 'corti-menu-slot';
+  if (Number.isSafeInteger(slotIndex) && slotIndex >= 0) slot.dataset.viewerSlot = String(slotIndex);
   slot.style.left = `${x * 2}px`;
   slot.style.top = `${y * 2}px`;
   const durability = cortiDurability(item);
@@ -475,10 +477,10 @@ function cortiSlotFallback(slot, item) {
 function cortiPlayerRows(parent, slots, start, hotbarStart, y = 84, x = 8) {
   for (let i = 0; i < 27; i++) {
     cortiSlot(parent, x + (i % 9) * 18, y + Math.floor(i / 9) * 18,
-      slots?.[start + i], `背包 ${i + 1}`);
+      slots?.[start + i], `背包 ${i + 1}`, start + i);
   }
   for (let i = 0; i < 9; i++) {
-    cortiSlot(parent, x + i * 18, y + 58, slots?.[hotbarStart + i], `快捷栏 ${i + 1}`);
+    cortiSlot(parent, x + i * 18, y + 58, slots?.[hotbarStart + i], `快捷栏 ${i + 1}`, hotbarStart + i);
   }
 }
 
@@ -492,10 +494,10 @@ function cortiRenderInventory(parent, slots) {
   preview.setAttribute('aria-label', '玩家皮肤与当前装备预览');
   preview.title = '移动鼠标查看当前皮肤与装备';
   body.append(preview);
-  for (let i = 0; i < 4; i++) cortiSlot(body, 8, 8 + i * 18, slots?.[5 + i], '护甲');
-  for (let i = 0; i < 4; i++) cortiSlot(body, 98 + (i % 2) * 18, 18 + Math.floor(i / 2) * 18, slots?.[1 + i], '合成');
-  cortiSlot(body, 154, 28, slots?.[0], '合成结果');
-  cortiSlot(body, 77, 62, slots?.[45], '副手');
+  for (let i = 0; i < 4; i++) cortiSlot(body, 8, 8 + i * 18, slots?.[5 + i], '护甲', 5 + i);
+  for (let i = 0; i < 4; i++) cortiSlot(body, 98 + (i % 2) * 18, 18 + Math.floor(i / 2) * 18, slots?.[1 + i], '合成', 1 + i);
+  cortiSlot(body, 154, 28, slots?.[0], '合成结果', 0);
+  cortiSlot(body, 77, 62, slots?.[45], '副手', 45);
   cortiPlayerRows(body, slots, 9, 36);
   cortiSyncInventoryPlayerPreview();
 }
@@ -503,9 +505,9 @@ function cortiRenderInventory(parent, slots) {
 function cortiRenderFurnace(parent, container, type) {
   const slots = container.slots;
   const body = cortiVanillaBackground(parent, type);
-  cortiSlot(body, 56, 17, slots?.[0], '原料');
-  cortiSlot(body, 56, 53, slots?.[1], '燃料');
-  cortiSlot(body, 116, 35, slots?.[2], '产物');
+  cortiSlot(body, 56, 17, slots?.[0], '原料', 0);
+  cortiSlot(body, 56, 53, slots?.[1], '燃料', 1);
+  cortiSlot(body, 116, 35, slots?.[2], '产物', 2);
   cortiPlayerRows(body, slots, container.inventoryStart, container.hotbarStart);
   const progress = container.furnace || {};
   cortiFurnaceProgress(body, type, 'lit_progress', 56, 36, 14, 14, progress.burn, true);
@@ -535,8 +537,8 @@ function cortiFurnaceProgress(parent, type, sprite, x, y, width, height, fractio
 function cortiRenderCrafting(parent, container) {
   const body = cortiVanillaBackground(parent, 'crafting_table');
   const slots = container.slots;
-  for (let i = 0; i < 9; i++) cortiSlot(body, 30 + (i % 3) * 18, 17 + Math.floor(i / 3) * 18, slots?.[i + 1], '合成');
-  cortiSlot(body, 124, 35, slots?.[0], '合成结果');
+  for (let i = 0; i < 9; i++) cortiSlot(body, 30 + (i % 3) * 18, 17 + Math.floor(i / 3) * 18, slots?.[i + 1], '合成', i + 1);
+  cortiSlot(body, 124, 35, slots?.[0], '合成结果', 0);
   cortiPlayerRows(body, slots, container.inventoryStart, container.hotbarStart);
 }
 
@@ -550,7 +552,7 @@ function cortiRenderStation(parent, container, type) {
     const position = type === 'smithing' && count === 3
       ? layout.slots[i === 2 ? 3 : i + 1] : layout.slots[i];
     const [x, y] = position;
-    cortiSlot(body, x, y, slots[i], `工作台槽位 ${i + 1}`);
+    cortiSlot(body, x, y, slots[i], `工作台槽位 ${i + 1}`, i);
   }
   cortiPlayerRows(body, slots, container.inventoryStart, container.hotbarStart,
     layout.inventoryY ?? 84, layout.inventoryX ?? 8);
@@ -584,9 +586,9 @@ function cortiRenderThreeGrid(parent, container, type) {
   const slots = container.slots || [];
   for (let i = 0; i < 9; i++) {
     cortiSlot(body, (crafter ? 26 : 62) + i % 3 * 18,
-      17 + Math.floor(i / 3) * 18, slots[i], `容器 ${i + 1}`);
+      17 + Math.floor(i / 3) * 18, slots[i], `容器 ${i + 1}`, i);
   }
-  if (crafter) cortiSlot(body, 129, 31, slots[9], '合成结果');
+  if (crafter) cortiSlot(body, 129, 31, slots[9], '合成结果', 9);
   cortiPlayerRows(body, slots, container.inventoryStart, container.hotbarStart);
 }
 
@@ -613,7 +615,7 @@ function cortiRenderChest(parent, container, type) {
   }
   for (let i = 0; i < rows * 9; i++) {
     cortiSlot(body, 8 + i % 9 * 18, 18 + Math.floor(i / 9) * 18,
-      slots[i], `容器 ${i + 1}`);
+      slots[i], `容器 ${i + 1}`, i);
   }
   cortiPlayerRows(body, slots, container.inventoryStart, container.hotbarStart,
     30 + rows * 18);
@@ -622,9 +624,9 @@ function cortiRenderChest(parent, container, type) {
 function cortiRenderMerchant(parent, container) {
   const body = cortiVanillaBackground(parent, 'villager', 276, 166);
   const slots = container.slots || [];
-  cortiSlot(body, 136, 37, slots[0], '支付物品');
-  cortiSlot(body, 162, 37, slots[1], '第二种支付物品');
-  cortiSlot(body, 215, 36, slots[2], '交易产物');
+  cortiSlot(body, 136, 37, slots[0], '支付物品', 0);
+  cortiSlot(body, 162, 37, slots[1], '第二种支付物品', 1);
+  cortiSlot(body, 215, 36, slots[2], '交易产物', 2);
   cortiPlayerRows(body, slots, container.inventoryStart, container.hotbarStart, 83, 107);
   const offers = Array.isArray(container.trades?.offers) ? container.trades.offers : [];
   const list = document.createElement('div');
@@ -658,11 +660,11 @@ function cortiRenderMerchant(parent, container) {
 function cortiRenderHorse(parent, container) {
   const body = cortiVanillaBackground(parent, 'horse');
   const slots = container.slots || [];
-  cortiSlot(body, 8, 18, slots[0], '鞍');
-  cortiSlot(body, 8, 36, slots[1], '马铠');
+  cortiSlot(body, 8, 18, slots[0], '鞍', 0);
+  cortiSlot(body, 8, 36, slots[1], '马铠', 1);
   for (let i = 2; i < Math.min(17, container.containerCount); i++) {
     cortiSlot(body, 80 + (i - 2) % 5 * 18, 18 + Math.floor((i - 2) / 5) * 18,
-      slots[i], `坐骑储物 ${i - 1}`);
+      slots[i], `坐骑储物 ${i - 1}`, i);
   }
   cortiPlayerRows(body, slots, container.inventoryStart, container.hotbarStart);
 }
@@ -741,7 +743,7 @@ function cortiRenderGenericContainer(parent, container) {
     const grid = document.createElement('div');
     grid.className = 'corti-menu-grid';
     for (let i = 0; i < section.count; i++) {
-      const slot = cortiSlot(grid, 0, 0, slots?.[section.start + i], `${section.title} ${i + 1}`);
+      const slot = cortiSlot(grid, 0, 0, slots?.[section.start + i], `${section.title} ${i + 1}`, section.start + i);
       slot.style.left = '';
       slot.style.top = '';
     }

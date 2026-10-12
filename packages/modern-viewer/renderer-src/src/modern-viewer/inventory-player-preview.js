@@ -79,6 +79,9 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
   root.position.set(0, 0, 0);
   root.rotation.set(0, Math.PI + .20 + yaw, 0);
   root.visible = true; // World culling and first-person hiding do not hide the UI.
+  // Keep the selected custom model and its original pose. Enabling the hidden
+  // classic body here would draw a second player through the YSM model.
+  if (source.children.some(node => node.name === 'paper-ysm-player' && node.visible)) return;
   const player = source.playerObject;
   const skin = player?.skin;
   if (!player || !skin) return;

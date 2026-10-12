@@ -1,6 +1,7 @@
 import { AgentVisualState } from './agent-visual-state.js';
 import { AGENT_VISUAL_COLORS as COLORS, normalizeVisualRoute, visualPoint } from './agent-visual-protocol.js';
 import { drawVisualMarkers, frameVisualMarkers, routeMapProjection, drawVisualScene } from './agent-visual-drawing.js';
+import { resolveAgentPointer, visibleInventorySlot, createAgentPointerMotion } from './agent-pointer.js';
 
 const STATUS = { planning: '规划中', acting: '执行中', waiting: '等待中', blocked: '遇到阻碍', done: '已完成',
   moving: '行进中', reached: '已到达', stopped: '已停止' };
@@ -9,7 +10,8 @@ const ACTIONS = { attack: '攻击', gather: '采集', interact: '交互', invent
 const setText = (element, text) => { if (element.textContent !== text) element.textContent = text; };
 
 export function installAgentVisualization({ socket, document = globalThis.document, window = globalThis.window,
-  visible = () => true, project = () => null, position = () => null, photo = false } = {}) {
+  visible = () => true, project = () => null, position = () => null, photo = false, firstPerson = false,
+  slotPosition = (slot, windowId) => visibleInventorySlot(document, slot, windowId) } = {}) {
   if (photo) return { dispose() {}, snapshot: () => null };
   const state = new AgentVisualState({ now: () => window.performance.now() }), listeners = [], roots = [];
   let disposed = false, animation = 0, lastFrame = -Infinity, mediaKey = '', scene = null, sceneAt = 0;
@@ -41,7 +43,12 @@ export function installAgentVisualization({ socket, document = globalThis.docume
   const mouse = make('div', 'agent-mouse', operations), left = make('span', '', mouse, '左键'), right = make('span', '', mouse, '右键');
   const look = make('small', 'agent-look', mouse), recent = make('div', 'agent-recent-operations', operations);
   const pointer = make('div', 'agent-pointer', document.body); pointer.id = 'agent-pointer'; pointer.hidden = true;
+  pointer.setAttribute('aria-hidden', 'true');
   make('span', '', pointer, '↖'); make('small', '', pointer, 'Agent 指针'); roots.push(pointer);
+  const pointerMotion = createAgentPointerMotion();
+  const clickMarker = make('div', 'agent-click-marker', document.body); clickMarker.id = 'agent-click-marker';
+  clickMarker.hidden = true; clickMarker.setAttribute('aria-hidden', 'true'); roots.push(clickMarker);
+  let clickId = null;
   const presentation = panel('agent-presentation', 'Agent 图文与动画展示');
   const presentationTitle = make('header', '', presentation), presentationBody = make('div', 'agent-presentation-body', presentation);
   const caption = make('p', 'agent-presentation-caption', presentation);
@@ -54,7 +61,7 @@ export function installAgentVisualization({ socket, document = globalThis.docume
   const legend = document.getElementById('corti-tactical-legend');
   const worldLayers = [[worldPaths, 'worldPaths'], [worldActions, 'worldActions'], [worldCustom, 'worldMarkers']];
   function listen(event, handler) { socket.on(event, handler); listeners.push([event, handler]); }
-  const clear = () => { state.reset(); legacyRoute = null; legacyUntil = 0; legacyAttacks = []; modern = false; render(null); };
+  const clear = () => { state.reset(); legacyRoute = null; legacyUntil = 0; legacyAttacks = []; modern = false; pointerMotion.reset(); clickId = null; render(null); };
   listen('connect', clear); listen('disconnect', clear); listen('viewerReset', clear);
   listen('viewerSession', value => { state.session(value); legacyRoute = null; legacyAttacks = []; render(state.snapshot()); });
   listen('agentVisualization', value => { if (state.accept(value)) { modern = true; render(state.snapshot()); } });
@@ -89,8 +96,21 @@ export function installAgentVisualization({ socket, document = globalThis.docume
       setText(recent, text);
       recent.dataset.role = frame.input.operations.at(-1)?.kind ?? 'info';
     }
-    pointer.hidden = !frame?.input.pointer;
-    if (frame?.input.pointer) { pointer.style.left = `${frame.input.pointer.x * 100}vw`; pointer.style.top = `${frame.input.pointer.y * 100}vh`; }
+    const cursor = visible('agentPointer') ? resolveAgentPointer(frame, {width: window.innerWidth, height: window.innerHeight,
+      project, slotPosition, firstPerson}) : null;
+    pointer.hidden = !cursor;
+    const point = pointerMotion.step(cursor, window.performance.now(), {width: window.innerWidth, height: window.innerHeight,
+      reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true});
+    if (cursor) { pointer.style.left = `${point.x}px`; pointer.style.top = `${point.y}px`;
+      pointer.dataset.click = String(cursor.click); pointer.dataset.button = cursor.button ?? '';
+      pointer.dataset.source = cursor.source; setText(pointer.children[1], cursor.label); }
+    clickMarker.hidden = !cursor?.click;
+    if (cursor?.click) {
+      clickMarker.style.left = `${cursor.x}px`; clickMarker.style.top = `${cursor.y}px`;
+      clickMarker.dataset.button = cursor.button ?? '';
+      const id = frame.input.operations.at(-1)?.id;
+      if (clickId !== id) { clickId = id; clickMarker.replaceChildren(); make('span', '', clickMarker); }
+    }
     const ref = frame?.presentation, media = frame?.media;
     presentation.hidden = !ref;
     const key = ref ? `${state.epoch}:${ref.revision}:${media ? 'ready' : 'waiting'}` : '';

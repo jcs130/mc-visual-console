@@ -25,6 +25,7 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
       for(const mesh of meshes)mesh.removeFromParent();const mesh=new THREE.Mesh(geometry,material);group.add(mesh);merged.push(geometry);
     });
     const root=new THREE.Group(),orientation=new THREE.Group(),content=new THREE.Group();
+    root.name='paper-ysm-player';
     root.add(orientation);orientation.add(content);orientation.scale.set(-1,-1,1);orientation.position.y=Math.fround(.01);content.position.y=-1.5;content.add(model.root);
     // YSM2.4.1's documented omitted-property default is .7, not one.
     const width=definition.properties?.width_scale??.7,height=definition.properties?.height_scale??.7;
