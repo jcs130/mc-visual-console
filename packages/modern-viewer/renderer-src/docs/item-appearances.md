@@ -14,6 +14,8 @@ node tools/build-minecraft-viewer-client.mjs . E:/MC/research/NEW-viewer-assets 
 
 安装器先核对所有文件摘要及资产版本，拒绝覆盖已有 `public/item-appearances`。替换整份候选资产目录，不在运行目录叠加旧文件。宿主也须拉取更新：`packages/modern-viewer/src/mc-modern-viewer.mts` 在既有静态服务下开放精确 `/item-appearances/` 路径，无新端口；仅更新浏览器 bundle 而继续运行旧宿主会得到 404。
 
+构建器根据校验过的安装清单决定是否加载此外观包。未安装时，通用 1.20.6 构建不请求 `/item-appearances/`，保留编号的物品仍明确不可用；安装后须重新构建，才能启用原资源加载和摘要校验。
+
 相机沿既有 `prepare-photo-camera.mjs` 冻结这份新资产和共享桥，然后经原维护流程切换配置。外机 OBS／Web 需由实际运行端更新及重启，Git 推送不代表远端已生效。
 
 ## 协议与生命周期

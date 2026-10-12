@@ -18,6 +18,13 @@ const fetcher=async url=>{const name=url.slice('/item-appearances/'.length),byte
 const textureLoader=async()=>new THREE.Texture({width:32,height:32});
 async function registry(){const result=new ItemAppearanceRegistry();await loadItemAppearancePack(result,{fetcher,textureLoader});return result;}
 
+test('an uninstalled optional appearance pack makes no HTTP request and leaves reserved items unavailable',async()=>{
+  const r=new ItemAppearanceRegistry();let requests=0;
+  const loaded=await loadItemAppearancePack(r,{enabled:false,fetcher:async()=>{requests++;throw Error('Unexpected optional asset request');}});
+  assert.equal(loaded,false);assert.equal(requests,0);
+  assert.equal(r.reserved(item()),true);assert.equal(r.resolve(item()),null);assert.equal(r.stats().items,0);
+});
+
 test('LAN HTTP SHA-256 fallback matches Node for binary data and padding boundaries',()=>{
   for(const size of [0,1,3,55,56,63,64,65,511,4096,65536]){
     const bytes=Uint8Array.from({length:size},(_,n)=>(n*17+size)%256);

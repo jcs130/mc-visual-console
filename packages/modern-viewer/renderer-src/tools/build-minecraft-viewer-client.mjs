@@ -285,7 +285,10 @@ const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryP
 await mkdir(path.join(outputRoot, 'dist'), { recursive: true })
 await mkdir(path.join(outputRoot, 'public'), { recursive: true })
 const buildResult = await build({
-  entryPoints: [clientFile], bundle: true, define: { 'process.env.NODE_ENV': '"production"' },
+  entryPoints: [clientFile], bundle: true, define: {
+    'process.env.NODE_ENV': '"production"',
+    'globalThis.itemAppearancePackAvailable': JSON.stringify(itemAppearances !== null),
+  },
   format: 'esm', legalComments: 'none', loader: { '.png': 'dataurl' }, minify: true,
   outfile: path.join(outputRoot, 'dist', 'modern-viewer.js'), platform: 'browser',
   plugins: [

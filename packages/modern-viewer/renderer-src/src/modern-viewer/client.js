@@ -926,7 +926,7 @@ async function initializeRenderer(version) {
       setBlockStateId: () => {},
     };
     await viewer.startWorld(emptyWorld, renderDistance, viewer.playerState.reactive, initial);
-    try { await loadItemAppearancePack(paperItemAppearances); }
+    try { await loadItemAppearancePack(paperItemAppearances, { enabled: globalThis.itemAppearancePackAvailable !== false }); }
     catch (error) { paperItemAppearances.error=String(error.message); }
     installItemAppearanceRenderer(globalThis.world,paperItemAppearances);
     globalThis.itemAppearanceDiagnostics=()=>paperItemAppearances.stats();

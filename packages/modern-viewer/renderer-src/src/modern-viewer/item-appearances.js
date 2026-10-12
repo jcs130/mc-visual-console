@@ -54,10 +54,11 @@ export function sha256Bytes(bytes) {
   return h.map(n=>n.toString(16).padStart(8,'0')).join('');
 }
 
-export async function loadItemAppearancePack(registry,{fetcher=fetch,textureLoader=async bytes=>{
+export async function loadItemAppearancePack(registry,{enabled=true,fetcher=fetch,textureLoader=async bytes=>{
   const url=URL.createObjectURL(new Blob([bytes],{type:'image/png'}));
   try{return await new THREE.TextureLoader().loadAsync(url);}finally{URL.revokeObjectURL(url);}
 }}={}) {
+  if(!enabled)return false;
   const response=await fetcher('/item-appearances/manifest.json');
   if(response.status===404)return false;
   if(!response.ok)throw Error('ITEM_APPEARANCE_MANIFEST_UNAVAILABLE');
