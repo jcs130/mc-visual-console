@@ -3,21 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Agent Harness · 决策与执行指标</title>
+  <title>Agent 运行概览</title>
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/dashboard.css">
   <script src="/app.js" defer></script>
 </head>
 <body class="dashboard">
 <main class="dashboard-panel">
-  <header class="dashboard-heading"><div><div class="eyebrow">AGENT HARNESS / OBSERVABILITY</div><h1><span class="signal" id="signal"></span>决策与执行指标</h1><p>系统 1、系统 2、方法演进与资源消耗</p></div><div class="dashboard-nav"><span id="monitor-state">只读监测</span><a href="/overlay">OBS 小窗 ↗</a></div></header>
-  <section class="detail-card" aria-label="独立 Agent 运行数据"><div class="card-heading"><h2>具身执行与方法演进</h2><span id="harness-state">独立宿主数据待接入</span></div><p id="harness-run" class="note">—</p><div class="metric-grid">
-    <div class="metric"><label>工具调用 / 返回 / 错误</label><strong class="token-cost" id="harness-tools">—</strong><small>运行时实测；返回不等于目标完成</small></div>
-    <div class="metric"><label>工具返回 P50 / P95</label><strong class="token-cost" id="harness-latency">—</strong><small>不等于游戏任务执行时长</small></div>
-    <div class="metric"><label>方法执行 / 评价 / 复用</label><strong class="token-cost" id="harness-learning">—</strong><small>宿主上报；不自动推断能力提升</small></div>
-    <div class="metric"><label>统计覆盖</label><strong class="token-cost" id="harness-coverage">—</strong><small>当前进程 · 近 10 分钟</small></div>
-  </div><div class="table-scroll"><table class="harness-table"><thead><tr><th>宿主上报通道</th><th>完成 / 失败</th><th>耗时 P50 / P95</th><th>首输出 P50 / P95</th><th>缓存复用 / 样本</th><th>输入 / 输出 / 思考</th></tr></thead><tbody id="harness-models"></tbody></table></div>
-  <div id="harness-methods" class="method-list"></div><p class="note">未上报的模型读数保持未知。方法作者、父版本和制品可追踪；真实改善需要展开执行回执、现场变化与可比样本。</p></section>
+  <header class="dashboard-heading"><div><h1><span class="signal" id="signal"></span>运行概览</h1><p>当前阶段 · 反应速度 · 最近失败</p></div><div class="dashboard-nav"><span id="monitor-state">等待数据</span><a href="/overlay">OBS 小窗 ↗</a><time id="updated">更新 —</time></div></header>
+  <section id="overview-empty" class="empty-state" aria-label="运行数据尚未接入">
+    <span class="empty-marker">等待接入</span><h2 id="overview-empty-title">尚未接入 Agent 运行数据</h2><p id="overview-empty-text">接入后显示当前阶段、模型响应耗时和最近失败。</p>
+    <details class="setup-help"><summary>数据源设置</summary><p>独立 MCP：配置 metricsPort，再将监测配置中的 harness.metricsUrl 指向该实例的 /api/harness/metrics。</p><p>Cortico：配置 brain.metricsUrl，指向宿主提供的只读策略指标。</p></details>
+  </section>
+  <div id="overview-data" class="overview-content" hidden>
+    <section class="focus-card" aria-label="当前运行阶段">
+      <div class="focus-main"><div class="phase-line"><span class="section-label">当前阶段</span><h2 id="overview-phase">—</h2><span id="overview-source" class="source-tag"></span></div><p id="overview-request" class="request-line"></p></div>
+      <div class="focus-bottom"><span id="overview-work"></span><span id="overview-coverage"></span></div>
+    </section>
+    <section id="response-panel" class="detail-card" aria-label="Agent 模型反应速度" hidden>
+      <div class="card-heading"><h2>反应速度</h2><span>近 10 分钟 · 宿主实测上报</span></div>
+      <div class="response-head"><span>模型通道</span><span>首输出</span><span>完整请求</span><span>缓存复用</span></div><div id="overview-models" class="response-list"></div>
+      <p class="section-caption">耗时显示 P50 / P95；缓存按有成对读数的输入 token 加权。</p>
+    </section>
+    <section class="issues-card" aria-label="最近失败"><h2>最近失败</h2><ul id="overview-issues"></ul></section>
+  </div>
+  <details id="learning-panel" class="disclosure" hidden><summary><span>方法记录</span><small id="learning-summary"></small></summary><div class="disclosure-body"><p id="harness-state" class="section-caption"></p><div id="harness-methods" class="method-list"></div><p class="section-caption">阶段来自宿主上报；改善效果需对应执行回执与世界变化。</p></div></details>
+  <details id="diagnostics" class="disclosure" hidden><summary><span>技术详情</span><small>请求参数 · 资源读数 · 验证统计</small></summary><div class="disclosure-body"><div id="brain-details" class="technical-sections" hidden>
   <section class="config-card" aria-label="配置快照"><div><b>策略配置</b><span id="policy-source">读取中</span></div><p id="policy-summary">—</p><small id="active-connection">活动主连接 —</small></section>
   <section class="detail-card" aria-label="逐次策略"><div class="card-heading"><h2 id="selection-title">本次策略</h2><span id="selection-source">逐次策略待接入</span></div><div class="detail-grid">
     <div><label>请求通道 / 模型</label><b id="detail-route">—</b></div><div><label>选择来源</label><b id="detail-origin">—</b></div>
@@ -39,10 +50,10 @@
     <div class="metric"><label>终态待验证</label><strong id="metric-unknown">—</strong><small>不纳入已验证成功率分母</small></div>
     <div class="metric"><label>输入 / 输出 / 思考 token</label><strong class="token-cost" id="metric-tokens">— / — / —</strong><small id="usage-coverage">主模型与后台通道 · 思考是输出的子集</small></div>
   </div><p class="note">任务成功来自环境验证，回退、重试或工具受理均不代表完成。恢复案例须保留原任务关联；零样本显示“—”。</p></section>
-  <section class="detail-card" aria-label="推理与语音资源"><div class="card-heading"><h2>模型与语音资源</h2><span>独立执行采样</span></div><div class="runtime-grid"><section class="model" id="main" aria-label="主模型"></section><section class="model" id="system1" aria-label="系统1决策模型"></section></div>
+  </div><section id="service-details" class="detail-card" aria-label="推理与语音资源" hidden><div class="card-heading"><h2>模型服务与语音</h2><span>共享服务采样</span></div><div class="runtime-grid"><section class="model" id="main" aria-label="主模型服务"></section><section class="model" id="system1" aria-label="系统1模型服务"></section></div>
     <section class="tts"><div class="tts-title"><span class="tiny-dot" id="tts-dot"></span><strong>TTS</strong><span id="tts-label">本地合成</span></div><div class="tts-values"><div><span>合成中</span><b id="tts-active">—</b></div><div><span>等待</span><b id="tts-waiting">—</b></div><div><span>上次合成</span><b id="tts-duration">—</b></div><div><span>待发项</span><b id="tts-pending">—</b></div></div></section>
   </section>
-  <footer><div class="connections" title="已建立TCP入口连接，不代表调用次数或当前请求来源"><span>入口连接采样</span><b>NEKO <i id="neko">—</i></b><b>MC <i id="mc">—</i></b><b id="unclassified" hidden>其他 <i>—</i></b></div><time id="updated">更新 —</time></footer>
+  <footer id="connection-details" hidden><div class="connections" title="已建立TCP入口连接，不代表调用次数或当前请求来源"><span>入口连接采样</span><b>NEKO <i id="neko">—</i></b><b>MC <i id="mc">—</i></b><b id="unclassified" hidden>其他 <i>—</i></b></div></footer></div></details>
 </main>
 </body>
 </html>

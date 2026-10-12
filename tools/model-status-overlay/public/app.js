@@ -147,31 +147,87 @@ function renderBrain(age) {
 function renderHarness(age) {
   if (!$("harness-state")) return;
   const h = current.harness, fresh = h && !expired(h, age) && h.source === "harness-metadata";
-  $("harness-state").textContent = fresh ? "运行时实测 + 宿主上报" : "独立宿主数据未验证";
-  setText("harness-run", fresh ? `运行 ${h.run || dash} · ${h.phase || dash}` : dash);
-  setText("harness-tools", fresh && h.tools ? [h.tools.calls, h.tools.returned, h.tools.errors].map(integer).join(" / ") : dash);
-  const msPair = d => d ? `${finite(d.p50) ? d.p50.toFixed(0) : dash} / ${finite(d.p95) ? d.p95.toFixed(0) : dash} ms` : dash;
-  setText("harness-latency", fresh ? msPair(h.tools?.elapsedMs) : dash);
-  setText("harness-coverage", fresh ? `${integer(h.window?.coveredSeconds)}s · ${h.window?.complete ? "完整" : "部分"}` : dash);
-  const stages = fresh ? h.learning?.stages : null;
-  setText("harness-learning", stages ? [stages.executed, stages.evaluated, stages.reused].map(integer).join(" / ") : dash);
-  const models = $("harness-models"); models.replaceChildren();
-  for (const m of fresh ? h.models || [] : []) {
-    const row = document.createElement("tr");
-    for (const value of [{ system1: "系统 1", system2: "系统 2", background: "后台" }[m.role] || dash,
-      `${integer(m.completed)} / ${integer(m.failed)}`, msPair(m.elapsedMs), msPair(m.ttftMs),
-      `${ratio(m.cacheRatio)} / ${integer(m.cacheSamples)}`, [m.inputTokens?.total, m.outputTokens?.total, m.reasoningTokens?.total].map(integer).join(" / ")]) {
-      const cell = document.createElement("td"); cell.textContent = value; row.append(cell);
-    }
-    models.append(row);
-  }
+  const methods = fresh ? h.learning?.latest || [] : [];
+  $("learning-panel").hidden = methods.length === 0;
+  setText("harness-state", fresh ? `运行 ${h.run || dash} · 宿主上报` : "方法记录未验证");
+  setText("learning-summary", fresh ? `执行 ${integer(h.learning?.stages?.executed)} · 复用 ${integer(h.learning?.stages?.reused)}` : "");
   const list = $("harness-methods"); list.replaceChildren();
-  for (const m of fresh ? h.learning?.latest || [] : []) {
+  const stages = { authored: "编写", revised: "修订", validated: "校验", executed: "执行", evaluated: "评价", reused: "复用", reverted: "回退" };
+  for (const m of methods.slice(-5).reverse()) {
     const item = document.createElement("div");
-    item.textContent = `${m.method || dash} · ${m.stage || dash} · 作者 ${m.author || dash} · ${m.sourceHash?.slice(0, 12) || dash} ← ${m.parentHash?.slice(0, 12) || dash} · 上报结果 ${m.outcome || dash} · 回执 ${m.receipt?.slice(0, 16) || dash}`;
+    item.className = "method-record";
+    const name = document.createElement("b"), version = document.createElement("small");
+    name.textContent = `${m.method || dash} · ${stages[m.stage] || m.stage || dash}`;
+    version.textContent = `作者 ${m.author || dash} · ${m.sourceHash?.slice(0, 12) || dash}${m.parentHash ? ` ← ${m.parentHash.slice(0, 12)}` : ""}`;
+    item.append(name, version);
     item.title = `制品 ${m.artifact || dash}\n源码 ${m.sourceHash || dash}\n执行 ${m.executionId || dash}\n回执 ${m.receipt || dash}`;
     list.append(item);
   }
+}
+
+function renderOverview(age) {
+  if (!$("overview-data")) return;
+  const raw = current.harness;
+  const h = raw?.source === "harness-metadata" && !expired(raw, age) ? raw : null;
+  const b = current.brain && !expired(current.brain, age) ? current.brain : null;
+  const usefulBrain = !!(b && (brainPhase[b.phase] || b.selection || b.statistics));
+  const available = !!h || usefulBrain;
+  $("overview-data").hidden = !available;
+  $("overview-empty").hidden = available;
+  const stale = raw?.source === "stale" || current.brain?.source === "stale" ||
+    (finite(raw?.sampledAt) && expired(raw, age)) || (finite(current.brain?.sampledAt) && expired(current.brain, age));
+  setText("overview-empty-title", stale ? "Agent 运行数据已过期" : "尚未接入 Agent 运行数据");
+  setText("overview-empty-text", stale ? "当前阶段和最近统计未验证，等待恢复采样。" : "接入后显示当前阶段、模型响应耗时和最近失败。");
+  const source = usefulBrain ? "框架阶段" : h ? "独立运行时" : "宿主未接入";
+  setText("overview-source", source);
+  const runtimePhase = { starting: "引擎启动中", started: "引擎已启动", stopping: "引擎停止中", disconnected: "游戏引擎未启动" };
+  setText("overview-phase", usefulBrain && brainPhase[b.phase] ? brainPhase[b.phase] : runtimePhase[h?.phase] || "阶段未提供");
+  const s = b?.selection;
+  setText("overview-request", s ? `${s.scope === "last" ? "上次" : "本次"}请求：${roles[s.role] || "未知通道"} · 思考 ${effort(s)}${finite(s.actualInputTokens) ? ` · 输入 ${tokens(s.actualInputTokens)}` : ""}` : "尚未提供逐次请求信息");
+  setText("overview-work", h?.tools ? `工具调用中 ${integer(h.tools.active)} · 已返回 ${integer(h.tools.returned)} · 返回失败 ${integer(h.tools.errors)}` : "工具调用读数未接入");
+  const w = h?.window || b?.statistics;
+  setText("overview-coverage", w ? `近 10 分钟 · ${w.complete ? "完整采样" : `已采样 ${integer(w.coveredSeconds)} 秒`}` : "统计窗口未提供");
+  const models = h?.models?.filter(m => ["system1", "system2"].includes(m.role) && (m.calls > 0 || m.completed > 0 || m.active > 0)) || [];
+  $("response-panel").hidden = models.length === 0;
+  const list = $("overview-models"); list.replaceChildren();
+  const labels = ["模型通道", "首输出", "完整请求", "缓存复用"];
+  for (const m of models) {
+    const duration = d => d?.samples > 0 && finite(d.p50) && finite(d.p95)
+      ? [`${seconds(d.p50 / 1000)}s`, `P95 ${seconds(d.p95 / 1000)}s · ${integer(d.samples)} 次`]
+      : ["待采样", "没有有效耗时样本"];
+    const roleLabel = m.role === "system2" ? "主决策" : "快决策";
+    const values = [[m.role === "system2" ? "系统 2" : "系统 1", `${roleLabel}${m.active > 0 ? ` · 进行中 ${integer(m.active)}` : ""}`],
+      duration(m.ttftMs), duration(m.elapsedMs), [m.cacheSamples > 0 ? ratio(m.cacheRatio) : dash, `${integer(m.cacheSamples)} 个样本`]];
+    const row = document.createElement("div"); row.className = "response-row";
+    for (const [index, value] of values.entries()) {
+      const cell = document.createElement("div"), label = document.createElement("span"), strong = document.createElement("strong"), small = document.createElement("small");
+      cell.className = "response-cell"; label.className = "mobile-label";
+      label.textContent = labels[index]; strong.textContent = value[0]; small.textContent = value[1];
+      cell.append(label, strong, small); row.append(cell);
+    }
+    list.append(row);
+  }
+  const issues = [];
+  const harnessModelFailures = h?.models?.some(m => finite(m.failed));
+  for (const m of h?.models || []) if (m.failed > 0)
+    issues.push(`${({ system2: "系统 2", system1: "系统 1", background: "后台" })[m.role] || "模型"}：${integer(m.failed)} / ${integer(m.completed)} 次已结束请求失败`);
+  if (h?.tools?.errors > 0) issues.push(`游戏工具：${integer(h.tools.errors)} 次返回失败`);
+  if (!harnessModelFailures && b?.statistics?.failed_calls > 0) issues.push(`模型调用：${integer(b.statistics.failed_calls)} / ${integer(b.statistics.calls)} 次失败`);
+  if (s?.origin === "fallback") issues.push(`${s.scope === "last" ? "上次" : "本次"}策略使用了回退`);
+  const known = finite(h?.tools?.errors) || finite(b?.statistics?.failed_calls) || h?.models?.some(m => finite(m.failed));
+  $("overview-issues").parentElement.classList.toggle("has-failures", issues.length > 0);
+  const issueList = $("overview-issues"); issueList.replaceChildren();
+  for (const text of issues.length ? issues : [known ? "当前采样窗口内未报告失败" : "失败统计尚未接入"]) {
+    const item = document.createElement("li"); item.textContent = text; issueList.append(item);
+  }
+  const services = current.models.some(m => !expired(m, age)) || !expired(current.tts, age);
+  const connections = !expired(current.connections, age);
+  $("brain-details").hidden = !usefulBrain;
+  $("service-details").hidden = !services;
+  $("connection-details").hidden = !connections;
+  $("diagnostics").hidden = !usefulBrain && !services && !connections;
+  $("monitor-state").textContent = age > 7 ? "数据已过期" : disconnected ? "连接中断" : available ? "宿主数据已连接" : stale ? "宿主数据已过期" : "宿主数据待接入";
+  $("signal").className = `signal ${available && (brainPhase[b?.phase] && b.phase !== "idle" || h?.tools?.active > 0) ? "active" : ""}`;
 }
 
 function render() {
@@ -200,6 +256,7 @@ function render() {
   $("signal").className = `signal ${anyActive ? "active" : anyFresh ? "" : "error"}`;
   $("monitor-state").textContent = age > 7 ? "数据已过期" : disconnected ? "连接中断" : frameworkPhase || "只读监测";
   $("updated").textContent = finite(current.updatedAt) ? `更新 ${new Date(current.updatedAt * 1000).toLocaleTimeString("zh-CN", { hour12: false })}` : "更新 —";
+  renderOverview(age);
 }
 
 async function refresh() {

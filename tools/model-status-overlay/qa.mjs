@@ -14,6 +14,11 @@ const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_P
 const report = [];
 const issues = [];
 const context = await browser.newContext({ viewport: { width: 440, height: 290 }, deviceScaleFactor: 1 });
+context.on("page", page => {
+  page.on("requestfailed", req => {
+    if (["stylesheet", "script"].includes(req.resourceType())) issues.push(req.url() + ": " + req.failure()?.errorText);
+  });
+});
 
 function fixture(change = {}, brainChange = {}) {
   const now = Date.now() / 1000;
@@ -43,9 +48,13 @@ function fixture(change = {}, brainChange = {}) {
     tts: { sampledAt: now, freshForSeconds: 16, connected: true, synthesizing: 1, waiting: 3, lastSynthesisSeconds: .82, pending: 2 },
     connections: { sampledAt: now, freshForSeconds: 16, NEKO: 3, MC: 8, unclassified: 5 },
     harness: { source: "harness-metadata", sampledAt: now, sourceAt: now, freshForSeconds: 7, run: "fixture-run", phase: "started",
-      window: { coveredSeconds: 24, complete: false }, tools: { calls: 3, returned: 2, errors: 1, elapsedMs: { samples: 2, p50: 4, p95: 16 } },
-      models: [{ role: "system2", completed: 2, failed: 1, elapsedMs: { p50: 8500, p95: 12000 }, ttftMs: { p50: 6000, p95: 10000 },
-        cacheRatio: .8, cacheSamples: 1, inputTokens: { total: 20000 }, outputTokens: { total: null }, reasoningTokens: { total: null } }],
+      window: { coveredSeconds: 24, complete: false }, tools: { calls: 3, returned: 2, errors: 1, active: 1, elapsedMs: { samples: 2, p50: 4, p95: 16 } },
+      models: [{ role: "system2", calls: 3, completed: 2, failed: 1, active: 1,
+        elapsedMs: { samples: 2, p50: 8500, p95: 12000 }, ttftMs: { samples: 2, p50: 6000, p95: 10000 },
+        cacheRatio: .8, cacheSamples: 1, inputTokens: { total: 20000 }, outputTokens: { total: null }, reasoningTokens: { total: null } },
+        { role: "system1", calls: 12, completed: 12, failed: 0, active: 0,
+          elapsedMs: { samples: 12, p50: 300, p95: 650 }, ttftMs: { samples: 12, p50: 180, p95: 400 },
+          cacheRatio: .94, cacheSamples: 12 }],
       learning: { stages: { executed: 1, evaluated: 1, reused: 0 }, latest: [{ method: "rail", stage: "evaluated", author: "fixture-agent", sourceHash: "a".repeat(64), outcome: "unknown" }] } },
     brain, updatedAt: now, serverTime: now };
 }
@@ -142,34 +151,91 @@ try {
   assert.equal(await disconnected.locator("#main .status").textContent(), "断连");
   assert.equal(await disconnected.locator("#main .output-value").textContent(), "—tok/s");
   await disconnected.close();
-  for (const [name, useFixture] of [["brain-dashboard-actual", false], ["brain-dashboard-fixture", true]]) {
+  const cases = [
+    ["brain-dashboard-actual", null],
+    ["brain-dashboard-fixture", fixture],
+    ["brain-dashboard-services-only", () => ({ ...fixture(), brain: null, harness: null })],
+    ["brain-dashboard-mixed-sources", () => {
+      const data = fixture(); data.harness.models = []; return data;
+    }],
+    ["brain-dashboard-stale", () => {
+      const data = fixture();
+      data.brain.sampledAt -= 20; data.harness.sampledAt -= 20;
+      return data;
+    }],
+    ["brain-dashboard-zero-samples", () => {
+      const data = fixture({}, { statistics: null, selection: null });
+      data.harness.tools = { calls: 0, returned: 0, errors: 0, active: 0 };
+      data.harness.models = [{ role: "system2", calls: 1, active: 1, completed: 0, failed: 0,
+        elapsedMs: { samples: 0, p50: 0, p95: 0 }, ttftMs: { samples: 0, p50: 0, p95: 0 }, cacheSamples: 0, cacheRatio: null }];
+      data.harness.learning.latest = [];
+      return data;
+    }],
+  ];
+  for (const [name, makeData] of cases) {
     const page = await context.newPage();
     await page.setViewportSize({ width: 1040, height: 900 });
     page.on("pageerror", error => issues.push(error.message));
-    if (useFixture) await page.route("**/api/state", route => route.fulfill({ json: fixture() }));
+    if (makeData) await page.route("**/api/state", route => route.fulfill({ json: makeData() }));
     await page.goto(`${base}/brain`);
     await page.waitForFunction(() => document.body.dataset.ready === "true");
+    await page.waitForFunction(() => getComputedStyle(document.querySelector(".dashboard-panel")).display === "grid");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
+    assert.equal(await page.locator("#diagnostics").getAttribute("open"), null);
+    assert.equal(await page.locator("#learning-panel").getAttribute("open"), null);
     await page.screenshot({ path: path.join(out, `${name}.png`), fullPage: true });
-    if (useFixture) {
+    const overviewHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    assert.ok(overviewHeight <= 900, name + " overview should fit one desktop screen; actual " + overviewHeight);
+    if (name === "brain-dashboard-fixture") {
+      assert.ok(await page.locator(".dashboard-panel").evaluate(n => n.getBoundingClientRect().height <= 600), "default overview should stay compact");
+      assert.equal(await page.locator("#overview-phase").textContent(), "模型决策");
+      assert.match(await page.locator("#overview-request").textContent(), /本次请求.*medium.*32,768 tok/);
+      assert.match(await page.locator("#overview-work").textContent(), /工具调用中 1.*已返回 2.*返回失败 1/);
+      assert.match(await page.locator("#overview-coverage").textContent(), /已采样 24 秒/);
+      const response = await page.locator("#overview-models").textContent();
+      assert.match(response, /系统 2.*6\.0s.*P95 10\.0s.*8\.5s.*80%/);
+      assert.match(response, /系统 1.*0\.18s.*0\.30s.*94%/);
+      assert.match(await page.locator("#overview-issues").textContent(), /系统 2：1 \/ 2.*游戏工具：1 次返回失败/);
+      assert.equal(await page.locator("#harness-methods").isVisible(), false);
+      await page.locator("#learning-panel > summary").click();
+      assert.equal(await page.locator("#harness-methods").isVisible(), true);
+      assert.match(await page.locator("#harness-methods").textContent(), /rail · 评价.*fixture-agent/);
+      await page.locator("#diagnostics > summary").click();
       assert.equal(await page.locator("#metric-adaptive").textContent(), "60%");
       assert.equal(await page.locator("#metric-recovery").textContent(), "50%");
       assert.equal(await page.locator("#provider-confirmed").textContent(), "服务确认 —");
       assert.ok((await page.locator("#detail-origin").textContent()).includes("路由 配置 · 阅读 自动选择"));
-      assert.equal(await page.locator("#harness-tools").textContent(), "3 / 2 / 1");
-      assert.ok((await page.locator("#harness-models").textContent()).includes("8500 / 12000 ms"));
-      assert.ok((await page.locator("#harness-methods").textContent()).includes("fixture-agent"));
+      await page.clock.install();
+      await page.clock.fastForward(2100);
+      assert.equal(await page.locator("#diagnostics").getAttribute("open"), "");
+      await page.locator("#learning-panel > summary").click();
+      await page.locator("#diagnostics > summary").click();
+    } else if (name === "brain-dashboard-mixed-sources") {
+      assert.match(await page.locator("#overview-issues").textContent(), /模型调用：2 \/ 20 次失败/);
+    } else if (name === "brain-dashboard-services-only" || name === "brain-dashboard-stale") {
+      assert.equal(await page.locator("#overview-data").isVisible(), false);
+      assert.equal(await page.locator("#overview-empty").isVisible(), true);
+      assert.equal(await page.locator("#response-panel").isVisible(), false);
+      assert.equal(await page.locator("#learning-panel").isVisible(), false);
+      assert.equal(await page.locator("#brain-details").isVisible(), false);
+      assert.equal(await page.locator("#overview-empty-title").textContent(), name.endsWith("stale") ? "Agent 运行数据已过期" : "尚未接入 Agent 运行数据");
+    } else if (name === "brain-dashboard-zero-samples") {
+      assert.match(await page.locator("#overview-models").textContent(), /待采样.*待采样/);
+      assert.doesNotMatch(await page.locator("#overview-models").textContent(), /0\.00s/);
+      assert.equal(await page.locator("#overview-issues").textContent(), "当前采样窗口内未报告失败");
+      assert.equal(await page.locator("#learning-panel").isVisible(), false);
     } else if (await page.evaluate(() => !current.brain?.selection)) {
       assert.equal(await page.locator("#detail-history").textContent(), "— → —");
       assert.equal(await page.locator("#metric-adaptive").textContent(), "—");
     }
     await page.setViewportSize({ width: 440, height: 900 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
+    if (name === "brain-dashboard-fixture") await page.screenshot({ path: path.join(out, "brain-dashboard-mobile.png"), fullPage: true });
     await page.close();
   }
   assert.deepEqual(issues, [], "browser errors");
   await fs.writeFile(path.join(out, "layout-report.json"), JSON.stringify({ passed: true, report, browserErrors: issues }, null, 2));
-  console.log(JSON.stringify({ passed: true, verifiedViews: report.length, dashboardViews: 2, dimensions: "440x290", panel: "424x272", browserErrors: issues }));
+  console.log(JSON.stringify({ passed: true, verifiedViews: report.length, dashboardViews: cases.length, dimensions: "440x290", panel: "424x272", browserErrors: issues }));
 } finally {
   await browser.close();
 }
