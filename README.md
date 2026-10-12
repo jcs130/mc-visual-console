@@ -15,7 +15,7 @@ Mineflayer 驱动的 Minecraft 网页可视化。现代画面渲染器的源码�
 | 千灯纪画面预设 | 精确身份匹配的命名 NPC、肖像、美术档案、技能视觉类型 | `renderer-src/src/modern-viewer/presets/qiandengji/` 和 `renderer-src/tools/presets/`；构建时可选择 |
 | 服务端状态 | 可选的 `mcagent:state`、`mcagent:event` 插件消息 | 千灯纪服务端提供；普通服务器无需这些消息，通用画面照常运行 |
 
-现代网页画面**不在**千灯纪 World 扩展里。千灯纪 World 复用 Cortico 的 Minecraft 连接和执行器，Cortico 在 `:7793` 提供 viewer 桥接，本仓库提供浏览器渲染源码。通用画面只显示客户端收到的信息；服务端独有的魔力、技能冷却等需服务端另发结构化状态。
+现代网页画面**不在**千灯纪 World 扩展里。千灯纪 World 在独立 Minecraft 核心上维护连接和执行器，宿主提供 viewer 桥接，本仓库提供浏览器渲染源码。通用画面只显示客户端收到的信息；服务端独有的魔力、技能冷却等需服务端另发结构化状态。
 
 ## 构建 1.20.6 画面
 
@@ -95,3 +95,7 @@ Neko 接入与更新检查见 [Neko 复用说明](docs/NEKO-INTEGRATION.md)。
 原资源未变时无需重新导出 Minecraft JAR。不同版本或预设的产物分别构建，不互相覆盖。发布源码、更新本地部署和其他机器完成更新是三个独立结果。
 
 旧版独立控制台、webplay 的实验记录在 [`docs/early-roadmap.md`](docs/early-roadmap.md)。它们与这套 1.20.6 直播画面的构建和兼容承诺不同。
+
+### 显式演出桥
+
+`./performance-relay` 导出 `createRelay({endpoint, sourceId})`。endpoint 必须是完整 HTTP(S) origin，sourceId 必须匹配该 bot 的演出身份。构造时不联网；收到 overlay/stream 请求才核对指定端点的 `/identity`。没有端口发现或回退扫描。宿主未配置时不创建 relay，关闭 viewer 时调用 `close()`。此桥只传递演出内容，不拥有游戏 bot、人格、模型或 TTS。

@@ -21,7 +21,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./protocol": "./src/protocol.ts",
-    "./agent-visuals": "./packages/modern-viewer/renderer-src/host/viewer-agent.mjs"
+    "./agent-visuals": "./packages/modern-viewer/renderer-src/host/viewer-agent.mjs",
+    "./performance-relay": "./packages/modern-viewer/renderer-src/host/viewer-performance-relay.mjs"
   },
   "files": [
     "src",
