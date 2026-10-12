@@ -113,7 +113,7 @@ test('HUD refreshes when identically named swords change model and when the pack
   const context={paperItemAppearances:r,document:{getElementById:()=>root,createElement:node},cortiDurability:()=>null,cortiAppendHeadFace(){},cortiAppendEnchantmentGlint(){},cortiAppendDurability(){}};
   const icons=await readFile(new URL('../minecraft-viewer-item-icon.js',import.meta.url),'utf8');
   // Load only the pure resolver; unrelated head/glint behavior has its own tests.
-  runInNewContext(icons.slice(icons.indexOf('function cortiItemIconUrl'),icons.indexOf('function cortiAppendHeadFace')),context);
+  runInNewContext(icons.slice(icons.indexOf('function cortiItemLabel'),icons.indexOf('function cortiAppendHeadFace')),context);
   runInNewContext(await readFile(new URL('../minecraft-viewer-hud.js',import.meta.url),'utf8'),context);
   const state=id=>({health:20,food:20,hotbar:[{item:{...item(id),customName:'同一个名字'}}]});
   const src=()=>elements.get('[data-corti-slots]').children[0].children[0].src;

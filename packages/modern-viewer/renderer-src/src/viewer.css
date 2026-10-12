@@ -74,8 +74,9 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .corti-level{position:absolute;bottom:59px;left:50%;transform:translateX(-50%);font:bold 20px/20px monospace;color:#80ff20;text-shadow:2px 2px #163500,-2px 2px #163500,2px -2px #163500,-2px -2px #163500;white-space:nowrap}
 .corti-level:empty{display:none}
 .corti-hotbar{position:relative;width:364px;height:44px;background:url('/textures/gui/sprites/hud/hotbar.png') center/364px 44px no-repeat}
-.corti-hotbar-selection{position:absolute;top:-2px;left:4px;width:48px;height:46px;background:url('/textures/gui/sprites/hud/hotbar_selection.png') center/48px 46px no-repeat}
-.corti-hotbar-slots{position:absolute;top:5px;left:8px;display:flex}
+/* Original 182x22 hotbar: item at (3+20*n,3), selection at (-1+20*n,-1), 2x. */
+.corti-hotbar-selection{position:absolute;top:-2px;left:-2px;width:48px;height:46px;background:url('/textures/gui/sprites/hud/hotbar_selection.png') center/48px 46px no-repeat}
+.corti-hotbar-slots{position:absolute;top:4px;left:2px;display:flex}
 .corti-slot{position:relative;width:40px;height:36px}
 .corti-slot img{position:absolute;top:2px;left:4px;width:32px;height:32px;object-fit:contain;image-rendering:pixelated}
 .corti-slot-count{position:absolute;right:0;bottom:-2px;color:#fff;font:bold 17px/18px monospace;text-shadow:2px 2px #222,-1px -1px #222}

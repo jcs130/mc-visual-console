@@ -22,6 +22,8 @@ import { createViewerAgentBridge } from '../renderer-src/host/viewer-agent.mjs'
 export { createViewerAgentBridge, createViewerAgentHub, publishAgentVisualization } from '../renderer-src/host/viewer-agent.mjs'
 import { createViewerAppearanceBridge } from '../renderer-src/host/viewer-appearance.mjs'
 import { serveViewerAsset } from '../renderer-src/host/viewer-asset-server.mjs'
+import { withItemVisualIdentity } from '../renderer-src/src/modern-viewer/item-profile.js'
+import { createViewerHeadTextures } from '../renderer-src/host/viewer-head-textures.mjs'
 
 // 依赖解析锚点：本包 src/ 下没有 node_modules（socket.io / prismarine-viewer / minecraft-data / vec3
 // 都装在宿主 viewer-service/ 里）。所以 require 锚在宿主的目录上，而不是 import.meta.url
@@ -109,20 +111,27 @@ function copyPrimitive(target, source, keys) {
     }
   }
 }
-function sanitizeViewerValue(value, depth, seen) {
+function sanitizeViewerValue(value, depth, seen, maxDepth = 4, budget = { nodes: 1024, chars: 32768, truncated: false }) {
+  if (--budget.nodes < 0) { budget.truncated = true; return undefined }
   if (value === null || typeof value === 'boolean') return value
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
-  if (typeof value === 'string') return value.slice(0, 1024)
+  if (typeof value === 'string') {
+    const text = value.slice(0, Math.max(0, Math.min(maxDepth > 4 ? 16384 : 1024, budget.chars)))
+    budget.chars -= text.length
+    if (text.length !== value.length) budget.truncated = true
+    return text
+  }
   if (typeof value === 'bigint') return value.toString()
-  if (!value || typeof value !== 'object' || depth >= 4) return undefined
+  if (!value || typeof value !== 'object') return undefined
+  if (depth >= maxDepth) { budget.truncated = true; return undefined }
   if (seen.has(value)) return undefined
   seen.add(value)
   try {
-    if (Array.isArray(value)) return value.slice(0, 64).map((e) => sanitizeViewerValue(e, depth + 1, seen) ?? null)
+    if (Array.isArray(value)) return value.slice(0, 64).map((e) => sanitizeViewerValue(e, depth + 1, seen, maxDepth, budget) ?? null)
     if (ArrayBuffer.isView(value)) return undefined
     const out = {}
     for (const [k, v] of Object.entries(value).slice(0, 48)) {
-      const s = sanitizeViewerValue(v, depth + 1, seen)
+      const s = sanitizeViewerValue(v, depth + 1, seen, maxDepth, budget)
       if (s !== undefined) out[k.slice(0, 128)] = s
     }
     return out
@@ -460,11 +469,15 @@ export function serializeViewerItem(bot, value, fallbackSlot, inventorySlot = nu
     if (Number.isFinite(n)) output[key] = n
   }
   if (typeof record.customName === 'string') output.customName = record.customName.slice(0, 256)
+  const itemBudget = { nodes: 1024, chars: 32768, truncated: false }
   for (const key of ['enchants', 'components', 'nbt']) {
-    const sanitized = sanitizeViewerValue(record[key], 0, new WeakSet())
+    const sanitized = sanitizeViewerValue(record[key], 0, new WeakSet(), 12, itemBudget)
     if (sanitized !== undefined) output[key] = sanitized
   }
-  return output
+  const visual = withItemVisualIdentity({ ...record, name, displayName: output.displayName, customName: record.customName })
+  return { ...output, displayName: visual.displayName, customName: visual.customName,
+    headTextureHash: visual.headTextureHash, headTextureStatus: visual.headTextureStatus,
+    ...(itemBudget.truncated ? { visualDataUnavailable: true } : {}) }
 }
 function canonicalViewerItemType(bot, name, runtimeType) {
   // A mod's wire number must never be interpreted as a vanilla numeric ID.
@@ -1056,6 +1069,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   const sessionSlots = new ViewerSessionSlots(MAX_VIEWER_SESSIONS, MAX_CAPTURE_SESSIONS)
   const contentBridge = bot.version === '1.20.6' ? createViewerContentBridge(bot) : null
   const appearanceBridge = bot.version === '1.20.6' ? createViewerAppearanceBridge(bot) : null
+  const headTextures = createViewerHeadTextures()
   const observerBridge = bot.version === '1.20.6' ? createViewerObserverBridge(bot, {
     serializeWindow: window => serializeViewerWindow(bot, window),
   }) : null
@@ -1162,6 +1176,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
       const p = url.pathname
       const strip = (prefix) => (p === prefix || p.startsWith(prefix + '/')) ? p.slice(prefix.length) || '/' : null
       const rel = strip('/third') ?? strip('/dungeon') ?? p // 三视角共用一套资产路由
+      if (await headTextures.serve(req, res, rel, bot)) return
 
       const send = (code, type, body, headers = {}) => {
         res.writeHead(code, { 'Content-Type': type, ...headers })

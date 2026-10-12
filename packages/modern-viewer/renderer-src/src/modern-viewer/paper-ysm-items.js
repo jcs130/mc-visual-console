@@ -3,6 +3,7 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {bakeFaces} from '../native-viewer/model-loader.js';
 import {nativeGeneratedItemElements,nativeHeldItemTransform} from '../native-viewer/native-held-items.js';
 import {paperItemAppearances} from './item-appearances.js';
+import {paperItemHeads} from './item-heads.js';
 
 export function resolvePaperHeldModel(models,name,ancestry=[]) {
   name=name.replace(/^minecraft:/,'');
@@ -46,6 +47,12 @@ const textureId=(textures,value)=>{
 export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTexture,readPixels=pixels,itemAppearances=paperItemAppearances}={}) {
   const name=String(item?.name??'').replace(/^minecraft:/,'');if(!/^[a-z0-9_]{1,96}$/.test(name))throw Error('YSM_ITEM_NAMESPACE_UNSUPPORTED');
   if(item.visualDataUnavailable)throw Error('YSM_ITEM_COMPONENTS_UNAVAILABLE');
+  if (paperItemHeads.reserved(item)) {
+    const result = paperItemHeads.create(item);
+    try { await result.ready; } catch (error) { result.dispose(); throw error; }
+    result.root.applyMatrix4(paperYsmItemMount(result.model.display.thirdperson_righthand, arm));
+    return result;
+  }
   if(itemAppearances.reserved(item)) {
     const result=itemAppearances.createRaw(item),display=result.model.display?.['thirdperson_'+arm+'hand']??{};
     // Both custom and ordinary bakeFaces vertices are already centred. Use

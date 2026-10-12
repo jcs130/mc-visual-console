@@ -18,8 +18,8 @@ function renderCortiSurvivalHud(state) {
   const offhand = state.offhand ?? state.equipment?.[1];
   const signature = [state.health, state.maxHealth, state.absorption, state.food, state.armor, state.oxygen,
     state.inWater, state.experienceLevel, state.experienceProgress, state.quickBarSlot, cortiHudPoisoned,
-    `${offhand?.name ?? ''}:${cortiItemIconUrl(offhand)}:${offhand?.customName ?? ''}:${offhand?.headTextureHash ?? ''}:${offhand?.enchanted === true}:${offhand?.durability?.left ?? ''}`,
-    ...slots.map((row) => `${row?.item?.name ?? ''}:${cortiItemIconUrl(row?.item)}:${row?.item?.count ?? ''}:${row?.item?.customName ?? ''}:${row?.item?.headTextureHash ?? ''}:${row?.item?.enchanted === true}:${row?.item?.durability?.left ?? ''}:${row?.item?.durability?.max ?? ''}`)].join('|');
+    `${offhand?.name ?? ''}:${cortiItemIconUrl(offhand)}:${offhand?.customName ?? ''}:${cortiHeadKey(offhand)}:${offhand?.enchanted === true}:${offhand?.durability?.left ?? ''}`,
+    ...slots.map((row) => `${row?.item?.name ?? ''}:${cortiItemIconUrl(row?.item)}:${row?.item?.count ?? ''}:${row?.item?.customName ?? ''}:${cortiHeadKey(row?.item)}:${row?.item?.enchanted === true}:${row?.item?.durability?.left ?? ''}:${row?.item?.durability?.max ?? ''}`)].join('|');
   if (signature === cortiHudSignature) return;
   cortiHudSignature = signature;
 
@@ -64,7 +64,9 @@ function renderCortiSurvivalHud(state) {
     hearts.children[i].style.gridRow = String(heartRows - Math.floor(i / 10));
   }
   const vitals = root.querySelector('.corti-vitals');
-  const hasAir = state.inWater && oxygen < 20;
+  // Older hosts omit inWater. Passing undefined as classList.toggle's force
+  // toggles the class on every update, adding a third grid row without height.
+  const hasAir = state.inWater === true && oxygen < 20;
   if (vitals) {
     vitals.classList.toggle('corti-has-air', hasAir);
     vitals.style.height = `${Math.max(hasAir ? 54 : 36, heartRows * 18 + 2)}px`;
@@ -92,15 +94,16 @@ function renderCortiSurvivalHud(state) {
   root.querySelector('[data-corti-xp]').style.width = `${Math.round(clamp(number(state.experienceProgress), 0, 1) * 364)}px`;
 
   const selection = root.querySelector('[data-corti-selection]');
-  selection.style.left = `${4 + clamp(Math.floor(number(state.quickBarSlot)), 0, 8) * 40}px`;
+  selection.style.left = `${-2 + clamp(Math.floor(number(state.quickBarSlot)), 0, 8) * 40}px`;
   const offhandSlot = root.querySelector('[data-corti-offhand]');
   if (offhandSlot) {
     const name = typeof offhand?.name === 'string' ? offhand.name.replace(/^minecraft:/, '') : '';
     const safe = /^[a-z0-9_]+$/.test(name) ? name : '';
+    offhandSlot.cortiHeadToken = null; delete offhandSlot.dataset.headStatus;
     offhandSlot.replaceChildren();
     offhandSlot.classList.toggle('corti-enchanted', offhand?.enchanted === true);
     const durability = cortiDurability(offhand);
-    offhandSlot.title = offhand ? `副手：${offhand.displayName || name}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : '副手：空';
+    offhandSlot.title = offhand ? `副手：${cortiItemLabel(offhand)}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : '副手：空';
     if (safe && cortiItemIconUrl(offhand)) {
       const image = document.createElement('img');
       image.alt = '';
@@ -127,13 +130,14 @@ function renderCortiSurvivalHud(state) {
     const item = slots[i]?.item;
     const name = typeof item?.name === 'string' ? item.name.replace(/^minecraft:/, '') : '';
     const safe = /^[a-z0-9_]+$/.test(name) ? name : '';
-    const identity = `${name}:${cortiItemIconUrl(item)}:${item?.count ?? ''}:${item?.customName ?? ''}:${item?.headTextureHash ?? ''}:${item?.enchanted === true}:${item?.durability?.left ?? ''}:${item?.durability?.max ?? ''}`;
+    const identity = `${name}:${cortiItemIconUrl(item)}:${item?.count ?? ''}:${item?.customName ?? ''}:${cortiHeadKey(item)}:${item?.enchanted === true}:${item?.durability?.left ?? ''}:${item?.durability?.max ?? ''}`;
     slot.classList.toggle('corti-enchanted', item?.enchanted === true);
     if (slot.dataset.identity === identity) continue;
     slot.dataset.identity = identity;
+    slot.cortiHeadToken = null; delete slot.dataset.headStatus;
     slot.replaceChildren();
     const durability = cortiDurability(item);
-    slot.title = item ? `${item.displayName || name} × ${item.count || 1}${item.enchanted === true ? ' · 附魔' : ''}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : `快捷栏 ${i + 1}`;
+    slot.title = item ? `${cortiItemLabel(item)} × ${item.count || 1}${item.enchanted === true ? ' · 附魔' : ''}${durability ? ` · 耐久 ${durability.left}/${durability.max}` : ''}` : `快捷栏 ${i + 1}`;
     if (!item) continue;
     if (safe && cortiItemIconUrl(item)) {
       const image = document.createElement('img');
@@ -144,14 +148,14 @@ function renderCortiSurvivalHud(state) {
         image.remove();
         const fallback = document.createElement('span');
         fallback.className = 'corti-item-fallback';
-        fallback.textContent = String(item.displayName || name).slice(0, 2);
+        fallback.textContent = String(cortiItemLabel(item)).slice(0, 2);
         slot.prepend(fallback);
       };
       slot.append(image);
     } else {
       const fallback = document.createElement('span');
       fallback.className = 'corti-item-fallback';
-      fallback.textContent = String(item.displayName || name).slice(0, 2);
+      fallback.textContent = String(cortiItemLabel(item)).slice(0, 2);
       slot.append(fallback);
     }
     cortiAppendHeadFace(slot, item, 4);

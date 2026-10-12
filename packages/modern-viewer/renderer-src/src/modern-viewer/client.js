@@ -14,6 +14,8 @@ import { createAgentWorldProjector } from "./agent-visual-projection.js";
 import { resolveObsCamera, horizontalFov } from "./obs-camera.js";
 import { installObsHandsRenderer, HeldItemUseClock, installHeldItemUseMotion, obsHandAvatarState } from "./obs-hands.js";
 import {paperItemAppearances,loadItemAppearancePack,installItemAppearanceRenderer,itemAppearanceKey} from './item-appearances.js';
+import {paperItemHeads,installItemHeadRenderer} from './item-heads.js';
+import {itemDisplayName} from './item-profile.js';
 import {
   Box3,
   BoxGeometry,
@@ -929,6 +931,8 @@ async function initializeRenderer(version) {
     try { await loadItemAppearancePack(paperItemAppearances, { enabled: globalThis.itemAppearancePackAvailable !== false }); }
     catch (error) { paperItemAppearances.error=String(error.message); }
     installItemAppearanceRenderer(globalThis.world,paperItemAppearances);
+    installItemHeadRenderer(globalThis.world,paperItemHeads);
+    globalThis.itemHeadDiagnostics = () => paperItemHeads.stats();
     globalThis.itemAppearanceDiagnostics=()=>paperItemAppearances.stats();
     if (isObsOverlay) {
       worldView = viewer.worldView;
@@ -3052,7 +3056,7 @@ function unwrapHotbarSlot(slot) {
 }
 
 function updateHandItem(hand, item) {
-  const key = item ? `${itemAppearanceKey(item)}:${paperItemAppearances.revision}:${item.type ?? item.itemId ?? ""}:${item.metadata ?? ""}:${item.enchanted === true}` : "empty";
+  const key = item ? `${itemAppearanceKey(item)}:${paperItemAppearances.revision}:${paperItemHeads.key(item)}:${item.type ?? item.itemId ?? ""}:${item.metadata ?? ""}:${item.enchanted === true}` : "empty";
   if (hand === "main" && key === lastMainHandKey) return;
   if (hand === "off" && key === lastOffHandKey) return;
   const handItem = toHandItem(item);

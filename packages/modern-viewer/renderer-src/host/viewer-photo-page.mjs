@@ -16,11 +16,13 @@ export async function viewerPhotoPage(root) {
       const radius = Math.max(2, Math.min(8, Number(new URLSearchParams(location.search).get('distance')) || 6));
       const footprint = (radius * 2 + 1) ** 2;
       const ysm = globalThis.cortiViewerContent?.stats?.().ysm;
+      const heads = globalThis.itemHeadDiagnostics?.();
       const canvas = document.getElementById('viewer-canvas');
       return Boolean(globalThis.__lanternRenderer?.photoMode === true
         && canvas?.width && canvas?.height && d?.received >= footprint
         && d.meshed >= footprint && d.masked === 0 && d.pendingSections === 0
         && __photoSkinTasks.size === 0 && !__photoSkinFailed
+        && (!heads || heads.pending === 0 && heads.unavailable === 0)
         && (!ysm || ysm.pending === 0 && ysm.failed === 0 && ysm.unavailable === 0 && ysm.rendered === ysm.states)
         && document.fonts.status === 'loaded');
     };
