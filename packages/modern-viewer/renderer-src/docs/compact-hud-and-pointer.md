@@ -5,6 +5,20 @@ retain their own live-data visibility. The display menu saves component choices
 under `minecraft.viewer.layout.v1`; H toggles the clean view. OBS retains its
 separate editor, saved positions and `agentPointer` component preference.
 
+The operation panel has a fixed bottom-left viewport anchor. Its recent-operation
+area reserves three lines, so changing click history cannot resize the panel.
+Transient game/chat messages use a separate bottom-centre feed above the
+hotbar. Neither is adopted into the scrolling side rails: incoming messages,
+expiry and empty rails cannot shift the keys. At narrow phone widths, messages
+use the remaining lower space beside the input panel. OBS keeps the same default
+anchors while retaining each component's saved translation, scale and visibility.
+
+Browser verification used an explicit synthetic player/platform with original
+Java 1.20.6 assets at 1280x720, 1024x768 and 390x844. Input bounds stayed identical
+with three incoming messages and after clearing them. The transparent OBS view,
+28 component choices and exported input-panel offset/scale were also verified;
+this does not claim an actual OBS recording or native Java pixel parity.
+
 The virtual pointer uses identity-checked operation packets. Visible inventory
 clicks resolve a real server slot in the current window; trade offer previews
 are not inventory slots. Scene operations project their measured target. The

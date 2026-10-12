@@ -34,3 +34,16 @@ test('photo and OBS keep independent layouts; loading saved preferences survives
   const h=browser({version:1,components:{minimap:false},clean:true}),ui=installViewerLayout(h);
   assert.equal(ui.visible('minimap'),false);assert.equal(ui.snapshot().clean,true);ui.dispose();
 });
+
+test('transient messages cannot move the Agent input panel inside a flowing rail',()=>{
+  const h=browser(),map=h.add('corti-minimap'),inputs=h.add('agent-operations'),messages=h.add('corti-event-feed',true);
+  const ui=installViewerLayout(h);
+  assert.ok(inputs.parentNode===h.document.body,'inputs have their own viewport anchor');
+  assert.ok(messages.parentNode===h.document.body,'messages have a separate centre anchor');
+  assert.equal(map.parentNode.className,'viewer-rail viewer-rail-left');
+  messages.hidden=false;h.mutate();messages.hidden=true;h.mutate();
+  assert.ok(inputs.parentNode===h.document.body);
+  const check=h.document.querySelectorAll('input').find(el=>el.dataset.viewerComponent==='agentOperations');
+  check.checked=false;check.dispatch('change');assert.equal(ui.visible('agentOperations'),false);
+  ui.dispose();assert.ok(inputs.parentNode===h.document.body);assert.ok(messages.parentNode===h.document.body);
+});

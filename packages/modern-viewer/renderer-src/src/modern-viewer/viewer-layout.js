@@ -75,7 +75,9 @@ export function installViewerLayout({document, window, photo = false, overlay = 
       '#corti-sound-toggle', '#corti-music-toggle', '.viewer-audio-controls']) move(document.querySelector(selector), tools);
     // Re-append the persistent controls after late-created chat/camera modules.
     if (tools.lastElementChild !== settings) { tools.append(clean, settings); }
-    for (const id of ['corti-minimap', 'corti-scoreboard', 'corti-effects', 'agent-operations', 'corti-event-feed', 'corti-content-status', 'corti-held-map']) move(document.getElementById(id), left);
+    // Inputs and transient messages have independent viewport anchors. A live
+    // chat row must never reflow the input panel or scroll it with the rail.
+    for (const id of ['corti-minimap', 'corti-scoreboard', 'corti-effects', 'corti-content-status', 'corti-held-map']) move(document.getElementById(id), left);
     for (const id of ['corti-skills', 'agent-intent', 'agent-route-map', 'agent-presentation']) move(document.getElementById(id), right);
   }
   listen(clean, 'click', () => { layout.clean = !layout.clean; apply(); });
