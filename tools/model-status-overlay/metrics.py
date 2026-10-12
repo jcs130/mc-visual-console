@@ -165,15 +165,21 @@ def normalize_strata(raw, spec, sampled_at=None, metadata=None):
 
 
 def normalize_metadata(raw, spec, sampled_at=None, metadata=None):
-    """Compact service-side contract. All live values belong to one identified request."""
-    if obj(raw).get("schema") != "obs-inference-v1":
+    """Compact contract or gateway projection; explicit unknowns override native fields."""
+    raw = obj(raw)
+    live, previous = obj(raw.get("live")), obj(raw.get("last"))
+    # LiteLLM retains Strata's engine/live/requests but also publishes this explicit
+    # live/last projection, without a root schema tag. Its queued count is already
+    # reconciled, and a null execution_seconds must not fall back to phase sums.
+    projected = all(key in live and key in previous for key in ("context_tokens", "execution_seconds"))
+    if raw.get("schema") != "obs-inference-v1" and not projected:
         return normalize_strata(raw, spec, sampled_at, metadata)
     at = time.time() if sampled_at is None else sampled_at
     result = blank_model(spec, at, "missing-metrics", "unknown")
     engine, live, previous = obj(raw.get("engine")), obj(raw.get("live")), obj(raw.get("last"))
     metadata = metadata or {}
     result.update(sourceAt=number(raw.get("time"), positive=True), name=label(engine.get("model")),
-                  quant=quantization(engine.get("quantization")) or metadata.get("quant"),
+                  quant=quantization(engine.get("quantization")) or quantization(engine.get("quant")) or metadata.get("quant") or quantization(engine.get("model")),
                   contextLimit=number(engine.get("max_context"), positive=True) or metadata.get("contextLimit"))
     state = live.get("state")
     if state in STATES:

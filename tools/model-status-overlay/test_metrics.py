@@ -94,6 +94,58 @@ class MetricsTest(unittest.TestCase):
         raw["live"]["request_id"] = "request-2"
         self.assertEqual(normalize_metadata(raw, SPEC)["contextTokens"], 100)
 
+    def gateway(self, live=None, last=None):
+        return {"time": time.time(),
+                "engine": {"model": "qwen3.8-flash-next-iq3_s", "quantization": None, "max_context": 262144},
+                "live": {"state": "idle", "running": 0, "queued": 0, "parallel": 4,
+                         "inflight": 0, "waiting_control": 0, "request_id": None,
+                         "context_tokens": None, "execution_seconds": None, **(live or {})},
+                "last": {"context_tokens": 73758, "reused_tokens": 73665, "execution_seconds": None,
+                         "input_tok_s": 183.1, "output_tok_s": 198.9, **(last or {})},
+                "requests": [LAST]}
+
+    def test_gateway_idle_uses_projected_last_and_dynamic_engine_limit(self):
+        m = normalize_metadata(self.gateway(), SPEC)
+        self.assertEqual(m["name"], "qwen3.8-flash-next-iq3_s")
+        self.assertEqual(m["quant"], "IQ3_S")
+        self.assertEqual(m["queue"], 0)  # no native waiting field is required
+        self.assertEqual(m["contextTokens"], 73758)
+        self.assertEqual(m["contextLimit"], 262144)
+        self.assertAlmostEqual(m["contextPercent"], 73758 / 262144 * 100)
+        self.assertAlmostEqual(m["prefixReuseRatio"], 73665 / 73758)
+        self.assertEqual((m["inputTps"], m["outputTps"]), (183.1, 198.9))
+        self.assertEqual(m["contextKind"], "last")
+        self.assertIsNone(m["executionSeconds"])
+
+    def test_gateway_explicit_unknown_last_never_borrows_native_history(self):
+        m = normalize_metadata(self.gateway(last={"context_tokens": None, "reused_tokens": None,
+                                                 "input_tok_s": None, "output_tok_s": None}), SPEC)
+        for key in ("contextTokens", "contextPercent", "prefixReuseRatio", "executionSeconds", "inputTps", "outputTps"):
+            self.assertIsNone(m[key], key)
+
+    def test_gateway_current_rates_are_engine_rates_and_queue_is_not_double_counted(self):
+        m = normalize_metadata(self.gateway(live={"state": "generating", "request_id": "call-2", "running": 1,
+                            "queued": 3, "inflight": 4, "waiting_control": 2, "waiting": 9,
+                            "context_tokens": 10000, "prompt_read": 100, "generated": 999,
+                            "input_tok_s": 321, "output_tok_s": 45, "elapsed_s": 99,
+                            "gateway_duration_ms": 99999}), SPEC)
+        self.assertEqual(m["queue"], 3)
+        self.assertEqual(m["contextTokens"], 10000)
+        self.assertEqual((m["inputTps"], m["outputTps"]), (321, 45))
+        self.assertIsNone(m["executionSeconds"])
+
+    def test_gateway_unidentified_or_multiple_current_requests_stay_unknown(self):
+        for changes in ({"request_id": None, "running": 1}, {"request_id": "call-2", "running": 2}):
+            m = normalize_metadata(self.gateway(live={"state": "generating", "context_tokens": 10000,
+                                       "input_tok_s": 321, "output_tok_s": 45, **changes}), SPEC)
+            for key in ("contextTokens", "contextPercent", "inputTps", "outputTps", "executionSeconds"):
+                self.assertIsNone(m[key], key)
+
+    def test_gateway_unreliable_queue_is_unknown_even_with_raw_counts(self):
+        m = normalize_metadata(self.gateway(live={"queued": None, "running": None,
+                                                  "inflight": 4, "waiting_control": 2}), SPEC)
+        self.assertIsNone(m["queue"])
+
     def test_tts_explicit_counts_only(self):
         for raw in ({}, {"requests_served": 100, "queue_ms": 20, "playing": 1}):
             m = normalize_tts(raw)

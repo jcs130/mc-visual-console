@@ -138,6 +138,8 @@ effort 保留 provider 的真实取值，不根据词义换算成假定的思考
 `applied` 表示框架本次请求采用的参数，`provider_confirmed` 仅当有服务端可验证的回执才为 true。
 框架主连接配置不等于任意当前请求的选择；S1 提议、Core 请求、provider 生效三者分别记录。
 `actual_input_tokens` 只有 `request_id == inference_request_id` 且均存在时才显示；网关必须保留或映射关联编号，不能按时间相近或连接数量拼接。
+LiteLLM 统一接入的 `inference_stats.request_id` 与 `x-litellm-call-id` 相同；框架应将这个回执 id 映射到原逻辑 request/attempt，再输出一致的关联编号。`session_id` 只是会话分组，不能用来辨认该会话中的某次请求。
+响应统计未报告 reading、thinking/effort 的实际生效状态时，不能据此设置 `provider_confirmed: true`。网关 `/metrics` 也不能替代框架的逐次策略和环境验证接口。
 实际输入必须是完整输入、包含复用前缀、排除生成输出。完整输入估算不得替换实测；历史预算也不是全输入上限。
 `reasoning_budget_tokens` 必须来自独立思考预算字段，不能拿 `max_output_tokens`、实际 reasoning token 数或 effort 名字推算。
 

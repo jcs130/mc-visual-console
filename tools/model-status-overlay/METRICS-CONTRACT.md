@@ -2,8 +2,8 @@
 
 框架的模型路由、上下文预算、思考档位及执行效果另见 [BRAIN-METRICS.md](BRAIN-METRICS.md)。这两个接口分别描述框架策略和引擎资源。
 
-主模型优先直接接 Strata `GET /metrics`（JSON），已经适配其 `engine/live/requests` 格式。
-如果网关没有转发这个地址，只需将底层 Strata 的只读接口转发出来；不需要重新调用模型。
+主模型可接 Strata 原生 `GET /metrics`（JSON），或 LiteLLM 同路径提供的只读元数据投影。
+不需要重新调用模型。2026-10-12 的统一网关同时保留 `engine/live/requests` 与精简 `live/last`；小窗优先使用明确投影的 `context_tokens / execution_seconds` 等字段。
 不要转发 `/api/requests`、对话日志或 SSE 正文。
 
 系统1及自定义模型服务可以提供下面的精简接口，同样使用 `GET /metrics`。
@@ -52,6 +52,18 @@
 
 服务端也可以只提供原始计数，让小窗计算速度：在 `live` 或 `last` 中用 `input_processed_tokens`（新读取量，不含复用前缀）与 `input_processing_seconds` 替代 `input_tok_s`，用 `output_tokens` 与 `decode_seconds` 替代 `output_tok_s`。
 这些时间必须是对应阶段执行时间。小窗按 token / 秒计算阶段均速；生成阶段均速属于本次数据，页面标记“实时”。已提供的引擎实时速率优先。
+
+## LiteLLM 统一网关口径
+
+网关不带根级 schema 时，`live` 与 `last` 都明确包含 `context_tokens`、`execution_seconds` 的格式识别为投影；不会再按原始 Strata 字段回算。
+
+- `live.queued` 已由服务端区分等待与执行，直接采用。`inflight`、`waiting_control` 和原始等待字段不会再次累加。
+- `last.execution_seconds: null` 保持未知，即使 `requests[0]` 有输入/生成阶段耗时，也不拼出单次推理执行耗时。
+- `last` 是权威的上次快照，缺失字段不会借用 `requests` 中的其他读数。并发期间缺少可靠请求身份时，当前上下文和速率保持未知。
+- 模型、有效上下文上限来自 `engine`；量化字段缺失时可从已报告的模型标识解析版本。
+- 普通及流式响应的 `inference_stats` 属于现有模型客户端的单次统计。小窗不会调用推理接口以获取它，也不会保存响应正文。
+- `gateway_duration_ms`、`gateway_ttft_ms` 包含网关往返与队列，不能替代引擎执行耗时或用于反算引擎 tok/s。
+- 如客户端以后按会话聚合，须按 `request_id` 去重并用最新快照覆盖；缓存复用率为总复用输入 / 总输入，不平均各轮比例。流式客户端须读到最终 usage 数据块。
 
 ## 系统1 StartLux-Decision 的特别说明
 

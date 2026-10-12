@@ -17,7 +17,7 @@ OBS 保留紧凑策略条及近10分钟采用／回退摘要。
 
 编辑 `overlay.config.json`：
 
-- `models[0].metricsUrl`：真实 Strata JSON `/metrics` 地址。
+- `models[0].metricsUrl`：真实 Strata JSON `/metrics` 地址，或现有 LiteLLM 网关的同路径只读投影。
 - `models[0].engineConfigPath`：可选的本机 Strata 引擎 JSON；运行时 `engine.max_context` 优先，配置作为回退。
 - `models[1].metricsUrl`：系统1独立的只读 `/metrics`。
 - `tts.metricsUrl`：本地语音服务只包含元数据的 `/metrics`。
@@ -38,6 +38,7 @@ TTS 应提供只包含元数据的接口；不要采集附带参考文本或默�
 上限由有效引擎配置读取。占用 75% 黄色，90% 红色并显示“接近上限”；空闲显示“上次上下文”。
 Strata 单请求执行时钟位于分词、FIFO 排队和引擎加载之后；批处理包含内部排队的时钟不会被当作单次执行时间。
 空闲时只使用最近一条请求的元数据，不跳过不完整记录寻找更早的好看数值。当前缺字段不回填上次数据。
+LiteLLM 投影优先使用其明确的 `live/last` 字段；队列不重复累加，执行耗时为 null 时不从网关总耗时或阶段耗时推算。
 输入速度为本次输入阶段均速，生成速度采用 Strata 当前窗口；空闲清楚标记“上轮”。前缀复用始终标记“上轮复用”。
 模型指标 7 秒、TTS/连接 16 秒过期后清空运行数值。网页断开也会自行使缓存过期。
 
