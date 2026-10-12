@@ -48,7 +48,7 @@ OBS 保持 440×290、面板 424×272：
 | --- | --- |
 | 目标／任务 | 稳定的 `task_id`；拆分、重试、换策略仍能追溯原任务。成功须有环境验证终态 |
 | 决策 | `decision_id`；一次策略分配。刷新页面、重复读取状态不生成决策 |
-| 逻辑模型请求 | `request_id`；策略提交时计一次。重试沿用此逻辑请求，产生新的 attempt |
+| 逻辑模型请求 | `request_id`；一次策略提交计一次，传输层重试产生新的 attempt；Core 重新提交另计并标记 resubmission |
 | 调用尝试 | `attempt_id`；结束时计一次，失败、取消、丢弃和部分用量按真实终态保留 |
 | 选择器尝试 | 真的向系统1发起分类才计一次；冷却、关闭、复用建议不计为新尝试 |
 | 失败恢复案例 | 原任务的一次失败到验证结案，含策略调整关联；不能把每次重试都算成恢复 |
@@ -68,7 +68,7 @@ OBS 保持 440×290、面板 424×272：
 
 ## 只读接口
 
-框架提供 `GET /api/brain/metrics`（或独立服务 `GET /metrics`），只返回以下元数据。
+框架提供 `GET /api/console/providers/persona:cortiv/panels/planning/metrics`，或兼容的 `GET /api/brain/metrics` / `GET /metrics`，只返回以下元数据。
 `time` 必须是响应时的服务 Unix 秒，`window.to` 同一时钟。缺失值使用 `null`。
 小窗配置 `brain.metricsUrl` 或启动时的 `OBS_BRAIN_METRICS_URL`，每约2秒后台采样；配置热读，不需重启游戏或模型服务。
 

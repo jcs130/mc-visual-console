@@ -116,6 +116,9 @@ def normalize_statistics(raw):
     covered = number(raw.get("covered_seconds"))
     result.update(startAt=start, endAt=end, complete=boolean(raw.get("complete")),
                   coveredSeconds=covered if covered is not None and covered <= 600 else None)
+    result["taskVerificationAvailable"] = boolean(raw.get("task_verification_available"))
+    result["recoveryAvailable"] = boolean(raw.get("recovery_available"))
+    result["usageSamples"] = {key: count(obj(raw.get("usage_samples")).get(key)) for key in ("attempts", "input", "output", "reasoning")}
     result["adaptiveRate"] = fraction(result["adaptive_applied"], result["eligible_requests"])
     reasons = [result[k] for k in ("selector_timeouts", "selector_unavailable", "selector_uncertain", "selector_stale")]
     result["fallbackCount"] = sum(reasons) if all(n is not None for n in reasons) else None

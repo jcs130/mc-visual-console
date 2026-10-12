@@ -92,6 +92,48 @@ TCP  127.0.0.1:9999 127.0.0.1:1234 TIME_WAIT 0"""
         self.assertEqual(value["MC"], 0)
         self.assertIsNone(value["unclassified"])
 
+    def test_sender_pending_is_independent_of_synthesis_service_availability(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {"models": [], "tts": {"metricsUrl": "http://fixture/metrics",
+                "pendingUrl": "http://fixture/api/console/providers/world:vtuber/panels/tts/metrics"}}
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(cfg))
+            collector = Collector(path)
+            def read(url, allowed):
+                if url.endswith('/metrics') and '/providers/' not in url:
+                    raise OSError('unavailable')
+                return {"schema": "vtuber-sender-metrics-v1", "time": time.time(), "pending_items": 3, "text": "private"}
+            with patch('server.get_json', side_effect=read):
+                collector.sample_tts(cfg)
+            value = collector.snapshot()['tts']
+            self.assertEqual(value['pending'], 3)
+            self.assertIsNone(value['synthesizing'])
+            self.assertNotIn('private', json.dumps(value))
+
+    def test_unloaded_metadata_endpoints_keep_safe_health_identity_and_framework_phase(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {"models": [{"id": "system1", "label": "system1", "metricsUrl": "http://fixture/metrics", "healthUrl": "http://fixture/health"}],
+                   "brain": {"metricsUrl": "http://fixture/api/console/providers/persona:cortiv/panels/planning/metrics", "statusUrl": "http://fixture/api/status"}}
+            path = Path(d) / 'config.json'
+            path.write_text(json.dumps(cfg))
+            collector = Collector(path)
+            def read(url, allowed):
+                if url.endswith('/metrics'):
+                    raise OSError('not loaded')
+                if url.endswith('/health'):
+                    return {"status": "ok", "model": "test-model", "quantization": "BF16"}
+                return {"loop": {"phase": {"state": "tools"}, "paused": False}, "prompt": "private"}
+            with patch('server.get_json', side_effect=read):
+                collector.sample_models(cfg)
+                collector.sample_brain(cfg)
+            result = collector.snapshot()
+            self.assertEqual(result['models'][0]['state'], 'unknown')
+            self.assertEqual(result['models'][0]['name'], 'test-model')
+            self.assertIsNone(result['models'][0]['queue'])
+            self.assertEqual(result['brain']['phase'], 'tools')
+            self.assertIsNone(result['brain']['selection'])
+            self.assertNotIn('private', json.dumps(result))
+
 
 if __name__ == "__main__":
     unittest.main()

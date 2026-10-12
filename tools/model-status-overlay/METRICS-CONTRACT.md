@@ -65,6 +65,17 @@
 - `gateway_duration_ms`、`gateway_ttft_ms` 包含网关往返与队列，不能替代引擎执行耗时或用于反算引擎 tok/s。
 - 如客户端以后按会话聚合，须按 `request_id` 去重并用最新快照覆盖；缓存复用率为总复用输入 / 总输入，不平均各轮比例。流式客户端须读到最终 usage 数据块。
 
+### 网关执行计时补充
+
+当前统一网关明确返回 `execution_ms: null`、`queue_ms: null`。补充这两项需要在引擎执行资源边界记录单调时间，只有网关入口与 HTTP 完成时间不够。
+
+1. 入队时记录 `enqueued_at`；取得引擎执行槽并开始输入处理时记录 `execution_started_at`。
+2. 本次生成完成、失败或取消并确认引擎停止后记录 `execution_ended_at`。排队时间为开始减入队；执行时间为结束减开始。跨进程时应传递时长，避免相减不同进程的单调时钟读数。
+3. 普通响应和最终 SSE usage 的 `inference_stats` 提供 `execution_ms`、`queue_ms`，使用原有同一 `request_id`。取消与失败保留真实终态，不用响应发送耗时延长执行计时。
+4. `/metrics` 的单请求 `live.execution_seconds` 为当前单调时间减执行开始；`last.execution_seconds` 为已结束的执行时长。并发缺少单请求关联时保持 null。
+
+无需新增推理接口或恢复独立服务；保持现有 Flash 引擎、上下文、并发与缓存配置。模型客户端已支持读取这两个字段，服务端补充后即可随原有业务请求关联。
+
 ## 系统1 StartLux-Decision 的特别说明
 
 本机 8090 的 `/health` 只证明服务可达，不证明待命。当前 `latency_ms` 的计时起点位于 GPU 锁之前，包含排队，不能直接作为推理执行耗时。
@@ -100,3 +111,5 @@ TTS 的 `GET /metrics` 提供：
 
 入口连接另行在配置的 `connections.NEKO / MC / unclassified` 中填写本机对应入口 TCP 端口数组。
 仅统计这些入口上的 `ESTABLISHED` 连接。无法可靠确定入口时留空，显示未知；不要按连接推断调用次数或当前请求归属。
+
+也可以配置 `connections.modelIngress`，按明确的客户端项目路径识别本机进程及子进程，仅数向指定模型网关建立的 TCP 连接。此模式不统计游戏服务器或控制台连接，结果只覆盖当前电脑；进程扫描和端口采样失败时保持未知。它与服务端入口采样同样不能代替调用统计。

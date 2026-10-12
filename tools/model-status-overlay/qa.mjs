@@ -36,7 +36,7 @@ function fixture(change = {}, brainChange = {}) {
       effortCounts: { off: 5, low: 10, medium: 5, high: 0, default: 0, other: 0, unknown: 0 },
       routeCounts: { main: 15, system1: 10, planning: 3, reflection: 2, cognition: 0, dream: 0, unknown: 0 },
       contextDistributions: { history_budget: { samples: 20, p50: 3000, p95: 8000 }, matched_input: { samples: 20, p50: 32768, p95: 65536 }, reasoning_budget: { samples: 0, p50: null, p95: null } } }, ...brainChange };
-  return { models: [main, { ...model("system1", "Decision-Model-4B"), quant: "BF16", state: "reading",
+  return { models: [main, { ...model("system1", "Decision-Model-4B"), quant: "BF16", state: "reading", outputMode: "classification",
       inputTps: 16750, outputTps: null, queue: 0, executionSeconds: .032,
       contextTokens: 384, contextLimit: 65536, contextPercent: 384 / 65536 * 100 }],
     tts: { sampledAt: now, freshForSeconds: 16, connected: true, synthesizing: 1, waiting: 3, lastSynthesisSeconds: .82, pending: 2 },

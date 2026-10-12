@@ -12,6 +12,14 @@ LAST = {"prompt_total": 8000, "prompt_tokens": 8000, "reused": 6000,
 
 
 class MetricsTest(unittest.TestCase):
+    def test_classification_output_is_not_an_autoregressive_speed(self):
+        value = normalize_metadata({"schema": "obs-inference-v1", "time": time.time(),
+            "engine": {"model": "decision-test", "max_context": 8192, "output_mode": "classification"},
+            "live": {"state": "idle", "queued": 0}, "last": {"context_tokens": 300, "execution_seconds": .03,
+            "input_tok_s": 10000, "output_tokens": 0, "output_tok_s": None}}, SPEC)
+        self.assertEqual(value['outputMode'], 'classification')
+        self.assertIsNone(value['outputTps'])
+        self.assertEqual(value['inputTps'], 10000)
     def native(self, live, last=LAST):
         return normalize_strata({"engine": {"model": "test-Q4_K_M", "max_context": 10000},
                                  "live": live, "requests": [last], "time": time.time()}, SPEC)

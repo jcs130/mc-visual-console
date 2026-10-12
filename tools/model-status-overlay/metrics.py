@@ -81,6 +81,7 @@ def config_metadata(path):
 def blank_model(spec, sampled_at=None, reason="not-configured", state="disconnected"):
     return {
         "id": spec["id"], "label": spec["label"], "name": None, "quant": None,
+        "outputMode": None,
         "state": state, "reason": reason, "sampledAt": sampled_at, "sourceAt": None,
         "freshForSeconds": 7, "queue": None, "inputTps": None, "outputTps": None,
         "inputSpeedKind": "realtime", "outputSpeedKind": "realtime",
@@ -179,6 +180,7 @@ def normalize_metadata(raw, spec, sampled_at=None, metadata=None):
     engine, live, previous = obj(raw.get("engine")), obj(raw.get("live")), obj(raw.get("last"))
     metadata = metadata or {}
     result.update(sourceAt=number(raw.get("time"), positive=True), name=label(engine.get("model")),
+                  outputMode="classification" if engine.get("output_mode") == "classification" else None,
                   quant=quantization(engine.get("quantization")) or quantization(engine.get("quant")) or metadata.get("quant") or quantization(engine.get("model")),
                   contextLimit=number(engine.get("max_context"), positive=True) or metadata.get("contextLimit"))
     state = live.get("state")

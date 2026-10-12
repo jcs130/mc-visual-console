@@ -21,8 +21,9 @@ OBS 保留紧凑策略条及近10分钟采用／回退摘要。
 - `models[0].engineConfigPath`：可选的本机 Strata 引擎 JSON；运行时 `engine.max_context` 优先，配置作为回退。
 - `models[1].metricsUrl`：系统1独立的只读 `/metrics`。
 - `tts.metricsUrl`：本地语音服务只包含元数据的 `/metrics`。
+- `tts.pendingUrl`：演出待发项只读元数据；VTuber 扩展使用 `/api/console/providers/world:vtuber/panels/tts/metrics`，独立于合成服务采样有效性。
 - `connections`：NEKO、MC 和未分类入口对应的本机 TCP 端口，数组为空表示入口尚未配置。
-- `brain.metricsUrl`：框架只读 `/api/brain/metrics` 或 `/metrics`；环境变量 `OBS_BRAIN_METRICS_URL` 也可设置。
+- `brain.metricsUrl`：CortiV 使用 `/api/console/providers/persona:cortiv/panels/planning/metrics`；也兼容 `/api/brain/metrics` 或 `/metrics`。环境变量 `OBS_BRAIN_METRICS_URL` 也可设置。
 - `brain.statusUrl / deploymentConfigPath`：没有策略投影时，读取已检查的 Cortico `/api/status` 元数据和配置白名单；不会将配置值作为本次选择。
 
 也可设置环境变量 `OBS_STRATA_METRICS_URL / OBS_STRATA_CONFIG / OBS_SYSTEM1_METRICS_URL / OBS_SYSTEM1_CONFIG / OBS_TTS_METRICS_URL` 后启动。
@@ -31,6 +32,10 @@ OBS 保留紧凑策略条及近10分钟采用／回退摘要。
 健康接口只证明服务可达和身份，缺少推理指标时显示“状态未知”。
 TTS 应提供只包含元数据的接口；不要采集附带参考文本或默认指令的健康响应。
 未配置的入口连接显示“—”，未分类项只在确有已建立连接时显示。
+
+若需要采样本机客户端到模型网关的连接，可将 `connections.modelIngress` 配为 `endpoints:[{host,port}]` 和 `clients:{NEKO:[进程命令中的完整项目路径],MC:[框架入口文件路径]}`。分类包括子进程，只输出连接数量；采样覆盖本机，不包括其他电脑上的客户端，不读取连接中的 HTTP 内容。旧的端口数组配置仍按服务器入口端口采样。
+
+系统1分类模型明确报告 `output_mode:classification` 时，生成速率显示“不适用”。输入速率是该次分类各次前向处理 token 总数除以分类执行时间，不能与逐 token 生成模型的 prefill 阶段速率直接比较。
 
 ## 口径
 
@@ -46,7 +51,7 @@ LiteLLM 投影优先使用其明确的 `live/last` 字段；队列不重复累�
 
 ## 验证
 
-`python -m unittest -v test_metrics test_server test_brain`
+`python -m unittest discover -p test_*.py -v`
 
 覆盖完整输入/读取进度、缓存、取消请求、当前/上次隔离、动态上限、缺失/过期、并发请求、只读访问与共享采样。
 也覆盖配置与当前选择隔离、建议与应用预算隔离、请求关联、统计分母、窗口范围、零样本和上下文分位数。

@@ -14,6 +14,6 @@
     {"id": "main", "label": "主模型", "metricsUrl": "", "metricsUrlEnv": "OBS_STRATA_METRICS_URL", "engineConfigPath": "", "engineConfigPathEnv": "OBS_STRATA_CONFIG", "healthUrl": ""},
     {"id": "system1", "label": "系统1", "metricsUrl": "", "metricsUrlEnv": "OBS_SYSTEM1_METRICS_URL", "engineConfigPath": "", "engineConfigPathEnv": "OBS_SYSTEM1_CONFIG", "healthUrl": ""}
   ],
-  "tts": {"metricsUrl": "", "metricsUrlEnv": "OBS_TTS_METRICS_URL", "healthUrl": "", "label": "本地 TTS"},
+  "tts": {"metricsUrl": "", "metricsUrlEnv": "OBS_TTS_METRICS_URL", "pendingUrl": "", "healthUrl": "", "label": "本地 TTS"},
   "connections": {"NEKO": [], "MC": [], "unclassified": []}
 }

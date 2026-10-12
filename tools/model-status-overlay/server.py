@@ -14,8 +14,9 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from metrics import blank_model, config_metadata, normalize_model_health, normalize_metadata, normalize_tts, stale_model
+from metrics import blank_model, config_metadata, normalize_model_health, normalize_metadata, normalize_tts, stale_model, count, number
 from brain import blank_brain, configuration, normalize_brain, normalize_status, stale_brain
+from connections import sample_model_ingress
 
 ROOT = Path(__file__).resolve().parent
 MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -57,6 +58,8 @@ def read_config(path):
 
 def sample_connections(config):
     """Established server-side TCP entries at explicitly configured ingress ports, never request counts."""
+    if config.get("modelIngress"):
+        return sample_model_ingress(config["modelIngress"])
     groups = {name: set(ports) for name, ports in config.items() if name in ("NEKO", "MC", "unclassified")}
     counts = {name: None if not ports else 0 for name, ports in groups.items()}
     if not any(groups.values()):
@@ -134,6 +137,11 @@ class Collector:
                     value = blank_model(spec)
             except (OSError, ValueError, TypeError, urllib.error.URLError):
                 value = blank_model(spec, None, "unreachable")
+                if metrics_url and health_url:
+                    try:
+                        value = normalize_model_health(get_json(health_url, {"/health", "/v1/health"}), spec)
+                    except (OSError, ValueError, TypeError, urllib.error.URLError):
+                        pass
             updates[spec["id"]] = value
         with self.lock:
             self.models = updates
@@ -150,6 +158,17 @@ class Collector:
                 value = normalize_tts({}) | {"sampledAt": None, "connected": None}
         except (OSError, ValueError, TypeError, urllib.error.URLError):
             value = normalize_tts({}) | {"sampledAt": None, "connected": None}
+        value.update(pendingSampledAt=None, pendingSourceAt=None)
+        if spec.get("pendingUrl"):
+            value["pending"] = None
+            try:
+                pending = get_json(spec["pendingUrl"], {"/api/console/providers/world:vtuber/panels/tts/metrics"})
+                source_at = number(pending.get("time"), positive=True)
+                if pending.get("schema") == "vtuber-sender-metrics-v1" and source_at is not None \
+                        and not self.frozen(spec["pendingUrl"], source_at, 16):
+                    value.update(pending=count(pending.get("pending_items")), pendingSampledAt=time.time(), pendingSourceAt=source_at)
+            except (OSError, ValueError, TypeError, urllib.error.URLError):
+                pass
         with self.lock:
             self.tts = value
 
@@ -160,13 +179,18 @@ class Collector:
         try:
             if spec.get("metricsUrl"):
                 url = spec["metricsUrl"]
-                value = normalize_brain(get_json(url, {"/metrics", "/api/brain/metrics"}), policy)
+                value = normalize_brain(get_json(url, {"/metrics", "/api/brain/metrics", "/api/console/providers/persona:cortiv/panels/planning/metrics"}), policy)
                 if self.frozen(url, value.get("sourceAt")):
                     value = blank_brain(policy) | {"source": "stale"}
             elif spec.get("statusUrl"):
                 value = normalize_status(get_json(spec["statusUrl"], {"/api/status"}), policy)
         except (OSError, ValueError, TypeError, urllib.error.URLError):
             value["source"] = "unreachable"
+            if spec.get("metricsUrl") and spec.get("statusUrl"):
+                try:
+                    value = normalize_status(get_json(spec["statusUrl"], {"/api/status"}), policy)
+                except (OSError, ValueError, TypeError, urllib.error.URLError):
+                    pass
         with self.lock:
             self.brain = value
 
@@ -204,7 +228,11 @@ class Collector:
             tts, connections = copy.deepcopy(self.tts), copy.deepcopy(self.connections)
             brain = stale_brain(copy.deepcopy(self.brain), now)
         if tts["sampledAt"] is None or now - tts["sampledAt"] > tts["freshForSeconds"]:
-            tts.update(connected=None, synthesizing=None, waiting=None, lastSynthesisSeconds=None, pending=None)
+            tts.update(connected=None, synthesizing=None, waiting=None, lastSynthesisSeconds=None)
+            if not tts.get("pendingSampledAt"):
+                tts["pending"] = None
+        if tts.get("pendingSampledAt") is not None and now - tts["pendingSampledAt"] > 16:
+            tts["pending"] = None
         if connections["sampledAt"] is None or now - connections["sampledAt"] > connections["freshForSeconds"]:
             connections.update(NEKO=None, MC=None, unclassified=None)
         dates = [x["sampledAt"] for x in models + [tts, connections, brain] if x.get("sampledAt") is not None]
