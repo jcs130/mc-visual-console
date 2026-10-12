@@ -11,6 +11,7 @@ const brainPhase = { idle: "框架待命", delivering: "接收输入", model: "�
 const roles = { main: "主意识", system1: "系统1", planning: "规划", reflection: "反思", cognition: "构思", dream: "记忆整理", unknown: "未知" };
 const readings = { focused: "聚焦", connected: "连贯", standard: "常规", full: "完整", unknown: "未知" };
 const origins = { adaptive: "自动选择", configured: "配置", inherited: "继承配置", fallback: "回退", manual: "人工指定", mixed: "组合来源" };
+const effortLabels = { off: "关闭", minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max", default: "默认深度", other: "其他", unknown: "未知" };
 let current = null;
 let receivedAt = 0;
 let inFlight = false;
@@ -20,6 +21,19 @@ const tokens = (n) => finite(n) ? `${integer(n)} tok` : dash;
 const shortTokens = (n) => finite(n) ? n >= 1000 ? `${(n / 1000).toFixed(n % 1000 ? 1 : 0)}k` : integer(n) : dash;
 const ratio = (n) => finite(n) && n <= 1 ? percent(n * 100) : dash;
 const effort = (s) => s?.thinking === false ? "关闭" : s?.effort || (s?.thinking === true ? "端点默认" : dash);
+
+function renderReasoningDistribution(prefix, data, effective = false) {
+  const rates = data?.thinkingRates;
+  setText(`${prefix}-thinking`, `开 ${ratio(rates?.on)} · 关 ${ratio(rates?.off)} · 未知 ${ratio(rates?.unknown)}`);
+  setText(`${prefix}-samples`, !data ? "聚合指标待接入" : effective
+    ? `${integer(data.samples)} 个结束调用 · 引擎确认 ${integer(data.confirmedSamples)} / ${integer(data.samples)}`
+    : `${integer(data.samples)} 个提交 · 含进行中的请求`);
+  const bar = $(`${prefix}-bar`);
+  if (bar) for (const key of ["on", "off", "unknown"]) bar.querySelector(`.${key}`).style.width = `${finite(rates?.[key]) ? rates[key] * 100 : 0}%`;
+  const depths = data ? Object.entries(effortLabels).filter(([key]) => data.effortCounts?.[key] > 0)
+    .map(([key, label]) => `${label} ${ratio(data.effortRates?.[key])} (${integer(data.effortCounts[key])})`).join(" · ") : "";
+  setText(`${prefix}-depth`, depths || (data?.samples === 0 ? "暂无调用样本" : dash));
+}
 
 function setupModel(id, role) {
   const node = $(id);
@@ -94,10 +108,17 @@ function renderBrain(age) {
   if ($("brain-route")) $("brain-route").title = s ? `${origins[s.origin] || dash} · ${s.model || dash}` : "逐次策略指标尚未提供";
   setText("brain-reading", readings[s?.reading] || dash);
   setText("brain-effort", effort(s));
-  setText("brain-budget", `历史预算 ${shortTokens(s?.historyTokens)} · 增长 ${shortTokens(s?.growthTokens)}`);
+  setText("brain-budget", `历史 ${shortTokens(s?.historyTokens)} · 增长 ${shortTokens(s?.growthTokens)}`);
   setText("brain-adaptive", ratio(w?.adaptiveRate));
   setText("brain-fallback", ratio(w?.fallbackRate));
   setText("brain-window", w && w.complete !== true ? "10分·部分" : "10分");
+  const requested = w?.requestedReasoning;
+  setText("brain-thinking-summary", `开 ${ratio(requested?.thinkingRates?.on)} · 关 ${ratio(requested?.thinkingRates?.off)} · 未知 ${ratio(requested?.thinkingRates?.unknown)}`);
+  if ($("brain-thinking-summary")) $("brain-thinking-summary").title = `框架提交 ${integer(requested?.samples)} 次；各比例均含未知项，零样本为未知`;
+  if ($("reasoning-overview")) $("reasoning-overview").hidden = !w;
+  setText("reasoning-coverage", !w ? dash : w.complete ? "近10分钟" : `近10分钟 · 已覆盖 ${integer(w.coveredSeconds)} 秒`);
+  renderReasoningDistribution("requested", requested);
+  renderReasoningDistribution("effective", w?.effectiveReasoning, true);
   const strip = document.querySelector(".brain-strip");
   if (strip) strip.className = `brain-strip ${s?.origin === "adaptive" ? "is-adaptive" : s?.origin === "fallback" ? "is-fallback" : ""}`;
 
@@ -133,7 +154,7 @@ function renderBrain(age) {
   setText("usage-coverage", finite(usage?.attempts) ? `实测样本 ${integer(usage.input)} / ${integer(usage.output)} / ${integer(usage.reasoning)}，共 ${integer(usage.attempts)} 次；思考计入输出` : "主模型与后台通道 · 思考是输出的子集");
   const distribution = (counts, labels) => !counts ? dash : Object.entries(labels).map(([key, text]) => `${text} ${integer(counts[key])}`).join(" · ");
   setText("reading-distribution", distribution(w?.readingCounts, readings));
-  setText("effort-distribution", distribution(w?.effortCounts, { off: "关闭", low: "low", medium: "medium", high: "high", default: "默认", other: "其他", unknown: "未知" }));
+  setText("effort-distribution", distribution(w?.effortCounts, effortLabels));
   setText("route-distribution", distribution(w?.routeCounts, roles));
   for (const [id, key] of [["history", "history_budget"], ["input", "matched_input"], ["reasoning", "reasoning_budget"]]) {
     const dist = w?.contextDistributions?.[key];

@@ -27,7 +27,7 @@
 OBS 保持 440×290、面板 424×272：
 
 - 本次／上次策略：请求通道和模型、阅读模式、请求思考档位、实际应用历史预算、增长预算。
-- 近10分钟自适应采用率与选择器回退率；分母为零或缺失时显示“—”。
+- 近10分钟框架请求的思考开／关／未知比例；分母为零或缺失时显示“—”。自适应采用率和选择器回退率在详情页报告。
 - 主模型、系统1、TTS、连接采样及更新时间，沿用独立执行指标。
 
 详情页补充：
@@ -36,6 +36,7 @@ OBS 保持 440×290、面板 424×272：
 - 阅读建议 → 应用模式、所选历史预算 → 实际应用预算、请求思考档位与服务确认。
 - 估算完整输入、已关联实测输入、独立思考预算、选择器耗时。
 - 阅读／请求思考档位／请求通道分布；历史预算、完整输入、独立思考预算的 P50/P95 和样本量。
+- 思考分配概览：框架请求与引擎实际生效分别显示开／关／未知比例、全部样本数及各档位比例与次数；生效列另外显示引擎确认覆盖数。
 - 模型调用失败、额外重试、已验证任务成功、终态待验证、失败后恢复及 token 消耗。
 
 不合成“智力分数”。更长上下文、更高 effort、更多思考 token 都是资源选择，其效果由相同任务条件下的验证结果和成本共同判断。
@@ -61,9 +62,12 @@ OBS 保持 440×290、面板 424×272：
 - **任务成功率** = 已验证成功 /（已验证成功 + 已验证失败）。受理、排队、超时后结果未知和待验证单列，不冒充完成或失败。
 - **恢复率** = 原目标在调整后验证恢复的案例 / 有可验证结案的失败案例。仍在尝试、终态未知的案例不提前纳入分母。
 - **档位与通道分布** 按实际提交的逻辑请求计数；分类器建议分布与实际请求分布不能混用。未知桶保留，未报告的桶是 `null`。
+- **思考请求比例** 使用 `requested_reasoning`，按窗口内提交的逻辑请求统计，包含进行中的请求。**生效比例** 使用 `effective_reasoning`，按窗口内已结束调用统计并按上游请求身份去重；未关联或未确认的回执计 unknown。两列分母不同，不能相减推断某个请求是否被改写。
+- **思考开关与深度比例** 均为该桶次数 / 该列 samples，未知项保留在分母内。深度支持 off/minimal/low/medium/high/xhigh/max/default/other/unknown；default 不替换为 low 或其他固定档位。关闭、开启和未知分别报告，不通过思考 token 数反推开关。
 - **P50/P95** 使用相同窗口内、相同指标口径的有效请求样本，按 nearest-rank 计算。历史预算按提交的应用预算采样；实际输入只取成功关联的上游计数；思考预算仅取独立字段明确报告的值。零样本不返回 0 分位数。
 
 窗口固定600秒，报告覆盖秒数及完整性。重启、观测断档、丢事件等使覆盖不完整时显式标记；页面不从采样点估计次数。
+兼容旧生产端时，仅从完整的旧 effort_counts 推导请求比例，other 的开关归入未知；新档位与引擎实际生效比例保持未知。生产端出现新聚合字段后使用原生聚合，字段无效或显式 null 时不借用旧值。
 思考 token 通常是输出 token 的子集；显示三项读数，不把思考再次累加到输出。
 
 ## 只读接口
@@ -118,6 +122,16 @@ OBS 保持 440×290、面板 424×272：
     "input_tokens": null, "output_tokens": null, "reasoning_tokens": null,
     "reading_counts": {"focused": null, "connected": null, "standard": null, "full": null, "unknown": null},
     "effort_counts": {"off": null, "low": null, "medium": null, "high": null, "default": null, "other": null, "unknown": null},
+    "requested_reasoning": {
+      "samples": null,
+      "thinking_counts": {"on": null, "off": null, "unknown": null},
+      "effort_counts": {"off": null, "minimal": null, "low": null, "medium": null, "high": null, "xhigh": null, "max": null, "default": null, "other": null, "unknown": null}
+    },
+    "effective_reasoning": {
+      "samples": null, "confirmed_samples": null,
+      "thinking_counts": {"on": null, "off": null, "unknown": null},
+      "effort_counts": {"off": null, "minimal": null, "low": null, "medium": null, "high": null, "xhigh": null, "max": null, "default": null, "other": null, "unknown": null}
+    },
     "route_counts": {"main": null, "system1": null, "planning": null, "reflection": null, "cognition": null, "dream": null, "unknown": null},
     "context_distributions": {
       "history_budget": {"samples": null, "p50_tokens": null, "p95_tokens": null},

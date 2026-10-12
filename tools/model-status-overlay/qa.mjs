@@ -14,11 +14,23 @@ const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_P
 const report = [];
 const issues = [];
 const context = await browser.newContext({ viewport: { width: 440, height: 290 }, deviceScaleFactor: 1 });
+if (process.env.QA_SOURCE_ASSETS === "1") {
+  const assets = { "/overlay": "index.html", "/brain": "brain.html", "/app.js": "app.js", "/style.css": "style.css", "/dashboard.css": "dashboard.css" };
+  await context.route(url => Object.hasOwn(assets, url.pathname), route =>
+    route.fulfill({ path: path.join(root, "public", assets[new URL(route.request().url()).pathname]) }));
+}
 context.on("page", page => {
   page.on("requestfailed", req => {
     if (["stylesheet", "script"].includes(req.resourceType())) issues.push(req.url() + ": " + req.failure()?.errorText);
   });
 });
+
+function reasoningFixture(modes, depths, confirmedSamples = null) {
+  const samples = Object.values(modes).reduce((a, b) => a + b, 0);
+  return { samples, confirmedSamples, thinkingCounts: modes, effortCounts: depths,
+    thinkingRates: Object.fromEntries(Object.entries(modes).map(([key, n]) => [key, samples ? n / samples : null])),
+    effortRates: Object.fromEntries(Object.entries(depths).map(([key, n]) => [key, samples ? n / samples : null])) };
+}
 
 function fixture(change = {}, brainChange = {}) {
   const now = Date.now() / 1000;
@@ -40,6 +52,8 @@ function fixture(change = {}, brainChange = {}) {
       recoveryRate: .5, recovered: 2, recovery_cases: 4, input_tokens: 1000000, output_tokens: 10000, reasoning_tokens: 2000,
       readingCounts: { focused: 12, connected: 8, standard: 0, full: 0, unknown: 0 },
       effortCounts: { off: 5, low: 10, medium: 5, high: 0, default: 0, other: 0, unknown: 0 },
+      requestedReasoning: reasoningFixture({ on: 15, off: 5, unknown: 0 }, { off: 5, low: 10, medium: 5 }),
+      effectiveReasoning: reasoningFixture({ on: 8, off: 4, unknown: 4 }, { off: 4, medium: 8, unknown: 4 }, 12),
       routeCounts: { main: 15, system1: 10, planning: 3, reflection: 2, cognition: 0, dream: 0, unknown: 0 },
       contextDistributions: { history_budget: { samples: 20, p50: 3000, p95: 8000 }, matched_input: { samples: 20, p50: 32768, p95: 65536 }, reasoning_budget: { samples: 0, p50: null, p95: null } } }, ...brainChange };
   return { models: [main, { ...model("system1", "Decision-Model-4B"), quant: "BF16", state: "reading", outputMode: "classification",
@@ -120,7 +134,7 @@ try {
     await page.goto(`${base}/overlay`);
     await page.waitForFunction(() => document.querySelector("#main .model-name").textContent !== "—");
     await verifyLayout(page, name);
-    assert.equal(await page.locator("#brain-adaptive").textContent(), "—");
+    assert.equal(await page.locator("#brain-thinking-summary").textContent(), "开 — · 关 — · 未知 —");
     if (name !== "fixture-brain-zero-samples") assert.equal(await page.locator("#brain-route").textContent(), "—");
     await page.close();
   }
@@ -190,6 +204,19 @@ try {
       data.harness.learning.latest = [];
       return data;
     }],
+    ["brain-dashboard-thinking-unknown", () => {
+      const data = fixture();
+      data.brain.statistics.requestedReasoning = reasoningFixture({ on: 0, off: 0, unknown: 10 }, { unknown: 10 });
+      data.brain.statistics.effectiveReasoning = null;
+      return data;
+    }],
+    ["brain-dashboard-thinking-depths", () => {
+      const data = fixture();
+      const depths = Object.fromEntries(["off", "minimal", "low", "medium", "high", "xhigh", "max", "default", "other", "unknown"].map(key => [key, 1]));
+      data.brain.statistics.requestedReasoning = reasoningFixture({ on: 7, off: 1, unknown: 2 }, depths);
+      data.brain.statistics.effectiveReasoning = reasoningFixture({ on: 0, off: 0, unknown: 0 }, {}, 0);
+      return data;
+    }],
   ];
   for (const [name, makeData] of cases) {
     const page = await context.newPage();
@@ -206,8 +233,12 @@ try {
     const overviewHeight = await page.evaluate(() => document.documentElement.scrollHeight);
     assert.ok(overviewHeight <= 900, name + " overview should fit one desktop screen; actual " + overviewHeight);
     if (name === "brain-dashboard-fixture") {
-      assert.ok(await page.locator(".dashboard-panel").evaluate(n => n.getBoundingClientRect().height <= 600), "default overview should stay compact");
+      assert.ok(await page.locator(".dashboard-panel").evaluate(n => n.getBoundingClientRect().height <= 760), "overview with reasoning distribution should stay compact");
       assert.equal(await page.locator("#overview-phase").textContent(), "模型决策");
+      assert.equal(await page.locator("#requested-thinking").textContent(), "开 75% · 关 25% · 未知 0%");
+      assert.equal(await page.locator("#effective-thinking").textContent(), "开 50% · 关 25% · 未知 25%");
+      assert.match(await page.locator("#requested-depth").textContent(), /low 50% \(10\)/);
+      assert.match(await page.locator("#effective-samples").textContent(), /引擎确认 12 \/ 16/);
       assert.match(await page.locator("#overview-request").textContent(), /本次请求.*medium.*32,768 tok/);
       assert.match(await page.locator("#overview-work").textContent(), /工具调用中 1.*已返回 2.*返回失败 1/);
       assert.match(await page.locator("#overview-coverage").textContent(), /已采样 24 秒/);
@@ -258,6 +289,15 @@ try {
       assert.doesNotMatch(await page.locator("#overview-models").textContent(), /0\.00s/);
       assert.equal(await page.locator("#overview-issues").textContent(), "当前采样窗口内未报告失败");
       assert.equal(await page.locator("#learning-panel").isVisible(), false);
+      assert.equal(await page.locator("#reasoning-overview").isVisible(), false);
+    } else if (name === "brain-dashboard-thinking-unknown") {
+      assert.equal(await page.locator("#requested-thinking").textContent(), "开 0% · 关 0% · 未知 100%");
+      assert.equal(await page.locator("#effective-thinking").textContent(), "开 — · 关 — · 未知 —");
+      assert.equal(await page.locator("#effective-samples").textContent(), "聚合指标待接入");
+    } else if (name === "brain-dashboard-thinking-depths") {
+      assert.match(await page.locator("#requested-depth").textContent(), /minimal 10%.*xhigh 10%.*max 10%/);
+      assert.equal(await page.locator("#effective-thinking").textContent(), "开 — · 关 — · 未知 —");
+      assert.equal(await page.locator("#effective-depth").textContent(), "暂无调用样本");
     } else if (await page.evaluate(() => !current.brain?.selection)) {
       assert.equal(await page.locator("#detail-history").textContent(), "— → —");
       assert.equal(await page.locator("#metric-adaptive").textContent(), "—");

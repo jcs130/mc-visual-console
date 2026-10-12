@@ -4,7 +4,7 @@ import time
 import unittest
 from pathlib import Path
 
-from brain import configuration, normalize_brain, normalize_selection, normalize_statistics, normalize_status, stale_brain
+from brain import EFFORTS, configuration, normalize_brain, normalize_selection, normalize_statistics, normalize_status, stale_brain
 
 
 def window(**extra):
@@ -81,6 +81,38 @@ class BrainTest(unittest.TestCase):
         self.assertEqual(w["contextDistributions"]["history_budget"]["p50"], 3000)
         self.assertIsNone(w["contextDistributions"]["matched_input"]["p50"])
         self.assertIsNone(w["contextDistributions"]["reasoning_budget"]["p95"])
+
+    def test_thinking_percentages_keep_unknown_in_each_separate_denominator(self):
+        def block(samples, modes, **depths):
+            return {"samples": samples, "thinking_counts": modes,
+                    "effort_counts": dict.fromkeys(EFFORTS, 0) | depths}
+        requested = block(10, {"on": 6, "off": 2, "unknown": 2}, high=4, max=2, off=2, unknown=2)
+        effective = block(5, {"on": 1, "off": 2, "unknown": 2}, medium=1, off=2, unknown=2)
+        effective["confirmed_samples"] = 3
+        w = normalize_statistics(window(requested_reasoning=requested, effective_reasoning=effective))
+        self.assertEqual(w["requestedReasoning"]["thinkingRates"], {"on": .6, "off": .2, "unknown": .2})
+        self.assertEqual(w["requestedReasoning"]["effortRates"]["max"], .2)
+        self.assertEqual(w["effectiveReasoning"]["thinkingRates"], {"on": .2, "off": .4, "unknown": .4})
+        self.assertEqual(w["effectiveReasoning"]["confirmedSamples"], 3)
+
+    def test_old_effort_buckets_have_no_invented_effective_values(self):
+        counts = {"off": 2, "low": 1, "medium": 1, "high": 1, "default": 1, "other": 2, "unknown": 2}
+        w = normalize_statistics(window(effort_counts=counts))
+        self.assertEqual(w["requestedReasoning"]["thinkingRates"], {"on": .4, "off": .2, "unknown": .4})
+        self.assertNotIn("max", w["requestedReasoning"]["effortCounts"])
+        self.assertIsNone(w["effectiveReasoning"])
+        self.assertIsNone(normalize_statistics(window(effort_counts=counts, requested_reasoning=None))["requestedReasoning"])
+
+    def test_zero_thinking_samples_and_inconsistent_counts_do_not_show_zero_percent(self):
+        raw = {"samples": 0, "thinking_counts": {"on": 0, "off": 0, "unknown": 0},
+               "effort_counts": dict.fromkeys(EFFORTS, 0), "confirmed_samples": 0}
+        w = normalize_statistics(window(requested_reasoning=raw, effective_reasoning=raw))
+        self.assertIsNone(w["requestedReasoning"]["thinkingRates"]["on"])
+        self.assertEqual(w["effectiveReasoning"]["samples"], 0)
+        raw["samples"] = 1
+        self.assertIsNone(normalize_statistics(window(requested_reasoning=raw))["requestedReasoning"])
+        raw.update(thinking_counts={"on": 1, "off": 0, "unknown": 0}, effort_counts=dict.fromkeys(EFFORTS, 0) | {"high": 1})
+        self.assertIsNone(normalize_statistics(window(effective_reasoning=raw))["effectiveReasoning"])
 
     def test_window_scope_and_staleness(self):
         self.assertIsNone(normalize_statistics(window(window_seconds=86400)))

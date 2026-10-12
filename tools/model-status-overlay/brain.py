@@ -15,6 +15,8 @@ COUNTERS = ("eligible_requests", "adaptive_applied", "selector_attempts", "selec
             "selector_unavailable", "selector_uncertain", "selector_stale", "calls", "failed_calls", "retries",
             "verified_success", "verified_failed", "unknown_tasks", "recovery_cases", "recovered",
             "input_tokens", "output_tokens", "reasoning_tokens")
+EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh", "max", "default", "other", "unknown")
+LEGACY_EFFORTS = ("off", "low", "medium", "high", "default", "other", "unknown")
 
 
 def boolean(value):
@@ -27,6 +29,30 @@ def choice(value, allowed):
 
 def fraction(numerator, denominator):
     return numerator / denominator if numerator is not None and denominator and numerator <= denominator else None
+
+
+def reasoning_distribution(raw, *, effective=False, legacy=False):
+    raw = obj(raw)
+    depths = {key: count(obj(raw.get("effort_counts")).get(key)) for key in (LEGACY_EFFORTS if legacy else EFFORTS)}
+    if any(value is None for value in depths.values()):
+        return None
+    if legacy:
+        samples = sum(depths.values())
+        # Old producers folded none/minimal/xhigh/max into other; its enablement is unknown.
+        modes = {"on": sum(depths[key] for key in ("low", "medium", "high", "default")),
+                 "off": depths["off"], "unknown": depths["unknown"] + depths["other"]}
+    else:
+        samples = count(raw.get("samples"))
+        modes = {key: count(obj(raw.get("thinking_counts")).get(key)) for key in ("on", "off", "unknown")}
+    if samples is None or any(value is None for value in modes.values()) \
+            or sum(modes.values()) != samples or sum(depths.values()) != samples:
+        return None
+    confirmed = count(raw.get("confirmed_samples")) if effective else None
+    if effective and (confirmed is None or confirmed > samples or modes["on"] + modes["off"] > confirmed):
+        return None
+    return {"samples": samples, "confirmedSamples": confirmed, "thinkingCounts": modes, "effortCounts": depths,
+            "thinkingRates": {key: fraction(value, samples) for key, value in modes.items()},
+            "effortRates": {key: fraction(value, samples) for key, value in depths.items()}}
 
 
 def configuration(path):
@@ -141,7 +167,10 @@ def normalize_statistics(raw):
     result["recoveryRate"] = fraction(result["recovered"], result["recovery_cases"])
     # Each bucket has a separate unknown count. Missing buckets are not zero observations.
     result["readingCounts"] = {key: count(obj(raw.get("reading_counts")).get(key)) for key in ("focused", "connected", "standard", "full", "unknown")}
-    result["effortCounts"] = {key: count(obj(raw.get("effort_counts")).get(key)) for key in ("off", "low", "medium", "high", "default", "other", "unknown")}
+    result["effortCounts"] = {key: count(obj(raw.get("effort_counts")).get(key)) for key in EFFORTS}
+    result["requestedReasoning"] = reasoning_distribution(raw.get("requested_reasoning")) if "requested_reasoning" in raw \
+        else reasoning_distribution({"effort_counts": raw.get("effort_counts")}, legacy=True)
+    result["effectiveReasoning"] = reasoning_distribution(raw.get("effective_reasoning"), effective=True)
     result["routeCounts"] = {key: count(obj(raw.get("route_counts")).get(key)) for key in (*sorted(ROLES), "unknown")}
     result["contextDistributions"] = {}
     for key in ("history_budget", "matched_input", "reasoning_budget"):

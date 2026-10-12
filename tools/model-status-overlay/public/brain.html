@@ -20,6 +20,13 @@
       <div class="focus-main"><div class="phase-line"><span class="section-label">当前阶段</span><h2 id="overview-phase">—</h2><span id="overview-source" class="source-tag"></span></div><p id="overview-request" class="request-line"></p></div>
       <div class="focus-bottom"><span id="overview-work"></span><span id="overview-coverage"></span></div>
     </section>
+    <section id="reasoning-overview" class="reasoning-card" aria-label="思考比例" hidden>
+      <div class="card-heading"><h2>思考分配</h2><span id="reasoning-coverage">近10分钟</span></div>
+      <div class="reasoning-grid">
+        <div><label>框架请求</label><b id="requested-thinking">开 — · 关 — · 未知 —</b><div id="requested-bar" class="reasoning-bar" aria-hidden="true"><i class="on"></i><i class="off"></i><i class="unknown"></i></div><small id="requested-samples">聚合指标待接入</small><p id="requested-depth">—</p></div>
+        <div><label>引擎实际生效</label><b id="effective-thinking">开 — · 关 — · 未知 —</b><div id="effective-bar" class="reasoning-bar" aria-hidden="true"><i class="on"></i><i class="off"></i><i class="unknown"></i></div><small id="effective-samples">聚合指标待接入</small><p id="effective-depth">—</p></div>
+      </div><p class="section-caption">各比例均以该列全部样本为分母，包含未知项；档位括号内为调用数。默认深度由端点决定。</p>
+    </section>
     <section id="response-panel" class="detail-card" aria-label="Agent 模型反应速度" hidden>
       <div class="card-heading"><h2>反应速度</h2><span>近 10 分钟 · 宿主实测上报</span></div>
       <div class="response-head"><span>模型通道</span><span>首输出</span><span>完整请求</span><span>缓存复用</span></div><div id="overview-models" class="response-list"></div>
