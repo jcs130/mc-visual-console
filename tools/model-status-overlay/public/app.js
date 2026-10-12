@@ -20,18 +20,20 @@ const setText = (id, value) => { const node = $(id); if (node) node.textContent 
 const tokens = (n) => finite(n) ? `${integer(n)} tok` : dash;
 const shortTokens = (n) => finite(n) ? n >= 1000 ? `${(n / 1000).toFixed(n % 1000 ? 1 : 0)}k` : integer(n) : dash;
 const ratio = (n) => finite(n) && n <= 1 ? percent(n * 100) : dash;
+const proportion = (n) => !finite(n) || n > 1 ? dash : n > 0 && n < .001 ? "<0.1%" : `${(n * 100).toFixed(1).replace(/\.0$/, "")}%`;
+const compactProportion = (n) => finite(n) && n > 0 && n < .01 ? "<1%" : ratio(n);
 const effort = (s) => s?.thinking === false ? "关闭" : s?.effort || (s?.thinking === true ? "端点默认" : dash);
 
 function renderReasoningDistribution(prefix, data, effective = false) {
   const rates = data?.thinkingRates;
-  setText(`${prefix}-thinking`, `开 ${ratio(rates?.on)} · 关 ${ratio(rates?.off)} · 未知 ${ratio(rates?.unknown)}`);
+  setText(`${prefix}-thinking`, `开 ${proportion(rates?.on)} · 关 ${proportion(rates?.off)} · 未知 ${proportion(rates?.unknown)}`);
   setText(`${prefix}-samples`, !data ? "聚合指标待接入" : effective
     ? `${integer(data.samples)} 个结束调用 · 引擎确认 ${integer(data.confirmedSamples)} / ${integer(data.samples)}`
     : `${integer(data.samples)} 个提交 · 含进行中的请求`);
   const bar = $(`${prefix}-bar`);
   if (bar) for (const key of ["on", "off", "unknown"]) bar.querySelector(`.${key}`).style.width = `${finite(rates?.[key]) ? rates[key] * 100 : 0}%`;
   const depths = data ? Object.entries(effortLabels).filter(([key]) => data.effortCounts?.[key] > 0)
-    .map(([key, label]) => `${label} ${ratio(data.effortRates?.[key])} (${integer(data.effortCounts[key])})`).join(" · ") : "";
+    .map(([key, label]) => `${label} ${proportion(data.effortRates?.[key])} (${integer(data.effortCounts[key])})`).join(" · ") : "";
   setText(`${prefix}-depth`, depths || (data?.samples === 0 ? "暂无调用样本" : dash));
 }
 
@@ -113,7 +115,7 @@ function renderBrain(age) {
   setText("brain-fallback", ratio(w?.fallbackRate));
   setText("brain-window", w && w.complete !== true ? "10分·部分" : "10分");
   const requested = w?.requestedReasoning;
-  setText("brain-thinking-summary", `开 ${ratio(requested?.thinkingRates?.on)} · 关 ${ratio(requested?.thinkingRates?.off)} · 未知 ${ratio(requested?.thinkingRates?.unknown)}`);
+  setText("brain-thinking-summary", `开 ${compactProportion(requested?.thinkingRates?.on)} · 关 ${compactProportion(requested?.thinkingRates?.off)} · 未知 ${compactProportion(requested?.thinkingRates?.unknown)}`);
   if ($("brain-thinking-summary")) $("brain-thinking-summary").title = `框架提交 ${integer(requested?.samples)} 次；各比例均含未知项，零样本为未知`;
   if ($("reasoning-overview")) $("reasoning-overview").hidden = !w;
   setText("reasoning-coverage", !w ? dash : w.complete ? "近10分钟" : `近10分钟 · 已覆盖 ${integer(w.coveredSeconds)} 秒`);

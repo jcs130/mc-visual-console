@@ -217,6 +217,11 @@ try {
       data.brain.statistics.effectiveReasoning = reasoningFixture({ on: 0, off: 0, unknown: 0 }, {}, 0);
       return data;
     }],
+    ["brain-dashboard-thinking-rare", () => {
+      const data = fixture();
+      data.brain.statistics.requestedReasoning = reasoningFixture({ on: 1, off: 9999, unknown: 0 }, { off: 9999, high: 1 });
+      return data;
+    }],
   ];
   for (const [name, makeData] of cases) {
     const page = await context.newPage();
@@ -298,6 +303,9 @@ try {
       assert.match(await page.locator("#requested-depth").textContent(), /minimal 10%.*xhigh 10%.*max 10%/);
       assert.equal(await page.locator("#effective-thinking").textContent(), "开 — · 关 — · 未知 —");
       assert.equal(await page.locator("#effective-depth").textContent(), "暂无调用样本");
+    } else if (name === "brain-dashboard-thinking-rare") {
+      assert.match(await page.locator("#requested-thinking").textContent(), /^开 <0\.1%/);
+      assert.match(await page.locator("#requested-depth").textContent(), /high <0\.1% \(1\)/);
     } else if (await page.evaluate(() => !current.brain?.selection)) {
       assert.equal(await page.locator("#detail-history").textContent(), "— → —");
       assert.equal(await page.locator("#metric-adaptive").textContent(), "—");
