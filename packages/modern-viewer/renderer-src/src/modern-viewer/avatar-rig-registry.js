@@ -192,6 +192,10 @@ function createMinecraftPlayerRig(context) {
   const hadOwnAnimation = Object.prototype.hasOwnProperty.call(model, "animation");
   const previousAnimation = model.animation;
   const animation = new PoseDrivenPlayerAnimation(context.animationOptions);
+  // Entity creation may already have written the first network look angle.
+  // Capture joint positions, but never retain that transient look as a bind-pose offset.
+  animation.ensureDefaults(model);
+  if (animation.defaults?.head) animation.defaults.head.rotation = { x: 0, y: 0, z: 0 };
   let disposed = false;
   model.animation = animation;
 

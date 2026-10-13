@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {bakeFaces} from '../native-viewer/model-loader.js';
 import {nativeGeneratedItemElements,nativeHeldItemTransform} from '../native-viewer/native-held-items.js';
+import {createNativeModelPart} from '../native-viewer/native-entity-model.js';
 import {paperItemAppearances} from './item-appearances.js';
 import {paperItemHeads} from './item-heads.js';
 
@@ -12,6 +13,7 @@ export function resolvePaperHeldModel(models,name,ancestry=[]) {
   if(own.loader)throw Error('YSM_ITEM_LOADER_UNSUPPORTED');
   let parent={};
   if(own.parent==='builtin/generated')parent={generated:true};
+  else if(own.parent==='builtin/entity' && name==='item/shield')parent={builtinShield:true};
   else if(own.parent?.startsWith('builtin/'))throw Error('YSM_ITEM_BUILTIN_UNSUPPORTED:'+name);
   else if(own.parent)parent=resolvePaperHeldModel(models,own.parent,[...ancestry,name]);
   return {...parent,...own,textures:{...parent.textures,...own.textures},display:{...parent.display,...own.display},elements:own.elements??parent.elements??[],sourceModels:[...(parent.sourceModels??[]),name]};
@@ -28,7 +30,8 @@ export function paperYsmItemMount(display,arm) {
       new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.radians,'XYZ')),new THREE.Vector3(...transform.scale)));
 }
 async function loadTexture(id) {
-  if(!/^minecraft:(?:item|block)\/[a-z0-9_/-]{1,128}$/.test(id)||id.includes('..'))throw Error('YSM_ITEM_TEXTURE_UNSUPPORTED');
+  if(!/^minecraft:(?:item|block)\/[a-z0-9_/-]{1,128}$/.test(id) && id!=='minecraft:entity/shield_base_nopattern')throw Error('YSM_ITEM_TEXTURE_UNSUPPORTED');
+  if(id.includes('..'))throw Error('YSM_ITEM_TEXTURE_UNSUPPORTED');
   const texture=await new THREE.TextureLoader().loadAsync('/textures/1.20.6/'+id.slice(10)+'.png');
   texture.flipY=true;texture.colorSpace=THREE.SRGBColorSpace;texture.magFilter=THREE.NearestFilter;texture.minFilter=THREE.NearestFilter;texture.generateMipmaps=false;texture.needsUpdate=true;
   return texture;
@@ -44,6 +47,35 @@ const textureId=(textures,value)=>{
   const visited=new Set();while(value?.startsWith('#')){if(visited.has(value))throw Error('YSM_ITEM_TEXTURE_CYCLE');visited.add(value);value=textures[value.slice(1)];}
   if(!value)throw Error('YSM_ITEM_TEXTURE_UNAVAILABLE');return value.includes(':')?value:'minecraft:'+value;
 };
+// Minecraft 1.20.6 ShieldModel#createLayer, verified against official client
+// 02dfd345ac1ad55692d5dbc8486ac7e4fea72cd54ac494a79cd48963048e56b2.
+// Original ModelPart pixels and UVs, not a box-shaped icon or substitute mesh.
+export const PAPER_SHIELD_PARTS={parts:[
+  {name:'plate',pivot:[0,0,0],cubes:[{origin:[-6,-11,-2],size:[12,22,1],uv:[0,0]}]},
+  {name:'handle',pivot:[0,0,0],cubes:[{origin:[-1,-3,-1],size:[2,6,6],uv:[26,0]}]},
+]};
+async function createPaperShield(model,item,arm,textureLoader,componentNames){
+  if(componentNames.some(c=>['base_color','banner_patterns'].includes(String(c).replace(/^minecraft:/,''))) || item.nbt?.value?.BlockEntityTag || item.nbt?.BlockEntityTag)
+    throw Error('YSM_SHIELD_PATTERN_UNSUPPORTED');
+  const texture=await textureLoader('minecraft:entity/shield_base_nopattern');
+  const material=new THREE.MeshLambertMaterial({map:texture,side:THREE.DoubleSide,alphaTest:.1});
+  let geometry;
+  try {
+    geometry=createNativeModelPart(PAPER_SHIELD_PARTS,material,[64,64]);
+    const root=new THREE.Group();root.add(geometry.root);
+    // ItemRenderer centres BEFORE BlockEntityWithoutLevelRenderer flips Y/Z.
+    // Unlike baked item faces, native ModelPart vertices have NOT been centred.
+    const display=model.display['thirdperson_'+arm+'hand']??model.display.thirdperson_righthand??{};
+    root.applyMatrix4(paperYsmItemMount(display,arm)
+      .multiply(new THREE.Matrix4().makeTranslation(-.5,-.5,-.5))
+      .multiply(new THREE.Matrix4().makeScale(1,-1,-1)));
+    root.name='paper-ysm-held-'+arm;
+    root.userData={item:'shield',sourceModels:model.sourceModels,source:'minecraft_1.20.6_ShieldModel',
+      effectReason:item.enchantments?.length?'原版附魔光效尚未适配':null,completeEntityParityVerified:false};
+    let disposed=false;
+    return {root,dispose(){if(disposed)return;disposed=true;root.removeFromParent();geometry.dispose();material.dispose();texture.dispose();root.clear();}};
+  }catch(error){geometry?.dispose();material.dispose();texture.dispose();throw error;}
+}
 export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTexture,readPixels=pixels,itemAppearances=paperItemAppearances}={}) {
   const name=String(item?.name??'').replace(/^minecraft:/,'');if(!/^[a-z0-9_]{1,96}$/.test(name))throw Error('YSM_ITEM_NAMESPACE_UNSUPPORTED');
   if(item.visualDataUnavailable)throw Error('YSM_ITEM_COMPONENTS_UNAVAILABLE');
@@ -66,6 +98,7 @@ export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTex
   const componentNames=Array.isArray(components)?components.map(c=>c.type??c.name??''):Object.keys(components);
   if(componentNames.some(c=>['custom_model_data','profile','dyed_color','potion_contents'].includes(String(c).replace(/^minecraft:/,''))))throw Error('YSM_ITEM_DYNAMIC_VISUAL_UNSUPPORTED');
   const model=resolvePaperHeldModel(models,'item/'+name),textures=new Map(),materials=new Map(),group=new THREE.Group(),unmerged=new Set();
+  if(model.builtinShield)return createPaperShield(model,item,arm,textureLoader,componentNames);
   const getTexture=async id=>{if(!textures.has(id))textures.set(id,await textureLoader(id));return textures.get(id);};
   try {
     const modelsToBake=[];
