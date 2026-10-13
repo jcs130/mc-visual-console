@@ -16,6 +16,7 @@ import { loadSceneSettings, resolveSceneQuality, applySceneQuality, sceneColourF
 import { installSceneSettings } from './scene-settings.js';
 import { CameraDirector, loadCameraSettings, cameraCollisionDistance } from './camera-director.js';
 import { installCameraSettings } from './camera-settings.js';
+import { installAgentViewGallery } from './agent-view-gallery.js';
 import { installViewerControlClient } from './viewer-control-client.js';
 import { ensureManualControlUi } from './manual-control-ui.js';
 import { installAgentVisualization } from "./agent-visual-overlay.js";
@@ -192,6 +193,7 @@ const isFreeOrbitView = viewMode === "third";
 const isDungeonView = viewMode === "dungeon";
 const usesWorldAvatar = !isFirstPersonView;
 const firstPersonFov = clampQueryNumber(queryValue("fov"), 30, 140, isObsOverlay ? 70 : 120);
+const thirdPersonFov = clampQueryNumber(queryValue("fov"), 30, 140, isPhotoView ? 120 : 75);
 const dungeonFov = clampQueryNumber(queryValue("dungeonFov"), 38, 62, 48);
 const renderDistance = clampQueryNumber(queryValue("distance"), 2, 12, 4);
 let sceneStorage; try { sceneStorage = window.localStorage; } catch {}
@@ -199,6 +201,7 @@ let sceneSettings = loadSceneSettings(sceneStorage, { quality: queryValue('quali
 let qualityPreference = normalizeQualityPreference(sceneSettings.quality);
 let activeScenePolicy = null, sceneSettingsUi = null;
 let cameraSettings = loadCameraSettings(sceneStorage), cameraDirector = null, cameraSettingsUi = null;
+if (isPhotoView || queryValue('fov') !== null) cameraSettings = { ...cameraSettings, fov: thirdPersonFov };
 const showChunkDiagnostics = queryValue("debugChunks") === "1";
 // Mineflayer only has chunks around the bot. Stay inside that loaded radius so
 // zooming out reveals the world instead of the empty sky beyond streamed data.
@@ -677,6 +680,7 @@ const socket = io({
   reconnectionDelayMax: 3_000,
   transports: ["websocket", "polling"],
 });
+installAgentViewGallery({document,window,hidden:isPhotoView||isObsOverlay});
 
 const agentVisualization = installAgentVisualization({
   socket, document, window, photo: isPhotoView,
@@ -930,7 +934,7 @@ async function initializeRenderer(version) {
           showHand: !isPhotoView,
           viewBobbing: true,
           fetchPlayerSkins: false,
-          fov: isFirstPersonView ? firstPersonFov : isDungeonView ? dungeonFov : 75,
+          fov: isFirstPersonView ? firstPersonFov : isDungeonView ? dungeonFov : thirdPersonFov,
           instantCameraUpdate: false,
         },
       },
@@ -5420,7 +5424,7 @@ function applyOrbitCameraOffset() {
   if (isFreeOrbitView && applyDirectedCamera()) return;
   const camera = globalThis.world?.camera;
   if (!camera?.position) return;
-  if(isFreeOrbitView)setObserverFov(75);
+  if(isFreeOrbitView)setObserverFov(isPhotoView ? thirdPersonFov : 75);
   camera.position.set(orbitPanX, orbitPanY, orbitDistance);
   camera.updateMatrixWorld(true);
   const world=globalThis.world, anchor=world.cameraWorldPos;
@@ -6180,7 +6184,7 @@ function publishDiagnostics(version) {
             yaw: orbitYaw,
             pitch: orbitPitch,
             distance: orbitDistance,
-            fov: isDungeonView ? dungeonFov : 75,
+            fov: globalThis.world?.camera?.fov ?? (isDungeonView ? dungeonFov : cameraSettings.fov),
             panX: orbitPanX,
             panY: orbitPanY,
             observerOffset: { x: observerOffset.x, y: observerOffset.y, z: observerOffset.z },

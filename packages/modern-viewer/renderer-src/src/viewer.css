@@ -519,6 +519,16 @@ body[data-viewer-layout=docked]{--viewer-rail-width:220px;--viewer-top:60px;--vi
 .viewer-display-settings{position:relative;flex:none}
 .viewer-scene-settings{position:fixed;top:12px;right:12px;z-index:30;color:#e9f1f4;font:12px/1.5 system-ui}
 .viewer-toolbar .viewer-scene-settings{position:relative;top:auto;right:auto;flex:none}
+.viewer-agent-views .agent-views-panel{position:fixed;left:12px;top:58px;width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 82px);overflow:auto;box-sizing:border-box;padding:16px;border:1px solid #7693a366;border-radius:12px;background:#10212af5;box-shadow:0 12px 36px #0007;color:#e9f1f4;display:grid;gap:10px}
+.viewer-agent-views:not([open]) .agent-views-panel{display:none}
+.agent-views-panel header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.agent-views-panel button{cursor:pointer;color:inherit;background:#203642;border:1px solid #78909c66;border-radius:7px;padding:5px 9px}
+.agent-views-panel .agent-views-note{margin:0;color:#a8bbc6;font-size:12px}
+.agent-views-panel figure{margin:0}.agent-views-panel figure[hidden]{display:none}
+.agent-views-panel figure>img{position:static;display:block;width:100%;max-height:49dvh;object-fit:contain;border-radius:7px;background:#091017}
+.agent-views-panel figcaption{display:grid;gap:3px;padding-top:8px;font:12px/1.5 system-ui;overflow-wrap:anywhere}.agent-views-panel figcaption p{margin:0;color:#bbd8e8}
+.agent-views-strip{display:flex;gap:8px;overflow-x:auto;padding:2px}
+.agent-views-strip button{flex:0 0 108px;padding:4px;display:grid;gap:3px}.agent-views-strip img{position:static;width:98px;height:55px;object-fit:cover}.agent-views-strip span{font:11px/1.4 monospace}.agent-views-strip [aria-pressed="true"]{border-color:#82daf3;background:#294d5b}
 .viewer-scene-settings summary{list-style:none;cursor:pointer;padding:7px 10px;border:1px solid #7592a65c;border-radius:7px;background:#172935}
 .viewer-scene-settings summary::-webkit-details-marker{display:none}
 .viewer-scene-panel{position:absolute;top:39px;right:0;display:grid;gap:12px;width:min(292px,calc(100vw - 24px));box-sizing:border-box;padding:14px;border:1px solid #7592a65c;border-radius:10px;background:#101e29fa;box-shadow:0 8px 24px #0006}
