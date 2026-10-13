@@ -10,6 +10,12 @@ import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
 import { installObsLayout } from "./obs-layout.js";
 import { installViewerLayout } from "./viewer-layout.js";
+import { loadSceneSettings, resolveSceneQuality, applySceneQuality, sceneColourFilter } from './scene-quality.js';
+import { installSceneSettings } from './scene-settings.js';
+import { CameraDirector, loadCameraSettings, cameraCollisionDistance } from './camera-director.js';
+import { installCameraSettings } from './camera-settings.js';
+import { installViewerControlClient } from './viewer-control-client.js';
+import { ensureManualControlUi } from './manual-control-ui.js';
 import { installAgentVisualization } from "./agent-visual-overlay.js";
 import { createAgentWorldProjector } from "./agent-visual-projection.js";
 import { resolveObsCamera, horizontalFov } from "./obs-camera.js";
@@ -186,7 +192,11 @@ const usesWorldAvatar = !isFirstPersonView;
 const firstPersonFov = clampQueryNumber(queryValue("fov"), 30, 140, isObsOverlay ? 70 : 120);
 const dungeonFov = clampQueryNumber(queryValue("dungeonFov"), 38, 62, 48);
 const renderDistance = clampQueryNumber(queryValue("distance"), 2, 12, 4);
-const qualityPreference = normalizeQualityPreference(queryValue("quality"));
+let sceneStorage; try { sceneStorage = window.localStorage; } catch {}
+let sceneSettings = loadSceneSettings(sceneStorage, { quality: queryValue('quality'), style: queryValue('style'), avatarSampling: queryValue('avatarSampling') });
+let qualityPreference = normalizeQualityPreference(sceneSettings.quality);
+let activeScenePolicy = null, sceneSettingsUi = null;
+let cameraSettings = loadCameraSettings(sceneStorage), cameraDirector = null, cameraSettingsUi = null;
 const showChunkDiagnostics = queryValue("debugChunks") === "1";
 // Mineflayer only has chunks around the bot. Stay inside that loaded radius so
 // zooming out reveals the world instead of the empty sky beyond streamed data.
@@ -504,6 +514,8 @@ const observerKeys = new Set();
 let observerFrame = null;
 let observerFrameTime = 0;
 let manualControlActive = false;
+let standaloneControls = null, touchLookPointer = null, touchLookPosition = null;
+const manualGamepadActions = new Map();
 let manualControlPhase = "observe";
 const manualKeys = new Set();
 let manualInputFrame = null;
@@ -859,7 +871,7 @@ socket.on("entityMoved", (update) => { if (!isObsOverlay) handleEntity(update, t
 
 async function initializeRenderer(version) {
   initializing = true;
-  if (isDungeonView) {
+  if (usesWorldAvatar) {
     dungeonRoomCoverCache = new RoomCoverCache(version);
     dungeonFloorMask = new RoomFloorMask(dungeonRoomCoverCache);
   }
@@ -2736,6 +2748,7 @@ function publishCameraDataset() {
 
 function applyAvatarState() {
   if (!rendererReady || !viewer || !pendingAvatarState) return;
+  if (!isObsOverlay && adaptiveQualityController) refreshSceneQuality(adaptiveQualityController.getSnapshot());
   const reactive = viewer.playerState.reactive;
   const state = isObsOverlay ? currentObsHandState() : pendingAvatarState;
   if (!state) return;
@@ -2766,7 +2779,7 @@ function applyAvatarState() {
   reactive.flying = state.flying === true || state.elytraFlying === true;
   reactive.inWater = state.inWater === true;
   reactive.itemUsageTicks = state.usingHeldItem === true ? Math.max(1, finiteOr(reactive.itemUsageTicks, 0) + 1) : 0;
-  reactive.fovMultiplier = isObsOverlay ? 1 : reactive.sprinting ? 1.04 : 1;
+  reactive.fovMultiplier = isObsOverlay || usesWorldAvatar ? 1 : reactive.sprinting ? 1.04 : 1;
 
   reactive.prevWalkDist = finiteOr(reactive.walkDist, accumulatedWalkDistance);
   reactive.walkDist = accumulatedWalkDistance;
@@ -4670,6 +4683,7 @@ function installOrbitControls() {
   canvas.style.touchAction = "none";
   canvas.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && ![0, 1, 2].includes(event.button)) return;
+    useManualOrbitCamera();
     event.preventDefault();
     canvas.focus({ preventScroll: true });
     if (event.pointerType === "touch") {
@@ -4736,6 +4750,7 @@ function installOrbitControls() {
     "wheel",
     (event) => {
       event.preventDefault();
+      useManualOrbitCamera();
       const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 120 : 1);
       orbitDistance = clampNumber(
         orbitDistance * Math.exp(clampNumber(delta, -240, 240, 0) * 0.0018),
@@ -4769,6 +4784,7 @@ function installOrbitControls() {
       "KeyW", "KeyA", "KeyS", "KeyD", "Space", "ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight",
     ].includes(event.code)) return;
     event.preventDefault();
+    useManualOrbitCamera();
     if (["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "Space", "ControlLeft", "ControlRight"].includes(event.code)) {
       returnCameraToAvatar({ announce: false });
     }
@@ -4780,6 +4796,8 @@ function installOrbitControls() {
 }
 
 function installManualControls() {
+  if(isPhotoView || isObsOverlay)return;
+  ensureManualControlUi(document);
   const canvas = document.getElementById("viewer-canvas");
   const overlay = document.getElementById("manual-viewer-overlay");
   const stick = document.getElementById("touch-stick");
@@ -4787,16 +4805,15 @@ function installManualControls() {
   const jump = document.getElementById("touch-jump");
   const sprint = document.getElementById("touch-sprint");
   const stop = document.getElementById("touch-stop");
-  if (!canvas || !overlay || !stick || !stickKnob || !jump || !sprint || !stop || !dashboardOrigin) return;
+  if (!canvas || !overlay || !stick || !stickKnob || !jump || !sprint || !stop || parent!==window&&!dashboardOrigin) return;
   canvas.tabIndex = 0;
 
-  window.addEventListener("message", (event) => {
-    if (event.origin !== dashboardOrigin || event.source !== parent || event.data?.type !== "lantern-manual-state") return;
+  const updateControlState = (data) => {
     const wasActive = manualControlActive;
-    if (event.data.stopLatched === true) manualStopLatched = true;
-    else if (event.data.active !== true) manualStopLatched = false;
-    manualControlActive = event.data.active === true;
-    manualControlPhase = String(event.data.phase || "observe");
+    if (data.stopLatched === true) manualStopLatched = true;
+    else if (data.active !== true) manualStopLatched = false;
+    manualControlActive = data.active === true;
+    manualControlPhase = String(data.phase || "observe");
     overlay.classList.toggle("is-active", manualControlActive);
     overlay.setAttribute("aria-hidden", String(!manualControlActive));
     if (manualControlActive && !wasActive) {
@@ -4815,6 +4832,44 @@ function installManualControls() {
     if (["navigating", "attacking", "interacting"].includes(manualControlPhase)) lastManualMotionEngaged = false;
     if (manualControlActive && dungeonPointerLookActive) startManualInputLoop();
     updateManualHelp();
+  };
+  window.addEventListener("message", (event) => {
+    if (event.origin !== dashboardOrigin || event.source !== parent || event.data?.type !== "lantern-manual-state") return;
+    updateControlState(event.data);
+  });
+  if(parent===window){
+    standaloneControls=installViewerControlClient({socket,document,window,onState:updateControlState,isReady:()=>rendererReady});
+    window.addEventListener('pagehide',()=>standaloneControls.dispose(),{once:true});
+  }
+
+  const action=(type,pressed)=>{if(manualControlActive)postToDashboard({type:`lantern-control-${type}`,pressed});};
+  canvas.addEventListener('pointerdown',event=>{
+    if(!manualControlActive||!isFirstPersonView)return;
+    if(event.pointerType==='touch'){
+      touchLookPointer=event.pointerId;touchLookPosition={x:event.clientX,y:event.clientY};canvas.setPointerCapture(event.pointerId);event.preventDefault();return;
+    }
+    if(firstPersonPointerLocked&&[0,2].includes(event.button)){event.preventDefault();action(event.button===0?'primary':'secondary',true);}
+  });
+  canvas.addEventListener('pointermove',event=>{
+    if(!manualControlActive||event.pointerId!==touchLookPointer||!touchLookPosition)return;
+    manualLookYaw=normalizeRadians(manualLookYaw-(event.clientX-touchLookPosition.x)*.006);
+    manualLookPitch=clampNumber(manualLookPitch+(event.clientY-touchLookPosition.y)*.006,-1.5,1.5,0);
+    touchLookPosition={x:event.clientX,y:event.clientY};applyManualFirstPersonLook();startManualInputLoop();event.preventDefault();
+  });
+  const finishPointer=event=>{
+    if(event.pointerId===touchLookPointer){touchLookPointer=null;touchLookPosition=null;}
+    if(isFirstPersonView&&event.pointerType!=='touch'&&[0,2].includes(event.button))action(event.button===0?'primary':'secondary',false);
+  };
+  window.addEventListener('pointerup',finishPointer);window.addEventListener('pointercancel',finishPointer);
+  canvas.addEventListener('contextmenu',event=>{if(manualControlActive)event.preventDefault();});
+  for(const[id,type]of [['touch-primary','primary'],['touch-secondary','secondary']]){
+    const button=document.getElementById(id);
+    button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);action(type,true);});
+    for(const event of ['pointerup','pointercancel'])button.addEventListener(event,e=>{e.preventDefault();action(type,false);});
+  }
+  window.addEventListener('keydown',event=>{
+    if(!manualControlActive||event.repeat||/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)||event.target?.isContentEditable)return;
+    if(/^Digit[1-9]$/.test(event.code)){event.preventDefault();postToDashboard({type:'lantern-control-hotbar',slot:Number(event.code.slice(-1))-1});}
   });
 
   canvas.addEventListener("click", (event) => {
@@ -4863,7 +4918,7 @@ function installManualControls() {
     "KeyW", "KeyA", "KeyS", "KeyD", "KeyY", "Space", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "Escape",
   ]);
   window.addEventListener("keydown", (event) => {
-    if (!manualControlActive || !manualCodes.has(event.code)) return;
+    if (!manualControlActive || !manualCodes.has(event.code) || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return;
     event.preventDefault();
     if (event.code === "KeyY") {
       clearPendingGroundTap();
@@ -4941,7 +4996,7 @@ function installManualControls() {
     jump.classList.toggle("is-active", touchJump);
     if (manualControlActive) startManualInputLoop();
   };
-  jump.addEventListener("pointerdown", (event) => setJump(true, event));
+  jump.addEventListener("pointerdown", (event) => {jump.setPointerCapture(event.pointerId);setJump(true, event);});
   jump.addEventListener("pointerup", (event) => setJump(false, event));
   jump.addEventListener("pointercancel", (event) => setJump(false, event));
   sprint.addEventListener("click", (event) => {
@@ -5104,7 +5159,7 @@ function updateManualInput(now) {
       : keyboard;
   const actualYaw = finiteOr(pendingAvatarState?.entity?.yaw, latestPosition?.yaw ?? 0);
   const actualPitch = finiteOr(pendingAvatarState?.entity?.pitch, latestPosition?.pitch ?? 0);
-  const firstPersonDirectLooking = isFirstPersonView && (gamepad.looking || firstPersonPointerLocked);
+  const firstPersonDirectLooking = isFirstPersonView && (gamepad.looking || firstPersonPointerLocked || touchLookPointer!==null);
   if (isFirstPersonView && !firstPersonDirectLooking) {
     manualLookYaw = actualYaw;
     manualLookPitch = actualPitch;
@@ -5166,6 +5221,8 @@ function sampleGamepad(elapsed) {
   const pads = navigator.getGamepads?.() || [];
   const pad = [...pads].find((candidate) => candidate?.connected && candidate.mapping === "standard");
   if (!pad) {
+    for(const[key,pressed]of manualGamepadActions)if(pressed&&['primary','secondary'].includes(key))postToDashboard({type:`lantern-control-${key}`,pressed:false});
+    manualGamepadActions.clear();
     if (gamepadConnected) publishGamepadStatus(false);
     gamepadStopPressed = false;
     gamepadReleasePressed = false;
@@ -5180,6 +5237,7 @@ function sampleGamepad(elapsed) {
   const looking = Math.hypot(right.x, right.y) > 0.01;
   if (looking) {
     if (isFreeOrbitView) {
+      useManualOrbitCamera();
       orbitYaw = normalizeRadians(orbitYaw - right.x * 2.25 * elapsed);
       orbitPitch = clampNumber(orbitPitch - right.y * 1.8 * elapsed, -1.25, 1.1, -0.22);
       applyPosition(true);
@@ -5213,7 +5271,16 @@ function sampleGamepad(elapsed) {
   gamepadReleasePressed = releasePressed;
   const jump = pad.buttons[0]?.pressed === true;
   const sneak = pad.buttons[1]?.pressed === true;
-  const sprint = pad.buttons[4]?.pressed === true || pad.buttons[10]?.pressed === true || finiteOr(pad.buttons[7]?.value, 0) > 0.55;
+  for(const[key,pressed]of [['primary',pad.buttons[7]?.pressed===true],['secondary',pad.buttons[6]?.pressed===true]]){
+    if((manualGamepadActions.get(key)??false)!==pressed)postToDashboard({type:`lantern-control-${key}`,pressed});
+    manualGamepadActions.set(key,pressed);
+  }
+  for(const[index,delta]of [[4,-1],[5,1]]){
+    const pressed=pad.buttons[index]?.pressed===true,key=`slot${index}`;
+    if(pressed&&!manualGamepadActions.get(key))postToDashboard({type:'lantern-control-hotbar',slot:((pendingAvatarState?.quickBarSlot??0)+delta+9)%9});
+    manualGamepadActions.set(key,pressed);
+  }
+  const sprint = pad.buttons[10]?.pressed === true;
   const engaged = Math.hypot(left.x, left.y) > 0.01 || jump || sneak;
   return { forward: -left.y, strafe: left.x, jump, sprint, sneak, engaged, looking, stopPressed };
 }
@@ -5233,6 +5300,7 @@ function publishGamepadStatus(connected, label = "") {
 }
 
 function resetManualInputs(forceInactive) {
+  touchLookPointer=null;touchLookPosition=null;manualGamepadActions.clear();
   clearPendingGroundTap();
   if (isDungeonView) clearDungeonPointerLook();
   manualKeys.clear();
@@ -5331,22 +5399,81 @@ function updateManualHelp() {
 }
 
 function postToDashboard(message) {
+  if(standaloneControls?.route(message))return;
   if (!dashboardOrigin || parent === window) return;
   parent.postMessage(message, dashboardOrigin);
 }
 
 function applyOrbitCameraOffset() {
   if (!usesWorldAvatar) return;
+  if (isFreeOrbitView && applyDirectedCamera()) return;
   const camera = globalThis.world?.camera;
   if (!camera?.position) return;
-  const resolvedDistance = Math.max(0.4, Math.abs(finiteOr(camera.position.z, 4)));
-  // Up to four blocks, retain the renderer's vanilla wall collision. Beyond
-  // that range this is an explicit observer camera, so the requested distance
-  // wins over Minecraft's hard-coded four-block third-person limit.
-  camera.position.z = orbitDistance <= 4 ? Math.min(orbitDistance, resolvedDistance) : orbitDistance;
-  camera.position.x = orbitPanX;
-  camera.position.y = orbitPanY;
+  if(isFreeOrbitView)setObserverFov(75);
+  camera.position.set(orbitPanX, orbitPanY, orbitDistance);
+  camera.updateMatrixWorld(true);
+  const world=globalThis.world, anchor=world.cameraWorldPos;
+  if (isFreeOrbitView && anchor && world.sceneOrigin) {
+    const local=camera.getWorldPosition(manualCameraWorldPosition);
+    const offset=manualCameraDirection.set(world.sceneOrigin.toWorldX(local.x)-anchor.x,
+      world.sceneOrigin.toWorldY(local.y)-anchor.y, world.sceneOrigin.toWorldZ(local.z)-anchor.z);
+    const distance=offset.length();
+    if(distance>.001) {
+      const allowed=cameraCollisionDistance(anchor,offset.normalize(),distance,{
+        fov:camera.fov,aspect:camera.aspect,
+        isSolid:(x,y,z)=>world.cameraCollisionBlockCache?.isSolidBlock(x,y,z)===true,
+        columnKnown:(x,z)=>dungeonRoomCoverCache?.columns.has(`${Math.floor(x/16)*16},${Math.floor(z/16)*16}`)===true,
+      });
+      camera.position.multiplyScalar(allowed/distance);
+    }
+  } else if (!isFreeOrbitView) {
+    // Dungeon cutaway owns its camera distance and visibility rules.
+    camera.position.set(orbitPanX,orbitPanY,orbitDistance);
+  }
   camera.updateMatrixWorld?.();
+}
+
+const manualCameraWorldPosition = new Vector3(), manualCameraDirection = new Vector3();
+function useManualOrbitCamera() {
+  if (cameraSettings.mode !== 'manual' || cameraDirector?.shot) {
+    cameraDirector?.reset();
+    cameraSettingsUi?.manual();
+  }
+}
+
+function applyDirectedCamera() {
+  if (!cameraDirector || cameraSettings.mode === 'manual' && !cameraDirector.shot) return false;
+  const world = globalThis.world, resolved = resolveObserverTargetPosition(), entity = resolved?.entity || pendingAvatarState?.entity;
+  if (!world?.cameraWorldPos || !resolved) return false;
+  const eye = viewer.playerState.reactive.eyeHeight ?? 1.62;
+  // updateCamera has just placed the anchor using the existing network smoother.
+  const anchor = { x: world.cameraWorldPos.x, y: world.cameraWorldPos.y-eye, z: world.cameraWorldPos.z };
+  const mounted = typeof cortiYsmPlayers !== 'undefined' ? cortiYsmPlayers.actors.get(entity?.uuid?.toLowerCase()) : null;
+  const modelHeight = mounted?.actor?.assetInfo?.bindSizeBlocks?.[1] ?? entity?.height ?? 1.8;
+  const pose = cameraDirector.update({ key: String(focusedCharacterId ?? pendingAvatarState?.entity?.uuid ?? 'self'), position: anchor,
+    yaw: entity?.yaw ?? latestPosition.yaw, height: modelHeight }, cameraSettings, performance.now(), {
+    aspect: world.camera.aspect,
+    isSolid: (x,y,z) => world.cameraCollisionBlockCache?.isSolidBlock(x,y,z) === true,
+    columnKnown: (x,z) => dungeonRoomCoverCache?.columns.has(`${Math.floor(x/16)*16},${Math.floor(z/16)*16}`) === true,
+  });
+  if (!pose) return false;
+  viewer.updateCamera(new Vec3(pose.position.x,pose.position.y-eye,pose.position.z),pose.yaw,pose.pitch,{instant:true});
+  // Keep the third-person avatar path; remove the renderer's extra four-block offset.
+  world.camera.position.set(0,0,0);
+  setObserverFov(pose.fov);
+  world.camera.updateMatrixWorld(true);
+  orbitYaw=pose.yaw;orbitPitch=pose.pitch;
+  cameraSettingsUi?.status(`${pose.shot ? '展示镜头' : '自动运镜'} · 距离 ${pose.distance.toFixed(1)} 格${pose.occluded ? ' · 避障缩近' : ''}`);
+  if (!document.hidden && typeof scheduleCortiCameraFrame === 'function') scheduleCortiCameraFrame();
+  return true;
+}
+
+function setObserverFov(value) {
+  if(viewer.inWorldRenderingConfig.fov!==value)viewer.inWorldRenderingConfig.fov=value;
+  const world=globalThis.world;
+  // The native renderer updates FOV on every frame. Update its source as well
+  // as its projection, or the configured director FOV is immediately lost.
+  if(world?.camera?.fov!==value)world.setCinimaticFov(value);
 }
 
 function minimumThirdPersonOrbitDistance() {
@@ -5533,6 +5660,21 @@ function enhanceRendererQuality() {
     preference: qualityPreference,
   });
   applyRendererQuality(adaptiveQualityController.getSnapshot());
+  sceneSettingsUi = installSceneSettings({ document, window, settings: sceneSettings, hidden: isPhotoView || isObsOverlay,
+    onChange(settings) {
+      const qualityChanged = qualityPreference !== settings.quality;
+      sceneSettings = settings; qualityPreference = settings.quality;
+      if (qualityChanged) adaptiveQualityController = createAdaptiveQualityController({
+        nativePixelRatio: finiteOr(globalThis.devicePixelRatio, 1), maximumPixelRatio: 1.75, preference: qualityPreference });
+      applyRendererQuality(adaptiveQualityController.getSnapshot());
+    } });
+  if (isFreeOrbitView && !isObsOverlay && !isPhotoView) {
+    cameraDirector = new CameraDirector();
+    cameraSettingsUi = installCameraSettings({ document, window, settings: cameraSettings, hidden: isPhotoView,
+      onChange(settings) { if(cameraSettings.mode!==settings.mode)cameraDirector.reset(); cameraSettings=settings; applyPosition(true); },
+      onShot(kind) { cameraDirector.startShot(kind,performance.now()); applyPosition(false); } });
+    window.addEventListener('pagehide',()=>cameraDirector.dispose(),{once:true});
+  }
   startPerformanceMonitor();
 }
 
@@ -5590,6 +5732,7 @@ function sampleRendererPerformance() {
   const qualitySample = adaptiveQualityController.sample({ fps, hidden: document.hidden });
   if (qualitySample.changed) applyRendererQuality(qualitySample);
   const quality = adaptiveQualityController.getSnapshot();
+  refreshSceneQuality(quality);
   rendererPerformance = {
     fps,
     averageFrameMs: positiveMetric(state?.avgRenderTime),
@@ -5597,6 +5740,7 @@ function sampleRendererPerformance() {
     drawCalls: nonNegativeMetric(renderer?.info?.render?.calls),
     triangles: nonNegativeMetric(renderer?.info?.render?.triangles),
     quality,
+    scene: activeScenePolicy,
   };
   scheduleTrustedNpcAvatarRebalance("quality-sample");
   publishPerformanceDataset();
@@ -5606,15 +5750,33 @@ function sampleRendererPerformance() {
 function applyRendererQuality(quality) {
   const renderer = globalThis.world?.renderer;
   if (!renderer || !quality) return false;
-  // Preserve the cheap contact shadow at every tier, but skip the additional
-  // skinned shadow pass once adaptive quality reaches performance mode.
-  if (renderer.shadowMap) renderer.shadowMap.enabled = quality.mode !== "performance";
+  refreshSceneQuality(quality);
   const current = finiteOr(renderer.getPixelRatio?.(), 1);
   // Still photographs keep their requested physical resolution while chunks load.
   const ratio = isPhotoView ? 1 : quality.pixelRatio;
   if (Math.abs(current - ratio) < 0.01) return false;
   renderer.setPixelRatio(ratio);
   return true;
+}
+
+function refreshSceneQuality(quality) {
+  const world = globalThis.world;
+  const p = world?.cameraWorldPos, height = world?.getSectionHeight?.() ?? 16;
+  const section = p ? `${Math.floor(p.x / 16) * 16},${Math.floor(p.y / height) * height},${Math.floor(p.z / 16) * 16}` : '';
+  activeScenePolicy = resolveSceneQuality(sceneSettings, { mode: quality?.mode, view: viewMode,
+    gameMode: pendingAvatarState?.gameMode, overlay: isObsOverlay,
+    sectionReady: world?.chunkMeshManager?.sectionOcclusionCull?.hasRegisteredSection(section) === true });
+  activeScenePolicy.anisotropy = Math.min(activeScenePolicy.anisotropy, Math.max(1, world?.renderer?.capabilities?.getMaxAnisotropy?.() ?? 1));
+  if (world?.playerStateReactive && ['survival', 'adventure', 'creative', 'spectator'].includes(pendingAvatarState?.gameMode)) {
+    world.playerStateReactive.gameMode = pendingAvatarState.gameMode;
+  }
+  applySceneQuality(world, activeScenePolicy);
+  if (avatarPresentationLights) {
+    avatarPresentationLights.fill.intensity = activeScenePolicy.style === 'native' ? 0 : .24;
+    avatarPresentationLights.rim.intensity = activeScenePolicy.style === 'native' ? 0 : activeScenePolicy.style === 'cinematic' ? .32 : .18;
+  }
+  const reasons = { overlay: '透明覆盖', observer: '环绕／切面视角', spectator: '旁观模式', 'unconfirmed-mode': '等待角色模式', 'loading-section': '等待所在区域加载', disabled: '手动关闭' };
+  sceneSettingsUi?.status(`${quality?.mode === 'performance' ? '省电' : quality?.mode === 'high' ? '精细' : '均衡'} · 遮挡剔除${activeScenePolicy.smartCull ? '已启用' : '未启用（' + reasons[activeScenePolicy.cullingReason] + '）'} · ${activeScenePolicy.shadows ? '角色阴影开启' : '轻量光照'}`);
 }
 
 function publishPerformanceDataset() {
@@ -5710,6 +5872,7 @@ function publishDiagnostics(version) {
     viewMode,
     photoMode: isPhotoView,
     firstPersonFov,
+    get cameraDirector() { return { settings: cameraSettings, pose: cameraDirector?.lastPose ?? null }; },
     renderDistance,
     textureAnisotropy,
     qualityPreference,

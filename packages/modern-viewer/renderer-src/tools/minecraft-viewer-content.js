@@ -15,7 +15,7 @@ let cortiContentEpoch = null;
 let cortiContentDisposed = false;
 let cortiContentError = null;
 const cortiAppearances=new Map();
-const cortiYsmPlayers=new PaperYsmPlayers({itemModels:paperYsmItemModels.models.latest,entity:id=>entityCache.get(String(id))??(pendingAvatarState?.entity?.id===id?pendingAvatarState.entity:null),rendered:id=>globalThis.world?.entities?.entities?.[String(id)]});
+const cortiYsmPlayers=new PaperYsmPlayers({itemModels:paperYsmItemModels.models.latest,entity:id=>entityCache.get(String(id))??(pendingAvatarState?.entity?.id===id?pendingAvatarState.entity:null),rendered:id=>globalThis.world?.entities?.entities?.[String(id)],presentation:()=>activeScenePolicy});
 socket.on('appearanceAsset',bundle=>cortiYsmPlayers.asset(bundle));
 socket.on('appearanceMotion',event=>cortiYsmPlayers.motion(event));
 socket.on('entityAnimation',event=>cortiYsmPlayers.action(event));

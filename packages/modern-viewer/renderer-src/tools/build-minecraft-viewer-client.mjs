@@ -229,20 +229,11 @@ const adaptedClient = clientSource
     '    pendingPlayerEntity = { ...pendingPlayerEntity, pos: latestPosition.pos, position: latestPosition.pos, yaw: latestPosition.yaw, pitch: latestPosition.pitch };')
   .replace('    pitch: finiteOr(data?.pitch, usesWorldAvatar ? -0.22 : 0),\n  };',
     '    pitch: finiteOr(data?.pitch, usesWorldAvatar ? -0.22 : 0),\n    teleport: data?.teleport === true,\n  };')
-  .replace('    installManualControls();', '    // 宿主驱动的观察画面，不安装游戏接管控制。')
   .replace('    installDungeonInteractions();', '    // 只读画面不显示可操作交互。')
   .replace('    installDungeonContextMenu();', '    // 只读画面不显示游戏操作菜单。')
   .replaceAll('installNpcGameplay();', '/* 宿主提供 NPC 交互，移除参考项目的本地玩法层。 */')
   .replace('地牢 2.5D 视角；悬停识别对象，接管后点击地面移动，右键或长按目标选择详情、走近、攻击或使用，滚轮缩放', '地牢 2.5D 只读观察视角；滚轮缩放')
   .replaceAll('灯守', 'Minecraft 玩家')
-  .replace(/function updateManualHelp\(\) \{[\s\S]*?\n\}\n\nfunction postToDashboard/, `function updateManualHelp() {
-  const help = document.querySelector(".viewer-help");
-  if (help) help.textContent = viewMode === "first"
-    ? "Minecraft 实时第一人称画面 · 只读"
-    : "Minecraft 实时画面 · 可移动观察镜头 · 不控制游戏角色";
-}
-
-function postToDashboard`)
 const changedClient = patchRoomOcclusion(adaptedClient)
 if (changedClient === clientSource || changedClient.includes('String(version || "1.21.1")')
     || !clientSource.includes('starfield: true,')

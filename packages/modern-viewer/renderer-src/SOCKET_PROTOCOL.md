@@ -157,6 +157,7 @@ const sword = {
 ```js
 socket.emit('avatarState', {
   seq: 1, sequence: 1, capturedAt: Date.now(),
+  gameMode: bot.game?.gameMode ?? null, // survival / adventure / creative / spectator；未知为 null
   entity: selfEntity, // 第 3 节的自身完整实体
   movementState: 'walking', // idle / walking / running / crouch / crouchWalking
   horizontalSpeed: 0.12, verticalSpeed: 0,
@@ -180,6 +181,8 @@ socket.emit('avatarState', {
 ```
 
 生命是实际生命点（默认 20 点=10 颗心），吸收生命独立放在 `absorption`；饥饿、护甲、氧气范围 0–20，经验进度 0–1。`oxygen` 使用归一后的 HUD 值，不是原始空气 tick。`inventory` 保留玩家窗口的原始槽位索引，不能过滤空槽；`quickBarSlot` 为 0–8。快捷栏起点应读取 `bot.inventory.hotbarStart`，36 是 1.20.6 玩家窗口示例。
+
+`gameMode` 是可选增量字段，必须来自此行动角色自己的状态。第一人称遮挡剔除仅在确认生存／冒险模式且相机区段就绪时启用；缺失该字段的旧宿主继续显示完整区段。
 
 举盾应来自真实使用状态，而不是“副手有盾就始终举盾”。中毒等状态还需发送第 5 节的 effect 事件，单靠减少生命不能判断中毒。
 
@@ -419,3 +422,24 @@ SSE 首先发送 `type: "identity"`，包含 `minecraftVersion: "1.21.1"`、`reg
 2026-10-04 新 My Agent World 已使用这套合约实际发布完整页面；同账号身份、真实 46 格背包/本人预览、
 三种视角、实际生命与 Ars 魔力在浏览器验过，页面无 warn/error。此部署记录不扩大本节的支持范围；
 完整实体、装备、动画、光照、声音、持续运行及新服基岩连接仍需独立验收。
+
+## 9. 可选网页操控协议
+
+本节用于现代 Socket.IO 页面；原生 SSE 后端保持原协议。参考实现是 `host/viewer-control.mjs` 与 `host/viewer-mineflayer-control.mjs`。接入前先完成[宿主授权和 Agent 交接](docs/web-controls-camera-quality.md#宿主接入操控)。
+
+| 方向与事件 | 字段与语义 |
+| --- | --- |
+| 浏览器 → `viewerControlStatus` | 请求当前能力与租期状态，只读 |
+| 宿主 → `viewerControlState` | `{schemaVersion:1, available, active, busy, actor:{uuid,username,entityId}, epoch, phase, reason?, capabilities}`；其他页面收到 `epoch:null` |
+| 浏览器 → `viewerControl` | `{schemaVersion:1, type, epoch, sequence, requestId?, ...参数}`，通过 Socket.IO acknowledgement 返回结果 |
+| 操作回执 | `{schemaVersion:1, requestId?, ok, status?, reason?, scope?, position?}`；命令回执不替代实际背包与世界更新 |
+
+`acquire` 请求接管；成功后宿主发出 `active:true` 和随机 `epoch`。后续每包携带该 epoch 和递增整数 sequence。`release` 交还，`heartbeat` 续期，`stop` 停止当前动作。暂停 Agent 期间允许同一个 socket 取消尚未完成的接管；重复／旧序号拒绝。
+
+`motion.input` 含 `forward/strafe`（−1 至 1）、弧度 `cameraYaw`、可选 `lookYaw/lookPitch`、`movementMode`（`first_person` 或 `camera_relative`）及布尔 `jump/sprint/sneak`。输入被限幅；它只应用原生按键与朝向，实际移动依赖服务端状态。
+
+`primary/secondary` 携带布尔 `pressed`；`hotbar` 携带 0 至 8 的 `slot`；`navigate` 携带世界坐标 `ray:{origin:{x,y,z},direction:{x,y,z}}`。仅开启当前适配器声明的能力。默认适配器拒绝旁观模式和 Eye／Cam 账号。
+
+`phase` 为 `observe/manual/navigating/attacking/interacting`。`applied` 只确认控制输入，`sent` 只确认已发出攻击、选择或使用指令；`confirmed` 用于原生挖掘／放置 Promise 完成或确认到达。`unknown` 需要重新查询，不自动重试。容器、交易及合成写操作不属于本协议。
+
+动作尚未结束时，重复消耗性动作返回 `action_pending`。交还时先取消并停止，等待原生操作落定，再恢复 Agent；如果底层操作始终不结束，保持交接忙碌，交由宿主处理。超时、断线、后台和角色变化会释放租期；浏览器重新连接后不自动接管。

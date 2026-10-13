@@ -503,6 +503,25 @@ body[data-viewer-layout=docked]{--viewer-rail-width:220px;--viewer-top:60px;--vi
 .viewer-toolbar .viewer-audio-settings{top:40px;bottom:auto;right:0;left:auto;width:260px;background:#101c23fa}
 .viewer-toolbar .corti-chat-panel{position:fixed;top:60px;bottom:auto;left:12px;width:min(480px,calc(100vw - 24px));max-height:calc(100vh - 180px);background:#101c23fa}
 .viewer-display-settings{position:relative;flex:none}
+.viewer-scene-settings{position:fixed;top:12px;right:12px;z-index:30;color:#e9f1f4;font:12px/1.5 system-ui}
+.viewer-toolbar .viewer-scene-settings{position:relative;top:auto;right:auto;flex:none}
+.viewer-scene-settings summary{list-style:none;cursor:pointer;padding:7px 10px;border:1px solid #7592a65c;border-radius:7px;background:#172935}
+.viewer-scene-settings summary::-webkit-details-marker{display:none}
+.viewer-scene-panel{position:absolute;top:39px;right:0;display:grid;gap:12px;width:min(292px,calc(100vw - 24px));box-sizing:border-box;padding:14px;border:1px solid #7592a65c;border-radius:10px;background:#101e29fa;box-shadow:0 8px 24px #0006}
+.viewer-scene-panel label{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.viewer-scene-panel select{max-width:174px;min-height:32px;border:1px solid #6d899a;border-radius:5px;padding:4px;background:#203746;color:#f4f8fb;font:inherit}
+.viewer-scene-panel input[type=number]{width:84px;min-height:28px;border:1px solid #6d899a;border-radius:5px;padding:4px;background:#203746;color:#f4f8fb;font:inherit}
+.viewer-camera-settings .viewer-scene-panel{max-height:calc(100dvh - 95px);overflow:auto}
+.viewer-scene-panel small,.viewer-scene-panel output{color:#b9cbd6;font-size:11px;line-height:1.6}
+.viewer-play-controls{display:flex;align-items:center;gap:8px;font:12px system-ui;color:#e7eff4;max-width:340px}
+.viewer-play-controls[hidden]{display:none}.viewer-play-controls output{font-size:11px;max-width:170px}
+.manual-viewer-overlay{display:none;position:fixed;inset:0;z-index:18;pointer-events:none}
+.manual-viewer-overlay.is-active{display:block}.gamepad-chip{position:absolute;left:12px;bottom:140px;padding:5px 9px;border-radius:6px;background:#142635b0;color:white;font:11px system-ui}
+.touch-stick{position:absolute;left:20px;bottom:22px;width:108px;height:108px;border-radius:50%;border:1px solid #c8ddeb80;background:#17304266;touch-action:none;pointer-events:auto}
+#touch-stick-knob{position:absolute;left:50%;top:50%;width:40px;height:40px;border-radius:50%;background:#d7e6f099;transform:translate(-50%,-50%)}
+.touch-actions{position:absolute;right:20px;bottom:22px;display:grid;grid-template-columns:repeat(2,minmax(64px,1fr));gap:7px;pointer-events:auto;touch-action:none}
+.touch-actions button{min-height:40px;padding:8px;border-radius:9px;color:white;background:#203749be;border:1px solid #b7cfdd80;touch-action:none}
+@media(hover:hover) and (pointer:fine){.touch-stick,.touch-actions{display:none}}
 .viewer-display-settings summary{list-style:none}
 .viewer-display-settings summary::-webkit-details-marker{display:none}
 .viewer-display-panel{position:absolute;right:0;top:40px;width:300px;max-width:calc(100vw - 24px);max-height:calc(100vh - 140px);box-sizing:border-box;overflow:auto;padding:16px;border:1px solid #92b5ad66;border-radius:8px;background:#101c23fa;box-shadow:0 10px 30px #0006;scrollbar-width:thin}

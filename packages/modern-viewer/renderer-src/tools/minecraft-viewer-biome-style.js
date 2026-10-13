@@ -121,11 +121,12 @@ function cortiInitializeBiomeStyle() {
   };
 
   const updateSky = skybox.updateSkyColors.bind(skybox);
+  const originalSun = world.directionalLight.color.clone(), originalFill = world.ambientLight.color.clone();
   skybox.updateSkyColors = (...args) => {
     const result = updateSky(...args);
     // Keep the renderer's server-time sky and fog range on either side of water.
     // A restrained palette mix gives the camera biome character without hiding terrain.
-    if (world.realScene?.fog?.color && cortiBiomeCurrent) {
+    if (activeScenePolicy?.style !== 'native' && world.realScene?.fog?.color && cortiBiomeCurrent) {
       world.realScene.fog.color.lerp(cortiBiomeCurrent.fog, 0.14);
       world.realScene.background?.lerp?.(cortiBiomeCurrent.fog, 0.10);
       skybox.skyMesh?.material?.color?.lerp?.(cortiBiomeCurrent.sky, 0.14);
@@ -147,19 +148,26 @@ function cortiInitializeBiomeStyle() {
   cortiSetBiome({ name: cortiBiomeTarget.name, dimension: cortiBiomeTarget.dimension });
   const desired = new ColorType();
   const dawn = new ColorType('#ffdbaf');
+  let previousAt = performance.now(), previousFilter = null;
   cortiBiomeTimer = setInterval(() => {
-    if (!globalThis.world || !cortiBiomeCurrent) return;
+    if (document.hidden || !globalThis.world || !cortiBiomeCurrent) { previousAt = performance.now(); return; }
+    const now = performance.now(), elapsed = Math.min(500, Math.max(0, now - previousAt)); previousAt = now;
+    const alpha = 1 - Math.exp(-elapsed / 705), visionAlpha = 1 - Math.exp(-elapsed / 516);
     const current = cortiBiomeCurrent;
-    for (const key of ['fog', 'sky', 'sun', 'fill']) current[key].lerp(desired.set(cortiBiomeTarget[key]), 0.12);
+    for (const key of ['fog', 'sky', 'sun', 'fill']) current[key].lerp(desired.set(cortiBiomeTarget[key]), alpha);
     for (const key of ['saturation', 'contrast', 'brightness', 'warmth']) {
-      current[key] += (cortiBiomeTarget[key] - current[key]) * 0.12;
+      current[key] += (cortiBiomeTarget[key] - current[key]) * alpha;
     }
     const daylight = pendingTime === null ? 1 : minecraftLightLevels(pendingTime).daylight;
     const twilight = Math.max(0, 1 - Math.abs(daylight - 0.45) / 0.45);
-    world.directionalLight?.color?.copy(current.sun).lerp(dawn, twilight * 0.25);
-    world.ambientLight?.color?.copy(current.fill);
+    if (activeScenePolicy?.style === 'native') {
+      world.directionalLight?.color?.copy(originalSun); world.ambientLight?.color?.copy(originalFill);
+    } else {
+      world.directionalLight?.color?.copy(current.sun).lerp(dawn, twilight * 0.25);
+      world.ambientLight?.color?.copy(current.fill);
+    }
     if (avatarPresentationLights?.fill?.color) avatarPresentationLights.fill.color.copy(current.fill);
-    cortiNightVisionCurrent += (cortiNightVisionTarget() - cortiNightVisionCurrent) * 0.16;
+    cortiNightVisionCurrent += (cortiNightVisionTarget() - cortiNightVisionCurrent) * visionAlpha;
     world.chunkMeshManager?.setBlockLightmapParams?.({
       minBrightness: 0.18 + 0.42 * cortiNightVisionCurrent,
       curve: 0.08,
@@ -171,9 +179,10 @@ function cortiInitializeBiomeStyle() {
     }
     if (canvas) {
       const rain = pendingWeather.raining ? 0.95 : 1;
-      canvas.style.filter = `saturate(${(current.saturation * rain).toFixed(3)}) contrast(${current.contrast.toFixed(3)}) brightness(${current.brightness.toFixed(3)}) sepia(${current.warmth.toFixed(3)})`;
+      const filter = sceneColourFilter(current, activeScenePolicy, rain);
+      if (filter !== previousFilter) { canvas.style.filter = filter; previousFilter = filter; }
     }
-  }, 90);
+  }, 250);
   window.addEventListener('beforeunload', () => {
     if (cortiBiomeTimer !== null) clearInterval(cortiBiomeTimer);
     cortiBiomeTimer = null;

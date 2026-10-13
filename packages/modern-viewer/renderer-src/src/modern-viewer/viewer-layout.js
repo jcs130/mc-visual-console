@@ -71,8 +71,9 @@ export function installViewerLayout({document, window, photo = false, overlay = 
     if (disposed) return;
     move(document.querySelector('.corti-view-switch'), views);
     move(document.querySelector('.dungeon-camera-controls'), camera);
+    move(document.querySelector('.viewer-camera-settings'), camera);
     for (const selector of ['.corti-chat', '#corti-inventory-toggle', '#corti-night-vision-toggle',
-      '#corti-sound-toggle', '#corti-music-toggle', '.viewer-audio-controls']) move(document.querySelector(selector), tools);
+      '#corti-sound-toggle', '#corti-music-toggle', '.viewer-audio-controls', '.viewer-quality-settings', '.viewer-play-controls']) move(document.querySelector(selector), tools);
     // Re-append the persistent controls after late-created chat/camera modules.
     if (tools.lastElementChild !== settings) { tools.append(clean, settings); }
     // Inputs and transient messages have independent viewport anchors. A live

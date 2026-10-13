@@ -17,3 +17,11 @@ test('the use stream never reads another tracked player as the action player', (
   const packet = serializeAvatarState(own);
   assert.equal(packet.entity.id, 1); assert.equal(packet.usingHeldItem, false); assert.equal(packet.usingOffhand, false);
 });
+
+test('culling eligibility reads the same actor game mode and treats missing mode as unknown', () => {
+  const actor = bot(0); assert.equal(serializeAvatarState(actor).gameMode, null);
+  for (const gameMode of ['survival','adventure','creative','spectator']) {
+    actor.game = {gameMode}; assert.equal(serializeAvatarState(actor).gameMode, gameMode);
+  }
+  actor.game = {gameMode:'invalid'}; assert.equal(serializeAvatarState(actor).gameMode,null);
+});

@@ -14,6 +14,20 @@ test('uploaded YSM actors mount a complex original rig without dropping bones or
  assert.equal(actor.assetInfo.bones,272);assert.equal(actor.assetInfo.cubes,83);assert.equal(actor.model.bones.get('rig_271').parent.name,'rig_0');
  actor.animate({animation:'idle'},0);assert.equal(actor.assetInfo.completeEntityParityVerified,false);actor.dispose();
 });
+
+test('YSM smoothing is reversible sampling, with original geometry and GPU upload stable between frames',async()=>{
+ const encode=value=>({base64:Buffer.from(JSON.stringify(value)).toString('base64')}),texture=new THREE.Texture();
+ const bundle={modelId:'sampling-test',assetSha256:'test',model:'m.json',animation:'a.json',textures:{main:'t.png'},files:{
+  'ysm.json':encode({spec:2,properties:{free:true}}),'m.json':encode({format_version:'1.12.0','minecraft:geometry':[{description:{texture_width:16,texture_height:16},bones:[{name:'Root',pivot:[0,0,0],cubes:[{origin:[0,0,0],size:[1,1,1],uv:[0,0]}]}]}]}),
+  'a.json':encode({format_version:'1.8.0',animations:{idle:{loop:true,bones:{}}}}),'t.png':{base64:'original'}}};
+ const actor=await createPaperYsmActor(bundle,'main',{loadTexture:async()=>texture});
+ const before=actor.model.root.children[0].children[0].geometry.getAttribute('position').array.slice();
+ const policy={avatarSampling:'smooth',anisotropy:4,shadows:false};actor.setPresentation(policy);
+ assert.equal(texture.magFilter,THREE.LinearFilter);assert.equal(texture.minFilter,THREE.LinearMipmapLinearFilter);assert.equal(texture.generateMipmaps,true);
+ const version=texture.version;for(let i=0;i<120;i++)actor.setPresentation(policy);assert.equal(texture.version,version,'no repeated texture uploads');
+ actor.setPresentation({avatarSampling:'original',anisotropy:1,shadows:false});assert.equal(texture.magFilter,THREE.NearestFilter);assert.equal(texture.generateMipmaps,false);
+ assert.deepEqual(actor.model.root.children[0].children[0].geometry.getAttribute('position').array,before);actor.dispose();
+});
 test('YSM original animation is sampled without eval; unknown Molang is explicitly unavailable',()=>{
  const bone=new THREE.Group(),initial={position:bone.position.clone(),rotation:bone.rotation.clone()};
  const model={bones:new Map([['head',bone]]),initial:new Map([['head',initial]]),reset(){bone.position.copy(initial.position);bone.rotation.copy(initial.rotation);}};

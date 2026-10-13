@@ -36,6 +36,8 @@ node tools/prepare-viewer-assets.mjs java-1.20.6 "<output-dir>"
 
 2026-10-12：OBS 可编辑 Agent 公开行动说明、按键/鼠标、寻路与候选轨迹、攻击/采集/交互标记和图文动画。新增点线面 Marker API、垂直 FOV 与画幅校准、实时 FOV 上报；[接入、配置与验证边界](packages/modern-viewer/renderer-src/docs/agent-visualization.md)。宿主 bridge 和实际网页资源需同时更新。
 
+2026-10-13 的 1.20.6 源码新增六种高级运镜、模型构图与避障、可选遮挡剔除和 YSM 平滑采样。键鼠／触摸／手柄操控通过宿主授权和 Agent 暂停回调显式启用；[接入与验证范围](packages/modern-viewer/renderer-src/docs/web-controls-camera-quality.md)。消费端需重建资源并接控制桥，原生 SSE 场景与远端部署尚未自动更新。
+
 ## 1.21.1 模组服的原生接入
 
 My Agent World 的实验接入复用原 `page-template.html`、`viewer.css`、背包人物预览和自适应画质组件，

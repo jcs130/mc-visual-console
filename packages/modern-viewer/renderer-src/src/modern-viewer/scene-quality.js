@@ -1,0 +1,47 @@
+/** Display policy for the pinned minecraft-renderer 0.1.96. No gameplay writes. */
+export const SCENE_SETTINGS_KEY = 'minecraft.viewer.scene.v1';
+const choice = (value, values, fallback) => values.includes(value) ? value : fallback;
+export function normalizeSceneSettings(value) {
+  const v = value?.version === 1 ? value : {};
+  return { version: 1, quality: choice(v.quality, ['auto', 'high', 'balanced', 'performance'], 'auto'),
+    style: choice(v.style, ['native', 'soft', 'cinematic'], 'soft'),
+    avatarSampling: choice(v.avatarSampling, ['auto', 'original', 'smooth'], 'auto'),
+    occlusion: v.occlusion !== false };
+}
+export function loadSceneSettings(storage, overrides = {}) {
+  let saved; try { saved = JSON.parse(storage?.getItem(SCENE_SETTINGS_KEY)); } catch {}
+  const settings = normalizeSceneSettings(saved);
+  for (const key of ['quality', 'style', 'avatarSampling']) if (overrides[key] != null) settings[key] = overrides[key];
+  return normalizeSceneSettings(settings);
+}
+export function resolveSceneQuality(settings, { mode = 'balanced', view = 'first', gameMode = null, overlay = false, sectionReady = false } = {}) {
+  const s = normalizeSceneSettings(settings);
+  const tier = choice(mode, ['high', 'balanced', 'performance'], 'balanced');
+  // Occlusion BFS starts at the player's eye, not an offset observer camera.
+  // Spectators can be inside solids; cutaway views must retain the hidden room.
+  const reason = overlay ? 'overlay' : !s.occlusion ? 'disabled' : view !== 'first' ? 'observer'
+    : !['survival', 'adventure'].includes(gameMode) ? (gameMode === 'spectator' ? 'spectator' : 'unconfirmed-mode')
+    : !sectionReady ? 'loading-section' : null;
+  return { mode: tier, style: tier === 'performance' ? 'native' : s.style,
+    smartCull: reason === null, cullingReason: reason,
+    shadows: !overlay && s.style === 'cinematic' && tier === 'high',
+    avatarSampling: s.avatarSampling === 'auto' ? (tier === 'performance' || s.style === 'native' ? 'original' : 'smooth') : s.avatarSampling,
+    anisotropy: tier === 'high' ? 8 : tier === 'balanced' ? 4 : 1 };
+}
+export function applySceneQuality(world, policy) {
+  if (!world || !policy) return;
+  // Both gates are required: upstream's debug smartCull defaults to false.
+  if (world.worldRendererConfig && world.worldRendererConfig.smartCull !== policy.smartCull) world.worldRendererConfig.smartCull = policy.smartCull;
+  if (world.reactiveDebugParams && world.reactiveDebugParams.smartCull !== policy.smartCull) world.reactiveDebugParams.smartCull = policy.smartCull;
+  if (world.renderer?.shadowMap && world.renderer.shadowMap.enabled !== policy.shadows) {
+    world.renderer.shadowMap.enabled = policy.shadows;
+    world.renderer.shadowMap.needsUpdate = true;
+  }
+}
+/** Reuse the existing biome colour pass. Native/performance eliminate that pass. */
+export function sceneColourFilter(profile, policy, rain = 1) {
+  if (!policy || policy.style === 'native') return 'none';
+  const strength = policy.style === 'cinematic' ? 1 : .45;
+  const mix = (value, fallback = 1) => fallback + ((Number.isFinite(value) ? value : fallback) - fallback) * strength;
+  return `saturate(${(mix(profile.saturation) * rain).toFixed(3)}) contrast(${mix(profile.contrast).toFixed(3)}) brightness(${mix(profile.brightness).toFixed(3)}) sepia(${mix(profile.warmth, 0).toFixed(3)})`;
+}

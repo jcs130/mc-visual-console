@@ -33,8 +33,21 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
     const extra=kind=>{const path=bundle.animations?.[kind]??definition.files?.player?.animation?.[kind];return path&&bundle.files[path]?json(bundle,path):null;};
     const animationController=new PaperYsmAnimation(model,animation,{arm:extra('arm'),extra:extra('extra'),controllers:definition.files?.player?.animation_controllers??[]});
     const held=new PaperYsmHeldItems(model,itemModels);
+    let presentationSignature = '';
     const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3());
     return {root,model,assetInfo:{modelId:bundle.modelId,assetSha256:bundle.assetSha256,sourceSha256:bundle.sourceSha256,texture:textureId,bones:model.bones.size,cubes:model.cubeCount,faces:model.faceCount,scale:{width,height},bindSizeBlocks:size.toArray(),completeEntityParityVerified:false},
+      setPresentation(policy) {
+        if (!policy) return;
+        const smooth = policy.avatarSampling === 'smooth', anisotropy = Math.max(1, Math.min(8, Number(policy.anisotropy) || 1)), shadows = policy.shadows === true;
+        const signature = `${smooth}:${anisotropy}:${shadows}`;
+        if (presentationSignature === signature) return;
+        presentationSignature = signature;
+        // Sampling changes only: original PNG, UVs, bones and proportions stay intact.
+        texture.magFilter = smooth ? THREE.LinearFilter : THREE.NearestFilter;
+        texture.minFilter = smooth ? THREE.LinearMipmapLinearFilter : THREE.NearestFilter;
+        texture.generateMipmaps = smooth; texture.anisotropy = anisotropy; texture.needsUpdate = true;
+        model.root.traverse(part => { if (part.isMesh) { part.castShadow = shadows; part.receiveShadow = shadows; } });
+      },
       animate(state,now) {
         this.animationState=animationController.apply(state,now);this.animationReason=this.animationState.errors[0]??null;
         held.apply(state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
@@ -45,7 +58,7 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
 
 /** Mounted only onto a currently tracked vanilla player entity with the same UUID. */
 export class PaperYsmPlayers {
-  constructor({entity,rendered,itemModels={},createActor=createPaperYsmActor}={}){this.entity=entity;this.rendered=rendered;this.itemModels=itemModels;this.createActor=createActor;this.nametags=new WeakMap();this.motions=new Map();this.fallback=new Map();this.states=new Map();this.assets=new Map();this.assetSizes=new Map();this.assetBytes=0;this.actors=new Map();this.pending=new Map();this.failures=new Map();this.sequence=0;}
+  constructor({entity,rendered,itemModels={},createActor=createPaperYsmActor,presentation=()=>null}={}){this.entity=entity;this.rendered=rendered;this.itemModels=itemModels;this.createActor=createActor;this.presentation=presentation;this.nametags=new WeakMap();this.motions=new Map();this.fallback=new Map();this.states=new Map();this.assets=new Map();this.assetSizes=new Map();this.assetBytes=0;this.actors=new Map();this.pending=new Map();this.failures=new Map();this.sequence=0;}
   asset(bundle){if(bundle?.schemaVersion!==1||bundle.format!=='ysm-bedrock-original'||!bundle.assetSha256)return;
     if(this.assets.has(bundle.assetSha256))return;
     const size=Object.values(bundle.files??{}).reduce((n,f)=>n+(f.base64?.length??0),0);if(size>8*1024*1024)return;
@@ -91,6 +104,7 @@ export class PaperYsmPlayers {
       if(!bound || !row.available)continue;
       const current=this.actors.get(uuid);
       if(current){
+        current.actor.setPresentation?.(this.presentation());
         this.hideVanilla(rendered,current.actor.root,current.hidden,current.actor.assetInfo.bindSizeBlocks[1]);
         current.actor.root.visible=!entity.metadata?.[0] || (entity.metadata[0]&32)===0;
         // The renderer's native scene entity already carries this player's yaw.

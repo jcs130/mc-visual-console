@@ -22,6 +22,7 @@
 | [SOCKET_PROTOCOL.md](SOCKET_PROTOCOL.md) | 宿主项目的数据接入合约 |
 | [Paper 插件内容适配](docs/paper-content-compatibility.md) | 1.20.6 原始粒子、ImageFrame/原版地图、展示框和手持预览接入、版本与限制 |
 | [头顶文字气泡](docs/text-display-bubbles.md) | 玩家/NPC TextDisplay、原始中文字体、私人受众、同连接桥和远端更新 |
+| [网页操控与高级运镜](docs/web-controls-camera-quality.md) | 同角色授权接管、键鼠／触摸／手柄、稳定跟随、碰撞、FOV、画质与升级说明 |
 
 技能规则、保护预检、试炼机制和 Agent 决策由
 [千灯纪 World](https://github.com/jcs130/cortico-world-qiandengji) 等宿主扩展负责。

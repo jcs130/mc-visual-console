@@ -593,6 +593,7 @@ export function serializeAvatarState(bot, sequence = 0) {
     : []
   return {
     seq: sequence, sequence, capturedAt: Date.now(),
+    gameMode: ['survival', 'adventure', 'creative', 'spectator'].includes(bot.game?.gameMode) ? bot.game.gameMode : null,
     entity: {
       ...stripOwnNameTag(serializeViewerEntity(bot, entity)),
       name: 'player', type: 'player',
@@ -993,11 +994,11 @@ export function startModernViewer(getBot, options = {}) {
   const getSettleNpcs = typeof options.getSettleNpcs === 'function' ? options.getSettleNpcs : null
 
   return createViewerLifecycle(getBot,
-    bot => startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, consoleOrigin, getSettleNpcs, options.blockStateMapping),
+    bot => startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, consoleOrigin, getSettleNpcs, options.blockStateMapping, options.createControlBridge),
     { enabled: process.env.MC_MODERN_VIEWER === '1' })
 }
 
-function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, consoleOrigin, getSettleNpcs, providedStateMapping) {
+function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, consoleOrigin, getSettleNpcs, providedStateMapping, createControlBridge) {
   loadViewerDependencies()
   // 门（gate.cjs + idmap.json）已在出站把 NeoForge 号翻成原版号 → 天眼这套「本地补偿」必须停用 ✓
   // 否则二次翻译（实测 vanilla-state-map 键值域重叠 26684），世界会全错且 normalize 抛错致 viewerUnavailable ✗
@@ -1017,6 +1018,9 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   if (gateTranslated) console.log('[render-bridge] 门翻译模式：跳过 mod 注册表注入与本地号归一化（收到的已是原版号）')
   else { console.warn('[render-bridge] ⚠ 裸连模式（本地号表）：与门/基岩/Agent 不是同一张表，仅限调试'); injectModBlockRegistry(bot) }
   const serveViewerStatic = createViewerStaticResponder()
+  // Opt-in only: the consumer owns authentication and pauses its Agent before
+  // returning a lease. The supplied bot must be the action player's connection.
+  const controlBridge = typeof createControlBridge === 'function' ? createControlBridge(bot) : null
   const styleNonce = randomBytes(18).toString('base64')
 
   // ---------- settle 村民实体流（2026-08-29 II：9090 村民=盔甲架修复） ----------
@@ -1631,6 +1635,7 @@ if (!snap?.holder) {
       socket, worldView, entityStream, mode, viewMode, avatarTimer, locomotionKeepalive, settleTimer, movementAnimations,
       releaseSlot, captureTimer: null, observerOff: undefined as undefined | (() => void), appearanceOff: undefined as undefined | (() => void),
       agentOff: undefined as undefined | (() => void),
+      controlOff: undefined as undefined | (() => void),
       botPosition, botTime, botWeather, botAvatarState, botEntitySpawn, botEntityMoved, botEntityRefresh,
       botEntitySwingArm, botEntityHurt, botParticle, botSoundEffect, botHardcodedSoundEffect, botEntityDead,
       botEntityCrouch, botEntityUncrouch,
@@ -1648,6 +1653,7 @@ if (!snap?.holder) {
     session.appearanceOff = mode === 'modern' ? appearanceBridge?.subscribeSocket(socket) : undefined
     session.observerOff = mode === 'modern' ? observerBridge?.subscribeSocket(socket) : undefined
     session.agentOff = mode === 'modern' ? agentBridge.subscribeSocket(socket) : undefined
+    session.controlOff = mode === 'modern' && !capture && socket.handshake?.query?.overlay!=='1' ? controlBridge?.subscribeSocket(socket) : undefined
     socket.emit('viewerProtocol', { schema: 1, blockStates: mode === 'modern' ? 'canonical-vanilla-and-runtime-mod' : 'canonical-vanilla-approximation',
       worldConfigSource: 'loaded-column', maxVisibleColumns: (VIEW_DISTANCE_CHUNKS * 2 - 1) ** 2 })
     emitOwnEntity()
@@ -1696,6 +1702,7 @@ if (!snap?.holder) {
     session.appearanceOff?.()
     session.observerOff?.()
     session.agentOff?.()
+    session.controlOff?.()
     clearTimeout(session.captureTimer)
     session.releaseSlot()
     clearInterval(session.avatarTimer)
@@ -1757,7 +1764,8 @@ if (!snap?.holder) {
     agentBridge.dispose()
     for (const session of [...sessions]) closeSession(session)
     server.closeAllConnections()
-    closing = Promise.all([firstIo, thirdIo].map(io => new Promise(resolve => io.close(() => resolve())))).then(() => {})
+    const socketShutdown = [firstIo, thirdIo].map(io => new Promise(resolve => io.close(() => resolve())))
+    closing = Promise.all([controlBridge?.dispose(), ...socketShutdown]).then(() => {})
     return closing
   }
   return new Promise((resolve, reject) => {
