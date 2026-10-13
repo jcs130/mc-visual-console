@@ -16,22 +16,26 @@ export class SightGrid {
     catch{this.columns.delete(`${data.x},${data.z}`);this.tops.clear();}
   }
   remove(x,z){this.columns.delete(`${x},${z}`);this.tops.clear();}
-  update(pos,stateId){const col=this.columns.get(posKey(pos.x,pos.z));col?.setBlockStateId(new Vec3((Math.floor(pos.x)%16+16)%16,Math.floor(pos.y),(Math.floor(pos.z)%16+16)%16),stateId);this.tops.delete(`${Math.floor(pos.x)},${Math.floor(pos.z)}`);}
+  update(pos,stateId){const col=this.columns.get(posKey(pos.x,pos.z));col?.setBlockStateId(new Vec3((Math.floor(pos.x)%16+16)%16,Math.floor(pos.y),(Math.floor(pos.z)%16+16)%16),stateId);this.tops.clear();}
   clear(){this.columns.clear();this.tops.clear();}
   block(x,y,z){
     const col=this.columns.get(posKey(x,z));if(!col)return null;
     if(y>=this.maxY||y<this.minY)return {name:'air',shapes:[]};
     return col.getBlock(new Vec3((x%16+16)%16,y,(z%16+16)%16));
   }
-  top(x,z){
-    const key=`${x},${z}`;if(this.tops.has(key))return this.tops.get(key);
+  top(x,z,layer){
+    const minY=Math.max(this.minY,layer?.minY??this.minY),maxY=Math.min(this.maxY,layer?.maxY??this.maxY);
+    const key=`${x},${z},${minY}:${maxY}`;if(this.tops.has(key))return this.tops.get(key);
     const col=this.columns.get(posKey(x,z));if(!col)return null;
-    const local=new Vec3((x%16+16)%16,this.maxY-1,(z%16+16)%16);
-    for(;local.y>=this.minY;local.y--){
+    const local=new Vec3((x%16+16)%16,Math.ceil(maxY)-1,(z%16+16)%16);
+    for(;local.y>=Math.floor(minY);local.y--){
       const id=col.getBlockStateId(local);if(!id)continue;
       const block=col.getBlock(local);if(air.has(block?.name))continue;
       const top=local.y+(block?.shapes?.length?Math.max(...block.shapes.map(s=>s[4])):1);
-      this.tops.set(key,top);return top;
+      // A cut through solid geometry is not a measured exposed surface. Never
+      // scan past that wall to reveal the room or floor underneath it.
+      const surface=top<=maxY&&top>=minY?top:null;
+      this.tops.set(key,surface);return surface;
     }
     this.tops.set(key,null);return null;
   }
@@ -94,8 +98,8 @@ export function visibleEntity(grid,self,entity){
   const height=Number.isFinite(entity.height)&&entity.height>0?entity.height:1;
   return [.25,.5,.85].some(part=>{const point={x:p.x,y:p.y+height*part,z:p.z};return inView(self,point)&&clearSight(grid,eye,point);});
 }
-export function visibleSurface(grid,self,x,z){
-  const y=grid?.top(x,z),eye=eyeOf(self);if(!Number.isFinite(y)||!eye)return false;
+export function visibleSurface(grid,self,x,z,layer){
+  const y=grid?.top(x,z,layer),eye=eyeOf(self);if(!Number.isFinite(y)||!eye)return false;
   return [[.15,.15],[.85,.15],[.15,.85],[.85,.85]].every(([dx,dz])=>{
     const point={x:x+dx,y:y+.02,z:z+dz};return inView(self,point)&&clearSight(grid,eye,point);
   });
@@ -137,18 +141,19 @@ export class TerrainMemory {
       const flat=Math.hypot(x+.5-p.x,z+.5-p.z);
       const heading=Math.atan2(-(x+.5-p.x),-(z+.5-p.z));
       const diff=Math.atan2(Math.sin(heading-(self.yaw||0)),Math.cos(heading-(self.yaw||0)));
-      const seen=flat<=32&&Math.abs(diff)<=Math.PI*55/180&&visibleSurface(grid,self,x,z);
+      const seen=flat<=32&&Math.abs(diff)<=Math.PI*55/180&&visibleSurface(grid,self,x,z,spec.layer);
       if(seen&&px>=0&&pz>=0&&px+scale<=width&&pz+scale<=height){
         const tile=this.document.createElement('canvas');tile.width=8;tile.height=8;
         tile.getContext('2d').drawImage(frame.canvas,px,pz,scale,scale,0,0,8,8);
-        this.cells.delete(key);this.cells.set(key,{canvas:tile,seenAt:now});current++;
+        this.cells.delete(key);this.cells.set(key,{canvas:tile,seenAt:now,y:grid.top(x,z,spec.layer),layer:spec.layer?.kind??'surface'});current++;
         visibleCells.add(key);
       }
       const known=this.cells.get(key);if(!known)continue;
+      if(known.layer!==(spec.layer?.kind??'surface')||spec.layer&&(known.y<spec.layer.minY||known.y>spec.layer.maxY))continue;
       ctx.drawImage(known.canvas,px,pz,scale+.3,scale+.3);
       if(!seen){historical++;ctx.strokeStyle='rgba(219,231,237,.55)';ctx.lineWidth=.65;ctx.beginPath();ctx.moveTo(px,pz);ctx.lineTo(px+scale,pz+scale);ctx.stroke();}
     }
     while(this.cells.size>8192)this.cells.delete(this.cells.keys().next().value);
-    return {...frame,canvas,visibleCells,perception:{current,historical,source:'eye-line-of-sight',history:'session-only'}};
+    return {...frame,canvas,visibleCells,perception:{current,historical,source:'eye-line-of-sight',history:'session-only',layer:spec.layer??null}};
   }
 }

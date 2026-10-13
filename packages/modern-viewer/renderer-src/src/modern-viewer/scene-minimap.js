@@ -1,6 +1,6 @@
 import { WebGLRenderTarget, Vector4, SRGBColorSpace } from 'three';
 import { overviewCamera, overviewCoverage } from './overview-capture.js';
-import { TerrainMemory, visibleEntity, hearingHint } from './perception-view.js';
+import { TerrainMemory, visibleEntity, hearingHint, eyeOf } from './perception-view.js';
 import { VisibleMotion, focusEntities, drawRisk } from './perception-risk.js';
 
 const nameOf = entity => String(entity?.name ?? '').replace(/^minecraft:/, '').toLowerCase();
@@ -51,6 +51,15 @@ export function mapSpec(position, span=48, size=384) {
   return {center:[position.x,position.z],span,width:size,height:size,
     bounds:{minX:position.x-span/2,maxX:position.x+span/2,minZ:position.z-span/2,maxZ:position.z+span/2}};
 }
+/** Under a roof/canopy, render a bounded local level. The same level and the
+ * original eye rays mask its pixels; clipping alone never grants visibility. */
+export function mapLayer(grid,self) {
+  const eye=eyeOf(self),p=self?.pos??self?.position;
+  if(!eye||!grid)return null;
+  const roof=grid.top(Math.floor(p.x),Math.floor(p.z));
+  return Number.isFinite(roof)&&roof>eye.y+.2
+    ?{kind:'slice',minY:Math.floor(p.y)-8,maxY:Math.floor(p.y)+1.25}:null;
+}
 export function mapPixel(position, spec, size=spec.width) {
   return [(position.x-spec.bounds.minX)*size/spec.span,(position.z-spec.bounds.minZ)*size/spec.span];
 }
@@ -88,6 +97,7 @@ export class MinimapTerrain {
       // Keep the floating scene origin unchanged. Changing it for every inset
       // pass needlessly rebases the main world's shared geometry buffers.
       const view=overviewCamera(spec,origin,minY,maxY); camera=view.camera;
+      if(spec.layer){camera.near=view.at[1]-spec.layer.maxY;camera.far=view.at[1]-spec.layer.minY;camera.updateProjectionMatrix();}
       world.camera=camera; Object.assign(world.cameraWorldPos,{x:view.at[0],y:view.at[1],z:view.at[2]});
       world.reactiveDebugParams.smartCull=false;
       if(config)config.showHand=false;
@@ -192,7 +202,7 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getE
   const mode=document.createElement('select');mode.className='corti-map-mode';mode.setAttribute('aria-label','地图关注模式');
   for(const [value,label] of [['peaceful','和平'],['explore','探索'],['combat','战斗']]){const option=document.createElement('option');option.value=value;option.textContent=label;mode.append(option);}mode.value='explore';
   header.replaceChild(mode,title);
-  const risk=document.createElement('button');risk.textContent='风险';risk.title='显示可见威胁的短时移动估计；非攻击范围或概率。';risk.setAttribute('aria-pressed','false');header.append(risk);
+  const risk=document.createElement('button');risk.className='corti-map-risk';risk.textContent='风险';risk.title='显示可见威胁的短时移动估计；非攻击范围或概率。';risk.setAttribute('aria-pressed','false');header.append(risk);
   let riskOn=false;
   const onRisk=()=>{riskOn=!riskOn;risk.setAttribute('aria-pressed',String(riskOn));draw();};risk.addEventListener('click',onRisk);
   const onMode=()=>{riskOn=mode.value==='combat';risk.setAttribute('aria-pressed',String(riskOn));draw();};mode.addEventListener('change',onMode);
@@ -226,7 +236,7 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getE
     const moved=!frame||Math.hypot(pos.x-frame.spec.center[0],pos.z-frame.spec.center[1])>span*.12;
     if(now>=next&&(moved||now-last>=1500)){
       const start=performance.now();
-      try {frame=memory.apply(terrain.capture(getWorld(),mapSpec(pos,span)),getSight(),self);last=now;failures=0;}
+      try {const spec={...mapSpec(pos,span),layer:mapLayer(getSight(),self)};frame=memory.apply(terrain.capture(getWorld(),spec),getSight(),self);last=now;failures=0;}
       catch{failures++;if(!frame||now-last>5000){frame=null;groups=[];ctx.clearRect(0,0,canvas.width,canvas.height);}}
       renderMs=performance.now()-start;
       next=now+Math.max(750,Math.min(5000,renderMs*24));
@@ -237,7 +247,7 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getE
     if(frame)groups=drawSceneMap(ctx,frame,self,focused,getRegistry(),riskOn?predictions:[]);
     hints=hints.filter(h=>h.expiresAt>Date.now());sounds.hidden=!hints.length;
     sounds.textContent=hints.slice(-2).map(h=>`${h.direction} · ${h.distance} · ${h.kind}`).join('；');sounds.title='声响发生时的方位；近处约4格内，中距离约4–12格，远处约12格外。身份和精确位置未确认。';
-    if(caption)caption.textContent=`${dimensionLabel(dimension)} · ${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)}${frame?'':' · 未加载'}`;
+    if(caption)caption.textContent=`${dimensionLabel(dimension)}${frame?.spec.layer?'·当前高度剖层':''} · ${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)}${frame?'':' · 未加载'}`;
     root.dataset.mapSource=frame?'loaded-scene':'unavailable';summary();
   }
   const ranges=[24,48,96,192];

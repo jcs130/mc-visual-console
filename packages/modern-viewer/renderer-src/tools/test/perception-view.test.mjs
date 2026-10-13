@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {clearSight,visibleEntity,visibleSurface,hearingHint,TerrainMemory} from '../../src/modern-viewer/perception-view.js';
+import {SightGrid,clearSight,visibleEntity,visibleSurface,hearingHint,TerrainMemory} from '../../src/modern-viewer/perception-view.js';
 import {VisibleMotion,focusEntities} from '../../src/modern-viewer/perception-risk.js';
 import {captureOverview} from '../../src/modern-viewer/overview-capture.js';
 const air={name:'air',shapes:[]},stone={name:'stone',shapes:[[0,0,0,1,1,1]]};
@@ -26,6 +26,25 @@ test('terrain history freezes unseen pixels, never accepts hidden updates, and e
   assert.equal(unseen.perception.current,0);assert.ok(unseen.perception.historical>0);
   assert.equal(memory.cells.get('0,-3'),old);assert.equal(old.seenAt,1000);
   memory.clear();assert.equal(memory.cells.size,0);
+});
+
+test('local height sampling keeps ceilings, walls and other levels out of underground map evidence',()=>{
+  const grid=new SightGrid('1.20.6'),layer={kind:'slice',minY:-39,maxY:-29.75};
+  grid.columns.set('0,0',{getBlockStateId:p=>p.y===65||p.y<=-32?1:0,getBlock:()=>stone});
+  assert.equal(grid.top(0,0),66);
+  assert.equal(grid.top(0,0,layer),-31);
+  grid.columns.set('0,0',{getBlockStateId:()=>1,getBlock:()=>stone});grid.tops.clear();
+  assert.equal(grid.top(0,0,layer),null,'a solid intersected by the clip plane is unknown');
+  const underground={...self,pos:{x:.5,y:-31,z:.5}};
+  const tunnel={top:(_x,_z,l)=>l?-31:66,block:(_x,y)=>y<-31||y>=-28?stone:air};
+  assert.equal(visibleSurface(tunnel,underground,0,-3),false);
+  assert.equal(visibleSurface(tunnel,underground,0,-3,layer),true);
+  assert.equal(visibleSurface({...tunnel,block:(x,y,z)=>z===-2?stone:tunnel.block(x,y,z)},underground,0,-3,layer),false);
+  const memory=new TerrainMemory(documentStub()),spec={width:96,height:96,span:12,bounds:{minX:-6,maxX:6,minZ:-6,maxZ:6},layer};
+  const frame={canvas:{width:96,height:96,colour:'known-floor'},spec};
+  assert.ok(memory.apply(frame,tunnel,underground,1000).perception.current>0);
+  assert.equal(memory.apply({...frame,spec:{...spec,layer:null}},{...tunnel,block:()=>null},underground,2000).perception.historical,0);
+  assert.equal(memory.apply({...frame,spec:{...spec,layer:{kind:'slice',minY:50,maxY:59}}},{...tunnel,block:()=>null},underground,2000).perception.historical,0);
 });
 test('hearing uses packet direction and coarse distance but never leaks identity, coordinate or count',()=>{
   const event={name:'entity.zombie.ambient',category:'hostile',volume:1,entityId:99,position:{x:6,y:64,z:-5}};
