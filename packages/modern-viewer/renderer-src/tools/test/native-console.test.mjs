@@ -33,8 +33,9 @@ test('all original view routes select the actual native first/third/dungeon came
 })
 test('full shell boots exactly one scene, reuses native UI and disposes resources once on pagehide', async () => {
   const { document, window } = fullShell()
-  let mounted = 0, callbacks, disposed = 0, statusStops = 0; const views = [], ratios = []
+  let mounted = 0, callbacks, disposed = 0, statusStops = 0; const views = [], ratios = [], appearances = []
   const scene = { renderer: { setPixelRatio: value => ratios.push(value) }, setView: value => views.push(value), dispose: () => disposed++,
+    selectAppearance: id => appearances.push(id),
     assetReader: { bytes: async () => new Uint8Array([137,80,78,71]) } }
   const console = await bootNativeConsole({ document, window,
     mount: async options => {
@@ -57,6 +58,12 @@ test('full shell boots exactly one scene, reuses native UI and disposes resource
   assert.equal(document.getElementById('corti-menu').hidden, true)
   assert.equal(document.getElementById('viewer-canvas').dataset.hudAssets, 'verified')
   assert.equal(ratios[0], 1.5)
+  const appearance = { available: true, selected: 'server', choices: [{ id: 'server', label: '跟随服务器' }, { id: 'web-model', label: '原始 YSM 模型' }] }
+  const picker = document.querySelector('.viewer-appearance-settings'), select = picker.querySelector('select')
+  callbacks.onDiagnostics({ appearance }); assert.equal(select.disabled, false); assert.equal(select.value, 'server')
+  select.value = 'web-model'; select.dispatch('change'); assert.deepEqual(appearances, ['web-model'])
+  callbacks.onDiagnostics({ appearance: { ...appearance, selected: 'web-model' } })
+  picker.querySelector('button').dispatch('click'); assert.deepEqual(appearances, ['web-model', 'server'])
   const ysmNotice = document.querySelector('.native-ysm-preview-notice')
   assert.equal(ysmNotice.hidden, true)
   callbacks.onDiagnostics({ drawn: 3, total: 5, selfModel: { kind: 'ysm', modelId: 'misc/3_default_boy', texture: 'blue',
@@ -83,11 +90,13 @@ test('full shell boots exactly one scene, reuses native UI and disposes resource
   assert.equal(document.querySelector('.native-player-label').textContent, 'MawExplorer')
   assert.equal(document.querySelector('.native-player-label').style.left, '120px')
   callbacks.onUnavailable('connection ended')
+  assert.equal(select.disabled, true); assert.equal(select.value, 'server')
   assert.equal(document.querySelector('.native-player-label').hidden, true)
   assert.match(document.querySelector('[data-corti-slots]').textContent, /未同步/)
   window.dispatch('pagehide'); console.dispose()
   assert.equal(disposed, 1); assert.equal(statusStops, 1)
   assert.equal(document.querySelector('.native-agent-status'), null)
+  assert.equal(document.querySelector('.viewer-appearance-settings'), null)
   assert.equal(document.querySelector('.native-console-diagnostics'), null)
   assert.equal(document.querySelector('.native-ysm-preview-notice'), null)
   assert.equal((document.listeners.get('keydown') ?? []).length, 0)

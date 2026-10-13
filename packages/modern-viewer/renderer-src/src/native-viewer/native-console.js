@@ -3,6 +3,7 @@ import { nativeViewerUrl } from './native-url.js'
 import { createNativeInterface } from './native-ui-adapter.js'
 import { createAdaptiveQualityController } from '../modern-viewer/viewer-performance.js'
 import { renderAgentStatus, startAgentStatusPolling } from './agent-status.js'
+import { installAppearanceSettings } from '../modern-viewer/appearance-settings.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
@@ -25,6 +26,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   const listeners = [], listen = (target, event, callback) => { target?.addEventListener(event, callback); listeners.push([target, event, callback]) }
   let disposed = false, identity = null, sceneHost = null, latestState = null, lastDiagnostics = null
+  const appearanceUi = installAppearanceSettings({ document, window, onChange: id => sceneHost?.selectAppearance?.(id) })
   let frames = 0, sampledAt = null, lastUiFrameAt = -Infinity, pendingMode = consoleViewMode(window.location?.pathname, document.body.dataset.viewMode)
   const viewport = el('viewer-canvas') ?? append(document, document.body, 'div', 'native-console-viewport')
   viewport.id = 'viewer-canvas'; viewport.setAttribute('aria-label', '同一 Agent 本人及原生世界')
@@ -64,6 +66,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5 })
   const updateDiagnosticText = () => {
     const d = lastDiagnostics
+    appearanceUi.update(d?.appearance ? { ...d.appearance, subject: identity?.player || '当前观战人物' } : null)
     ysmNotice.hidden = d?.selfModel?.kind !== 'ysm'
     if (!ysmNotice.hidden) {
       const model = d.selfModel, motion = model.motion
@@ -126,7 +129,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     onView: view => { if (!disposed) renderAgentStatus(view, el) } })
   const dispose = () => {
     if (disposed) return
-    disposed = true; stopStatus(); ui.dispose(); sceneHost?.dispose()
+    disposed = true; stopStatus(); appearanceUi.dispose(); ui.dispose(); sceneHost?.dispose()
     for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     label.remove(); ysmNotice.remove(); stateBar.remove(); details.remove(); style.remove()
   }
@@ -145,6 +148,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       },
       onUnavailable (reason) {
         if (disposed) return
+        lastDiagnostics = null; appearanceUi.update(null)
         label.hidden = true; ui.reset(); boot.classList.add('is-compact','is-error'); boot.textContent = `原生画面不可用：${reason}`
         updateDiagnosticText()
         ysmNotice.hidden = true

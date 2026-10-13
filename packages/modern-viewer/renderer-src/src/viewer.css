@@ -512,6 +512,12 @@ body[data-viewer-layout=docked]{--viewer-rail-width:220px;--viewer-top:60px;--vi
 .viewer-scene-panel select{max-width:174px;min-height:32px;border:1px solid #6d899a;border-radius:5px;padding:4px;background:#203746;color:#f4f8fb;font:inherit}
 .viewer-scene-panel input[type=number]{width:84px;min-height:28px;border:1px solid #6d899a;border-radius:5px;padding:4px;background:#203746;color:#f4f8fb;font:inherit}
 .viewer-camera-settings .viewer-scene-panel{max-height:calc(100dvh - 95px);overflow:auto}
+.viewer-appearance-settings .viewer-scene-panel{position:fixed;top:var(--appearance-panel-top,51px);right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - var(--appearance-panel-top,51px) - 12px);overflow:auto;overflow-wrap:anywhere}
+.viewer-appearance-settings .viewer-scene-panel label{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;gap:6px}
+.viewer-appearance-settings .viewer-scene-panel select{max-width:100%;width:100%;box-sizing:border-box}
+.viewer-appearance-settings button{border:1px solid #6d899a;border-radius:5px;padding:8px;background:#203746;color:#f4f8fb;font:inherit;cursor:pointer}
+.viewer-appearance-settings button:disabled,.viewer-appearance-settings select:disabled{opacity:.55;cursor:default}
+@media(max-width:900px){.viewer-toolbar-tools{flex-wrap:wrap;justify-content:flex-end}}
 .viewer-scene-panel small,.viewer-scene-panel output{color:#b9cbd6;font-size:11px;line-height:1.6}
 .viewer-play-controls{display:flex;align-items:center;gap:8px;font:12px system-ui;color:#e7eff4;max-width:340px}
 .viewer-play-controls[hidden]{display:none}.viewer-play-controls output{font-size:11px;max-width:170px}

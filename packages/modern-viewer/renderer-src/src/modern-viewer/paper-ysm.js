@@ -58,15 +58,53 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
 
 /** Mounted only onto a currently tracked vanilla player entity with the same UUID. */
 export class PaperYsmPlayers {
-  constructor({entity,rendered,itemModels={},createActor=createPaperYsmActor,presentation=()=>null}={}){this.entity=entity;this.rendered=rendered;this.itemModels=itemModels;this.createActor=createActor;this.presentation=presentation;this.nametags=new WeakMap();this.motions=new Map();this.fallback=new Map();this.states=new Map();this.assets=new Map();this.assetSizes=new Map();this.assetBytes=0;this.actors=new Map();this.pending=new Map();this.failures=new Map();this.sequence=0;}
+  constructor({entity,rendered,itemModels={},createActor=createPaperYsmActor,presentation=()=>null}={}){this.entity=entity;this.rendered=rendered;this.itemModels=itemModels;this.createActor=createActor;this.presentation=presentation;this.nametags=new WeakMap();this.motions=new Map();this.fallback=new Map();this.states=new Map();this.assets=new Map();this.assetSizes=new Map();this.assetBytes=0;this.actors=new Map();this.pending=new Map();this.failures=new Map();this.sequence=0;this.overrides=new Map();this.selectionNotices=new Map();}
   asset(bundle){if(bundle?.schemaVersion!==1||bundle.format!=='ysm-bedrock-original'||!bundle.assetSha256)return;
     if(this.assets.has(bundle.assetSha256))return;
     const size=Object.values(bundle.files??{}).reduce((n,f)=>n+(f.base64?.length??0),0);if(size>8*1024*1024)return;
-    while(this.assets.size>=32 || this.assetBytes+size>32*1024*1024){const key=this.assets.keys().next().value;this.assetBytes-=this.assetSizes.get(key);this.assetSizes.delete(key);this.assets.delete(key);}
+    while(this.assets.size>=32 || this.assetBytes+size>32*1024*1024){const key=this.assets.keys().next().value;this.assetBytes-=this.assetSizes.get(key);this.assetSizes.delete(key);this.assets.delete(key);
+      for(const [uuid,choice]of this.overrides)if(choice.assetSha256===key){this.overrides.delete(uuid);this.unmount(uuid);this.selectionNotices.set(uuid,'所选资源已过期；已恢复服务器外观');}}
     this.assets.set(bundle.assetSha256,bundle);this.assetSizes.set(bundle.assetSha256,size);this.assetBytes+=size;}
   state(row){if(row?.schemaVersion!==1||row.source!=='freesia_worker'||typeof row.playerUuid!=='string')return;
-    const previous=this.states.get(row.playerUuid);if(previous && (previous.epoch!==row.epoch||previous.assetSha256!==row.assetSha256||previous.texture!==row.texture||previous.entityId!==row.entityId||!row.available))this.remove(row.playerUuid);
+    const previous=this.states.get(row.playerUuid);
+    if(previous && (previous.epoch!==row.epoch||previous.entityId!==row.entityId))this.remove(row.playerUuid);
+    else if(previous && !this.overrides.has(row.playerUuid) && (previous.assetSha256!==row.assetSha256||previous.texture!==row.texture||!row.available))this.unmount(row.playerUuid);
     if(this.states.size<40||this.states.has(row.playerUuid))this.states.set(row.playerUuid,row);}
+  choices(){
+    const choices=[{id:'server',label:'跟随服务器'},{id:'skin',label:'原版玩家皮肤（Web）'}];
+    for(const bundle of this.assets.values())for(const [texture,path]of Object.entries(bundle.textures??{})) {
+      if(!bundle.files?.[path] || !bundle.files?.[bundle.model] || !bundle.files?.['ysm.json'])continue;
+      choices.push({id:`ysm:${bundle.assetSha256}:${encodeURIComponent(texture)}`,label:`${bundle.modelId} · ${texture}`,assetSha256:bundle.assetSha256,modelId:bundle.modelId,texture});
+    }
+    return choices;
+  }
+  select(uuid,id){
+    const row=this.states.get(uuid),choice=this.choices().find(choice=>choice.id===id);
+    if(!row || !choice || this.entity(row.entityId)?.uuid?.toLowerCase()!==uuid)return false;
+    this.unmount(uuid);this.selectionNotices.delete(uuid);
+    if(id==='server')this.overrides.delete(uuid);else this.overrides.set(uuid,choice);
+    return true;
+  }
+  resetSelection(uuid){this.unmount(uuid);this.overrides.delete(uuid);this.selectionNotices.delete(uuid);}
+  effective(row){
+    if(!row)return null;
+    const choice=this.overrides.get(row.playerUuid);
+    if(!choice)return row;
+    if(choice.id==='skin')return {...row,available:false,renderAvailable:false,selectionSource:'web_viewer_override'};
+    return {...row,available:true,renderAvailable:true,modelId:choice.modelId,assetSha256:choice.assetSha256,texture:choice.texture,selectionSource:'web_viewer_override'};
+  }
+  selection(uuid){
+    const row=this.states.get(uuid),choice=this.overrides.get(uuid),actor=this.actors.get(uuid)?.actor;
+    const available=!!row && this.entity(row.entityId)?.uuid?.toLowerCase()===uuid;
+    let status=!available?'等待当前观战玩家':choice?.id==='skin'?'Web 显示原版玩家皮肤':choice?'Web 外观替换':'跟随服务器外观';
+    const error=this.failures.get(uuid);
+    if(error)status+=` · 渲染失败：${error}`;
+    else if(this.pending.has(uuid))status+=' · 模型载入中';
+    else if(actor)status+=` · ${actor.assetInfo.modelId} / ${actor.assetInfo.texture}${actor.animationReason?' · 部分动画尚不支持':''}`;
+    else if(!choice && row?.available && !row.renderAvailable)status+=' · 服务器模型资源不可用';
+    else if(!choice && row?.available===false)status+=' · 服务器未提供可用 YSM 外观';
+    return {available,selected:choice?.id??'server',choices:this.choices(),status:this.selectionNotices.get(uuid)??status};
+  }
   motion(row,now=performance.now()) {
     const state=this.states.get(row?.playerUuid),previous=this.motions.get(row?.playerUuid);
     if(!state || row.schemaVersion!==1 || row.source!=='same_connection_java_protocol' || state.epoch!==row.epoch || state.entityId!==row.entityId || !Number.isSafeInteger(row.sequence) || previous && previous.row.sequence>=row.sequence || !Number.isFinite(row.horizontalSpeed) || row.horizontalSpeed<0 || row.horizontalSpeed>30)return;
@@ -94,10 +132,12 @@ export class PaperYsmPlayers {
     return motion;
   }
   restore(actor){actor.actor.dispose();for(const [child,visible]of actor.hidden)child.visible=visible;actor.rendered.traverse(part=>{const position=this.nametags.get(part);if(position){part.position.copy(position);this.nametags.delete(part);}});}
-  remove(uuid){const actor=this.actors.get(uuid);if(actor){this.restore(actor);this.actors.delete(uuid);}this.pending.delete(uuid);this.failures.delete(uuid);this.states.delete(uuid);this.motions.delete(uuid);this.fallback.delete(uuid);}
+  unmount(uuid){const actor=this.actors.get(uuid);if(actor){this.restore(actor);this.actors.delete(uuid);}this.pending.delete(uuid);this.failures.delete(uuid);}
+  remove(uuid){this.unmount(uuid);this.states.delete(uuid);this.motions.delete(uuid);this.fallback.delete(uuid);this.overrides.delete(uuid);this.selectionNotices.delete(uuid);}
   clear(){for(const uuid of [...this.states.keys()])this.remove(uuid);this.assets.clear();this.assetSizes.clear();this.assetBytes=0;this.sequence++;}
   tick(now) {
-    for(const [uuid,row]of this.states) {
+    for(const [uuid,observed]of this.states) {
+      const row=this.effective(observed);
       const entity=this.entity(row.entityId),rendered=this.rendered(row.entityId),bound=entity?.uuid?.toLowerCase()===uuid && rendered;
       const mounted=this.actors.get(uuid);
       if(mounted && (!bound || mounted.rendered!==rendered)){this.restore(mounted);this.actors.delete(uuid);}
@@ -114,7 +154,9 @@ export class PaperYsmPlayers {
       const bundle=this.assets.get(row.assetSha256);if(!bundle || bundle.modelId!==row.modelId)continue;
       const marker=++this.sequence;this.pending.set(uuid,marker);
       void this.createActor(bundle,row.texture,{itemModels:this.itemModels}).then(actor=>{
-        if(this.pending.get(uuid)!==marker || this.states.get(uuid)?.assetSha256!==row.assetSha256 || this.rendered(row.entityId)!==rendered || this.entity(row.entityId)?.uuid?.toLowerCase()!==uuid){actor.dispose();return;}
+        const current=this.effective(this.states.get(uuid));
+        if(this.pending.get(uuid)!==marker || !current?.available || current.assetSha256!==row.assetSha256 || current.texture!==row.texture || current.epoch!==row.epoch || current.entityId!==row.entityId || this.rendered(row.entityId)!==rendered || this.entity(row.entityId)?.uuid?.toLowerCase()!==uuid){actor.dispose();return;}
+        actor.assetInfo={...actor.assetInfo,selectionSource:row.selectionSource??'server',serverModelId:observed.modelId};
         const hidden=new Map();this.hideVanilla(rendered,actor.root,hidden,actor.assetInfo.bindSizeBlocks[1]);
         rendered.add(actor.root);this.actors.set(uuid,{actor,rendered,hidden});
       }).catch(error=>{if(this.pending.get(uuid)===marker)this.failures.set(uuid,error.message);}).finally(()=>{if(this.pending.get(uuid)===marker)this.pending.delete(uuid);});

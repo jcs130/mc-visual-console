@@ -3,6 +3,7 @@ import { MapPhotos, heldMapId } from './map-photos.js';
 import {TextDisplays} from './text-displays.js';
 import {loadTextDisplayFont} from './text-display-font.js';
 import {PaperYsmPlayers} from './paper-ysm.js';
+import {installAppearanceSettings} from './appearance-settings.js';
 import paperYsmItemModels from 'mc-assets/dist/blockStatesModels.json';
 
 const cortiNativeParticles = new ServerParticles();
@@ -16,6 +17,15 @@ let cortiContentDisposed = false;
 let cortiContentError = null;
 const cortiAppearances=new Map();
 const cortiYsmPlayers=new PaperYsmPlayers({itemModels:paperYsmItemModels.models.latest,entity:id=>entityCache.get(String(id))??(pendingAvatarState?.entity?.id===id?pendingAvatarState.entity:null),rendered:id=>globalThis.world?.entities?.entities?.[String(id)],presentation:()=>activeScenePolicy});
+let appearanceSubject=null,appearanceUiAt=-Infinity;
+const appearanceUi=installAppearanceSettings({document,window,hidden:isPhotoView||isObsOverlay,
+  onChange:id=>{if(appearanceSubject)cortiYsmPlayers.select(appearanceSubject,id);updateAppearanceUi();}});
+function updateAppearanceUi(){
+  const entity=resolveOwnAvatarEntity(),uuid=entity?.uuid?.toLowerCase()??null;
+  if(appearanceSubject && appearanceSubject!==uuid)cortiYsmPlayers.resetSelection(appearanceSubject);
+  appearanceSubject=uuid;
+  appearanceUi.update({...cortiYsmPlayers.selection(uuid),subject:entity?.username??pendingAvatarState?.username??'当前观战人物'});
+}
 socket.on('appearanceAsset',bundle=>cortiYsmPlayers.asset(bundle));
 socket.on('appearanceMotion',event=>cortiYsmPlayers.motion(event));
 socket.on('entityAnimation',event=>cortiYsmPlayers.action(event));
@@ -85,6 +95,7 @@ loadViewerContentAssets().then(({assets,texture})=>{
 function cortiAnimateNativeContent(now) {
   if(cortiContentDisposed)return;
   if(!document.hidden){cortiNativeParticles.tick(now);cortiMapPhotos.tick();cortiTextDisplays.tick();cortiYsmPlayers.tick(now);cortiUpdateHeldMap();}
+  if(!document.hidden && now-appearanceUiAt>=500){appearanceUiAt=now;updateAppearanceUi();}
   const photos=cortiMapPhotos.stats();
   const texts=cortiTextDisplays.stats();
   const ysm=cortiYsmPlayers.stats();
@@ -104,4 +115,4 @@ function cortiAnimateNativeContent(now) {
 }
 if (typeof isObsOverlay === 'undefined' || !isObsOverlay) requestAnimationFrame(cortiAnimateNativeContent);
 window.cortiViewerContent={stats:()=>({ysm:cortiYsmPlayers.stats(),particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
-window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});
+window.addEventListener('pagehide',()=>{cortiContentDisposed=true;appearanceUi.dispose();cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});
