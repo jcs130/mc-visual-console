@@ -68,6 +68,16 @@ OBS 保持 440×290、面板 424×272：
 
 窗口固定600秒，报告覆盖秒数及完整性。重启、观测断档、丢事件等使覆盖不完整时显式标记；页面不从采样点估计次数。
 兼容旧生产端时，仅从完整的旧 effort_counts 推导请求比例，other 的开关归入未知；新档位与引擎实际生效比例保持未知。生产端出现新聚合字段后使用原生聚合，字段无效或显式 null 时不借用旧值。
+
+## 调用端准入与身份
+
+模型服务的排队数量和 `queue_ms` 只描述服务端排队。宿主在发送请求前的准入等待另存于用量账本 `attempt.clientQueueMs`；一次生成的重试共用该值，汇总时按 `generationId` 去重。当前小窗不将它与服务端排队相加，也不用它推算推理执行耗时。
+
+包含 [自有 Cortico 调用端实现](https://github.com/jcs130/Cortico/commit/a2bfc77dda254931df5c5241cea27cc8777d4db9) 的宿主按 Agent 和服务 origin 管理 `generation.maxConcurrent`。不同模型配置若指向同一服务则共享名额，独立服务分别计数；前台优先取得空出的名额，同一真实会话跨服务也最多一个在途生成。配置限额不表示实时活动量，不能从连接数反推名额占用或当前请求来源。
+
+`attempt.agentId` 是持久化的 Agent 命名空间，`conversationId` 是发送的 `x-litellm-session-id`，`inferenceStats.sessionId/requestId` 来自服务回执。现有会话恢复时保持原 ID，独立分支使用不同 ID。标识用于关联统计，前缀缓存仍取决于实际完整输入；Chat Completions 不因存在会话 ID 而省略历史。
+
+实际请求体的思考参数保存在 `attempt.requestedReasoning`，服务确认的生效参数仍由 `inferenceStats.reasoning` 提供。二者分别解释；本地估算、输出预留、首字延迟和网关总耗时均不能补成真实输入或执行计数。面板继续只读取现有元数据接口，不采集用量账本正文或新增推理请求。
 思考 token 通常是输出 token 的子集；显示三项读数，不把思考再次累加到输出。
 
 ## 只读接口
