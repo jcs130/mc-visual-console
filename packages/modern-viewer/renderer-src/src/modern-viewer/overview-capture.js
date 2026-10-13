@@ -6,7 +6,7 @@ const tuple = (value, size) => Array.isArray(value) && value.length === size && 
 /** A bounded, north-up photograph of already received terrain. No world/socket requests. */
 export function overviewSpec(input = {}, position, width, height) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('overview must be an object');
-  if (Object.keys(input).some(key => !['center', 'span', 'grid', 'labels', 'markers'].includes(key))) throw new Error('unknown overview field');
+  if (Object.keys(input).some(key => !['center', 'span', 'grid', 'labels', 'markers', 'attention'].includes(key))) throw new Error('unknown overview field');
   const center = input.center === undefined ? [position?.x, position?.z] : input.center;
   const span = input.span === undefined ? 32 : input.span, requestedGrid = input.grid === undefined ? 'auto' : input.grid;
   const labels = input.labels === undefined ? 'auto' : input.labels, markers = input.markers === undefined ? [] : input.markers;
@@ -22,10 +22,63 @@ export function overviewSpec(input = {}, position, width, height) {
     (marker.anchor !== 'position' && !marker.at.every(Number.isInteger)) ||
     (marker.label !== undefined && (typeof marker.label !== 'string' || marker.label.length > 24 || /[\u0000-\u001f\u007f]/u.test(marker.label)))))
     throw new Error('overview markers: at most 128; block (default) requires integer XYZ, position preserves exact XYZ; label <=24 chars');
+  const attention = input.attention;
+  if (attention !== undefined && (!attention || typeof attention !== 'object' || Array.isArray(attention) ||
+    Object.keys(attention).some(key => !['regions', 'detail'].includes(key)) ||
+    !Array.isArray(attention.regions) || !attention.regions.length || attention.regions.length > 32 ||
+    attention.regions.some(region => !region || typeof region !== 'object' || Array.isArray(region) ||
+      Object.keys(region).some(key => !['bounds', 'label'].includes(key)) || !tuple(region.bounds, 4) ||
+      region.bounds[2] <= region.bounds[0] || region.bounds[3] <= region.bounds[1] ||
+      region.bounds[2] - region.bounds[0] > 2048 || region.bounds[3] - region.bounds[1] > 2048 ||
+      (region.label !== undefined && (typeof region.label !== 'string' || region.label.length > 24 || /[\u0000-\u001f\u007f]/u.test(region.label)))) ||
+    (attention.detail !== undefined && (!Number.isInteger(attention.detail) || attention.detail < 0 || attention.detail > attention.regions.length))))
+    throw new Error('attention: 1..32 regions with bounds [minX,minZ,maxX,maxZ], sides <=2048; detail is 1-based region index, 0=off');
   const depth = span * height / width;
-  return { center: [...center], span, grid, labels, width, height, markers,
+  return { center: [...center], span, grid, labels, width, height, markers, attention,
     bounds: { minX: center[0] - span / 2, maxX: center[0] + span / 2,
       minZ: center[1] - depth / 2, maxZ: center[1] + depth / 2 } };
+}
+
+/** Explicit caller-selected regions, not model attention weights or inferred hazards. */
+export function overviewPanels(spec) {
+  const selected = spec.attention ? (spec.attention.detail ?? 1) : 0;
+  const gap = selected ? 12 : 0, mainWidth = selected ? Math.floor(spec.width * .64) : spec.width;
+  const main = { ...spec, width: mainWidth, bounds: { ...spec.bounds,
+    minZ: spec.center[1] - spec.span * spec.height / mainWidth / 2,
+    maxZ: spec.center[1] + spec.span * spec.height / mainWidth / 2 } };
+  const panels = [{ id:'overview', viewport:{x:0,y:0,width:mainWidth,height:spec.height}, spec:main }];
+  if (selected) {
+    const [minX,minZ,maxX,maxZ] = spec.attention.regions[selected-1].bounds;
+    const width = spec.width-mainWidth-gap, height=spec.height;
+    // Fit the region with context; cap camera width like the main view. Metadata
+    // reports clipping if a very wide region does not fit after the cap.
+    const span = Math.min(2048, Math.max(8, (maxX-minX)*1.3, (maxZ-minZ)*width/height*1.3));
+    const center = [(minX+maxX)/2,(minZ+maxZ)/2], depth=span*height/width;
+    panels.push({id:`A${selected}`,viewport:{x:mainWidth+gap,y:0,width,height},spec:{...spec,width,height,center,span,
+      grid:2**Math.ceil(Math.log2(span/8)),labels:'auto',
+      bounds:{minX:center[0]-span/2,maxX:center[0]+span/2,minZ:center[1]-depth/2,maxZ:center[1]+depth/2}}});
+  }
+  return panels;
+}
+
+export function overviewRegions(spec) {
+  return (spec.attention?.regions ?? []).map((region,index) => {
+    const [minX,minZ,maxX,maxZ]=region.bounds, b=spec.bounds, scale=spec.width/spec.span;
+    const left=Math.max(minX,b.minX), right=Math.min(maxX,b.maxX), top=Math.max(minZ,b.minZ), bottom=Math.min(maxZ,b.maxZ);
+    return {id:`A${index+1}`,bounds:[...region.bounds],...(region.label?{label:region.label}:{}),
+      rect:{x:(left-b.minX)*scale,y:(top-b.minZ)*scale,width:Math.max(0,right-left)*scale,height:Math.max(0,bottom-top)*scale},
+      inFrame:right>left&&bottom>top,clipped:minX<b.minX||maxX>b.maxX||minZ<b.minZ||maxZ>b.maxZ};
+  });
+}
+
+function shadeAttention(ctx, regions, document) {
+  // Clear every selected rectangle from a mask, so overlapping ROIs stay bright.
+  const mask=document.createElement('canvas');mask.width=ctx.canvas.width;mask.height=ctx.canvas.height;
+  const layer=mask.getContext('2d');layer.fillStyle='rgba(6,12,20,.55)';layer.fillRect(0,0,mask.width,mask.height);
+  for(const region of regions.filter(r=>r.inFrame)) {
+    const r=region.rect;layer.clearRect(r.x,r.y,r.width,r.height);
+  }
+  ctx.drawImage(mask,0,0);
 }
 
 /** Block indices name a cell, not its minimum corner. Never offset entity/world positions. */
@@ -106,7 +159,7 @@ export function overviewLabelLayout(spec, pins, player, measure) {
   return { mode, placed, shown:placed.length, hidden:points.length-placed.length };
 }
 
-export function annotateOverview(ctx, spec, project, coverage, pins, player, dimension) {
+export function annotateOverview(ctx, spec, project, coverage, pins, player, dimension, panelId = 'overview') {
   const { width, height, bounds, grid } = spec;
   if (coverage.missing.length) {
     // One clipped hatch pass, even when a wide view contains thousands of unknown columns.
@@ -124,10 +177,15 @@ export function annotateOverview(ctx, spec, project, coverage, pins, player, dim
     ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1;
     // Lines mark exact integer block boundaries, not block centers.
     const labelStep = grid * Math.max(1, Math.ceil(90 / (grid * width / spec.span)));
+    let lastLabelRight = -1;
     for (let x = Math.ceil(bounds.minX / grid) * grid; x <= bounds.maxX; x += grid) {
       const px = project([x, 0, bounds.minZ]).pixel[0];
       ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, height); ctx.stroke();
-      if (x % labelStep === 0) label(ctx, `X ${x}`, px + 2, 35);
+      if (x % labelStep === 0) {
+        ctx.save();ctx.font='bold 15px "Segoe UI", "Microsoft YaHei", sans-serif';
+        const text=`X ${x}`,w=ctx.measureText(text).width+12,left=Math.max(3,Math.min(width-w-3,px+2));ctx.restore();
+        if(left>lastLabelRight+6) { label(ctx,text,left,35);lastLabelRight=left+w; }
+      }
     }
     for (let z = Math.ceil(bounds.minZ / grid) * grid; z <= bounds.maxZ; z += grid) {
       const py = project([bounds.minX, 0, z]).pixel[1];
@@ -150,9 +208,16 @@ export function annotateOverview(ctx, spec, project, coverage, pins, player, dim
   const layout = overviewLabelLayout(spec, pins, player, text => ctx.measureText(text).width);
   ctx.restore();
   for (const item of layout.placed) label(ctx, item.text, item.x, item.y, item.id === 'SELF' ? '#65f2e5' : '#ffe382');
-  label(ctx, `N −Z ↑   E +X →${dimension ? `   ${dimension}` : ''}`, 8, 7);
-  label(ctx, `${spec.span} blocks wide · grid ${grid || 'off'} · chunks ${coverage.meshed}/${coverage.total}`, width - 8, 7, '#fff', 'right');
-  label(ctx, `[] block centers · () exact XYZ · top surfaces only · hatched = unmeshed${layout.hidden ? ` · ${layout.hidden} labels hidden` : ''}`, 8, height - 29, '#f6ddb0');
+  const regions = overviewRegions(spec), selected=spec.attention?.detail ?? 1;
+  for(const region of regions.filter(r=>r.inFrame)) {
+    const r=region.rect,color=region.id===`A${selected}`?'#ffcc68':'#89d5ff';
+    ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(r.x,r.y,r.width,r.height);
+    label(ctx,`${region.id}${region.label?' '+region.label:''}${region.clipped?' · clipped':''}`,r.x+4,Math.max(64,r.y-27),color);
+  }
+  label(ctx, `${panelId === 'overview' ? 'N −Z ↑   E +X →' : panelId+' DETAIL · N −Z ↑'}${dimension && width>=600 ? `   ${dimension}` : ''}`, 8, 7);
+  if(width>=600) label(ctx, `${Math.round(spec.span*10)/10} blocks · grid ${grid || 'off'} · chunks ${coverage.meshed}/${coverage.total}`, width - 8, 7, '#fff', 'right');
+  label(ctx, width>=600 ? `[] cell centers · () exact · top surfaces only · hatch = unknown${layout.hidden ? ` · ${layout.hidden} labels hidden` : ''}`
+    : `grid ${grid || 'off'} · chunks ${coverage.meshed}/${coverage.total} · top surfaces`, 8, height - 29, '#f6ddb0');
   return { mode:layout.mode, shown:layout.shown, hidden:layout.hidden };
 }
 
@@ -162,8 +227,8 @@ export function annotateOverview(ctx, spec, project, coverage, pins, player, dim
 export function captureOverview(world, input, { position, dimension, width, height, document }) {
   if (!world?.renderer || !world.sceneOrigin || !world.cameraWorldPos || !world.render || !position) throw new Error('overview renderer unavailable');
   const spec = overviewSpec(input, position, width, height);
-  const coverage = overviewCoverage(spec.bounds, world.finishedChunks);
-  if (!coverage.meshed) throw new Error('overview has no meshed terrain in requested bounds');
+  const panels = overviewPanels(spec);
+  if (!panels.some(panel=>overviewCoverage(panel.spec.bounds,world.finishedChunks).meshed)) throw new Error('overview has no meshed terrain in requested bounds');
   const minY = world.worldSizeParams?.minY, maxY = minY + world.worldSizeParams?.worldHeight;
   const origin = world.sceneOrigin;
   const old = { camera: world.camera, pos: { ...world.cameraWorldPos }, origin: [origin.x, origin.y, origin.z],
@@ -171,32 +236,49 @@ export function captureOverview(world, input, { position, dimension, width, heig
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('overview canvas unavailable');
-  let metadata;
+  let metadata, activeCamera;
   try {
-    const at = [spec.center[0], maxY + 8, spec.center[1]];
-    origin.update(...at);
-    const view = overviewCamera(spec, origin, minY, maxY);
-    world.camera = view.camera;
-    Object.assign(world.cameraWorldPos, { x: at[0], y: at[1], z: at[2] });
-    world.scene.fog = null; world.reactiveDebugParams.smartCull = false;
-    // The terrain pass updates atmospheric fog itself. Clear it at the draw
-    // boundary, after that update, so an elevated camera does not photograph
-    // only distance fog. Geometry still occludes normally; no roof cutaway.
+    world.reactiveDebugParams.smartCull = false;
     world.renderer.render = function(scene, camera) {
-      if (camera === view.camera) scene.fog = null;
+      if (camera === activeCamera) scene.fog = null;
       return old.render.call(this, scene, camera);
     };
-    world.render();
-    ctx.drawImage(world.renderer.domElement, 0, 0, width, height);
-    const project = point => overviewProject(point, view.camera, origin, width, height);
-    const pins = spec.markers.map((pin, i) => overviewMarker(pin, i, project));
-    const playerAt = [position.x, position.y, position.z];
-    const player = { id: 'SELF', at: playerAt, ...project(playerAt) };
-    const labels = annotateOverview(ctx, spec, project, coverage, pins, player, dimension);
-    metadata = { schema: 'mc-overview/v2', capturedAt: new Date().toISOString(), dimension: dimension ?? null,
-      bounds: spec.bounds, grid: spec.grid, north: '-Z', right: '+X', width, height,
-      coverage: { meshed: coverage.meshed, total: coverage.total },
-      player, pins, labels, source: 'loaded-renderer-scene', layers: 'top-visible-only' };
+    ctx.fillStyle='#0c1620';ctx.fillRect(0,0,width,height);
+    const captures = panels.map(panel => {
+      const spec=panel.spec, coverage=overviewCoverage(spec.bounds,world.finishedChunks);
+      const layer=document.createElement('canvas');layer.width=spec.width;layer.height=spec.height;
+      const pane=layer.getContext('2d');if(!pane)throw new Error('overview panel canvas unavailable');
+      const at = [spec.center[0], maxY + 8, spec.center[1]];
+      origin.update(...at);
+      const view = overviewCamera(spec, origin, minY, maxY);
+      world.camera = activeCamera = view.camera;
+      Object.assign(world.cameraWorldPos, { x: at[0], y: at[1], z: at[2] });
+      world.scene.fog = null; world.reactiveDebugParams.smartCull = false;
+      // The terrain pass updates atmospheric fog itself. Clear it at the draw
+      // boundary, after that update, so an elevated camera does not photograph
+      // only distance fog. Geometry still occludes normally; no roof cutaway.
+      world.render();
+      pane.drawImage(world.renderer.domElement, 0, 0, spec.width, spec.height);
+      const regions=overviewRegions(spec);
+      if(spec.attention && panel.id==='overview')shadeAttention(pane,regions,document);
+      const project = point => overviewProject(point, view.camera, origin, spec.width, spec.height);
+      const pins = spec.markers.map((pin, i) => overviewMarker(pin, i, project));
+      const playerAt = [position.x, position.y, position.z];
+      const player = { id: 'SELF', at: playerAt, ...project(playerAt) };
+      const labels = annotateOverview(pane, spec, project, coverage, pins, player, dimension,panel.id);
+      ctx.drawImage(layer,panel.viewport.x,panel.viewport.y);
+      const shift=point=>({...point,pixel:[point.pixel[0]+panel.viewport.x,point.pixel[1]+panel.viewport.y]});
+      return {id:panel.id,viewport:panel.viewport,bounds:spec.bounds,grid:spec.grid,
+        coverage: { meshed: coverage.meshed, total: coverage.total },
+        player:shift(player),pins:pins.map(shift),labels,
+        regions:regions.map(region=>({...region,rect:{...region.rect,x:region.rect.x+panel.viewport.x,y:region.rect.y+panel.viewport.y}}))};
+    });
+    const [main,detail]=captures;
+    metadata = {schema:'mc-overview/v3',capturedAt:new Date().toISOString(),dimension:dimension??null,
+      bounds:main.bounds,grid:main.grid,north:'-Z',right:'+X',width,height,viewport:main.viewport,
+      coverage:main.coverage,player:main.player,pins:main.pins,labels:main.labels,
+      ...(spec.attention?{attention:{source:'caller-selected',regions:main.regions,...(detail?{detail}:{})}}:{}),
+      source:'loaded-renderer-scene',layers:'top-visible-only'};
   } finally {
     world.renderer.render = old.render;
     world.camera = old.camera; Object.assign(world.cameraWorldPos, old.pos);

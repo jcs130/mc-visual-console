@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { overviewSpec, overviewCamera, overviewProject, overviewCoverage, overviewMarker, overviewLabelLayout, annotateOverview, captureOverview } from '../../src/modern-viewer/overview-capture.js';
+import { overviewSpec, overviewPanels, overviewRegions, overviewCamera, overviewProject, overviewCoverage, overviewMarker, overviewLabelLayout, annotateOverview, captureOverview } from '../../src/modern-viewer/overview-capture.js';
 
 function origin(x, y, z) {
   return { x, y, z, update(a, b, c) { this.x=a; this.y=b; this.z=c; },
@@ -96,9 +96,49 @@ test('failed photograph restores camera, world coordinates, fog and culling; no 
   const originalCamera={},fog={},pos={x:-16.5,y:64,z:-16.5},o=origin(-16.5,65.62,-16.5);
   const world={camera:originalCamera, cameraWorldPos:{...pos}, sceneOrigin:o,scene:{fog},reactiveDebugParams:{smartCull:true},
     worldSizeParams:{minY:-64,worldHeight:384},finishedChunks:{'-32,-32':true},renderer:{domElement:{}},render(){}};
-  const document={createElement:()=>({getContext:()=>({drawImage(){throw new Error('readback failed');}})})};
+  const document={createElement:()=>({getContext:()=>({fillRect(){},drawImage(){throw new Error('readback failed');}})})};
   assert.throws(()=>captureOverview(world,{}, {position:pos,width:1280,height:720,document}),/readback failed/);
   assert.equal(world.camera,originalCamera);assert.deepEqual(world.cameraWorldPos,pos);
   assert.deepEqual([o.x,o.y,o.z],[-16.5,65.62,-16.5]);assert.equal(world.scene.fog,fog);
   assert.equal(world.reactiveDebugParams.smartCull,true);
+});
+
+test('attention panels preserve absolute coordinates and detail magnifies the same negative-coordinate region', () => {
+  const spec=overviewSpec({center:[-541.5,-439.5],span:48,attention:{regions:[{bounds:[-545,-443,-538,-436],label:'uncertain passage'}]}},null,1280,720);
+  const [main,detail]=overviewPanels(spec),o=origin(-541,330,-440);
+  assert.equal(main.viewport.width+detail.viewport.width+12,1280);assert.equal(detail.viewport.x,main.viewport.width+12);
+  const p=[-541.5,67,-439.5];
+  for(const panel of [main,detail]) {
+    const {camera}=overviewCamera(panel.spec,o,-64,320);
+    const projected=overviewProject(p,camera,o,panel.viewport.width,panel.viewport.height);
+    close(projected.pixel[0],panel.viewport.width/2);close(projected.pixel[1],panel.viewport.height/2);
+    const area=overviewRegions(panel.spec)[0];assert.equal(area.clipped,false);assert.equal(area.inFrame,true);
+    close(area.rect.width,7*panel.spec.width/panel.spec.span);
+  }
+  assert.ok(detail.spec.width/detail.spec.span > main.spec.width/main.spec.span);
+  assert.equal(overviewPanels({...spec,attention:{...spec.attention,detail:0}}).length,1);
+});
+
+test('outside or partially visible attention stays explicit; a detail view can contain only unknown chunks', () => {
+  const spec=overviewSpec({center:[0,0],span:32,attention:{detail:2,regions:[{bounds:[14,-2,20,2]},{bounds:[100,100,104,104]}]}},null,1280,720);
+  const [main,detail]=overviewPanels(spec),[partial,outside]=overviewRegions(main.spec);
+  assert.equal(partial.clipped,true);assert.equal(partial.inFrame,true);assert.equal(outside.inFrame,false);
+  close(partial.rect.width,2*main.spec.width/32);
+  assert.equal(detail.id,'A2');assert.equal(overviewCoverage(detail.spec.bounds,{'0,0':true}).meshed,0);
+  for(const attention of [null,[],{}, {regions:[]},{regions:Array(33).fill({bounds:[0,0,1,1]})},
+    {regions:[{bounds:[2,0,1,2]}]},{regions:[{bounds:[0,0,2049,1]}]},{regions:[{bounds:[0,0,1,1],score:1}]},
+    {regions:[{bounds:[0,0,1,1]}],detail:2},{regions:[{bounds:[0,0,1,1]}],detail:NaN}])
+    assert.throws(()=>overviewSpec({attention},{x:0,z:0},1280,720),/attention/);
+});
+
+test('failure during the second render restores the original camera and render hook', () => {
+  const camera={},fog={},pos={x:8,y:64,z:8},o=origin(8,66,8);let passes=0;
+  const render=()=>{};
+  const world={camera,cameraWorldPos:{...pos},sceneOrigin:o,scene:{fog},reactiveDebugParams:{smartCull:true},
+    worldSizeParams:{minY:-64,worldHeight:384},finishedChunks:{'0,0':true},renderer:{domElement:{},render},
+    render(){if(++passes===2)throw Error('second panel failed');}};
+  const document={createElement(){const canvas={width:0,height:0};canvas.getContext=()=>new Proxy({canvas,measureText:text=>({width:text.length*8})},{get:(obj,key)=>key in obj?obj[key]:(()=>{})});return canvas;}};
+  assert.throws(()=>captureOverview(world,{attention:{regions:[{bounds:[6,6,10,10]}]}},{position:pos,width:1280,height:720,document}),/second panel failed/);
+  assert.equal(world.camera,camera);assert.equal(world.renderer.render,render);assert.deepEqual(world.cameraWorldPos,pos);
+  assert.deepEqual([o.x,o.y,o.z],[8,66,8]);assert.equal(world.scene.fog,fog);assert.equal(world.reactiveDebugParams.smartCull,true);assert.equal(passes,3);
 });
