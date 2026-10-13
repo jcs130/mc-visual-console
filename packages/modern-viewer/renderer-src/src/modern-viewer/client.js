@@ -5,6 +5,7 @@ import {
 } from "minecraft-renderer/dist/minecraft-renderer.js";
 import { io } from "socket.io-client";
 import { pendingChunkOrigins } from "./chunk-loading-guard.js";
+import { captureOverview } from "./overview-capture.js";
 import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
 import { installObsLayout } from "./obs-layout.js";
@@ -973,6 +974,15 @@ async function initializeRenderer(version) {
     installEntityRenderBounds(globalThis.world?.entities);
     installChunkLoadingGuards();
     rendererReady = true;
+    // A read-only snapshot API for agent capture pages. It renders the existing
+    // scene and annotates one PNG without moving the player or observer camera.
+    globalThis.__mcOverviewCapture = (options = {}) => {
+      if (!socket.connected || !rendererReady) throw new Error('overview connection unavailable');
+      return captureOverview(globalThis.world, options, {
+        position: latestPosition?.pos, dimension: npcWorldContext.dimension,
+        width: window.innerWidth, height: window.innerHeight, document,
+      });
+    };
     viewerEffectSystem = new ViewerEffectSystem({
       getWorld: () => globalThis.world,
       getEntity: (id) => globalThis.world?.entities?.entities?.[String(id)] ?? null,
