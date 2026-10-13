@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {Vector3} from 'three';
 import {mapEntityKind,mapHeading,mapPixel,mapSpec,mapLayer,mapClusters,MinimapTerrain} from '../../src/modern-viewer/scene-minimap.js';
 import {overviewSpec,overviewRegions,overviewRegionLabels,overviewLabelLayout} from '../../src/modern-viewer/overview-capture.js';
 
@@ -51,7 +52,17 @@ test('offscreen pass restores camera, target, origin, hand, fog and viewport eve
   let target=null,hand=true,passCount=0;const render=()=>{};
   const renderer={render,autoClear:false,getRenderTarget:()=>target,setRenderTarget:x=>{target=x;},getViewport:v=>v.set(1,2,3,4),getScissor:v=>v.set(5,6,7,8),getScissorTest:()=>true,setScissor(){},setViewport(){},setScissorTest(){},readRenderTargetPixels(){throw Error('GPU read failed');}};
   const world={renderer,camera,sceneOrigin:origin,cameraWorldPos:{x:2,y:3,z:4},scene:{fog},finishedChunks:{'0,0':true},worldSizeParams:{minY:-64,worldHeight:384},
-    displayOptions:{inWorldRenderingConfig:{get showHand(){return hand;},set showHand(v){hand=v;}}},reactiveDebugParams:{smartCull:true},render(){passCount++;assert.equal(hand,passCount>1);if(passCount===1){assert.equal(this.camera.near,328-65.25);assert.equal(this.camera.far,328-56);}}};
+    displayOptions:{inWorldRenderingConfig:{get showHand(){return hand;},set showHand(v){hand=v;}}},reactiveDebugParams:{smartCull:true},render(){
+      passCount++;assert.equal(hand,passCount>1);
+      if(passCount===1){
+        assert.equal(this.camera.near,328-65.25);assert.equal(this.camera.far,328-56);
+        // The renderer's terrain shader already subtracts cameraWorldPos. Its
+        // view matrix must not apply a second translation from the old origin.
+        const p=new Vector3(8-this.cameraWorldPos.x,64-this.cameraWorldPos.y,8-this.cameraWorldPos.z).project(this.camera);
+        assert.ok(Math.abs(p.x)<1e-9&&Math.abs(p.y)<1e-9&&p.z>=-1&&p.z<=1,'visible ground must remain inside the minimap camera');
+        assert.deepEqual([origin.x,origin.y,origin.z],[8,328,8]);
+      }
+    }};
   assert.throws(()=>terrain.capture(world,{...mapSpec({x:8,z:8},16,2),layer:{kind:'slice',minY:56,maxY:65.25}}),/GPU read failed/);
   assert.equal(passCount,2);assert.equal(world.camera,camera);assert.equal(world.scene.fog,fog);assert.equal(target,null);assert.equal(hand,true);
   assert.deepEqual([origin.x,origin.y,origin.z],[2,3,4]);assert.deepEqual(world.cameraWorldPos,{x:2,y:3,z:4});assert.equal(renderer.render,render);assert.equal(renderer.autoClear,false);
