@@ -106,10 +106,13 @@ export class PaperYsmAnimation {
   }
   clip(def,name){let map=this.compiled.get(def);if(!map){map=new Map();this.compiled.set(def,map);}if(!map.has(name))map.set(name,compilePaperYsmClip(def,name,this.model.bones));return map.get(name);}
   apply(state,now) {
+    const previous=this.waterTransition?.lastPose;
     this.start??=now;this.model.reset();this.errors=[];this.selected=[];
     const m=state.motion??state, speed=m.horizontalSpeed??0, pose=m.pose;
     let base=pose==='sleeping'?'sleep':pose==='dying'?'death':pose==='spin_attack'?'riptide':pose==='fall_flying'?'elytra_fly':
-      pose==='swimming'?'swim':m.flying===true?'fly':m.onGround===false?'jump':m.crouching===true?(speed>.05?'sneak':'sneaking'):speed>.05?(m.sprinting===true?'run':'walk'):'idle';
+      pose==='swimming'?'swim':m.flying===true?'fly':m.inWater===true&&m.onGround===false?
+        (speed>.2?'swim':this.main.animations?.swim_stand?'swim_stand':'swim'):
+        m.onGround===false?'jump':m.crouching===true?(speed>.05?'sneak':'sneaking'):speed>.05?(m.sprinting===true?'run':'walk'):'idle';
     // appearanceMotion stores Java pitch degrees (positive down). YSM's
     // head_pitch query is positive up, as is legacy Mineflayer pitch in radians.
     // Convert here once so authored hair/eye tracks and the Head look agree.
@@ -159,8 +162,29 @@ export class PaperYsmAnimation {
     // The native Head bone also follows the actual look direction, even when
     // the authored animation has no head channel.
     const head=this.model.bones.get('Head');if(head){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
+    const water=base==='swim'||base==='swim_stand',transition=this.waterTransition??={base,water,lastPose:null,from:null,start:now};
+    if(base!==transition.base) {
+      transition.from=(water||transition.water)&&previous?new Map([...previous].map(([name,p])=>[name,
+        {position:p.position.clone(),quaternion:p.quaternion.clone(),scale:p.scale.clone()}])):null;transition.start=now;
+      transition.base=base;transition.water=water;
+    }
+    const alpha=Math.min(1,Math.max(0,(now-transition.start)/220)),blend=alpha*alpha*(3-2*alpha);
+    if(transition.from && alpha<1)for(const [name,from]of transition.from) {
+      const bone=this.model.bones.get(name);if(!bone)continue;
+      bone.position.lerpVectors(from.position,bone.position,blend);
+      bone.quaternion.slerpQuaternions(from.quaternion,bone.quaternion,blend);
+      bone.scale.lerpVectors(from.scale,bone.scale,blend);
+    }
+    else transition.from=null;
+    // Reuse the snapshot objects; no per-frame allocation proportional to cubes.
+    transition.lastPose??=new Map();
+    for(const [name,bone]of this.model.bones) {
+      let saved=transition.lastPose.get(name);
+      if(!saved){saved={position:bone.position.clone(),quaternion:bone.quaternion.clone(),scale:bone.scale.clone()};transition.lastPose.set(name,saved);}
+      else {saved.position.copy(bone.position);saved.quaternion.copy(bone.quaternion);saved.scale.copy(bone.scale);}
+    }
     for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
     if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
-    return {base,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
+    return {base,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
   }
 }

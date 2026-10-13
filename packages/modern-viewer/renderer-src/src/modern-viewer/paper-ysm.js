@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {batchYsmBones} from './ysm-bone-batch.js';
 import {createNativeBedrockModel} from '../native-viewer/native-entity-model-bedrock.js';
 import {PaperYsmAnimation} from './paper-ysm-animation.js';
 import {PaperYsmHeldItems} from './paper-ysm-items.js';
@@ -13,17 +13,13 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
   const bounded=value=>{if(typeof value==='number' && (!Number.isFinite(value)||Math.abs(value)>65536))throw Error('YSM_GEOMETRY_VALUE_BUDGET');if(value && typeof value==='object')for(const child of Object.values(value))bounded(child);};
   bounded(geometry);
   const texture=await (loadTexture??(url=>new THREE.TextureLoader().loadAsync(url)))('data:image/png;base64,'+file.base64);
-  let material,model;
+  let material,model,batch;
   try {
     texture.flipY=true;texture.colorSpace=THREE.SRGBColorSpace;texture.magFilter=THREE.NearestFilter;texture.minFilter=THREE.NearestFilter;texture.generateMipmaps=false;texture.needsUpdate=true;
     material=new THREE.MeshLambertMaterial({map:texture,side:THREE.DoubleSide,alphaTest:.1});
     model=createNativeBedrockModel(geometry,material,{maxBones:512,maxCubesPerBone:256,maxCubes:2048,allowNegativeSizes:true});
     if(model.cubeCount>2048)throw Error('YSM_GEOMETRY_BUDGET');
-    // Batch original faces within each identical bone/cube transform; retain exact UV and vertices.
-    const merged=[];model.root.traverse(group=>{const meshes=group.children.filter(c=>c.isMesh);if(meshes.length<2)return;
-      const geometry=mergeGeometries(meshes.map(m=>m.geometry));if(!geometry)throw Error('YSM_GEOMETRY_BATCH_FAILED');
-      for(const mesh of meshes)mesh.removeFromParent();const mesh=new THREE.Mesh(geometry,material);group.add(mesh);merged.push(geometry);
-    });
+    batch=batchYsmBones(model,material);
     const root=new THREE.Group(),orientation=new THREE.Group(),content=new THREE.Group();
     root.name='paper-ysm-player';
     root.add(orientation);orientation.add(content);orientation.scale.set(-1,-1,1);orientation.position.y=Math.fround(.01);content.position.y=-1.5;content.add(model.root);
@@ -43,8 +39,10 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
         if (presentationSignature === signature) return;
         presentationSignature = signature;
         // Sampling changes only: original PNG, UVs, bones and proportions stay intact.
-        texture.magFilter = smooth ? THREE.LinearFilter : THREE.NearestFilter;
-        texture.minFilter = smooth ? THREE.LinearMipmapLinearFilter : THREE.NearestFilter;
+        // Keep magnified atlas texels crisp: linear sampling bleeds unused dark
+        // texels across narrow authored UV islands and looks like a black outline.
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = smooth ? THREE.NearestMipmapLinearFilter : THREE.NearestFilter;
         texture.generateMipmaps = smooth; texture.anisotropy = anisotropy; texture.needsUpdate = true;
         model.root.traverse(part => { if (part.isMesh) { part.castShadow = shadows; part.receiveShadow = shadows; } });
       },
@@ -52,8 +50,8 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
         this.animationState=animationController.apply(state,now);this.animationReason=this.animationState.errors[0]??null;
         held.apply(state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
       },
-      dispose(){held.dispose();model.dispose();for(const g of merged)g.dispose();material.dispose();texture.dispose();root.removeFromParent();root.clear();}};
-  } catch(error){model?.dispose();material?.dispose();texture.dispose();throw error;}
+      dispose(){held.dispose();model.dispose();batch.dispose();material.dispose();texture.dispose();root.removeFromParent();root.clear();}};
+  } catch(error){batch?.dispose();model?.dispose();material?.dispose();texture.dispose();throw error;}
 }
 
 /** Mounted only onto a currently tracked vanilla player entity with the same UUID. */
@@ -110,6 +108,17 @@ export class PaperYsmPlayers {
     if(!state || row.schemaVersion!==1 || row.source!=='same_connection_java_protocol' || state.epoch!==row.epoch || state.entityId!==row.entityId || !Number.isSafeInteger(row.sequence) || previous && previous.row.sequence>=row.sequence || !Number.isFinite(row.horizontalSpeed) || row.horizontalSpeed<0 || row.horizontalSpeed>30)return;
     this.motions.set(row.playerUuid,{row,at:now});
   }
+  /** Own-body physics already travels with avatarState. It is not a remote
+   * player's inferred pose, water-depth guess, or a change to game physics. */
+  bodyMotion(row,now=performance.now()) {
+    const entity=row?.entity,uuid=entity?.uuid?.toLowerCase(),binding=this.states.get(uuid);
+    if(!binding || binding.entityId!==entity.id || this.entity(entity.id)?.uuid?.toLowerCase()!==uuid)return;
+    const local=this.fallback.get(uuid)??{};
+    local.body={at:now,epoch:binding.epoch,entityId:entity.id,
+      ...(typeof row.inWater==='boolean'?{inWater:row.inWater}:{}),
+      ...(typeof row.onGround==='boolean'?{onGround:row.onGround}:{})};
+    this.fallback.set(uuid,local);
+  }
   action(event,now=performance.now()) {
     if(!event || event.animation!=='oneSwing')return;
     for(const [uuid,row]of this.states)if(String(row.entityId)===String(event.id)) {
@@ -125,6 +134,10 @@ export class PaperYsmPlayers {
     if(!local.movedAt || now-local.movedAt>250)local.speed=0;
     local.position=pos?{...pos}:null;local.at=now;this.fallback.set(uuid,local);
     const motion=latest && now-latest.at<2000?{...latest.row}:{horizontalSpeed:local.speed,equipment:entity.equipment,crouching:!!(Number(entity.metadata?.[0])&2),sprinting:!!(Number(entity.metadata?.[0])&8),pose:entity.metadata?.[6],headPitchDegrees:-(entity.pitch??0)*180/Math.PI};
+    if(local.body && now-local.body.at<600 && local.body.entityId===entity.id && local.body.epoch===this.states.get(uuid)?.epoch) {
+      for(const key of ['inWater','onGround'])if(typeof local.body[key]==='boolean')motion[key]=local.body[key];
+      motion.waterSource='same_connection_body';
+    }
     if(latest?.row.swing)motion.swing={...latest.row.swing,ageSeconds:latest.row.swing.ageSeconds+(now-latest.at)/1000};
     if(latest?.row.hurt)motion.hurt={...latest.row.hurt,ageSeconds:latest.row.hurt.ageSeconds+(now-latest.at)/1000};
     // Legacy host action events cover the owner's locally initiated swing.

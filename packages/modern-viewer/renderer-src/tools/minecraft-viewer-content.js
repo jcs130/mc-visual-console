@@ -28,6 +28,7 @@ function updateAppearanceUi(){
 }
 socket.on('appearanceAsset',bundle=>cortiYsmPlayers.asset(bundle));
 socket.on('appearanceMotion',event=>cortiYsmPlayers.motion(event));
+socket.on('avatarState',event=>cortiYsmPlayers.bodyMotion(event));
 socket.on('entityAnimation',event=>cortiYsmPlayers.action(event));
 socket.on('appearanceReset',()=>{cortiAppearances.clear();cortiYsmPlayers.clear();});
 socket.on('appearanceRemove',event=>{cortiAppearances.delete(event?.playerUuid);cortiYsmPlayers.remove(event?.playerUuid);});

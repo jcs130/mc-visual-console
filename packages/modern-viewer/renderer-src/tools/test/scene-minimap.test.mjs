@@ -57,3 +57,16 @@ test('offscreen pass restores camera, target, origin, hand, fog and viewport eve
   assert.deepEqual([origin.x,origin.y,origin.z],[2,3,4]);assert.deepEqual(world.cameraWorldPos,{x:2,y:3,z:4});assert.equal(renderer.render,render);assert.equal(renderer.autoClear,false);
   terrain.dispose();
 });
+
+test('asynchronous map readback restores the live scene before waiting and propagates GPU failure',async()=>{
+  const document={createElement(){return {getContext:()=>({createImageData:()=>({data:new Uint8Array(16)}),putImageData(){}})};}};
+  const terrain=new MinimapTerrain(document,2),camera={},fog={},origin={x:0,y:0,z:0,update(){},toSceneX:x=>x,toSceneY:y=>y,toSceneZ:z=>z};
+  let target=null,finish,reject;const renderer={render(){},autoClear:true,getRenderTarget:()=>target,setRenderTarget:x=>{target=x;},getViewport:v=>v,getScissor:v=>v,getScissorTest:()=>false,setScissor(){},setViewport(){},setScissorTest(){},
+    readRenderTargetPixelsAsync:()=>new Promise((yes,no)=>{finish=yes;reject=no;})};
+  const world={renderer,camera,sceneOrigin:origin,cameraWorldPos:{x:0,y:64,z:0},scene:{fog},finishedChunks:{'0,0':true},worldSizeParams:{minY:-64,worldHeight:384},reactiveDebugParams:{smartCull:true},render(){}};
+  const spec=mapSpec({x:8,z:8},16,2),pending=terrain.capture(world,spec,{asyncRead:true});
+  assert.equal(world.camera,camera);assert.equal(target,null);assert.equal(world.reactiveDebugParams.smartCull,true);
+  finish();assert.equal((await pending).spec,spec);
+  const failed=terrain.capture(world,spec,{asyncRead:true});reject(Error('GPU unavailable'));await assert.rejects(failed,/GPU unavailable/);
+  assert.equal(world.camera,camera);terrain.dispose();
+});

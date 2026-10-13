@@ -7,6 +7,36 @@ import {PaperYsmPlayers} from '../../src/modern-viewer/paper-ysm.js';
 import {createPaperHeldItem,resolvePaperHeldModel,PaperYsmHeldItems,paperYsmItemMount} from '../../src/modern-viewer/paper-ysm-items.js';
 const context=()=>({variables:Object.create(null),queries:{'query.anim_time':.25,'ysm.head_pitch':30},random:()=>.5});
 const model=()=>{const bones=new Map(['Root','Head','RightArm','LeftArm','RightHandLocator','LeftHandLocator'].map(n=>[n,new THREE.Group()]));const initial=new Map([...bones].map(([n,b])=>[n,{position:b.position.clone(),rotation:b.rotation.clone()}]));return {bones,initial,reset(){for(const[n,b]of bones){b.position.copy(initial.get(n).position);b.rotation.copy(initial.get(n).rotation);b.scale.setScalar(1);}}};};
+
+test('fresh body water selects swim or tread, grounded wading stays walking and transitions remain continuous',()=>{
+  const m=model(),main={format_version:'1.8.0',animations:Object.fromEntries(['idle','walk','jump','swim','swim_stand'].map(name=>[name,{loop:true,bones:{Root:{position:[name==='swim'?16:0,0,0]}}}]))};
+  const c=new PaperYsmAnimation(m,main),water={inWater:true,onGround:false,horizontalSpeed:2};
+  assert.equal(c.apply({motion:{onGround:true}},1000).base,'idle');
+  assert.equal(c.apply({motion:water},1100).base,'swim');assert.equal(m.bones.get('Root').position.x,0);
+  c.apply({motion:water},1155);c.apply({motion:water},1210);
+  assert.ok(Math.abs(m.bones.get('Root').position.x-.5)<1e-8,'fixed transition origin, not the previous blended frame');
+  c.apply({motion:water},1320);assert.equal(m.bones.get('Root').position.x,1);
+  assert.equal(c.apply({motion:{...water,horizontalSpeed:0}},1400).base,'swim_stand');
+  assert.equal(m.bones.get('Root').position.x,1,'no snap on tread transition');
+  assert.equal(c.apply({motion:{...water,onGround:true}},1700).base,'walk');
+  assert.equal(c.apply({motion:{onGround:false}},2000).base,'jump','unknown water is not a swimming claim');
+});
+
+test('own-body water never leaks through a reused ID, changed epoch, stale packet or missing boolean',()=>{
+  const uuid='00000000-0000-3000-8000-000000000001',entity={id:7,uuid,pos:{x:0,y:62,z:0}},players=new PaperYsmPlayers({entity:()=>entity});
+  const binding={schemaVersion:1,source:'freesia_worker',playerUuid:uuid,entityId:7,epoch:'a',available:true};players.state(binding);
+  players.bodyMotion({entity,inWater:true,onGround:false},1000);
+  assert.equal(players.motionFor(uuid,entity,1100).inWater,true);
+  players.bodyMotion({entity,inWater:false,onGround:true},1200);
+  assert.equal(players.motionFor(uuid,entity,1201).inWater,false);
+  assert.equal(players.motionFor(uuid,entity,1900).inWater,undefined);
+  players.bodyMotion({entity:{...entity,id:8},inWater:true},1901);
+  assert.equal(players.motionFor(uuid,entity,1902).inWater,undefined);
+  players.bodyMotion({entity,inWater:true},2000);players.state({...binding,epoch:'b'});
+  assert.equal(players.motionFor(uuid,entity,2001).inWater,undefined);
+  players.bodyMotion({entity,inWater:null},2100);assert.equal(players.motionFor(uuid,entity,2101).inWater,undefined);
+  players.clear();
+});
 test('bounded Molang arithmetic, degrees, aliases, optional ternary and original combo variables',()=>{
   const c=context();assert.ok(Math.abs(compilePaperMolang('math.sin(q.anim_time*360)')(c)-1)<1e-8);
   assert.equal(compilePaperMolang('v.qh=1; v.qh==1?15;')(c),15);

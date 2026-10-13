@@ -22,10 +22,10 @@ export function resolveSceneQuality(settings, { mode = 'balanced', view = 'first
   const reason = overlay ? 'overlay' : !s.occlusion ? 'disabled' : view !== 'first' ? 'observer'
     : !['survival', 'adventure'].includes(gameMode) ? (gameMode === 'spectator' ? 'spectator' : 'unconfirmed-mode')
     : !sectionReady ? 'loading-section' : null;
-  return { mode: tier, style: tier === 'performance' ? 'native' : s.style,
+  return { mode: tier, style: s.style,
     smartCull: reason === null, cullingReason: reason,
     shadows: !overlay && s.style === 'cinematic' && tier === 'high',
-    avatarSampling: s.avatarSampling === 'auto' ? (tier === 'performance' || s.style === 'native' ? 'original' : 'smooth') : s.avatarSampling,
+    avatarSampling: s.avatarSampling === 'auto' ? 'original' : s.avatarSampling,
     anisotropy: tier === 'high' ? 8 : tier === 'balanced' ? 4 : 1 };
 }
 export function applySceneQuality(world, policy) {
@@ -38,10 +38,10 @@ export function applySceneQuality(world, policy) {
     world.renderer.shadowMap.needsUpdate = true;
   }
 }
-/** Reuse the existing biome colour pass. Native/performance eliminate that pass. */
+/** One existing compositor pass; style stays independent of the frame budget. */
 export function sceneColourFilter(profile, policy, rain = 1) {
   if (!policy || policy.style === 'native') return 'none';
-  const strength = policy.style === 'cinematic' ? 1 : .45;
+  const cinema=policy.style==='cinematic',strength=cinema ? 1 : .55;
   const mix = (value, fallback = 1) => fallback + ((Number.isFinite(value) ? value : fallback) - fallback) * strength;
-  return `saturate(${(mix(profile.saturation) * rain).toFixed(3)}) contrast(${mix(profile.contrast).toFixed(3)}) brightness(${mix(profile.brightness).toFixed(3)}) sepia(${mix(profile.warmth, 0).toFixed(3)})`;
+  return `saturate(${(mix(profile.saturation) * rain * (cinema ? .90 : 1.08)).toFixed(3)}) contrast(${(mix(profile.contrast)*(cinema ? 1.15 : .96)).toFixed(3)}) brightness(${(mix(profile.brightness)*(cinema ? .98 : 1.04)).toFixed(3)}) sepia(${(mix(profile.warmth,0)+(cinema ? .06 : .02)).toFixed(3)})`;
 }

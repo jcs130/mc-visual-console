@@ -78,7 +78,7 @@ export class MinimapTerrain {
     this.bytes=new Uint8Array(size*size*4);
     this.image=this.context.createImageData(size,size);
   }
-  capture(world, spec) {
+  capture(world, spec, {asyncRead=false}={}) {
     const renderer=world?.renderer, origin=world?.sceneOrigin;
     if (!renderer || !origin || !world.cameraWorldPos || !world.render) throw Error('地形渲染器尚未就绪');
     const coverage=overviewCoverage(spec.bounds,world.finishedChunks);
@@ -109,11 +109,17 @@ export class MinimapTerrain {
       };
       renderer.setRenderTarget(this.target);renderer.setScissorTest(false);renderer.autoClear=true;
       world.render();
+      const finish=()=>{
+        const row=this.size*4;
+        for(let y=0;y<this.size;y++) this.image.data.set(this.bytes.subarray((this.size-y-1)*row,(this.size-y)*row),y*row);
+        this.context.putImageData(this.image,0,0);
+        return {canvas:this.canvas,spec,coverage};
+      };
+      // The shared scene/camera is restored synchronously in finally. Only the
+      // GPU readback waits; the main view keeps rendering during that fence.
+      if(asyncRead&&renderer.readRenderTargetPixelsAsync)return renderer.readRenderTargetPixelsAsync(this.target,0,0,this.size,this.size,this.bytes).then(finish);
       renderer.readRenderTargetPixels(this.target,0,0,this.size,this.size,this.bytes);
-      const row=this.size*4;
-      for(let y=0;y<this.size;y++) this.image.data.set(this.bytes.subarray((this.size-y-1)*row,(this.size-y)*row),y*row);
-      this.context.putImageData(this.image,0,0);
-      return {canvas:this.canvas,spec,coverage};
+      return finish();
     } finally {
       renderer.render=old.render;world.camera=old.camera;
       Object.assign(world.cameraWorldPos,old.pos);origin.update(...old.origin);
@@ -215,7 +221,7 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getE
   const sounds=document.createElement('div');sounds.className='corti-map-hearing';sounds.hidden=true;root.append(sounds);
   const detail=document.createElement('div');detail.className='corti-map-detail';detail.textContent='鼠标移到标记查看详情';root.append(detail);
   const caption=root.querySelector('[data-map-caption]');
-  let span=48,frame=null,groups=[],last=0,next=0,dimension=null,disposed=false,hover=null,renderMs=0,failures=0,hints=[];
+  let span=48,frame=null,groups=[],last=0,next=0,dimension=null,disposed=false,hover=null,renderMs=0,failures=0,hints=[],generation=0,pending=null;
   const summary=()=>{
     const selected=hover&&groups.find(g=>Math.hypot(g.x-hover[0],g.y-hover[1])<20);
     if(selected){
@@ -226,7 +232,7 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getE
       detail.textContent=rows[0]+(rows.length>1?` · 共 ${rows.length} 个`: '');detail.title=rows.join('\n');
     }else{detail.textContent=frame?(riskOn?'风险为估计 · 攻击／视野范围未知':`${span} 格 · 灰色未知 · 斜纹未更新`):'等待地形同步';detail.title='仅显示自身视线内的实体。历史地形未实时更新，刷新页面后重新探索；敌对种类不代表正在攻击你，玩家不默认当队友。风险云来自两次可见位置的1秒匀速外推，不是攻击范围、概率或寻路结果。';}
   };
-  function reset(){frame=null;groups=[];hover=null;dimension=null;last=0;next=0;hints=[];memory.clear();motion.clear();ctx.clearRect(0,0,canvas.width,canvas.height);if(caption)caption.textContent='等待地图同步';sounds.hidden=true;summary();}
+  function reset(){generation++;frame=null;groups=[];hover=null;dimension=null;last=0;next=0;hints=[];memory.clear();motion.clear();ctx.clearRect(0,0,canvas.width,canvas.height);if(caption)caption.textContent='等待地图同步';sounds.hidden=true;summary();}
   function draw(now=performance.now()) {
     if(disposed)return;
     const state=getState(),self=state?.entity,pos=self?.pos??self?.position;
@@ -234,9 +240,26 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getE
     if(state.dimension!==dimension){reset();dimension=state.dimension;}
     if(document.hidden || !visible() || !root.getClientRects().length)return;
     const moved=!frame||Math.hypot(pos.x-frame.spec.center[0],pos.z-frame.spec.center[1])>span*.12;
-    if(now>=next&&(moved||now-last>=1500)){
+    if(!pending&&now>=next&&(moved||now-last>=1500)){
       const start=performance.now();
-      try {const spec={...mapSpec(pos,span),layer:mapLayer(getSight(),self)};frame=memory.apply(terrain.capture(getWorld(),spec),getSight(),self);last=now;failures=0;}
+      try {
+        const spec={...mapSpec(pos,span),layer:mapLayer(getSight(),self)};
+        const sight=getSight(),pinned=sight.snapshot?.()??sight;
+        let capture;
+        try{capture=terrain.capture(getWorld(),spec,{asyncRead:true});}catch(error){pinned.release?.();throw error;}
+        const captured=performance.now();
+        root.dataset.mapCaptureMs=(captured-start).toFixed(1);
+        const job=generation,observer={...self,pos:{...pos},position:{...pos}};
+        pending=Promise.resolve(capture).then(image=>memory.applyBudgeted(image,pinned,observer,{
+          yieldFrame:()=>new Promise(resolve=>window.requestAnimationFrame(resolve)),
+          valid:()=>!disposed&&job===generation
+        })).then(masked=>{
+          if(!masked||disposed||job!==generation)return;
+          frame=masked;last=performance.now();failures=0;
+          root.dataset.mapMaskMs=masked.workMs.toFixed(1);
+          root.dataset.mapSliceMs=masked.maxSliceMs.toFixed(1);
+        }).catch(()=>{failures++;}).finally(()=>{pinned.release?.();pending=null;});
+      }
       catch{failures++;if(!frame||now-last>5000){frame=null;groups=[];ctx.clearRect(0,0,canvas.width,canvas.height);}}
       renderMs=performance.now()-start;
       next=now+Math.max(750,Math.min(5000,renderMs*24));
@@ -251,7 +274,7 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getE
     root.dataset.mapSource=frame?'loaded-scene':'unavailable';summary();
   }
   const ranges=[24,48,96,192];
-  function zoom(direction){span=ranges[Math.max(0,Math.min(ranges.length-1,ranges.indexOf(span)+direction))];frame=null;last=0;next=0;draw();}
+  function zoom(direction){generation++;span=ranges[Math.max(0,Math.min(ranges.length-1,ranges.indexOf(span)+direction))];frame=null;last=0;next=0;draw();}
   const onOut=()=>zoom(1),onIn=()=>zoom(-1);
   const onMove=event=>{const box=canvas.getBoundingClientRect();hover=[(event.clientX-box.left)*canvas.width/box.width,(event.clientY-box.top)*canvas.height/box.height];summary();};
   const onLeave=()=>{hover=null;summary();};

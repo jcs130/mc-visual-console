@@ -6,6 +6,24 @@ import {captureOverview} from '../../src/modern-viewer/overview-capture.js';
 const air={name:'air',shapes:[]},stone={name:'stone',shapes:[[0,0,0,1,1,1]]};
 const self={id:1,pos:{x:.5,y:64,z:.5},yaw:0,pitch:-.2};
 const ground={top:()=>64,block:(_x,y)=>y<64?stone:air};
+
+test('sight collision cache avoids repeated decoding and invalidates on update, removal and reset',()=>{
+  const grid=new SightGrid('1.20.6');let reads=0,current=stone;
+  grid.columns.set('0,0',{getBlock:()=>{reads++;return current;},setBlockStateId:()=>{current=air;}});
+  assert.equal(grid.block(1,64,1),stone);assert.equal(grid.block(1,64,1),stone);assert.equal(reads,1);
+  grid.update({x:1,y:64,z:1},0);assert.equal(grid.block(1,64,1),air);assert.equal(reads,2);
+  grid.remove(0,0);assert.equal(grid.block(1,64,1),null);assert.equal(grid.blocks.size,0);
+  grid.clear();assert.equal(grid.columns.size,0);
+});
+
+test('a budgeted map sees geometry from its captured instant even when live blocks or columns change',()=>{
+  const grid=new SightGrid('1.20.6');let block=stone,stateId=1;
+  grid.columns.set('0,0',{getBlock:()=>block,getBlockStateId:()=>stateId,setBlockStateId:n=>{block=air;stateId=0;}});
+  const snap=grid.snapshot();grid.update({x:1,y:64,z:1},0);
+  assert.equal(snap.block(1,64,1),stone);assert.equal(snap.columns.get('0,0').getBlockStateId({x:1,y:64,z:1}),1);
+  assert.equal(grid.block(1,64,1),air);grid.remove(0,0);assert.equal(snap.block(1,64,1),stone);
+  assert.equal(grid.readers.size,1);snap.release();assert.equal(grid.readers.size,0);
+});
 test('sight requires real clear geometry and observer-facing evidence, never unloaded or wall-hidden entities',()=>{
   const mob={pos:{x:.5,y:64,z:-5},height:1.8};
   assert.equal(visibleEntity(ground,self,mob),true);
@@ -16,12 +34,26 @@ test('sight requires real clear geometry and observer-facing evidence, never unl
 });
 function documentStub(){return {createElement(){const c={width:0,height:0,colour:null};c.getContext=()=>({
   drawImage(source){c.colour=source.colour;},fillRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){}});return c;}};}
+
+test('budgeted visibility yields, publishes only completed masks, and cancels reset or changed geometry',async()=>{
+  const memory=new TerrainMemory(documentStub()),spec={width:96,height:96,span:12,bounds:{minX:-6,maxX:6,minZ:-6,maxZ:6}},frame={canvas:{width:96,height:96,colour:'known'},spec};
+  let ticks=0,yields=0;const clock=()=>++ticks;
+  const result=await memory.applyBudgeted(frame,ground,self,{clock,yieldFrame:async()=>{yields++;assert.equal(memory.cells.size,0,'partial work is private');}});
+  assert.ok(yields>1);assert.ok(result.perception.current>0);
+  assert.deepEqual([...result.visibleCells],[...new TerrainMemory(documentStub()).apply(frame,ground,self).visibleCells]);
+  for(const cause of ['reset','geometry']){
+    const m=new TerrainMemory(documentStub()),grid={...ground,revision:0};
+    const canceled=await m.applyBudgeted(frame,grid,self,{clock,yieldFrame:async()=>{if(cause==='reset')m.clear();else grid.revision++;}});
+    assert.equal(canceled,null);assert.equal(m.cells.size,0);
+  }
+});
 test('terrain history freezes unseen pixels, never accepts hidden updates, and explicitly resets',()=>{
   const memory=new TerrainMemory(documentStub()),spec={width:96,height:96,span:12,bounds:{minX:-6,maxX:6,minZ:-6,maxZ:6}};
   const frame={canvas:{width:96,height:96,colour:'before'},spec};
   assert.equal(visibleSurface(ground,self,0,-3),true);
   const first=memory.apply(frame,ground,self,1000);assert.ok(first.perception.current>0);
-  const old=memory.cells.get('0,-3');assert.equal(old.canvas.colour,'before');
+  let old=memory.cells.get('0,-3');assert.equal(old.canvas.colour,'before');
+  memory.apply(frame,ground,self,1000);assert.equal(memory.cells.get('0,-3').canvas,old.canvas,'reuse visible tile allocation');old=memory.cells.get('0,-3');
   const unseen=memory.apply({...frame,canvas:{...frame.canvas,colour:'hidden-change'}},{...ground,block:()=>null},self,2000);
   assert.equal(unseen.perception.current,0);assert.ok(unseen.perception.historical>0);
   assert.equal(memory.cells.get('0,-3'),old);assert.equal(old.seenAt,1000);

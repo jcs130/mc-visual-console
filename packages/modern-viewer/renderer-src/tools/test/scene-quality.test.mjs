@@ -20,10 +20,11 @@ test('only confirmed first-person survival/adventure with a ready camera section
     assert.equal(resolveSceneQuality(settings(),{...safe,...extra}).smartCull,false,JSON.stringify(extra));
   assert.equal(resolveSceneQuality(settings({occlusion:false}),safe).smartCull,false);
 });
-test('performance suppresses colour and shadow passes; cinematic shadows require high quality', () => {
+test('style remains selected at every performance tier; only cinematic shadows require high quality', () => {
   for(const mode of ['performance','balanced','high']) {
     const p=resolveSceneQuality(settings({style:'cinematic'}),{mode});
-    assert.equal(p.shadows,mode==='high'); assert.equal(p.style,mode==='performance'?'native':'cinematic');
+    assert.equal(p.shadows,mode==='high'); assert.equal(p.style,'cinematic');
+    assert.equal(p.avatarSampling,'original','automatic quality never blurs an authored atlas');
   }
   const profile={saturation:1.1,contrast:1.04,brightness:1.02,warmth:.04};
   assert.equal(sceneColourFilter(profile,{style:'native'}),'none');

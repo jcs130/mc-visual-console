@@ -9,19 +9,42 @@ const posKey=(x,z)=>`${Math.floor(x/16)*16},${Math.floor(z/16)*16}`;
 /** A private cache of received geometry used only for masking. Its contents are
  * never exposed as perception. Unknown columns/geometry fail closed. */
 export class SightGrid {
-  constructor(version){this.Chunk=chunks(version);this.columns=new Map();this.tops=new Map();this.minY=-64;this.maxY=320;}
+  constructor(version){this.Chunk=chunks(version);this.columns=new Map();this.tops=new Map();this.blocks=new Map();this.readers=new Set();this.revision=0;this.minY=-64;this.maxY=320;}
   ingest(data){
     if(data.worldConfig){this.minY=data.worldConfig.minY;this.maxY=this.minY+data.worldConfig.worldHeight;}
+    this.blocks.clear();this.revision++;
     try{this.columns.set(`${data.x},${data.z}`,this.Chunk.fromJson(data.chunk));this.tops.clear();}
     catch{this.columns.delete(`${data.x},${data.z}`);this.tops.clear();}
   }
-  remove(x,z){this.columns.delete(`${x},${z}`);this.tops.clear();}
-  update(pos,stateId){const col=this.columns.get(posKey(pos.x,pos.z));col?.setBlockStateId(new Vec3((Math.floor(pos.x)%16+16)%16,Math.floor(pos.y),(Math.floor(pos.z)%16+16)%16),stateId);this.tops.clear();}
-  clear(){this.columns.clear();this.tops.clear();}
+  remove(x,z){this.columns.delete(`${x},${z}`);this.tops.clear();this.blocks.clear();this.revision++;}
+  update(pos,stateId){
+    const col=this.columns.get(posKey(pos.x,pos.z)),p=new Vec3((Math.floor(pos.x)%16+16)%16,Math.floor(pos.y),(Math.floor(pos.z)%16+16)%16);
+    if(col)for(const reader of this.readers)reader.beforeUpdate(col,p);
+    col?.setBlockStateId(p,stateId);this.tops.clear();this.blocks.clear();this.revision++;
+  }
+  clear(){this.columns.clear();this.tops.clear();this.blocks.clear();this.revision++;}
+  /** Pin received geometry for one captured image, without copying whole chunks.
+   * Rare block edits save their old cells until this private read is released. */
+  snapshot(){
+    const snap=Object.create(SightGrid.prototype),edits=new Map();
+    Object.assign(snap,{columns:new Map(),tops:new Map(),blocks:new Map(),minY:this.minY,maxY:this.maxY,revision:this.revision});
+    const key=p=>`${p.x},${p.y},${p.z}`;
+    for(const [id,col]of this.columns){
+      const old=new Map();edits.set(col,old);
+      snap.columns.set(id,{getBlock:p=>old.get(key(p))?.block??col.getBlock(p),getBlockStateId:p=>old.get(key(p))?.stateId??col.getBlockStateId(p)});
+    }
+    const reader={beforeUpdate(col,p){const old=edits.get(col),id=key(p);if(old&&!old.has(id))old.set(id,{block:col.getBlock(p),stateId:col.getBlockStateId(p)});}};
+    this.readers.add(reader);snap.release=()=>{this.readers.delete(reader);};return snap;
+  }
   block(x,y,z){
     const col=this.columns.get(posKey(x,z));if(!col)return null;
     if(y>=this.maxY||y<this.minY)return {name:'air',shapes:[]};
-    return col.getBlock(new Vec3((x%16+16)%16,y,(z%16+16)%16));
+    // Thousands of neighbouring visibility rays revisit the same voxels. Cache
+    // decoded collision shapes privately, invalidating on every geometry change.
+    const key=`${x},${y},${z}`;if(this.blocks.has(key))return this.blocks.get(key);
+    const block=col.getBlock(new Vec3((x%16+16)%16,y,(z%16+16)%16));
+    if(this.blocks.size<32768)this.blocks.set(key,block);
+    return block;
   }
   top(x,z,layer){
     const minY=Math.max(this.minY,layer?.minY??this.minY),maxY=Math.min(this.maxY,layer?.maxY??this.maxY);
@@ -123,18 +146,35 @@ export function hearingHint(event,self,now=Date.now()){
 /** Session-local visual history. Only directly visible top faces enter the
  * cache. Hidden cells keep their old pixels, never a fresh overhead render. */
 export class TerrainMemory {
-  constructor(document){this.document=document;this.cells=new Map();}
-  clear(){this.cells.clear();}
+  constructor(document){this.document=document;this.cells=new Map();this.revision=0;}
+  clear(){this.cells.clear();this.revision++;}
   apply(frame,grid,self,now=Date.now()){
+    const work=this.compose(frame,grid,self,now,true);let step;
+    do{step=work.next();}while(!step.done);return step.value;
+  }
+  async applyBudgeted(frame,grid,self,{yieldFrame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),valid=()=>true,budgetMs=3,clock=()=>performance.now(),now=Date.now()}={}){
+    const revision=this.revision,geometry=grid.revision,work=this.compose(frame,grid,self,now,false);
+    let workMs=0,maxSliceMs=0;
+    while(valid()&&revision===this.revision&&geometry===grid.revision){
+      const start=clock();let step;
+      do{step=work.next();}while(!step.done&&clock()-start<budgetMs);
+      const elapsed=clock()-start;workMs+=elapsed;maxSliceMs=Math.max(maxSliceMs,elapsed);
+      if(step.done)return {...step.value,workMs,maxSliceMs};
+      await yieldFrame();
+    }
+    work.return();return null;
+  }
+  *compose(frame,grid,self,now,reuse){
     const {spec}=frame,width=frame.canvas.width,height=frame.canvas.height,scale=width/spec.span,b=spec.bounds;
     const canvas=this.document.createElement('canvas');canvas.width=width;canvas.height=height;
     const ctx=canvas.getContext('2d');ctx.fillStyle='#b8c5ca';ctx.fillRect(0,0,width,height);
-    let current=0,historical=0;const visibleCells=new Set();
+    let current=0,historical=0;const visibleCells=new Set(),pending=new Map();
     // Large overview requests must not iterate millions of unseen columns.
     const p=self.pos??self.position,keys=new Set(this.cells.keys());
     for(let z=Math.floor(Math.max(b.minZ,p.z-32));z<Math.min(b.maxZ,p.z+32);z++)
       for(let x=Math.floor(Math.max(b.minX,p.x-32));x<Math.min(b.maxX,p.x+32);x++)keys.add(`${x},${z}`);
     for(const key of keys){
+      yield;
       const [x,z]=key.split(',').map(Number);if(x+1<b.minX||x>b.maxX||z+1<b.minZ||z>b.maxZ)continue;
       const px=(x-b.minX)*scale,pz=(z-b.minZ)*scale;
       // Reject distant/off-camera cells before looking up hidden top geometry.
@@ -143,16 +183,18 @@ export class TerrainMemory {
       const diff=Math.atan2(Math.sin(heading-(self.yaw||0)),Math.cos(heading-(self.yaw||0)));
       const seen=flat<=32&&Math.abs(diff)<=Math.PI*55/180&&visibleSurface(grid,self,x,z,spec.layer);
       if(seen&&px>=0&&pz>=0&&px+scale<=width&&pz+scale<=height){
-        const tile=this.document.createElement('canvas');tile.width=8;tile.height=8;
+        const tile=(reuse?this.cells.get(key)?.canvas:null)??this.document.createElement('canvas');
+        if(tile.width!==8||tile.height!==8){tile.width=8;tile.height=8;}
         tile.getContext('2d').drawImage(frame.canvas,px,pz,scale,scale,0,0,8,8);
-        this.cells.delete(key);this.cells.set(key,{canvas:tile,seenAt:now,y:grid.top(x,z,spec.layer),layer:spec.layer?.kind??'surface'});current++;
+        pending.set(key,{canvas:tile,seenAt:now,y:grid.top(x,z,spec.layer),layer:spec.layer?.kind??'surface'});current++;
         visibleCells.add(key);
       }
-      const known=this.cells.get(key);if(!known)continue;
+      const known=pending.get(key)??this.cells.get(key);if(!known)continue;
       if(known.layer!==(spec.layer?.kind??'surface')||spec.layer&&(known.y<spec.layer.minY||known.y>spec.layer.maxY))continue;
       ctx.drawImage(known.canvas,px,pz,scale+.3,scale+.3);
       if(!seen){historical++;ctx.strokeStyle='rgba(219,231,237,.55)';ctx.lineWidth=.65;ctx.beginPath();ctx.moveTo(px,pz);ctx.lineTo(px+scale,pz+scale);ctx.stroke();}
     }
+    for(const [key,value]of pending){this.cells.delete(key);this.cells.set(key,value);}
     while(this.cells.size>8192)this.cells.delete(this.cells.keys().next().value);
     return {...frame,canvas,visibleCells,perception:{current,historical,source:'eye-line-of-sight',history:'session-only',layer:spec.layer??null}};
   }

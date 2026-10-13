@@ -12,7 +12,7 @@ export function installSceneSettings({ document, window, settings, onChange, hid
   for (const [key, title, options] of [
     ['quality', '画质', [['auto','自动'],['high','精细'],['balanced','均衡'],['performance','省电']]],
     ['style', '画面风格', [['native','原色'],['soft','柔和'],['cinematic','电影']]],
-    ['avatarSampling', '人物贴图', [['auto','跟随画质'],['original','原始像素'],['smooth','平滑与远景抗闪烁']]],
+    ['avatarSampling', '人物贴图', [['auto','自动（清晰原色）'],['original','原始像素'],['smooth','远景抗闪烁']]],
   ]) {
     const label = make('label', panel, title), select = make('select', label);
     select.setAttribute('aria-label', title); select.dataset.sceneSetting = key;
@@ -25,7 +25,7 @@ export function installSceneSettings({ document, window, settings, onChange, hid
   checkbox.type = 'checkbox'; checkbox.checked = current.occlusion; checkbox.setAttribute('aria-label', '自动剔除遮挡区域');
   const toggle = () => { current = { ...current, occlusion: checkbox.checked }; publish(); };
   checkbox.addEventListener('change', toggle); listeners.push([checkbox, 'change', toggle]);
-  make('small', panel, '遮挡剔除仅在已确认的第一人称生存／冒险模式启用。电影阴影仅在精细档启用。');
+  make('small', panel, '风格独立于画质：原色忠实，柔和明亮，电影对比更强。人物保留原贴图；电影阴影仅在精细档启用。');
   const status = make('output', panel); status.setAttribute('aria-live', 'polite');
   const close = e => { if (e.code === 'Escape') root.open = false; };
   window.addEventListener('keydown', close); listeners.push([window, 'keydown', close]);

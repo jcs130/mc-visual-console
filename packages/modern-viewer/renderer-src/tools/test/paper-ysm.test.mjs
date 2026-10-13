@@ -23,7 +23,7 @@ test('YSM smoothing is reversible sampling, with original geometry and GPU uploa
  const actor=await createPaperYsmActor(bundle,'main',{loadTexture:async()=>texture});
  const before=actor.model.root.children[0].children[0].geometry.getAttribute('position').array.slice();
  const policy={avatarSampling:'smooth',anisotropy:4,shadows:false};actor.setPresentation(policy);
- assert.equal(texture.magFilter,THREE.LinearFilter);assert.equal(texture.minFilter,THREE.LinearMipmapLinearFilter);assert.equal(texture.generateMipmaps,true);
+ assert.equal(texture.magFilter,THREE.NearestFilter);assert.equal(texture.minFilter,THREE.NearestMipmapLinearFilter);assert.equal(texture.generateMipmaps,true);
  const version=texture.version;for(let i=0;i<120;i++)actor.setPresentation(policy);assert.equal(texture.version,version,'no repeated texture uploads');
  actor.setPresentation({avatarSampling:'original',anisotropy:1,shadows:false});assert.equal(texture.magFilter,THREE.NearestFilter);assert.equal(texture.generateMipmaps,false);
  assert.deepEqual(actor.model.root.children[0].children[0].geometry.getAttribute('position').array,before);actor.dispose();
