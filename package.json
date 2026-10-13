@@ -39,7 +39,8 @@
     "tools/model-status-overlay",
     "tools/client-console",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "packages/modern-viewer/asset-packs/vanilla-1.21.1"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
