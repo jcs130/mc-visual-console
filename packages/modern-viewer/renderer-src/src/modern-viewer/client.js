@@ -5460,7 +5460,7 @@ function applyDirectedCamera() {
   // updateCamera has just placed the anchor using the existing network smoother.
   const anchor = { x: world.cameraWorldPos.x, y: world.cameraWorldPos.y-eye, z: world.cameraWorldPos.z };
   const mounted = typeof cortiYsmPlayers !== 'undefined' ? cortiYsmPlayers.actors.get(entity?.uuid?.toLowerCase()) : null;
-  const modelHeight = mounted?.actor?.assetInfo?.bindSizeBlocks?.[1] ?? entity?.height ?? 1.8;
+  const modelHeight = mounted?.actor?.framingHeight ?? entity?.height ?? 1.8;
   const pose = cameraDirector.update({ key: String(focusedCharacterId ?? pendingAvatarState?.entity?.uuid ?? 'self'), position: anchor,
     yaw: entity?.yaw ?? latestPosition.yaw, height: modelHeight }, cameraSettings, performance.now(), {
     aspect: world.camera.aspect,

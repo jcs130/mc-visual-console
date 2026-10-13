@@ -38,6 +38,7 @@ export class CameraDirector {
     this.direction = new THREE.Vector3(); this.lastPose = null;
   }
   startShot(kind, now) {
+    if(kind==='stop'){this.shot=null;return;}
     if (!['orbit','pullback'].includes(kind) || !Number.isFinite(now)) return;
     this.shot = { kind, at: now, duration: kind === 'orbit' ? 14000 : 9000, startAngle: this.orbit };
   }
@@ -70,14 +71,18 @@ export class CameraDirector {
     if (mode==='front') angle+=Math.PI;
     const height=number(target.height,.3,8,1.8), focusHeight=height*.65;
     distance=Math.min(20,Math.max(distance,height*.65/Math.tan(settings.fov*Math.PI/360)));
-    const side=mode==='shoulder'?.65:0;
+    this.camera.aspect=number(aspect,.25,4,16/9);
+    // Shift camera AND aim together. A lateral camera aimed at the player
+    // still puts the player in the centre, rather than a third-person frame.
+    const side=mode==='shoulder'?distance*Math.tan(settings.fov*Math.PI/360)*this.camera.aspect*settings.framing:0;
+    const aim={x:Math.cos(angle)*side,y:focusHeight,z:-Math.sin(angle)*side};
     const horizontal = mode === 'overhead' ? distance*.3 : distance;
     const offset={x:Math.sin(angle)*horizontal+Math.cos(angle)*side,
       y:focusHeight+settings.height+(mode==='overhead'?distance*1.3:0),
       z:Math.cos(angle)*horizontal-Math.sin(angle)*side};
     this.controls.smoothTime=settings.smoothTime;
     this.camera.fov=settings.fov;this.camera.aspect=number(aspect,.25,4,16/9);this.camera.updateProjectionMatrix();
-    this.controls.normalizeRotations().setLookAt(offset.x,offset.y,offset.z,0,focusHeight,0,!reset);
+    this.controls.normalizeRotations().setLookAt(offset.x,offset.y,offset.z,aim.x,aim.y,aim.z,!reset);
     this.controls.update(dt);
     const focus={x:pos.x,y:pos.y+focusHeight,z:pos.z}, v=this.camera.position;
     this.direction.set(v.x,v.y-focusHeight,v.z);const requested=this.direction.length();this.direction.normalize();
@@ -86,8 +91,11 @@ export class CameraDirector {
     // Pull in immediately to avoid crossing a wall; recover distance gradually.
     this.safeDistance=this.safeDistance===null||allowed<this.safeDistance?allowed:this.safeDistance+(allowed-this.safeDistance)*(1-Math.exp(-dt/Math.max(.15,settings.smoothTime)));
     const p={x:focus.x+this.direction.x*this.safeDistance,y:focus.y+this.direction.y*this.safeDistance,z:focus.z+this.direction.z*this.safeDistance};
+    const aimPoint=this.controls.getTarget(new THREE.Vector3()),weight=requested>0?this.safeDistance/requested:0;
+    const viewFocus={x:pos.x+aimPoint.x*weight,y:focus.y,z:pos.z+aimPoint.z*weight};
+    this.direction.set(p.x-viewFocus.x,p.y-viewFocus.y,p.z-viewFocus.z).normalize();
     const yaw=Math.atan2(this.direction.x,this.direction.z),pitch=-Math.asin(Math.max(-1,Math.min(1,this.direction.y)));
-    return this.lastPose={position:p,focus,yaw,pitch,fov:settings.fov,distance:this.safeDistance,occluded:allowed<requested-.05,shot:this.shot?.kind??null,mode};
+    return this.lastPose={position:p,focus:viewFocus,yaw,pitch,fov:settings.fov,distance:this.safeDistance,occluded:allowed<requested-.05,shot:this.shot?.kind??null,mode};
   }
   dispose() { this.controls.dispose();this.reset(); }
 }

@@ -100,7 +100,9 @@ function cortiAnimateNativeContent(now) {
   const photos=cortiMapPhotos.stats();
   const texts=cortiTextDisplays.stats();
   const ysm=cortiYsmPlayers.stats();
-  const ysmMessage=ysm.failed?'YSM 模型渲染失败：'+ysm.errors[0]:ysm.unavailable?'部分 YSM 模型缺少可公开原始资源，当前普通皮肤仅为回退画面':ysm.pending?'正在加载原 YSM 模型':ysm.animationUnavailable.length?'YSM 原模型已显示；部分动画尚不支持':ysm.heldUnavailable.length?'部分 YSM 手持物外观暂未适配：'+ysm.heldUnavailable[0].name:'';
+  // Per-action limitations remain in the stable model panel, not a flashing
+  // overlay. Current frame errors are still available through stats().
+  const ysmMessage=ysm.failed?'YSM 模型渲染失败：'+ysm.errors[0]:ysm.unavailable?'部分 YSM 模型缺少可公开原始资源，当前普通皮肤仅为回退画面':ysm.pending?'正在加载原 YSM 模型':ysm.heldUnavailable.length?'部分 YSM 手持物外观暂未适配：'+ysm.heldUnavailable[0].name:'';
   const message=cortiTextDisplayError?'文字气泡字库不可用，请更新匹配版本的网页资源包':texts.unavailable?'部分文字显示格式暂未适配':cortiContentError?'粒子／照片资源暂不可用，请更新匹配版本的网页资源包':photos.waiting?'尚未收到可用照片像素，请靠近展示框或重新手持地图':ysmMessage;
   cortiContentStatus.dataset.ysmStates=String(cortiAppearances.size);cortiContentStatus.dataset.ysmRendererReady=String(ysm.rendered>0);cortiContentStatus.dataset.ysmRendered=String(ysm.rendered);
   cortiContentStatus.dataset.textDisplays=String(texts.visible);cortiContentStatus.dataset.textDisplayReady=String(texts.ready);
@@ -111,7 +113,7 @@ function cortiAnimateNativeContent(now) {
   cortiContentStatus.dataset.activeParticles=String(particles.active);cortiContentStatus.dataset.drawnParticles=String(particles.drawn);cortiContentStatus.dataset.mountedParticles=String(particles.mounted);
   cortiContentStatus.dataset.particlePosition=JSON.stringify(particles.firstScenePosition);
   cortiContentStatus.dataset.epoch=String(cortiContentEpoch);
-  cortiContentStatus.textContent=message;cortiContentStatus.style.display=message?'block':'none';
+  if(cortiContentStatus.textContent!==message){cortiContentStatus.textContent=message;cortiContentStatus.style.display=message?'block':'none';}
   requestAnimationFrame(cortiAnimateNativeContent);
 }
 if (typeof isObsOverlay === 'undefined' || !isObsOverlay) requestAnimationFrame(cortiAnimateNativeContent);

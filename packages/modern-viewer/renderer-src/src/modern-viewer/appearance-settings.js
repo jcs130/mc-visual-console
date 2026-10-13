@@ -14,6 +14,7 @@ export function installAppearanceSettings({ document, window, onChange, hidden =
   const restore = make('button', panel, '恢复服务器外观'); restore.type = 'button';
   make('small', panel, '只影响本页中的当前人物，不修改服务器外观。刷新、断线或切换玩家后恢复跟随服务器。');
   const status = make('output', panel); status.setAttribute('aria-live', 'polite');
+  const compatibility=make('small',panel);compatibility.hidden=true;
   let snapshot = null, signature = '', disposed = false;
   const choose = id => {
     if (disposed || !snapshot?.available || !snapshot.choices.some(row => row.id === id)) return;
@@ -42,6 +43,11 @@ export function installAppearanceSettings({ document, window, onChange, hidden =
     restore.disabled = !snapshot.available || snapshot.selected === 'server';
     subject.textContent = snapshot.subject || '当前观战人物';
     status.textContent = snapshot.status || (snapshot.selected === 'server' ? '跟随服务器外观' : 'Web 外观替换');
+    const issues=snapshot.animationIssues??[];
+    compatibility.hidden=!issues.length;
+    const names={'query.vertical_speed':'垂直速度','query.health':'生命值','query.max_health':'生命上限'};
+    compatibility.textContent=issues.length?'本次加载遇到的动作限制：'+issues.map(issue=>issue.startsWith('YSM_MOLANG_INPUT_UNAVAILABLE:')?'缺少'+(names[issue.split(':')[1]]??issue.split(':')[1]):issue).join('；'):'';
+    summary.textContent=issues.length?'人物模型 · 兼容提示':'人物模型';
     root.dataset.appearanceSource = snapshot.selected === 'server' ? 'server' : 'web';
     root.dataset.appearanceSelection = snapshot.selected;
     place();

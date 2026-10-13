@@ -526,6 +526,24 @@ body[data-viewer-layout=docked]{--viewer-rail-width:220px;--viewer-top:60px;--vi
 .viewer-scene-panel select{max-width:174px;min-height:32px;border:1px solid #6d899a;border-radius:5px;padding:4px;background:#203746;color:#f4f8fb;font:inherit}
 .viewer-scene-panel input[type=number]{width:84px;min-height:28px;border:1px solid #6d899a;border-radius:5px;padding:4px;background:#203746;color:#f4f8fb;font:inherit}
 .viewer-camera-settings .viewer-scene-panel{max-height:calc(100dvh - 95px);overflow:auto}
+.viewer-camera-settings .camera-panel{position:fixed;top:var(--camera-panel-top,58px);right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - var(--camera-panel-top,58px) - 12px);gap:14px;padding:18px}
+.camera-mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.camera-panel button{min-height:36px;border:1px solid #476275;border-radius:7px;background:#203342;color:#d9e6ee;font:inherit;cursor:pointer}
+.camera-panel button:hover{background:#2e495c;border-color:#8cb9cc}
+.camera-mode-grid button[aria-pressed=true]{background:#26565f;border-color:#8ad5d2;color:#e6ffff;box-shadow:inset 3px 0 #8ad5d2}
+.camera-panel .camera-mode-hint{min-height:34px;color:#adc4d1}
+.camera-framing,.camera-advanced{display:grid;gap:12px}
+.camera-panel .camera-range{display:grid;grid-template-columns:1fr;gap:6px}
+.camera-range span{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.camera-range output{font-variant-numeric:tabular-nums;color:#a5ddd8}
+.camera-range input[type=range]{width:100%;margin:2px 0;accent-color:#8ad5d2;min-height:22px;cursor:ew-resize}
+.camera-panel [hidden]{display:none!important}
+.camera-advanced{border-top:1px solid #47627570;padding-top:10px}
+.camera-advanced>summary{padding:4px 0;cursor:pointer;color:#b9cbd6}
+.camera-advanced[open]>summary{margin-bottom:10px}
+.camera-shot-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.camera-panel .camera-reset{background:transparent;color:#b9cbd6;min-height:30px}
+.camera-status:empty{display:none}
 .viewer-appearance-settings .viewer-scene-panel{position:fixed;top:var(--appearance-panel-top,51px);right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - var(--appearance-panel-top,51px) - 12px);overflow:auto;overflow-wrap:anywhere}
 .viewer-appearance-settings .viewer-scene-panel label{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;gap:6px}
 .viewer-appearance-settings .viewer-scene-panel select{max-width:100%;width:100%;box-sizing:border-box}

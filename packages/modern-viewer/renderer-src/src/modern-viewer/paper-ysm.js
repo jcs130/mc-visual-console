@@ -6,6 +6,19 @@ import {PaperYsmHeldItems} from './paper-ysm-items.js';
 export {applyPaperYsmAnimation} from './paper-ysm-animation.js';
 
 const json=(bundle,path)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(bundle.files[path].base64),c=>c.charCodeAt(0))));
+/** Visible animated head only: bind-pose bounds may include folded props. */
+export function paperYsmHeadAnchor(model,root) {
+  const head=model.bones.get('Head')??model.bones.get('head');if(!head)return null;
+  root.updateWorldMatrix(true,true);
+  const bounds=new THREE.Box3(),part=new THREE.Box3(),scale=new THREE.Vector3();
+  head.traverseVisible(mesh=>{
+    if(!mesh.isMesh)return;scale.setFromMatrixScale(mesh.matrixWorld);
+    if(![scale.x,scale.y,scale.z].every(n=>Number.isFinite(n)&&Math.abs(n)>=.001))return;
+    if(!mesh.geometry.boundingBox)mesh.geometry.computeBoundingBox();part.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);bounds.union(part);
+  });
+  if(bounds.isEmpty())return null;
+  const point=bounds.getCenter(new THREE.Vector3());point.y=bounds.max.y+.22;return point;
+}
 export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTexture}={}) {
   const definition=json(bundle,'ysm.json'),geometry=json(bundle,bundle.model),animation=json(bundle,bundle.animation);
   const file=bundle.files[bundle.textures[textureId]];if(!file)throw Error('YSM_TEXTURE_UNAVAILABLE');
@@ -48,8 +61,10 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
       },
       animate(state,now) {
         this.animationState=animationController.apply(state,now);this.animationReason=this.animationState.errors[0]??null;
+        this.animationIssues??=new Set();for(const reason of this.animationState.errors)if(this.animationIssues.size<16)this.animationIssues.add(reason);
         held.apply(state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
       },
+      headAnchor(){return paperYsmHeadAnchor(model,root);},
       dispose(){held.dispose();model.dispose();batch.dispose();material.dispose();texture.dispose();root.removeFromParent();root.clear();}};
   } catch(error){batch?.dispose();model?.dispose();material?.dispose();texture.dispose();throw error;}
 }
@@ -98,10 +113,10 @@ export class PaperYsmPlayers {
     const error=this.failures.get(uuid);
     if(error)status+=` · 渲染失败：${error}`;
     else if(this.pending.has(uuid))status+=' · 模型载入中';
-    else if(actor)status+=` · ${actor.assetInfo.modelId} / ${actor.assetInfo.texture}${actor.animationReason?' · 部分动画尚不支持':''}`;
+    else if(actor)status+=` · ${actor.assetInfo.modelId} / ${actor.assetInfo.texture}${actor.animationIssues?.size?' · 动作兼容提示（详情如下）':''}`;
     else if(!choice && row?.available && !row.renderAvailable)status+=' · 服务器模型资源不可用';
     else if(!choice && row?.available===false)status+=' · 服务器未提供可用 YSM 外观';
-    return {available,selected:choice?.id??'server',choices:this.choices(),status:this.selectionNotices.get(uuid)??status};
+    return {available,selected:choice?.id??'server',choices:this.choices(),status:this.selectionNotices.get(uuid)??status,animationIssues:[...(actor?.animationIssues??[])]};
   }
   motion(row,now=performance.now()) {
     const state=this.states.get(row?.playerUuid),previous=this.motions.get(row?.playerUuid);
@@ -117,6 +132,9 @@ export class PaperYsmPlayers {
     local.body={at:now,epoch:binding.epoch,entityId:entity.id,
       ...(typeof row.inWater==='boolean'?{inWater:row.inWater}:{}),
       ...(typeof row.onGround==='boolean'?{onGround:row.onGround}:{})};
+    // avatarState's Mineflayer velocity is blocks/tick; YSM documents m/s.
+    if(Number.isFinite(row.verticalSpeed))local.body.verticalSpeed=row.verticalSpeed*20;
+    for(const key of ['health','maxHealth'])if(Number.isFinite(row[key]))local.body[key]=row[key];
     this.fallback.set(uuid,local);
   }
   action(event,now=performance.now()) {
@@ -136,6 +154,7 @@ export class PaperYsmPlayers {
     const motion=latest && now-latest.at<2000?{...latest.row}:{horizontalSpeed:local.speed,equipment:entity.equipment,crouching:!!(Number(entity.metadata?.[0])&2),sprinting:!!(Number(entity.metadata?.[0])&8),pose:entity.metadata?.[6],headPitchDegrees:-(entity.pitch??0)*180/Math.PI};
     if(local.body && now-local.body.at<600 && local.body.entityId===entity.id && local.body.epoch===this.states.get(uuid)?.epoch) {
       for(const key of ['inWater','onGround'])if(typeof local.body[key]==='boolean')motion[key]=local.body[key];
+      for(const key of ['verticalSpeed','health','maxHealth'])if(Number.isFinite(local.body[key]))motion[key]=local.body[key];
       motion.waterSource='same_connection_body';
     }
     if(latest?.row.swing)motion.swing={...latest.row.swing,ageSeconds:latest.row.swing.ageSeconds+(now-latest.at)/1000};
@@ -158,10 +177,13 @@ export class PaperYsmPlayers {
       const current=this.actors.get(uuid);
       if(current){
         current.actor.setPresentation?.(this.presentation());
-        this.hideVanilla(rendered,current.actor.root,current.hidden,current.actor.assetInfo.bindSizeBlocks[1]);
         current.actor.root.visible=!entity.metadata?.[0] || (entity.metadata[0]&32)===0;
         // The renderer's native scene entity already carries this player's yaw.
-        current.actor.root.rotation.y=0;current.actor.animate({...row,pitch:entity.pitch,equipment:entity.equipment,motion:this.motionFor(uuid,entity,now)},now);continue;
+        current.actor.root.rotation.y=0;current.actor.animate({...row,pitch:entity.pitch,equipment:entity.equipment,motion:this.motionFor(uuid,entity,now)},now);
+        if(!current.anchorAt || now-current.anchorAt>=100){const anchor=current.actor.headAnchor?.();current.anchorAt=now;
+          current.anchor=anchor?rendered.worldToLocal(anchor):null;
+          if(current.anchor)current.actor.framingHeight=Math.max(.5,current.anchor.y-.22);}
+        this.hideVanilla(rendered,current.actor.root,current.hidden,current.anchor?rendered.localToWorld(current.anchor.clone()):null);continue;
       }
       if(!row.renderAvailable || this.pending.has(uuid) || this.failures.has(uuid))continue;
       const bundle=this.assets.get(row.assetSha256);if(!bundle || bundle.modelId!==row.modelId)continue;
@@ -170,21 +192,20 @@ export class PaperYsmPlayers {
         const current=this.effective(this.states.get(uuid));
         if(this.pending.get(uuid)!==marker || !current?.available || current.assetSha256!==row.assetSha256 || current.texture!==row.texture || current.epoch!==row.epoch || current.entityId!==row.entityId || this.rendered(row.entityId)!==rendered || this.entity(row.entityId)?.uuid?.toLowerCase()!==uuid){actor.dispose();return;}
         actor.assetInfo={...actor.assetInfo,selectionSource:row.selectionSource??'server',serverModelId:observed.modelId};
-        const hidden=new Map();this.hideVanilla(rendered,actor.root,hidden,actor.assetInfo.bindSizeBlocks[1]);
+        const hidden=new Map();this.hideVanilla(rendered,actor.root,hidden);
         rendered.add(actor.root);this.actors.set(uuid,{actor,rendered,hidden});
       }).catch(error=>{if(this.pending.get(uuid)===marker)this.failures.set(uuid,error.message);}).finally(()=>{if(this.pending.get(uuid)===marker)this.pending.delete(uuid);});
     }
   }
-  hideVanilla(rendered,actor,hidden,height) {
+  hideVanilla(rendered,actor,hidden,anchor) {
     const hide=child=>{if(!hidden.has(child))hidden.set(child,child.visible);child.visible=false;};
     for(const child of rendered.children)if(child!==actor) {
       if(child.name==='mesh') {
         // Player skin wrapper also contains the live nametag. Preserve the
         // wrapper/tag and hide only its vanilla body and equipment subtree.
-        for(const part of child.children)if(part.name!=='nametag')hide(part);else if(Number.isFinite(height)) {
+        for(const part of child.children)if(part.name!=='nametag')hide(part);else if(anchor) {
           if(!this.nametags.has(part))this.nametags.set(part,part.position.clone());
-          const target=child.worldToLocal(rendered.localToWorld(new THREE.Vector3(0,height+.35,0)));
-          part.position.y=Math.max(this.nametags.get(part).y,target.y);
+          part.position.copy(child.worldToLocal(anchor.clone()));
         }
       }else if(child.name.startsWith('geometry_armor_'))hide(child);
     }

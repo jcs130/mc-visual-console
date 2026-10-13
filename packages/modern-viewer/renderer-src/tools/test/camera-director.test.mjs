@@ -97,11 +97,30 @@ test('camera UI persists settings, exposes shot actions and releases listeners o
   const document=new Document(),window=new Element('window',document),saved=new Map(),changes=[],shots=[];
   window.localStorage={setItem:(k,v)=>saved.set(k,v)};
   const ui=installCameraSettings({document,window,settings:settings(),onChange:s=>changes.push(s),onShot:s=>shots.push(s)});
-  const mode=document.querySelector('select');mode.value='orbit';mode.dispatch('change');assert.equal(changes.at(-1).mode,'orbit');
+  const mode=document.querySelectorAll('button').find(b=>b.dataset.cameraMode==='orbit');mode.dispatch('click');assert.equal(changes.at(-1).mode,'orbit');
   assert.equal(JSON.parse(saved.get(CAMERA_SETTINGS_KEY)).mode,'orbit');
-  document.querySelectorAll('button')[0].dispatch('click');assert.deepEqual(shots,['orbit']);
+  document.querySelectorAll('button').find(b=>b.textContent==='环绕一周').dispatch('click');assert.deepEqual(shots,['stop','orbit']);
+  const shoulder=document.querySelectorAll('button').find(b=>b.dataset.cameraMode==='shoulder');shoulder.dispatch('click');
+  assert.equal(shoulder.getAttribute('aria-pressed'),'true');
+  const range=document.querySelectorAll('input').find(x=>x.getAttribute('aria-label')==='人物偏左');range.value='.4';range.dispatch('input');
+  assert.equal(changes.at(-1).framing,.4);assert.equal(range.parentNode.hidden,false);
   ui.manual();assert.equal(changes.at(-1).mode,'manual');ui.dispose();assert.equal(document.body.children.length,0);
   assert.equal(window.listeners.get('keydown').length,0);
+});
+
+test('shoulder framing places actor left of centre at every heading and stays collision bounded',()=>{
+  const d=new CameraDirector(),camera=new PerspectiveCamera();
+  try{for(const yaw of [0,Math.PI/2,Math.PI,-Math.PI/2])for(const aspect of [1,16/9,2.4]){
+    d.reset();const p=d.update(target({yaw}),settings({mode:'shoulder'}),0,{aspect});
+    camera.fov=p.fov;camera.aspect=aspect;camera.updateProjectionMatrix();camera.position.set(p.position.x,p.position.y,p.position.z);
+    camera.lookAt(new Vector3(p.focus.x,p.focus.y,p.focus.z));camera.updateMatrixWorld(true);
+    const screen=new Vector3(0,64+1.8*.65,0).project(camera);
+    assert.ok(screen.x<-.22&&screen.x>-.33,`actor screen X ${screen.x}`);
+  }
+  d.reset();const blocked=d.update(target(),settings({mode:'shoulder'}),0,{isSolid:(x,y,z)=>z===2});
+  assert.ok(blocked.occluded&&blocked.position.z<2);assert.ok(Number.isFinite(blocked.yaw));
+  d.startShot('orbit',1);d.startShot('stop',2);assert.equal(d.shot,null);
+  }finally{d.dispose();}
 });
 test('continuous cinematic updates do not accumulate transition listeners',()=>{
   const d=new CameraDirector();

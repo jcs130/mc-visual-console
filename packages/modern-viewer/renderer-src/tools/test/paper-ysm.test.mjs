@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {PaperYsmPlayers,applyPaperYsmAnimation,createPaperYsmActor} from '../../src/modern-viewer/paper-ysm.js';
+import {PaperYsmPlayers,applyPaperYsmAnimation,createPaperYsmActor,paperYsmHeadAnchor} from '../../src/modern-viewer/paper-ysm.js';
+
+test('nametag follows the animated head and ignores hidden bind-pose props',()=>{
+ const root=new THREE.Group(),head=new THREE.Group(),prop=new THREE.Group();head.name='Head';root.add(head,prop);
+ head.position.y=1.6;head.add(new THREE.Mesh(new THREE.BoxGeometry(.8,.8,.8)));prop.position.y=8;
+ prop.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1)));
+ const folded=new THREE.Group();folded.position.y=20;folded.scale.setScalar(0);folded.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1)));head.add(folded);
+ const model={bones:new Map([['Head',head]])};root.position.set(50,64,10);root.rotation.y=1;
+ assert.ok(Math.abs(paperYsmHeadAnchor(model,root).y-66.22)<1e-8);
+ head.position.y=.5;assert.ok(Math.abs(paperYsmHeadAnchor(model,root).y-65.12)<1e-8);
+ root.traverse(p=>p.geometry?.dispose());
+});
 
 test('uploaded YSM actors mount a complex original rig without dropping bones or cubes',async()=>{
  const cube={origin:[0,0,0],size:[1,1,-1],uv:[0,0]};

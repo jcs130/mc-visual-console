@@ -25,11 +25,15 @@ test('fresh body water selects swim or tread, grounded wading stays walking and 
 test('own-body water never leaks through a reused ID, changed epoch, stale packet or missing boolean',()=>{
   const uuid='00000000-0000-3000-8000-000000000001',entity={id:7,uuid,pos:{x:0,y:62,z:0}},players=new PaperYsmPlayers({entity:()=>entity});
   const binding={schemaVersion:1,source:'freesia_worker',playerUuid:uuid,entityId:7,epoch:'a',available:true};players.state(binding);
-  players.bodyMotion({entity,inWater:true,onGround:false},1000);
+  players.bodyMotion({entity,inWater:true,onGround:false,verticalSpeed:.2,health:18,maxHealth:24},1000);
   assert.equal(players.motionFor(uuid,entity,1100).inWater,true);
+  assert.equal(players.motionFor(uuid,entity,1100).verticalSpeed,4,'blocks/tick converted to YSM metres/second');
+  assert.equal(players.motionFor(uuid,entity,1100).health,18);
+  assert.equal(players.motionFor(uuid,entity,1100).maxHealth,24);
   players.bodyMotion({entity,inWater:false,onGround:true},1200);
   assert.equal(players.motionFor(uuid,entity,1201).inWater,false);
   assert.equal(players.motionFor(uuid,entity,1900).inWater,undefined);
+  assert.equal(players.motionFor(uuid,entity,1900).health,undefined);
   players.bodyMotion({entity:{...entity,id:8},inWater:true},1901);
   assert.equal(players.motionFor(uuid,entity,1902).inWater,undefined);
   players.bodyMotion({entity,inWater:true},2000);players.state({...binding,epoch:'b'});
@@ -160,7 +164,7 @@ test('motion identity/epoch, delayed actions and teardown preserve player nameta
   players.motion(event,1000);players.motion({...event,sequence:0},1050);assert.equal(players.motions.get(uuid).at,1000);
   assert.ok(Math.abs(players.motionFor(uuid,{},1200).swing.ageSeconds-.3)<1e-10);
   const parent=new THREE.Group(),skin=new THREE.Group(),tag=new THREE.Group(),body=new THREE.Group();skin.name='mesh';tag.name='nametag';skin.add(tag,body);parent.add(skin);
-  const hidden=new Map();tag.position.y=2;players.hideVanilla(parent,null,hidden,2.2);assert.equal(tag.visible,true);assert.equal(body.visible,false);assert.equal(skin.visible,true);assert.ok(Math.abs(tag.position.y-2.55)<1e-10);
+  const hidden=new Map();tag.position.y=2;players.hideVanilla(parent,null,hidden,new THREE.Vector3(0,2.42,0));assert.equal(tag.visible,true);assert.equal(body.visible,false);assert.equal(skin.visible,true);assert.ok(Math.abs(tag.position.y-2.42)<1e-10);
   players.actors.set(uuid,{actor:{dispose(){}},rendered:parent,hidden});players.remove(uuid);assert.equal(tag.position.y,2);assert.equal(body.visible,true);
   players.clear();assert.equal(players.motions.size,0);
 });
