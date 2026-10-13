@@ -4,8 +4,8 @@
   "kind": "sounds",
   "minecraftVersion": "1.20.6",
   "scope": "Optional original game sounds and background music; separate from the visual source pack.",
-  "fileCount": 3688,
-  "bytes": 556850738,
+  "fileCount": 3694,
+  "bytes": 564469124,
   "files": {
     "public/sounds/ambient/cave/cave1.ogg": {
       "bytes": 33948,
@@ -5684,8 +5684,32 @@
       "sha256": "2129b4e747c9e3e645ac301028c8b94666c5d0e3e3944d907bc8357899d9050e"
     },
     "public/sounds/custom-bgm.json": {
-      "bytes": 458,
-      "sha256": "09b465e1a0021faf4364874b6e7618a0e256cff567f2bf6ea38cf3cf54ca7d53"
+      "bytes": 1144,
+      "sha256": "859e50b5bd91e87aa1ca8ee93d47f7ee634008517c59d5fda79009b88ded2f68"
+    },
+    "public/sounds/custom-bgm-provenance-20261014.json": {
+      "bytes": 5518,
+      "sha256": "d319244eeb479da34d633a17d4333ba8b597a600429f54c5e42ebdb157bd75fc"
+    },
+    "public/sounds/custom-bgm/firefly-path-20261014.ogg": {
+      "bytes": 1485649,
+      "sha256": "7b852dcb21b4abdde5ad9235a7d38e8b6e30ce56d3d19797cb30b0ce9b503da0"
+    },
+    "public/sounds/custom-bgm/pocket-sunshine-20261014.ogg": {
+      "bytes": 1675824,
+      "sha256": "8223d0d8072349ef47b85ab6da22eacb153f52e51e37dd46c5a3a60b993fa4d7"
+    },
+    "public/sounds/custom-bgm/rain-on-the-eaves-20261014.ogg": {
+      "bytes": 1297234,
+      "sha256": "37629dd037d50f5b5d58285a2cf416e3e97f343f323b2fecef823aa1f7af23c3"
+    },
+    "public/sounds/custom-bgm/wind-over-wheat-20261014.ogg": {
+      "bytes": 1720538,
+      "sha256": "978367f651603d103fa3ac0ee4cf368eac719f9a7d700c710329bd9b7d0d541b"
+    },
+    "public/sounds/custom-bgm/wooden-window-20261014.ogg": {
+      "bytes": 1432937,
+      "sha256": "7126d88e4da38c18268bdd81e2e19c9512f192bb45b360cfbd9864ecb87d674f"
     },
     "public/sounds/damage/fallbig.ogg": {
       "bytes": 6079,

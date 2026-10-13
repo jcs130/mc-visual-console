@@ -15,6 +15,31 @@
       "id": "embers-and-starlight",
       "title": "星火迎战",
       "file": "custom-bgm/embers-and-starlight-20261005.ogg"
+    },
+    {
+      "id": "pocket-sunshine",
+      "title": "口袋里的晴天",
+      "file": "custom-bgm/pocket-sunshine-20261014.ogg"
+    },
+    {
+      "id": "wooden-window",
+      "title": "木窗午后",
+      "file": "custom-bgm/wooden-window-20261014.ogg"
+    },
+    {
+      "id": "firefly-path",
+      "title": "萤火小径",
+      "file": "custom-bgm/firefly-path-20261014.ogg"
+    },
+    {
+      "id": "rain-on-the-eaves",
+      "title": "雨点敲屋檐",
+      "file": "custom-bgm/rain-on-the-eaves-20261014.ogg"
+    },
+    {
+      "id": "wind-over-wheat",
+      "title": "风从麦田来",
+      "file": "custom-bgm/wind-over-wheat-20261014.ogg"
     }
   ]
 }
