@@ -134,6 +134,8 @@ export class PaperYsmPlayers {
       ...(typeof row.onGround==='boolean'?{onGround:row.onGround}:{})};
     // avatarState's Mineflayer velocity is blocks/tick; YSM documents m/s.
     if(Number.isFinite(row.verticalSpeed))local.body.verticalSpeed=row.verticalSpeed*20;
+    if(Number.isFinite(row.horizontalSpeed)&&row.horizontalSpeed>=0)local.body.horizontalSpeed=row.horizontalSpeed*20;
+    for(const key of ['sprinting','sneaking'])if(typeof row[key]==='boolean')local.body[key]=row[key];
     for(const key of ['health','maxHealth'])if(Number.isFinite(row[key]))local.body[key]=row[key];
     this.fallback.set(uuid,local);
   }
@@ -147,7 +149,9 @@ export class PaperYsmPlayers {
     const latest=this.motions.get(uuid),local=this.fallback.get(uuid)??{},pos=entity.pos??entity.position;
     if(pos && local.position && now>local.at) {
       const d=Math.hypot(pos.x-local.position.x,pos.z-local.position.z);
-      if(d>0){local.speed=d<3?Math.min(30,d*1000/(now-local.at)):0;local.movedAt=now;}
+      // Measure between changed network samples, not the preceding render
+      // frame: a 100 ms sample rendered at 60 Hz otherwise spikes 6-fold.
+      if(d>0){local.speed=d<3?Math.min(30,d*1000/Math.max(1,now-(local.movedAt??local.at))):0;local.movedAt=now;}
     }
     if(!local.movedAt || now-local.movedAt>250)local.speed=0;
     local.position=pos?{...pos}:null;local.at=now;this.fallback.set(uuid,local);
@@ -155,6 +159,9 @@ export class PaperYsmPlayers {
     if(local.body && now-local.body.at<600 && local.body.entityId===entity.id && local.body.epoch===this.states.get(uuid)?.epoch) {
       for(const key of ['inWater','onGround'])if(typeof local.body[key]==='boolean')motion[key]=local.body[key];
       for(const key of ['verticalSpeed','health','maxHealth'])if(Number.isFinite(local.body[key]))motion[key]=local.body[key];
+      if(Number.isFinite(local.body.horizontalSpeed))motion.horizontalSpeed=local.body.horizontalSpeed;
+      if(typeof local.body.sprinting==='boolean')motion.sprinting=local.body.sprinting;
+      if(typeof local.body.sneaking==='boolean')motion.crouching=local.body.sneaking;
       motion.waterSource='same_connection_body';
     }
     if(latest?.row.swing)motion.swing={...latest.row.swing,ageSeconds:latest.row.swing.ageSeconds+(now-latest.at)/1000};

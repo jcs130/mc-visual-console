@@ -5457,10 +5457,10 @@ function applyDirectedCamera() {
   const world = globalThis.world, resolved = resolveObserverTargetPosition(), entity = resolved?.entity || pendingAvatarState?.entity;
   if (!world?.cameraWorldPos || !resolved) return false;
   const eye = viewer.playerState.reactive.eyeHeight ?? 1.62;
-  // updateCamera has just placed the anchor using the existing network smoother.
-  const anchor = { x: world.cameraWorldPos.x, y: world.cameraWorldPos.y-eye, z: world.cameraWorldPos.z };
-  const mounted = typeof cortiYsmPlayers !== 'undefined' ? cortiYsmPlayers.actors.get(entity?.uuid?.toLowerCase()) : null;
-  const modelHeight = mounted?.actor?.framingHeight ?? entity?.height ?? 1.8;
+  // The director owns its world-space tracking filter. Camera output and an
+  // animated head/nametag must never become the next frame's target input.
+  const anchor = resolved.position;
+  const modelHeight = entity?.height ?? 1.8;
   const pose = cameraDirector.update({ key: String(focusedCharacterId ?? pendingAvatarState?.entity?.uuid ?? 'self'), position: anchor,
     yaw: entity?.yaw ?? latestPosition.yaw, height: modelHeight }, cameraSettings, performance.now(), {
     aspect: world.camera.aspect,

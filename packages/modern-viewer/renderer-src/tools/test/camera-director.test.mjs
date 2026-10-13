@@ -79,8 +79,21 @@ test('collision pulls in immediately and recovers gradually; disabling it is exp
     const free=d.update(target(),settings({distance:10}),0);
     const wall=d.update(target(),settings({distance:10}),16,{isSolid:(x,y,z)=>z===4});
     assert.ok(wall.distance<4&&wall.occluded);
-    const recovered=d.update(target(),settings({distance:10}),32);assert.ok(recovered.distance>wall.distance&&recovered.distance<free.distance);
+    const brief=d.update(target(),settings({distance:10}),32);near(brief.distance,wall.distance);
+    let recovered;for(let now=48;now<600;now+=16)recovered=d.update(target(),settings({distance:10}),now);
+    assert.ok(recovered.distance>wall.distance&&recovered.distance<free.distance);
     d.reset();assert.ok(d.update(target(),settings({distance:10,collision:false}),0,{isSolid:()=>true}).distance>10);
+  }finally{d.dispose();}
+});
+test('running head bob and packet-sized corrections do not shake framing or trigger zoom',()=>{
+  const d=new CameraDirector(),s=settings({collision:false});
+  try{
+    const start=d.update(target(),s,0),poses=[];
+    for(let i=1;i<=180;i++)poses.push(d.update(target({position:{x:i%2?.03:-.03,y:64+(i%2?.12:-.12),z:0},height:i%2?.6:2.2}),s,i*16));
+    for(const p of poses){near(p.distance,start.distance);near(p.position.y,start.position.y);near(p.yaw,start.yaw);}
+    const before=poses.at(-1),changed=d.update(target({position:{x:1,y:65,z:0}}),s,2896);
+    assert.ok(changed.position.x>before.position.x&&changed.position.x<before.position.x+.2);
+    assert.ok(changed.position.y>before.position.y&&changed.position.y<before.position.y+.2);
   }finally{d.dispose();}
 });
 test('cinematic shots finish and manual mode resumes; reset cancels a running shot',()=>{
@@ -151,6 +164,8 @@ test('client integration preserves floating world origin, model framing and conf
     const focus=d.lastPose.focus,projected=new Vector3(focus.x-origin.x,focus.y-origin.y,focus.z-origin.z).project(camera);
     near(projected.x,0);near(projected.y,0);assert.equal(camera.fov,47);assert.equal(context.viewer.inWorldRenderingConfig.fov,47);
     assert.equal(frames,1);assert.deepEqual(position,{x:-13000.5,y:80,z:32000.5});
+    const stable={...d.lastPose.position};for(let i=0;i<30;i++)apply();
+    for(const axis of ['x','y','z'])near(d.lastPose.position[axis],stable[axis]);
     context.cameraDirector=null;assert.equal(apply(),false,'photo/OBS paths without a director stay untouched');
   }finally{d.dispose();}
 });

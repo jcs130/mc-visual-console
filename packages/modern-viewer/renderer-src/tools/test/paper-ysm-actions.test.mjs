@@ -25,11 +25,12 @@ test('fresh body water selects swim or tread, grounded wading stays walking and 
 test('own-body water never leaks through a reused ID, changed epoch, stale packet or missing boolean',()=>{
   const uuid='00000000-0000-3000-8000-000000000001',entity={id:7,uuid,pos:{x:0,y:62,z:0}},players=new PaperYsmPlayers({entity:()=>entity});
   const binding={schemaVersion:1,source:'freesia_worker',playerUuid:uuid,entityId:7,epoch:'a',available:true};players.state(binding);
-  players.bodyMotion({entity,inWater:true,onGround:false,verticalSpeed:.2,health:18,maxHealth:24},1000);
+  players.bodyMotion({entity,inWater:true,onGround:false,verticalSpeed:.2,horizontalSpeed:.23,sprinting:true,health:18,maxHealth:24},1000);
   assert.equal(players.motionFor(uuid,entity,1100).inWater,true);
   assert.equal(players.motionFor(uuid,entity,1100).verticalSpeed,4,'blocks/tick converted to YSM metres/second');
   assert.equal(players.motionFor(uuid,entity,1100).health,18);
   assert.equal(players.motionFor(uuid,entity,1100).maxHealth,24);
+  for(let now=1101;now<1200;now+=16){assert.ok(Math.abs(players.motionFor(uuid,entity,now).horizontalSpeed-4.6)<1e-8);assert.equal(players.motionFor(uuid,entity,now).sprinting,true);}
   players.bodyMotion({entity,inWater:false,onGround:true},1200);
   assert.equal(players.motionFor(uuid,entity,1201).inWater,false);
   assert.equal(players.motionFor(uuid,entity,1900).inWater,undefined);

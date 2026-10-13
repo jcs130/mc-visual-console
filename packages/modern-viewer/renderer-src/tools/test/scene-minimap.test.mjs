@@ -64,7 +64,7 @@ test('offscreen pass restores camera, target, origin, hand, fog and viewport eve
       }
     }};
   assert.throws(()=>terrain.capture(world,{...mapSpec({x:8,z:8},16,2),layer:{kind:'slice',minY:56,maxY:65.25}}),/GPU read failed/);
-  assert.equal(passCount,2);assert.equal(world.camera,camera);assert.equal(world.scene.fog,fog);assert.equal(target,null);assert.equal(hand,true);
+  assert.equal(passCount,1,'only the requested offscreen pass; live render stays on its frame schedule');assert.equal(world.camera,camera);assert.equal(world.scene.fog,fog);assert.equal(target,null);assert.equal(hand,true);
   assert.deepEqual([origin.x,origin.y,origin.z],[2,3,4]);assert.deepEqual(world.cameraWorldPos,{x:2,y:3,z:4});assert.equal(renderer.render,render);assert.equal(renderer.autoClear,false);
   terrain.dispose();
 });

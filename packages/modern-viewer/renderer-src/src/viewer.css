@@ -526,7 +526,7 @@ body[data-viewer-layout=docked]{--viewer-rail-width:220px;--viewer-top:60px;--vi
 .viewer-scene-panel select{max-width:174px;min-height:32px;border:1px solid #6d899a;border-radius:5px;padding:4px;background:#203746;color:#f4f8fb;font:inherit}
 .viewer-scene-panel input[type=number]{width:84px;min-height:28px;border:1px solid #6d899a;border-radius:5px;padding:4px;background:#203746;color:#f4f8fb;font:inherit}
 .viewer-camera-settings .viewer-scene-panel{max-height:calc(100dvh - 95px);overflow:auto}
-.viewer-camera-settings .camera-panel{position:fixed;top:var(--camera-panel-top,58px);right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - var(--camera-panel-top,58px) - 12px);gap:14px;padding:18px}
+.viewer-camera-settings .camera-panel{position:fixed;top:var(--camera-panel-top,58px);left:var(--camera-panel-left,12px);right:auto;width:min(360px,calc(100vw - 24px));box-sizing:border-box;max-height:calc(100dvh - var(--camera-panel-top,58px) - 12px);gap:14px;padding:18px}
 .camera-mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .camera-panel button{min-height:36px;border:1px solid #476275;border-radius:7px;background:#203342;color:#d9e6ee;font:inherit;cursor:pointer}
 .camera-panel button:hover{background:#2e495c;border-color:#8cb9cc}

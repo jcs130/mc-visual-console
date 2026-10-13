@@ -43,7 +43,10 @@ export function installCameraSettings({document,window,settings,onChange,onShot,
     for(const [key,row]of inputs){row.input.value=String(current[key]);row.label.hidden=!!row.only&&current.mode!==row.only;
       row.value.textContent=key==='framing'?`${Math.round(current[key]*50)}%`:`${Number(current[key].toFixed(2))}${row.unit}`;}
   }
-  const place=()=>{if(!root.open||typeof summary.getBoundingClientRect!=='function')return;panel.style.setProperty('--camera-panel-top',`${Math.max(12,Math.min(summary.getBoundingClientRect().bottom+8,window.innerHeight-180))}px`);};
+  const place=()=>{if(!root.open||typeof summary.getBoundingClientRect!=='function')return;
+    const button=summary.getBoundingClientRect(),width=Math.min(360,window.innerWidth-24);
+    panel.style.setProperty('--camera-panel-left',`${Math.max(12,Math.min(button.left,window.innerWidth-width-12))}px`);
+    panel.style.setProperty('--camera-panel-top',`${Math.max(12,Math.min(button.bottom+8,window.innerHeight-180))}px`);};
   listen(root,'toggle',place);listen(window,'resize',place);listen(window,'keydown',e=>{if(e.code==='Escape')root.open=false;});
   function dispose(){if(disposed)return;disposed=true;for(const[el,name,fn]of listeners)el.removeEventListener(name,fn);window.removeEventListener('pagehide',dispose);root.remove();}
   document.body.append(root);window.addEventListener('pagehide',dispose,{once:true});refresh();

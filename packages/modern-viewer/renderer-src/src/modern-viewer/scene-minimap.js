@@ -132,9 +132,9 @@ export class MinimapTerrain {
       if(world.entities)world.entities.render=old.entityRender;
       world.onRender=old.onRender;
       for(const {object,parent,index} of detached){parent.add(object);parent.children.splice(parent.children.indexOf(object),1);parent.children.splice(index,0,object);}
-      // The chunk renderer caches camera uniforms/culling outside THREE. Rebuild
-      // those for the original view before allowing any following draw/capture.
-      world.render();
+      // The next scheduled world.render rebuilds camera uniforms/culling before
+      // its draw. Do not draw the entire live scene again inside this timer:
+      // that duplicates a frame, animations and post-render callbacks.
     }
   }
   dispose(){this.target.dispose();}
