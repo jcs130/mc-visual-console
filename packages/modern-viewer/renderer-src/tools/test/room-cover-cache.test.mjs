@@ -47,3 +47,13 @@ test('fluids and plants do not count as roofs', () => {
     assert.equal(cache.isSolidBlock(2, 66, 2), false, name);
   }
 });
+
+test('entity culling requires opaque full cubes, never glass, leaves, partial shapes or unknown chunks', () => {
+  const cache = new RoomCoverCache(version);
+  cache.ingestColumn(0, 0, new Chunk().toJson());
+  for (const name of ['stone', 'dirt', 'glass', 'oak_leaves', 'stone_slab', 'oak_stairs', 'water', 'air']) {
+    cache.setBlockStateId(2, 63, 2, state(name));
+    assert.equal(cache.isOpaqueFullBlock(2, 63, 2), ['stone', 'dirt'].includes(name), name);
+  }
+  assert.equal(cache.isOpaqueFullBlock(32,63,32),false);
+});

@@ -252,7 +252,7 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('  if (cortiPruneSelfEntities(normalized)) return;\n  entityCache.set(id, normalized);')
     || !changedClient.includes('  cortiAlignAvatarArmor(state.entity);\n  cortiSyncAvatarShield(state.entity, state.offhand ?? equipment?.[1]);')
     || !changedClient.includes('from "./room-visibility.js"')
-    || !changedClient.includes('cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),')
+    || !changedClient.includes('cutoffWorldY: roomCutoffWorldY(avatar.y, dungeonRoofState.active),')
     || !changedClient.includes('deepRoof || trace.occluded || roomCeiling,')
     || !changedClient.includes('patchCutawayMaterial(material, dungeonVisibilityUniforms)')
     || !changedClient.includes('installDungeonObserverControls({')

@@ -7,7 +7,7 @@ export const APERTURE_WIDTH = 1.3;
 export const APERTURE_HEIGHT = 1.85;
 export const APERTURE_EDGE = 0.22;
 export const CEILING_SCAN_HEIGHT = 64;
-export const CUTAWAY_MATERIAL_VERSION = 4;
+export const CUTAWAY_MATERIAL_VERSION = 5;
 
 export function hasRoomCeiling(avatar, cache) {
   const x = Math.floor(avatar.x), y = Math.floor(avatar.y), z = Math.floor(avatar.z);
@@ -56,7 +56,7 @@ export function roomCutoffWorldY(y, covered) {
 }
 
 export function roomOcclusionMode(dungeon, covered = false) {
-  return dungeon && covered ? "cutaway" : "translucent";
+  return covered ? "cutaway" : "foreground-cutaway";
 }
 
 // Exponential smoothing is independent of refresh rate and stops after a tab
@@ -73,7 +73,7 @@ export function createCutawayUniforms() {
   mask.minFilter = mask.magFilter = NearestFilter;
   mask.needsUpdate = true;
   return {
-    // 0 disabled, 1 body aperture, 2 covered room, 3 local cave entrance.
+    // 0 disabled, 2 covered room, 3 local foreground. No screen-space peephole.
     u_lanternCutawayEnabled: { value: 0 },
     u_lanternReveal: { value: 0 },
     u_lanternCutawayY: { value: 0 },
@@ -137,25 +137,17 @@ export function projectedRoomFloor(point, camera, footY, floorMask) {
 
 /** CPU reference for the terrain mask; coordinates may use any shared origin. */
 export function cutawayMask(point, { camera, target, right, up, forward, footY, cutoffY, covered, roomRadius = ROOM_RADIUS, floorMask = null }) {
+  // Cut only above a measured connected floor. Unknown space and everything
+  // below the actor's feet stay opaque, even when the camera enters rock.
+  if (!floorMask || point.y <= footY) return 0;
   const localFloorY = floorMask?.floorYAt?.(point);
   if (localFloorY != null && point.y <= localFloorY + 0.05) return 0;
+  if (floorMask.isOpen?.(point) && point.y <= localFloorY + 1.95) return 0;
   let mask = covered && point.y > (localFloorY == null ? cutoffY : localFloorY + 1.95)
     ? floorCoverage(point, target, roomRadius, floorMask) : 0;
-  if (covered) {
-    const floor = projectedRoomFloor(point, camera, footY, floorMask);
-    if (floor) mask = Math.max(mask, floorCoverage(floor, target, roomRadius, floorMask));
-  }
-  const targetDepth = dot(sub(target, camera), forward);
-  const depth = dot(sub(point, camera), forward);
-  if (point.y <= footY || targetDepth <= 0.01 || depth <= 0.05 || depth > targetDepth + 0.65) return mask;
-  const scale = depth / targetDepth;
-  const offset = sub(point, {
-    x: camera.x + (target.x - camera.x) * scale,
-    y: camera.y + (target.y - camera.y) * scale,
-    z: camera.z + (target.z - camera.z) * scale,
-  });
-  const radius = Math.hypot(dot(offset, right) / (scale * APERTURE_WIDTH), dot(offset, up) / (scale * APERTURE_HEIGHT));
-  return Math.max(mask, 1 - smoothstep(1 - APERTURE_EDGE, 1, radius));
+  const floor = projectedRoomFloor(point, camera, footY, floorMask);
+  if (floor) mask = Math.max(mask, floorCoverage(floor, target, roomRadius, floorMask));
+  return mask;
 }
 
 // Connected floor columns remove roofs; their camera rays remove foreground
@@ -178,31 +170,35 @@ uniform vec3 u_lanternCameraRight;
 uniform vec3 u_lanternCameraUp;
 uniform vec3 u_lanternCameraForward;
 in vec3 v_lanternCutawayPosition;
-vec2 lanternFloorAt(vec2 xz) {
+vec3 lanternFloorAt(vec2 xz) {
   float coverage = 1.0 - smoothstep(u_lanternRoomRadius - ${ROOM_EDGE}, u_lanternRoomRadius, distance(xz, u_lanternCutawayTarget.xz));
-  if (u_lanternRoomMaskEnabled < 0.5) return vec2(coverage, u_lanternCutawayY - 1.95);
+  if (u_lanternRoomMaskEnabled < 0.5) return vec3(coverage, u_lanternCutawayY - 1.95, 0.0);
   vec2 cell = floor(xz - u_lanternRoomMaskOrigin.xz);
-  if (any(lessThan(cell, vec2(0.0))) || any(greaterThanEqual(cell, vec2(u_lanternRoomMaskSize)))) return vec2(0.0);
+  if (any(lessThan(cell, vec2(0.0))) || any(greaterThanEqual(cell, vec2(u_lanternRoomMaskSize)))) return vec3(0.0);
   vec2 floorState = texture2D(u_lanternRoomMask, (cell + 0.5) / u_lanternRoomMaskSize).rg;
-  return vec2(coverage * floorState.r, u_lanternRoomMaskOrigin.y + floor(floorState.g * 255.0 + 0.5) - 128.0);
+  return vec3(coverage * step(0.25, floorState.r), u_lanternRoomMaskOrigin.y + floor(floorState.g * 255.0 + 0.5) - 128.0, step(0.75, floorState.r));
 }
 void lanternApplyCutaway() {
   if (u_lanternCutawayEnabled < 0.5 || u_lanternReveal <= 0.0) return;
   vec3 point = v_lanternCutawayPosition;
+  if (u_lanternRoomMaskEnabled < 0.5 || point.y <= u_lanternFootY) return;
   float mask = 0.0;
   if (u_lanternCutawayEnabled > 1.5) {
     vec3 faceNormal = normalize(cross(dFdx(point), dFdy(point)));
     if (!gl_FrontFacing) faceNormal = -faceNormal;
-    vec2 localFloor = lanternFloorAt(point.xz - faceNormal.xz * 0.01);
+    vec3 localFloor = lanternFloorAt(point.xz - faceNormal.xz * 0.01);
     if (u_lanternRoomMaskEnabled > 0.5 && localFloor.x > 0.0 && point.y <= localFloor.y + 0.05) return;
-    if (point.y > localFloor.y + 1.95) mask = localFloor.x;
+    // Keep furniture and surface details inside the open room. Only a wall
+    // boundary or geometry above that room can occlude its floor.
+    if (localFloor.x > 0.0 && localFloor.z > 0.5 && point.y <= localFloor.y + 1.95) return;
+    if (u_lanternCutawayEnabled < 2.5 && point.y > localFloor.y + 1.95) mask = localFloor.x;
     if (u_lanternRoomMaskEnabled > 0.5 && u_lanternCutawayCamera.y > u_lanternFootY && point.y < u_lanternCutawayCamera.y - 0.001) {
       vec3 ray = point - u_lanternCutawayCamera;
       float floorY = u_lanternFootY;
       for (int iteration = 0; iteration < 3; iteration++) {
         float along = (floorY - u_lanternCutawayCamera.y) / ray.y;
         vec2 hit = u_lanternCutawayCamera.xz + ray.xz * along;
-        vec2 projectedFloor = lanternFloorAt(hit);
+        vec3 projectedFloor = lanternFloorAt(hit);
         if (projectedFloor.x <= 0.0) break;
         float nextY = projectedFloor.y + 0.05;
         if (abs(nextY - floorY) < 0.01) {
@@ -212,14 +208,6 @@ void lanternApplyCutaway() {
         floorY = nextY;
       }
     }
-  }
-  float targetDepth = dot(u_lanternCutawayTarget - u_lanternCutawayCamera, u_lanternCameraForward);
-  float depth = dot(point - u_lanternCutawayCamera, u_lanternCameraForward);
-  if (point.y > u_lanternFootY && targetDepth > 0.01 && depth > 0.05 && depth <= targetDepth + 0.65) {
-    float scale = depth / targetDepth;
-    vec3 offset = point - mix(u_lanternCutawayCamera, u_lanternCutawayTarget, scale);
-    vec2 aperture = vec2(dot(offset, u_lanternCameraRight) / ${APERTURE_WIDTH}, dot(offset, u_lanternCameraUp) / ${APERTURE_HEIGHT}) / scale;
-    mask = max(mask, 1.0 - smoothstep(${1 - APERTURE_EDGE}, 1.0, length(aperture)));
   }
   float coverage = 1.0 - mask * u_lanternReveal;
   if (coverage <= 0.001) discard;

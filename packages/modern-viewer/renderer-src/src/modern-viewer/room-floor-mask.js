@@ -14,6 +14,9 @@ export class RoomFloorMask {
     this.signature = null;
     this.current = null;
     this.rebuilds = 0;
+    this.data = new Uint8Array(width * width * 2);
+    this.visited = new Uint8Array(width * width);
+    this.queue = new Uint32Array(width * width);
   }
 
   update(avatar, radius) {
@@ -23,18 +26,24 @@ export class RoomFloorMask {
     if (signature === this.signature) return this.current;
     const startedAt = performance.now();
     const origin = { x: x - extent, z: z - extent };
-    const data = new Uint8Array(width * width * 2);
-    const visited = new Uint8Array(width * width);
-    const queue = new Uint32Array(width * width);
+    const data = this.data, visited = this.visited, queue = this.queue;
+    data.fill(0); visited.fill(0);
     const seed = extent + extent * width;
-    queue[0] = seed;
-    visited[seed] = 1;
-    const mark = (index, floorY) => {
-      data[index * 2] = 255;
+    const mark = (index, floorY, boundary = false) => {
+      data[index * 2] = boundary ? 128 : 255;
       data[index * 2 + 1] = floorY - y + 128;
     };
-    mark(seed, y);
-    let read = 0, count = 1, boundaryCells = 0;
+    // Jumping/falling does not establish a floor. Search just two cells down;
+    // no unsupported seed in unloaded chunks or the sky.
+    let seedY = null;
+    for (const candidate of [y, y - 1, y - 2]) {
+      if (this.cache.isSolidBlock(x, candidate - 1, z)
+        && !this.cache.isSolidBlock(x, candidate, z) && !this.cache.isSolidBlock(x, candidate + 1, z)) {
+        seedY = candidate; break;
+      }
+    }
+    let read = 0, count = 0, boundaryCells = 0;
+    if (seedY !== null) { mark(seed, seedY); queue[count++] = seed; visited[seed] = 1; }
     while (read < count) {
       const current = queue[read++];
       const cx = current % width, cz = Math.floor(current / width);
@@ -64,7 +73,7 @@ export class RoomFloorMask {
             if (this.cache.isSolidBlock(wx + dx * thickness, currentY + 1, wz + dz * thickness)) continue;
             for (let step = 0; step < thickness; step++) {
               const boundary = index + step * (dx + dz * width);
-              if (!visited[boundary]) mark(boundary, currentY);
+              if (!visited[boundary]) mark(boundary, currentY, true);
             }
             boundaryCells += thickness;
             break;
@@ -79,6 +88,10 @@ export class RoomFloorMask {
       contains(position) {
         const lx = Math.floor(position.x) - origin.x, lz = Math.floor(position.z) - origin.z;
         return lx >= 0 && lx < width && lz >= 0 && lz < width && data[(lx + lz * width) * 2] > 0;
+      },
+      isOpen(position) {
+        if (!this.contains(position)) return false;
+        return data[(Math.floor(position.x) - origin.x + (Math.floor(position.z) - origin.z) * width) * 2] === 255;
       },
       floorYAt(position) {
         if (!this.contains(position)) return null;

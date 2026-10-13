@@ -8,6 +8,24 @@ import {createPaperHeldItem,resolvePaperHeldModel,PaperYsmHeldItems,paperYsmItem
 const context=()=>({variables:Object.create(null),queries:{'query.anim_time':.25,'ysm.head_pitch':30},random:()=>.5});
 const model=()=>{const bones=new Map(['Root','Head','RightArm','LeftArm','RightHandLocator','LeftHandLocator'].map(n=>[n,new THREE.Group()]));const initial=new Map([...bones].map(([n,b])=>[n,{position:b.position.clone(),rotation:b.rotation.clone()}]));return {bones,initial,reset(){for(const[n,b]of bones){b.position.copy(initial.get(n).position);b.rotation.copy(initial.get(n).rotation);b.scale.setScalar(1);}}};};
 
+test('ground locomotion blends without snapping, retains gait phase and rejects threshold chatter',()=>{
+  const m=model(),main={format_version:'1.8.0',animations:{idle:{loop:true,animation_length:1,bones:{Root:{position:[0,0,0]}}},
+    walk:{loop:true,animation_length:1,bones:{Root:{position:[16,0,0]}}},run:{loop:true,animation_length:.5,bones:{Root:{position:[32,0,0]}}}}};
+  const c=new PaperYsmAnimation(m,main);
+  c.apply({motion:{onGround:true,horizontalSpeed:0}},1000);
+  c.apply({motion:{onGround:true,horizontalSpeed:2}},1100);
+  assert.equal(m.bones.get('Root').position.x,0,'start walking from the displayed pose');
+  c.apply({motion:{onGround:true,horizontalSpeed:2}},1170);
+  assert.ok(Math.abs(m.bones.get('Root').position.x-.5)<1e-8);
+  c.apply({motion:{onGround:true,horizontalSpeed:2}},1500);
+  c.apply({motion:{onGround:true,horizontalSpeed:4,sprinting:true}},1600);
+  assert.equal(m.bones.get('Root').position.x,1,'run does not reset pose');
+  assert.equal(c.layers.get('main').started,1350,'walk halfway through cycle maps to run halfway through cycle');
+  assert.equal(c.apply({motion:{onGround:true,horizontalSpeed:.05}},1800).base,'walk');
+  assert.equal(c.apply({motion:{onGround:true,horizontalSpeed:.01}},1900).base,'idle');
+  assert.equal(c.apply({motion:{onGround:true,horizontalSpeed:.05}},2000).base,'idle');
+});
+
 test('fresh body water selects swim or tread, grounded wading stays walking and transitions remain continuous',()=>{
   const m=model(),main={format_version:'1.8.0',animations:Object.fromEntries(['idle','walk','jump','swim','swim_stand'].map(name=>[name,{loop:true,bones:{Root:{position:[name==='swim'?16:0,0,0]}}}]))};
   const c=new PaperYsmAnimation(m,main),water={inWater:true,onGround:false,horizontalSpeed:2};

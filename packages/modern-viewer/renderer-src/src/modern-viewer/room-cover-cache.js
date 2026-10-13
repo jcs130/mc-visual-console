@@ -11,8 +11,14 @@ export class RoomCoverCache {
     this.Section = Chunks(version).section;
     const data = MinecraftData(version);
     this.coverStates = new Uint8Array(Math.max(...Object.keys(data.blocksByStateId).map(Number)) + 1);
+    this.opaqueStates = new Uint8Array(this.coverStates.length);
     for (const [stateId, block] of Object.entries(data.blocksByStateId)) {
       this.coverStates[stateId] = block.boundingBox === "block" && block.name !== "water" && block.name !== "lava" ? 1 : 0;
+      const shapeIds = data.blockCollisionShapes?.blocks?.[block.name];
+      const shapeId = Array.isArray(shapeIds) ? shapeIds[Number(stateId) - block.minStateId] : shapeIds;
+      const shape = data.blockCollisionShapes?.shapes?.[shapeId];
+      this.opaqueStates[stateId] = block.transparent === false && block.filterLight === 15
+        && shape?.length === 1 && shape[0].every((value, index) => value === (index < 3 ? 0 : 1)) ? 1 : 0;
     }
     this.columns = new Map();
     this.revision = 0;
@@ -40,6 +46,11 @@ export class RoomCoverCache {
   isSolidBlock(x, y, z) {
     const section = this.sectionAt(x, y, z);
     return !!section && this.coverStates[section.get({ x: local(x), y: local(y), z: local(z) })] === 1;
+  }
+
+  isOpaqueFullBlock(x, y, z) {
+    const section = this.sectionAt(x, y, z);
+    return !!section && this.opaqueStates[section.get({ x: local(x), y: local(y), z: local(z) })] === 1;
   }
 
   setBlockStateId(x, y, z, stateId) {

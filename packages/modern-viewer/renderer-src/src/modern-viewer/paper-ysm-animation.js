@@ -109,12 +109,13 @@ export class PaperYsmAnimation {
     const previous=this.waterTransition?.lastPose;
     this.start??=now;this.model.reset();this.errors=[];this.selected=[];
     const m=state.motion??state, speed=m.horizontalSpeed??0, pose=m.pose;
+    this.moving = speed > (this.moving ? 0.03 : 0.08);
     const inhibited=m.bodyState?.source==='server' && m.bodyState.canAct===false;
     const downed=inhibited && m.bodyState.pose==='downed';
     let base=pose==='sleeping'?'sleep':pose==='dying'?'death':pose==='spin_attack'?'riptide':pose==='fall_flying'?'elytra_fly':
       pose==='swimming'?'swim':m.flying===true?'fly':m.inWater===true&&m.onGround===false?
         (speed>.2?'swim':this.main.animations?.swim_stand?'swim_stand':'swim'):
-        m.onGround===false?'jump':m.crouching===true?(speed>.05?'sneak':'sneaking'):speed>.05?(m.sprinting===true?'run':'walk'):'idle';
+        m.onGround===false?'jump':m.crouching===true?(this.moving?'sneak':'sneaking'):this.moving?(m.sprinting===true?'run':'walk'):'idle';
     if(inhibited){base='idle';this.waterTransition=null;this.layers.clear();}
     // appearanceMotion stores Java pitch degrees (positive down). YSM's
     // head_pitch query is positive up, as is legacy Mineflayer pitch in radians.
@@ -130,7 +131,13 @@ export class PaperYsmAnimation {
       if(!name)return false;keep.add(key);
       try {
         const clip=this.clip(definition,name);for(const bone of clip.ignoredBones)ignoredBones.add(bone);let row=this.layers.get(key);
-        if(!row||row.name!==name||row.token!==token){row={name,token,started:now,cursor:{cycle:-1,time:-1}};this.layers.set(key,row);}
+        if(!row||row.name!==name||row.token!==token){
+          // Preserve gait phase when shifting walk/run, rather than putting
+          // the same foot down again on every sprint-state packet.
+          const gait=key==='main'&&['walk','run','sneak'].includes(name)&&['walk','run','sneak'].includes(row?.name);
+          const phase=gait&&row.length>0?(((now-row.started)/1000/row.length)%1+1)%1:0;
+          row={name,token,length:clip.length,started:now-phase*clip.length*1000,cursor:{cycle:-1,time:-1}};this.layers.set(key,row);
+        }
         const age=seconds??(now-row.started)/1000;
         const sampled=samplePaperYsmClip(loop&&!clip.hold?{...clip,loop:true}:clip,age,context,row.cursor);
         applyPaperYsmPose(this.model,sampled,additiveRotation);this.selected.push(name);return true;
@@ -138,6 +145,7 @@ export class PaperYsmAnimation {
     };
     for(let n=0;n<8;n++)if(this.main.animations?.['pre_parallel'+n])layer('pre'+n,this.main,'pre_parallel'+n,{loop:true});
     layer('main',this.main,base,{loop:base!=='death'});
+    this.blendLocomotion(base,now,previous,inhibited);
     if(!inhibited)for(const [index,hand]of ['mainhand','offhand'].entries()) {
       const item=equipment[index],hold=item?selectArmClip(this.arm,'hold',hand,item):Object.hasOwn(this.arm?.animations??{},'hold_'+hand+':empty')?'hold_'+hand+':empty':null;
       if(hold)layer('hold'+index,this.arm,hold,{loop:true,token:JSON.stringify(item??null)});
@@ -165,13 +173,21 @@ export class PaperYsmAnimation {
     // The native Head bone also follows the actual look direction, even when
     // the authored animation has no head channel.
     const head=this.model.bones.get('Head');if(head && !inhibited){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
+    for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
+    if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
+    return {base:downed?'downed':base,canAct:!inhibited,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
+  }
+  // Blend the authored locomotion before applying live look, attacks and held
+  // item layers; easing a gait must never delay a hit or reuse an old aim.
+  blendLocomotion(base,now,previous,inhibited) {
     const water=base==='swim'||base==='swim_stand',transition=this.waterTransition??={base,water,lastPose:null,from:null,start:now};
     if(base!==transition.base) {
-      transition.from=(water||transition.water)&&previous?new Map([...previous].map(([name,p])=>[name,
+      transition.duration=water||transition.water?220:140;
+      transition.from=previous&&!inhibited?new Map([...previous].map(([name,p])=>[name,
         {position:p.position.clone(),quaternion:p.quaternion.clone(),scale:p.scale.clone()}])):null;transition.start=now;
       transition.base=base;transition.water=water;
     }
-    const alpha=Math.min(1,Math.max(0,(now-transition.start)/220)),blend=alpha*alpha*(3-2*alpha);
+    const alpha=Math.min(1,Math.max(0,(now-transition.start)/(transition.duration??140))),blend=alpha*alpha*(3-2*alpha);
     if(transition.from && alpha<1)for(const [name,from]of transition.from) {
       const bone=this.model.bones.get(name);if(!bone)continue;
       bone.position.lerpVectors(from.position,bone.position,blend);
@@ -186,8 +202,5 @@ export class PaperYsmAnimation {
       if(!saved){saved={position:bone.position.clone(),quaternion:bone.quaternion.clone(),scale:bone.scale.clone()};transition.lastPose.set(name,saved);}
       else {saved.position.copy(bone.position);saved.quaternion.copy(bone.quaternion);saved.scale.copy(bone.scale);}
     }
-    for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
-    if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
-    return {base:downed?'downed':base,canAct:!inhibited,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
   }
 }

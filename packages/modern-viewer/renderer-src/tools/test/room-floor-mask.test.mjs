@@ -12,10 +12,19 @@ test('tower walls bound the connected floor, including its roof and one wall cel
   const mask = controller.update(avatar, 32);
   assert.equal(mask.contains({ x: 10, z: 10 }), true, 'the floor extends beyond the old six-block circle');
   assert.equal(mask.contains({ x: 12, z: 0 }), true, 'upper wall rim is removed');
+  assert.equal(mask.isOpen({ x: 12, z: 0 }), false, 'wall boundaries differ from open room columns');
+  assert.equal(mask.isOpen({ x: 10, z: 0 }), true);
   assert.equal(mask.contains({ x: 14, z: 0 }), false, 'separate room behind the wall stays intact');
   assert.equal(controller.update(avatar, 32), mask, 'unchanged frames reuse the mask');
   cache.revision++;
   assert.notEqual(controller.update(avatar, 32), mask, 'changed chunks invalidate the floor region');
+});
+
+test('floor props inside the room survive foreground wall removal', () => {
+  const mask = new RoomFloorMask({ revision: 1, isSolidBlock: (x,y,z) => y === 63 }).update(avatar, 16);
+  const settings = { camera: {x:0,y:75,z:10},target:{x:0,y:65,z:0},footY:64.05,cutoffY:65.95,covered:true,roomRadius:16,floorMask:mask };
+  assert.equal(cutawayMask({x:2,y:65,z:2},settings),0,'chest height stays visible');
+  assert.equal(cutawayMask({x:2,y:70,z:2},settings),1,'roof is removed');
 });
 
 test('cliff columns remain opaque even when their height falls inside a wide indoor reveal', () => {
@@ -87,7 +96,7 @@ test('camera-facing rock is cut when it conceals connected cave floor outside it
 });
 
 test('room texture reuses its allocation and shares bytes with CPU entity visibility', () => {
-  const controller = new RoomFloorMask({ revision: 1, isSolidBlock: () => false });
+  const controller = new RoomFloorMask({ revision: 1, isSolidBlock: (_x,y) => y===63 });
   const uniforms = createCutawayUniforms();
   const first = controller.update(avatar, 16);
   setRoomFloorMask(uniforms, first);
@@ -99,4 +108,14 @@ test('room texture reuses its allocation and shares bytes with CPU entity visibi
   assert.equal(moved.contains({ x: -128.2, z: -256.7 }), true);
   assert.equal(moved.contains({ x: 0, z: 0 }), false);
   assert.equal(uniforms.u_lanternRoomMaskEnabled.value, 1);
+});
+
+test('unsupported or unloaded space never seeds a reveal; temporary jumps keep the real floor', () => {
+  const unknown = new RoomFloorMask({revision:1,isSolidBlock:()=>false}).update(avatar,16);
+  assert.equal(unknown.openCells,0); assert.equal(unknown.contains(avatar),false);
+  const room=new RoomFloorMask({revision:1,isSolidBlock:(_x,y)=>y===63});
+  const first=room.update(avatar,16),bytes=first.data;
+  const jump=room.update({...avatar,y:65.4},16);
+  assert.equal(jump.floorYAt(avatar),64);assert.equal(jump.data,bytes,'scratch allocation reused while moving');
+  assert.equal(room.update({...avatar,y:80},16).openCells,0,'no imaginary floor while flying');
 });

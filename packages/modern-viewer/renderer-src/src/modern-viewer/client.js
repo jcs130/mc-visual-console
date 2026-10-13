@@ -1029,6 +1029,8 @@ async function initializeRenderer(version) {
         () => pendingAvatarState?.entity?.id,
         { getUpperCutawayY: () => dungeonUpperCutawayY,
           getUpperCutawayRegion: () => dungeonUpperCutawayRegion,
+          getOpaqueCache: () => dungeonRoomCoverCache,
+          getObservedFloorY: () => resolveObserverTargetPosition()?.position?.y ?? latestPosition?.pos?.y,
           cutawayUniforms: dungeonVisibilityUniforms },
       );
     }
@@ -2383,14 +2385,14 @@ function runDungeonOcclusionCheck() {
     DUNGEON_OCCLUSION_RELEASE_SAMPLES,
   );
   dungeonRoofState = updateOcclusionHysteresis(dungeonRoofState, roomCeiling || deepRoof, DUNGEON_OCCLUSION_RELEASE_SAMPLES);
-  const hardCutaway = isDungeonView && dungeonOcclusionState.active;
+  const hardCutaway = dungeonOcclusionState.active;
   dungeonUpperCutawayY = hardCutaway && dungeonOcclusionState.active ? avatar.y : null;
   if (dungeonUpperCutawayY === null) dungeonUpperCutawayRegion = null;
   if (dungeonOcclusionState.active) {
     applyDungeonCutaway({
       targetWorld: avatar,
       cameraWorld,
-      cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
+      cutoffWorldY: roomCutoffWorldY(avatar.y, dungeonRoofState.active),
       hardCutaway,
       coveredRoom: dungeonRoofState.active,
     });
@@ -2405,7 +2407,7 @@ function runDungeonOcclusionCheck() {
     setElementDataset(canvas, "occlusionDetected", dungeonOcclusionState.active ? "blocked" : "clear");
     setElementDataset(canvas, "roomCeiling", roomCeiling ? "yes" : "no");
     setElementDataset(canvas, "deepRoof", deepRoof ? "yes" : "no");
-    setElementDataset(canvas, "occlusionMode", dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, hardCutaway) : "clear");
+    setElementDataset(canvas, "occlusionMode", dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, dungeonRoofState.active) : "clear");
     setElementDataset(canvas, "occlusionCutaway", dungeonCutawayApplied ? "active" : dungeonOcclusionState.active ? "unavailable" : "clear");
     setElementDataset(canvas, "occlusionSamples", trace.samples);
     setElementDataset(canvas, "occlusionTarget", resolvedTarget?.mode || "self");
@@ -2417,10 +2419,10 @@ function runDungeonOcclusionCheck() {
     detected: dungeonOcclusionState.active,
     roomCeiling,
     deepRoof,
-    mode: dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, hardCutaway) : "clear",
-    cutoffWorldY: roomCutoffWorldY(avatar.y, hardCutaway),
+    mode: dungeonOcclusionState.active ? roomOcclusionMode(isDungeonView, dungeonRoofState.active) : "clear",
+    cutoffWorldY: roomCutoffWorldY(avatar.y, dungeonRoofState.active),
     cutScope: dungeonOcclusionState.active
-      ? hardCutaway ? dungeonRoofState.active ? "connected-floor-and-sightlines" : "local-floor-and-sightlines" : "aperture"
+      ? dungeonRoofState.active ? "connected-floor-and-sightlines" : "local-floor-and-sightlines"
       : "none",
     maskVersion: CUTAWAY_MATERIAL_VERSION,
     roomRadius: dungeonVisibilityUniforms.u_lanternRoomRadius.value,
@@ -2501,13 +2503,13 @@ function patchDungeonCutawayShader(material) {
 
 function applyDungeonCutaway({ targetWorld, cameraWorld, hardCutaway, coveredRoom }) {
   dungeonRevealTarget = true;
-  dungeonVisibilityUniforms.u_lanternCutawayEnabled.value = hardCutaway ? coveredRoom ? 2 : 3 : 1;
+  dungeonVisibilityUniforms.u_lanternCutawayEnabled.value = coveredRoom ? 2 : 3;
   dungeonUpperCutawayRegion = hardCutaway
     ? { center: targetWorld, camera: cameraWorld, radius: dungeonVisibilityUniforms.u_lanternRoomRadius.value, corridorRadius: 0, hitAlong: 1, halfSpan: 0 }
     : null;
   dungeonCutawayApplied = [...dungeonCutawayMaterials.values()].some(record => record.mode === "uniform");
   updateDungeonVisibilityFrame();
-  if (hardCutaway && dungeonFloorMask) {
+  if (dungeonFloorMask) {
     const previous = dungeonFloorMask.current;
     const mask = dungeonFloorMask.update(targetWorld, dungeonVisibilityUniforms.u_lanternRoomRadius.value);
     if (mask !== previous || dungeonVisibilityUniforms.u_lanternRoomMaskEnabled.value < 0.5) setRoomFloorMask(dungeonVisibilityUniforms, mask);
@@ -2557,8 +2559,9 @@ function updateDungeonVisibilityFrame() {
   uniforms.u_lanternCameraRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
   uniforms.u_lanternCameraUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
   uniforms.u_lanternCameraForward.value.setFromMatrixColumn(camera.matrixWorld, 2).negate().normalize();
-  uniforms.u_lanternRoomRadius.value = roomRevealRadius(camera, dungeonOcclusionTargetScene, dungeonOcclusionTargetScene.y,
-    uniforms.u_lanternCutawayEnabled.value < 2.5);
+  uniforms.u_lanternRoomRadius.value = Math.min(isDungeonView ? 96 : 16,
+    roomRevealRadius(camera, dungeonOcclusionTargetScene, dungeonOcclusionTargetScene.y,
+      uniforms.u_lanternCutawayEnabled.value < 2.5));
   const roomMask = dungeonFloorMask?.current ?? null;
   if (roomMask) uniforms.u_lanternRoomMaskOrigin.value.set(origin.toSceneX(roomMask.origin.x), origin.toSceneY(roomMask.baseY), origin.toSceneZ(roomMask.origin.z));
   if (uniforms.u_lanternCutawayEnabled.value > 1.5) {

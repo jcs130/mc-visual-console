@@ -30,21 +30,23 @@ function fixture(yaw = Math.PI / 4, distance = 16, pitch = 0.82) {
   camera.lookAt(target);
   camera.updateMatrixWorld(true);
   const settings = { camera: camera.position, target, footY: 64.05, cutoffY: 65.95, covered: false,
+    floorMask: { contains: () => true, floorYAt: () => 64 },
     right: new Vector3().setFromMatrixColumn(camera.matrixWorld, 0),
     up: new Vector3().setFromMatrixColumn(camera.matrixWorld, 1),
     forward: camera.getWorldDirection(new Vector3()) };
   return { camera, settings, front: camera.position.clone().lerp(target, 0.6) };
 }
 
-test('view aperture opens the whole character centre at every zoom and isometric corner', () => {
+test('foreground cut opens nearby floor around the character at every zoom and corner', () => {
   for (const yaw of [Math.PI / 4, 3 * Math.PI / 4, -Math.PI / 4, -3 * Math.PI / 4]) {
     for (const distance of [8, 16, 24]) for (const pitch of [0.82, 1.08]) {
       const { settings, front } = fixture(yaw, distance, pitch);
       assert.equal(cutawayMask(front, settings), 1, 'centre has no residual grid');
       const bodyEdge = front.clone().addScaledVector(settings.right, 0.3).addScaledVector(settings.up, -0.5);
       assert.equal(cutawayMask(bodyEdge, settings), 1, 'arms and feet have a clear margin');
-      const side = front.clone().addScaledVector(settings.right, 2);
-      assert.equal(cutawayMask(side, settings), 0, 'nearby scenery to the side stays solid');
+      const side = front.clone().addScaledVector(settings.right, 1.5);
+      assert.equal(cutawayMask(side, settings), 1, 'nearby floor is revealed rather than a tiny body peephole');
+      assert.equal(cutawayMask(front.clone().addScaledVector(settings.right, 12), settings), 0, 'distant scenery stays solid');
       const behind = settings.target.clone().addScaledVector(settings.forward, 2);
       assert.equal(cutawayMask(behind, settings), 0, 'terrain behind the character stays solid');
     }
@@ -63,7 +65,7 @@ test('room roof opening keeps a local boundary, the lower floor and a soft rim',
   const { settings } = fixture();
   settings.covered = true;
   assert.equal(cutawayMask(point(0, 66, 0), settings), 1);
-  assert.equal(cutawayMask(point(4, 65.9, 0), settings), 0);
+  assert.equal(cutawayMask(point(4, 65.9, 0), settings), 1, 'a foreground wall concealing floor is also cut');
   assert.equal(cutawayMask(point(6.1, 86, 0), settings), 0);
   const rim = cutawayMask(point(5.6, 70, 0), settings);
   assert.ok(rim > 0 && rim < 1);
@@ -96,9 +98,10 @@ test('an uncovered cave entrance remains local even when the camera zooms out', 
   }
 });
 
-test('floating-origin translation and display aspect do not change the aperture', () => {
+test('floating-origin translation and display aspect preserve the floor cut and soft rim', () => {
   const { settings, front, camera } = fixture();
-  const sample = front.clone().addScaledVector(settings.right, 0.73);
+  settings.covered = true;
+  const sample = point(5.6, 86, 0);
   const original = cutawayMask(sample, settings);
   assert.ok(original > 0 && original < 1);
   for (const aspect of [0.6, 1, 2.4]) {
@@ -107,7 +110,8 @@ test('floating-origin translation and display aspect do not change the aperture'
   }
   const shift = point(-1200, 256, 3000);
   const moved = { ...settings, camera: settings.camera.clone().add(shift), target: settings.target.clone().add(shift),
-    footY: settings.footY + shift.y, cutoffY: settings.cutoffY + shift.y };
+    footY: settings.footY + shift.y, cutoffY: settings.cutoffY + shift.y,
+    floorMask: { contains: () => true, floorYAt: () => 64 + shift.y } };
   assert.ok(Math.abs(cutawayMask(sample.clone().add(shift), moved) - original) < 1e-9);
 });
 
@@ -175,7 +179,7 @@ test('render-time mask follows interpolated entity and camera between network up
   const camera = new PerspectiveCamera(); camera.position.set(4, 10, 8); camera.lookAt(0, 1, 0); camera.updateMatrixWorld();
   const uniforms = createCutawayUniforms(); uniforms.u_lanternCutawayEnabled.value = 2;
   const root = { getWorldPosition: out => out.set(2.5, 0.25, 3.5) };
-  const context = { performance, rendererReady: true, usesWorldAvatar: true, dungeonRevealLastFrameAt: null,
+  const context = { performance, rendererReady: true, usesWorldAvatar: true, isDungeonView: true, dungeonRevealLastFrameAt: null,
     dungeonRevealTarget: true, dungeonVisibilityUniforms: uniforms, latestPosition: { pos: point(0, 64, 0) },
     dungeonOcclusionTargetScene: new Vector3(), focusedCharacterId: null, pendingAvatarState: { entity: { id: 7 } },
     observerOffset: new Vec3(0, 0, 0), dungeonFloorMask: null, advanceReveal, roomRevealRadius, roomCutoffWorldY: (y) => Math.floor(y) + 1.95,
@@ -208,7 +212,17 @@ test('returning to an unchanged cave floor re-enables its cached mask after a cl
   assert.equal(uniforms.u_lanternCutawayEnabled.value,3,'uncovered entrance uses the local mode');
   assert.equal(uniforms.u_lanternRoomMaskEnabled.value,1);
   apply({...args,hardCutaway:false});
-  assert.equal(uniforms.u_lanternRoomMaskEnabled.value,0);
+  assert.equal(uniforms.u_lanternRoomMaskEnabled.value,1,'third-person also uses the supported floor');
   apply(args);
   assert.equal(uniforms.u_lanternRoomMaskEnabled.value,1,'reused floor bytes are uploaded again after leaving the cave');
+});
+
+test('cutaways never remove underground terrain or assume an unknown floor', () => {
+  const { settings, front } = fixture(); settings.covered = true;
+  assert.equal(cutawayMask(front, { ...settings, floorMask: null }), 0);
+  for (let y = 40; y <= 64; y++) assert.equal(cutawayMask(point(0,y,0), settings), 0);
+  const shader = { vertexShader:'void main() { vec3 relativePos = vec3(0.0); }',fragmentShader:'void main() {}' };
+  patchCutawayMaterial(shader,createCutawayUniforms());
+  assert.ok(shader.fragmentShader.includes('point.y <= u_lanternFootY'));
+  assert.ok(!shader.fragmentShader.includes('vec2 aperture'));
 });

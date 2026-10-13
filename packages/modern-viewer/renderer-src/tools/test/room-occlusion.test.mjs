@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { hasDeepRoof, hasRoomCeiling, patchRoomOcclusion, roomCutoffWorldY, roomOcclusionMode } from '../minecraft-viewer-room-occlusion.mjs';
-import { CUTAWAY_MATERIAL_VERSION, createCutawayUniforms } from '../../src/modern-viewer/room-visibility.js';
+import { patchRoomOcclusion } from '../minecraft-viewer-room-occlusion.mjs';
+import { CUTAWAY_MATERIAL_VERSION, createCutawayUniforms, hasDeepRoof, hasRoomCeiling, roomCutoffWorldY, roomOcclusionMode } from '../../src/modern-viewer/room-visibility.js';
 import { updateOcclusionHysteresis } from '../../src/modern-viewer/dungeon-view-controls.js';
 
-test('dungeon cuts both thin and thick upper layers while third-person keeps corridor transparency', () => {
+test('dungeon and third-person cut covered floors while outdoor walls use local floor rays', () => {
   const solid = new Set(['0,66,0', '1,66,0', '0,66,1']);
   const cache = { isSolidBlock: (x, y, z) => solid.has(`${x},${y},${z}`) };
   const avatar = { x: 0.3, y: 64.3, z: 0.3 };
@@ -16,8 +16,8 @@ test('dungeon cuts both thin and thick upper layers while third-person keeps cor
   assert.equal(roomCutoffWorldY(avatar.y, false), 64.35, 'floor and slabs beneath the feet remain opaque');
   for (let y = 67; y <= 70; y += 1) solid.add(`0,${y},0`);
   assert.equal(roomOcclusionMode(true, true), 'cutaway');
-  assert.equal(roomOcclusionMode(false, true), 'translucent');
-  assert.equal(roomOcclusionMode(true, false), 'translucent');
+  assert.equal(roomOcclusionMode(false, true), 'cutaway');
+  assert.equal(roomOcclusionMode(true, false), 'foreground-cutaway');
   assert.equal(roomCutoffWorldY(avatar.y, true), 65.95);
 });
 
@@ -59,11 +59,11 @@ test('clear views keep terrain intact while blocked views reveal the body or cav
     const active = covered || situation === 'wall';
     assert.equal(calls.length, active ? 1 : 0, `${isDungeonView}: ${situation}`);
     if (active) {
-      const hard = isDungeonView && (covered || situation === 'wall');
-      assert.equal(calls[0].cutoffWorldY, hard ? 25.95 : 24.35);
+      const hard = covered || situation === 'wall';
+      assert.equal(calls[0].cutoffWorldY, covered ? 25.95 : 24.35);
       assert.equal(calls[0].hardCutaway, hard);
       assert.equal(calls[0].coveredRoom, covered);
-      assert.equal(context.dungeonOcclusionDiagnostics.cutScope, hard ? covered ? 'connected-floor-and-sightlines' : 'local-floor-and-sightlines' : 'aperture');
+      assert.equal(context.dungeonOcclusionDiagnostics.cutScope, covered ? 'connected-floor-and-sightlines' : 'local-floor-and-sightlines');
       assert.equal(context.dungeonUpperCutawayY, hard ? 24.3 : null);
       assert.equal(context.dungeonOcclusionDiagnostics.detected, covered || situation === 'wall');
     }
@@ -108,7 +108,7 @@ test('leaving an obstruction releases the reveal after the existing clear-sample
   };
   const check = runInNewContext(`${client.slice(start, end)}\nrunDungeonOcclusionCheck`, context);
   check();
-  assert.equal(context.dungeonOcclusionDiagnostics.mode, 'cutaway');
+  assert.equal(context.dungeonOcclusionDiagnostics.mode, 'foreground-cutaway');
   occluded = false;
   check(); check();
   assert.equal(restores, 0, 'one clear ray must not cause flicker');

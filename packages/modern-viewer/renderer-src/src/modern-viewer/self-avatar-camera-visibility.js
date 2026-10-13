@@ -1,5 +1,6 @@
 import { Plane, Vector3 } from "three";
 import { CUTAWAY_MATERIAL_VERSION, patchCutawayMaterial, projectedRoomFloor } from "./room-visibility.js";
+import { createTerrainEntityCulling } from "./terrain-entity-culling.js";
 
 export function inUpperCutawayRegion(position, region) {
   if (!region) return true;
@@ -26,10 +27,13 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
   getUpperCutawayY = () => null,
   getUpperCutawayRegion = () => null,
   cutawayUniforms = null,
+  getOpaqueCache = () => null,
+  getObservedFloorY = () => null,
 } = {}) {
   const entities = world?.entities;
   if (typeof entities?.render !== "function") return null;
   const originalRender = entities.render;
+  const terrainCulling = createTerrainEntityCulling(world, getOpaqueCache, getObservedFloorY);
   const cameraPosition = new Vector3();
   const avatarPosition = new Vector3();
   let hiddenForNearCamera = false;
@@ -114,6 +118,7 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
   function update() {
     const id = getSelfId?.();
     selfId = id === undefined || id === null ? null : String(id);
+    terrainCulling.update(selfId);
     // The native renderer resets visibility on every draw. Applying the roof
     // policy on its slower terrain-check timer lets upper-floor mobs reappear.
     const cutawayY = getUpperCutawayY();
@@ -195,7 +200,7 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
 
   return {
     get diagnostics() {
-      return { selfId, distance, hiddenForNearCamera, hiddenUpperEntities, cutawayWorldY };
+      return { selfId, distance, hiddenForNearCamera, hiddenUpperEntities, cutawayWorldY, terrainCulling: { ...terrainCulling.diagnostics } };
     },
     dispose() {
       removeUpperLayerPlane();

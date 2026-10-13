@@ -299,7 +299,7 @@ test('large decoration geometry uses fragment bounds even when its mesh origin l
   world.entities.render();
   const patched = roof.material;
   assert.notEqual(patched, material);
-  assert.equal(patched.userData.lanternVisibilityVersion, 4);
+  assert.equal(patched.userData.lanternVisibilityVersion, 5);
   assert.equal(patched.clippingPlanes, null, 'only fragments within the live mask are removed');
   assert.equal(avatar.children[0].material.userData.lanternVisibilityVersion, undefined);
   world.entities.render();
