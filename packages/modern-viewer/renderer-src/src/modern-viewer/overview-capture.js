@@ -71,15 +71,7 @@ export function overviewRegions(spec) {
   });
 }
 
-function shadeAttention(ctx, regions, document) {
-  // Clear every selected rectangle from a mask, so overlapping ROIs stay bright.
-  const mask=document.createElement('canvas');mask.width=ctx.canvas.width;mask.height=ctx.canvas.height;
-  const layer=mask.getContext('2d');layer.fillStyle='rgba(6,12,20,.55)';layer.fillRect(0,0,mask.width,mask.height);
-  for(const region of regions.filter(r=>r.inFrame)) {
-    const r=region.rect;layer.clearRect(r.x,r.y,r.width,r.height);
-  }
-  ctx.drawImage(mask,0,0);
-}
+const displayId = id => id === 'SELF' ? '自己' : id?.startsWith('P') ? `点${id.slice(1)}` : id?.startsWith('A') ? `关注${id.slice(1)}` : id;
 
 /** Block indices name a cell, not its minimum corner. Never offset entity/world positions. */
 export function overviewMarker(pin, index, project) {
@@ -133,16 +125,16 @@ function label(ctx, text, x, y, color = '#fff', align = 'left') {
 const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 /** Keep all points; reduce only label detail/visibility. IDs always follow input order. */
-export function overviewLabelLayout(spec, pins, player, measure) {
+export function overviewLabelLayout(spec, pins, player, measure, reserved = []) {
   const points = [...(player?.inFrame ? [player] : []), ...pins.filter(pin => pin.inFrame)];
   const mode = spec.labels === 'auto' ? (points.length > 12 ? 'ids' : 'full') : spec.labels;
-  const occupied = points.map(pin => ({ x: pin.pixel[0] - 8, y: pin.pixel[1] - 8, w: 16, h: 16 }));
+  const occupied = [...reserved, ...points.map(pin => ({ x: pin.pixel[0] - 8, y: pin.pixel[1] - 8, w: 16, h: 16 }))];
   const placed = [];
   for (const pin of points) {
     const xyz = pin.at.map(n => Math.round(n * 100) / 100).join(',');
     const coordinates = pin.anchor === 'block' ? `[${xyz}]` : `(${xyz})`;
-    const full = `${pin.id}${pin.label ? ` ${pin.label}` : ''} ${coordinates}`;
-    const texts = mode === 'ids' ? [pin.id] : spec.labels === 'auto' ? [full, pin.id] : [full];
+    const full = `${displayId(pin.id)}${pin.label ? ` ${pin.label}` : ''} ${coordinates}`;
+    const texts = mode === 'ids' ? [displayId(pin.id)] : spec.labels === 'auto' ? [full, displayId(pin.id)] : [full];
     let found;
     for (const text of texts) {
       const w = measure(text) + 12, h = 23, [px, py] = pin.pixel;
@@ -157,6 +149,22 @@ export function overviewLabelLayout(spec, pins, player, measure) {
     if (found) { placed.push(found); occupied.push(found); }
   }
   return { mode, placed, shown:placed.length, hidden:points.length-placed.length };
+}
+
+/** Regions get first choice of labels; all point labels reserve these boxes. */
+export function overviewRegionLabels(spec, regions, measure) {
+  const placed=[];
+  for(const region of regions.filter(r=>r.inFrame)) {
+    const r=region.rect,text=`${displayId(region.id)}${region.label?' '+region.label:''}${region.clipped?' · 超出画面':''}`;
+    for(const candidate of [text,displayId(region.id)]) {
+      const w=measure(candidate)+12,h=23;
+      const x=Math.max(spec.grid?82:3,Math.min(spec.width-w-3,r.x+4));
+      const ys=[r.y-27,r.y+4,r.y+r.height-27,r.y+r.height+4];
+      const y=ys.map(v=>Math.max(64,Math.min(spec.height-35-h,v))).find(y=>!placed.some(b=>overlaps({x,y,w,h},b)));
+      if(x+w<=spec.width-3 && y!==undefined){placed.push({id:region.id,text:candidate,x,y,w,h});break;}
+    }
+  }
+  return placed;
 }
 
 export function annotateOverview(ctx, spec, project, coverage, pins, player, dimension, panelId = 'overview') {
@@ -205,26 +213,27 @@ export function annotateOverview(ctx, spec, project, coverage, pins, player, dim
     ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   ctx.save(); ctx.font = 'bold 15px "Segoe UI", "Microsoft YaHei", sans-serif';
-  const layout = overviewLabelLayout(spec, pins, player, text => ctx.measureText(text).width);
+  const regions = overviewRegions(spec), selected=spec.attention?.detail ?? 1;
+  const regionLabels=overviewRegionLabels(spec,regions,text=>ctx.measureText(text).width);
+  const layout = overviewLabelLayout(spec, pins, player, text => ctx.measureText(text).width,regionLabels);
   ctx.restore();
   for (const item of layout.placed) label(ctx, item.text, item.x, item.y, item.id === 'SELF' ? '#65f2e5' : '#ffe382');
-  const regions = overviewRegions(spec), selected=spec.attention?.detail ?? 1;
   for(const region of regions.filter(r=>r.inFrame)) {
     const r=region.rect,color=region.id===`A${selected}`?'#ffcc68':'#89d5ff';
     ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(r.x,r.y,r.width,r.height);
-    label(ctx,`${region.id}${region.label?' '+region.label:''}${region.clipped?' · clipped':''}`,r.x+4,Math.max(64,r.y-27),color);
   }
-  label(ctx, `${panelId === 'overview' ? 'N −Z ↑   E +X →' : panelId+' DETAIL · N −Z ↑'}${dimension && width>=600 ? `   ${dimension}` : ''}`, 8, 7);
-  if(width>=600) label(ctx, `${Math.round(spec.span*10)/10} blocks · grid ${grid || 'off'} · chunks ${coverage.meshed}/${coverage.total}`, width - 8, 7, '#fff', 'right');
-  label(ctx, width>=600 ? `[] cell centers · () exact · top surfaces only · hatch = unknown${layout.hidden ? ` · ${layout.hidden} labels hidden` : ''}`
-    : `grid ${grid || 'off'} · chunks ${coverage.meshed}/${coverage.total} · top surfaces`, 8, height - 29, '#f6ddb0');
+  for(const item of regionLabels)label(ctx,item.text,item.x,item.y,item.id===`A${selected}`?'#ffcc68':'#89d5ff');
+  const dim=({overworld:'主世界',the_nether:'下界',the_end:'末地'})[String(dimension??'').replace(/^minecraft:/,'')]??'自定义维度';
+  label(ctx,`${panelId==='overview'?'总览':displayId(panelId)+' 近景'} · 北 −Z ↑ / 东 +X →${width>=600?' · '+dim:''} · ${Math.round(spec.span*10)/10} 格`,8,7);
+  label(ctx,`网格 ${grid ? grid+' 格':'关闭'} · ${width>=600?'[]格心 / ()实坐标 · ':''}灰色未知 · 斜纹未更新${layout.hidden?' · 隐藏 '+layout.hidden+' 标签':''}`,8,height-29,'#f6ddb0');
   return { mode:layout.mode, shown:layout.shown, hidden:layout.hidden };
 }
 
 /** Render synchronously in a private capture page, then restore its camera and origin.
  * Use the renderer's full terrain pass: a bare THREE.render omits its custom chunk buffers.
  * No pointer, camera-control/socket command or new Minecraft connection is involved. */
-export function captureOverview(world, input, { position, dimension, width, height, document }) {
+export function captureOverview(world, input, { position, dimension, width, height, document, mask }) {
+  if(typeof mask!=='function')throw new Error('overview requires an observer visibility mask');
   if (!world?.renderer || !world.sceneOrigin || !world.cameraWorldPos || !world.render || !position) throw new Error('overview renderer unavailable');
   const spec = overviewSpec(input, position, width, height);
   const panels = overviewPanels(spec);
@@ -232,12 +241,18 @@ export function captureOverview(world, input, { position, dimension, width, heig
   const minY = world.worldSizeParams?.minY, maxY = minY + world.worldSizeParams?.worldHeight;
   const origin = world.sceneOrigin;
   const old = { camera: world.camera, pos: { ...world.cameraWorldPos }, origin: [origin.x, origin.y, origin.z],
-    fog: world.scene.fog, smartCull: world.reactiveDebugParams.smartCull, render: world.renderer.render };
+    fog: world.scene.fog, smartCull: world.reactiveDebugParams.smartCull, render: world.renderer.render,
+    entityRender:world.entities?.render,onRender:world.onRender };
+  const detached=[...Object.values(world.entities?.entities??{}),world.entities?.playerEntity]
+    .filter(object=>object?.parent).map(object=>({object,parent:object.parent,index:object.parent.children.indexOf(object)}));
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('overview canvas unavailable');
   let metadata, activeCamera;
   try {
+    for(const {object,parent} of detached)parent.remove(object);
+    if(world.entities)world.entities.render=()=>{};
+    world.onRender=[];
     world.reactiveDebugParams.smartCull = false;
     world.renderer.render = function(scene, camera) {
       if (camera === activeCamera) scene.fog = null;
@@ -259,30 +274,36 @@ export function captureOverview(world, input, { position, dimension, width, heig
       // only distance fog. Geometry still occludes normally; no roof cutaway.
       world.render();
       pane.drawImage(world.renderer.domElement, 0, 0, spec.width, spec.height);
+      const observed=mask({canvas:layer,spec,coverage});
+      if(!observed?.perception)throw new Error('overview visibility evidence unavailable');
+      pane.clearRect(0,0,spec.width,spec.height);pane.drawImage(observed.canvas,0,0);
       const regions=overviewRegions(spec);
-      if(spec.attention && panel.id==='overview')shadeAttention(pane,regions,document);
       const project = point => overviewProject(point, view.camera, origin, spec.width, spec.height);
       const pins = spec.markers.map((pin, i) => overviewMarker(pin, i, project));
       const playerAt = [position.x, position.y, position.z];
       const player = { id: 'SELF', at: playerAt, ...project(playerAt) };
-      const labels = annotateOverview(pane, spec, project, coverage, pins, player, dimension,panel.id);
+      const labels = annotateOverview(pane, spec, project, {...coverage,missing:[]}, pins, player, dimension,panel.id);
       ctx.drawImage(layer,panel.viewport.x,panel.viewport.y);
       const shift=point=>({...point,pixel:[point.pixel[0]+panel.viewport.x,point.pixel[1]+panel.viewport.y]});
       return {id:panel.id,viewport:panel.viewport,bounds:spec.bounds,grid:spec.grid,
         coverage: { meshed: coverage.meshed, total: coverage.total },
+        perception:observed.perception,
         player:shift(player),pins:pins.map(shift),labels,
         regions:regions.map(region=>({...region,rect:{...region.rect,x:region.rect.x+panel.viewport.x,y:region.rect.y+panel.viewport.y}}))};
     });
     const [main,detail]=captures;
     metadata = {schema:'mc-overview/v3',capturedAt:new Date().toISOString(),dimension:dimension??null,
       bounds:main.bounds,grid:main.grid,north:'-Z',right:'+X',width,height,viewport:main.viewport,
-      coverage:main.coverage,player:main.player,pins:main.pins,labels:main.labels,
+      coverage:main.coverage,perception:main.perception,player:main.player,pins:main.pins,labels:main.labels,
       ...(spec.attention?{attention:{source:'caller-selected',regions:main.regions,...(detail?{detail}:{})}}:{}),
-      source:'loaded-renderer-scene',layers:'top-visible-only'};
+      source:'eye-visible-and-visual-history',layers:'seen-top-surfaces-only'};
   } finally {
     world.renderer.render = old.render;
     world.camera = old.camera; Object.assign(world.cameraWorldPos, old.pos);
     origin.update(...old.origin); world.scene.fog = old.fog; world.reactiveDebugParams.smartCull = old.smartCull;
+    if(world.entities)world.entities.render=old.entityRender;
+    world.onRender=old.onRender;
+    for(const {object,parent,index} of detached){parent.add(object);parent.children.splice(parent.children.indexOf(object),1);parent.children.splice(index,0,object);}
     world.render();
   }
   return { png: canvas.toDataURL('image/png'), metadata };

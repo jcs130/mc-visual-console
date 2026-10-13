@@ -5,6 +5,7 @@ let cortiInventoryOpen = false;
 let cortiIdleInventoryOpen = false;
 let cortiIdleInventoryTimer = null;
 let cortiPanelMap = null;
+let cortiSceneMap = null;
 const cortiMapCells = new Map();
 let cortiMapDimension = '';
 let cortiMapSampleY = null;
@@ -38,6 +39,7 @@ function cortiResetViewerPanels(clearSubject = false) {
     cortiPanelAvatar = null; cortiPanelSkills = null;
     cortiPanelMap = null; cortiMapCells.clear();
     cortiMapDimension = ''; cortiMapSampleY = null;
+    cortiSceneMap?.reset();
     cortiDrawMinimap();
     cortiAbilityCooldowns.clear(); cortiAbilityCastSequences.clear();
     cortiRenderSkills();
@@ -173,6 +175,20 @@ function cortiInstallAbilityControls(root) {
 }
 
 function cortiInstallPanels(socket) {
+  if (typeof installSceneMinimap === 'function' && typeof isObsOverlay !== 'undefined' && !isObsOverlay && !isPhotoView) {
+    cortiSceneMap = installSceneMinimap({ document, window, root: document.getElementById('corti-minimap'),
+      getWorld: () => rendererReady ? globalThis.world : null,
+      getState: () => ({ entity: cortiPanelAvatar?.entity, connected: socket.connected,
+        dimension: npcWorldContext.dimension ?? cortiPanelMap?.dimension }),
+      getEntities: () => [...entityCache.values()], getRegistry: () => globalThis.mcData?.entitiesByName ?? {},
+      getSight: () => perceptionGrid,
+      visible: () => viewerLayout.visible('minimap'),
+    });
+    globalThis.__mcSceneMinimap = cortiSceneMap;
+    socket.on('worldSound', event => cortiSceneMap?.hear(event));
+    socket.on('worldSoundStop', () => cortiSceneMap?.clearHearing());
+    socket.on('perceptionFocus', event => cortiSceneMap?.setMode(event?.mode));
+  }
   if (!document.getElementById('corti-menu-layout-style')) {
     const style = document.createElement('style');
     style.id = 'corti-menu-layout-style';
@@ -254,11 +270,15 @@ function cortiInstallPanels(socket) {
   });
   socket.on('inventoryPreview', cortiInventoryPreview);
   for (const name of ['disconnect', 'viewerReset']) socket.on(name, () => {
+    if (typeof perceptionGrid !== 'undefined') perceptionGrid?.clear();
+    if (typeof overviewMemory !== 'undefined') overviewMemory.clear();
     cortiResetViewerPanels(true);
     cortiViewerSessionKey = null; cortiViewerSessionAt = 0;
   });
   window.addEventListener('pagehide', (event) => {
     cortiCancelInventoryPreview();
+    if (event.persisted) cortiSceneMap?.reset();
+    else cortiSceneMap?.dispose();
     if (event.persisted) cortiInventoryPlayerPreview?.reset();
     else cortiInventoryPlayerPreview?.dispose();
   });
@@ -753,8 +773,11 @@ function cortiRenderGenericContainer(parent, container) {
 }
 
 function cortiDrawMinimap() {
+  if (cortiSceneMap) { cortiSceneMap.draw(); return; }
   const canvas = document.querySelector('#corti-minimap canvas');
-  const data = cortiPanelMap;
+  // Overlay-only pages have no sight-tested geometry. The old received-chunk
+  // colour map must not become an omniscient fallback.
+  const data = null;
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -811,10 +834,10 @@ function cortiDrawMinimap() {
   ctx.textAlign = 'center';
   ctx.shadowColor = '#102029';
   ctx.shadowBlur = 4;
-  ctx.fillText('N', canvas.width / 2, 13);
+  ctx.fillText('北', canvas.width / 2, 13);
   ctx.shadowBlur = 0;
   const caption = document.querySelector('[data-map-caption]');
-  if (caption) caption.textContent = `${data.dimension.replace(/^minecraft:/, '')} · ${Math.floor(position?.x ?? data.centerX)}, ${Math.floor(position?.z ?? data.centerZ)} · N↑`;
+  if (caption) caption.textContent = `${dimensionLabel(data.dimension)} · ${Math.floor(position?.x ?? data.centerX)}, ${Math.floor(position?.z ?? data.centerZ)} · 简图`;
 }
 
 function cortiRenderMana() {

@@ -6,6 +6,8 @@ import {
 import { io } from "socket.io-client";
 import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { captureOverview } from "./overview-capture.js";
+import { installSceneMinimap, dimensionLabel } from "./scene-minimap.js";
+import { SightGrid, TerrainMemory } from "./perception-view.js";
 import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
 import { installObsLayout } from "./obs-layout.js";
@@ -460,6 +462,8 @@ let viewerEffectSystem = null;
 let fishingVisuals = null;
 let selfAvatarCameraVisibility = null;
 let rendererReady = false;
+let perceptionGrid = null;
+const overviewMemory = new TerrainMemory(document);
 let initializing = false;
 let selectedPlayerSkin = resolvePlayerSkin(DEFAULT_PLAYER_SKIN_ID);
 let playerSkinStatus = "waiting-for-renderer";
@@ -710,6 +714,8 @@ const stopConnectionStatus = installViewerConnectionStatus(socket, {
 });
 window.addEventListener("beforeunload", stopConnectionStatus, { once: true });
 socket.on("viewerReset", () => {
+  perceptionGrid?.clear();
+  overviewMemory.clear();
   resetObsHands();
   fishingCatchHud.reset();
   setTimeout(() => window.location.reload(), 250);
@@ -811,6 +817,7 @@ socket.on("loadChunk", (data) => {
   if (isObsOverlay) return;
   if (!data || !Number.isFinite(data.x) || !Number.isFinite(data.z)) return;
   const normalized = normalizeChunk(data);
+  perceptionGrid?.ingest(normalized);
   dungeonRoomCoverCache?.ingestColumn(data.x, data.z, normalized.chunk);
   if (rendererReady) {
     worldView.emit("loadChunk", normalized);
@@ -824,6 +831,7 @@ socket.on("unloadChunk", (data) => {
   if (isObsOverlay) return;
   if (!data || !Number.isFinite(data.x) || !Number.isFinite(data.z)) return;
   const key = `${data.x},${data.z}`;
+  perceptionGrid?.remove(data.x,data.z);
   dungeonRoomCoverCache?.removeColumn(data.x, data.z);
   if (rendererReady) {
     worldView.emit("unloadChunk", data);
@@ -837,6 +845,7 @@ socket.on("blockUpdate", (data) => {
   if (isObsOverlay) return;
   if (!data?.pos || !Number.isFinite(data.stateId)) return;
   const normalized = { ...data, pos: toVec3(data.pos) };
+  perceptionGrid?.update(normalized.pos,normalized.stateId);
   dungeonRoomCoverCache?.setBlockStateId(Math.floor(data.pos.x), Math.floor(data.pos.y), Math.floor(data.pos.z), data.stateId);
   if (rendererReady) {
     worldView.emit("blockUpdate", normalized);
@@ -871,6 +880,7 @@ socket.on("entityMoved", (update) => { if (!isObsOverlay) handleEntity(update, t
 
 async function initializeRenderer(version) {
   initializing = true;
+  if (!isObsOverlay) perceptionGrid = new SightGrid(version);
   if (usesWorldAvatar) {
     dungeonRoomCoverCache = new RoomCoverCache(version);
     dungeonFloorMask = new RoomFloorMask(dungeonRoomCoverCache);
@@ -993,6 +1003,7 @@ async function initializeRenderer(version) {
       return captureOverview(globalThis.world, options, {
         position: latestPosition?.pos, dimension: npcWorldContext.dimension,
         width: window.innerWidth, height: window.innerHeight, document,
+        mask: frame => overviewMemory.apply(frame,perceptionGrid,pendingAvatarState?.entity ?? latestPosition),
       });
     };
     viewerEffectSystem = new ViewerEffectSystem({

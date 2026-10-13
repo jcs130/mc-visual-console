@@ -71,7 +71,7 @@ test('dense labels remain disjoint and on-screen, with hidden-label counts and s
   assert.equal(layout.mode,'ids');assert.equal(layout.shown+layout.hidden,128);assert.ok(layout.shown>32);
   const rects=layout.placed;
   for(let i=0;i<rects.length;i++) {
-    const a=rects[i];assert.equal(a.text,a.id);assert.ok(a.x>=82&&a.x+a.w<=1277&&a.y>=64&&a.y+a.h<=685);
+    const a=rects[i];assert.equal(a.text,`点${a.id.slice(1)}`);assert.ok(a.x>=82&&a.x+a.w<=1277&&a.y>=64&&a.y+a.h<=685);
     for(const b of rects.slice(i+1)) assert.ok(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y);
   }
   const coincident=pins.map(pin=>({...pin,pixel:[400,400]}));
@@ -97,7 +97,7 @@ test('failed photograph restores camera, world coordinates, fog and culling; no 
   const world={camera:originalCamera, cameraWorldPos:{...pos}, sceneOrigin:o,scene:{fog},reactiveDebugParams:{smartCull:true},
     worldSizeParams:{minY:-64,worldHeight:384},finishedChunks:{'-32,-32':true},renderer:{domElement:{}},render(){}};
   const document={createElement:()=>({getContext:()=>({fillRect(){},drawImage(){throw new Error('readback failed');}})})};
-  assert.throws(()=>captureOverview(world,{}, {position:pos,width:1280,height:720,document}),/readback failed/);
+  assert.throws(()=>captureOverview(world,{}, {position:pos,width:1280,height:720,document,mask:f=>({...f,perception:{current:0}})}),/readback failed/);
   assert.equal(world.camera,originalCamera);assert.deepEqual(world.cameraWorldPos,pos);
   assert.deepEqual([o.x,o.y,o.z],[-16.5,65.62,-16.5]);assert.equal(world.scene.fog,fog);
   assert.equal(world.reactiveDebugParams.smartCull,true);
@@ -138,7 +138,7 @@ test('failure during the second render restores the original camera and render h
     worldSizeParams:{minY:-64,worldHeight:384},finishedChunks:{'0,0':true},renderer:{domElement:{},render},
     render(){if(++passes===2)throw Error('second panel failed');}};
   const document={createElement(){const canvas={width:0,height:0};canvas.getContext=()=>new Proxy({canvas,measureText:text=>({width:text.length*8})},{get:(obj,key)=>key in obj?obj[key]:(()=>{})});return canvas;}};
-  assert.throws(()=>captureOverview(world,{attention:{regions:[{bounds:[6,6,10,10]}]}},{position:pos,width:1280,height:720,document}),/second panel failed/);
+  assert.throws(()=>captureOverview(world,{attention:{regions:[{bounds:[6,6,10,10]}]}},{position:pos,width:1280,height:720,document,mask:f=>({...f,perception:{current:0}})}),/second panel failed/);
   assert.equal(world.camera,camera);assert.equal(world.renderer.render,render);assert.deepEqual(world.cameraWorldPos,pos);
   assert.deepEqual([o.x,o.y,o.z],[8,66,8]);assert.equal(world.scene.fog,fog);assert.equal(world.reactiveDebugParams.smartCull,true);assert.equal(passes,3);
 });
