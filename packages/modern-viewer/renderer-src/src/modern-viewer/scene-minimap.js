@@ -94,8 +94,10 @@ export class MinimapTerrain {
     const detached=[...Object.values(world.entities?.entities??{}),world.entities?.playerEntity].filter(object=>object?.parent).map(object=>({object,parent:object.parent,index:object.parent.children.indexOf(object)}));
     try {
       for(const {object,parent} of detached)parent.remove(object);
-      // Keep the floating scene origin unchanged. Changing it for every inset
-      // pass needlessly rebases the main world's shared geometry buffers.
+      // Terrain shaders already subtract cameraWorldPos, while ordinary scene
+      // objects follow sceneOrigin. Keep both on the inset camera's origin so
+      // its view matrix cannot translate the terrain a second time.
+      origin.update(spec.center[0],maxY+8,spec.center[1]);
       const view=overviewCamera(spec,origin,minY,maxY); camera=view.camera;
       if(spec.layer){camera.near=view.at[1]-spec.layer.maxY;camera.far=view.at[1]-spec.layer.minY;camera.updateProjectionMatrix();}
       world.camera=camera; Object.assign(world.cameraWorldPos,{x:view.at[0],y:view.at[1],z:view.at[2]});
