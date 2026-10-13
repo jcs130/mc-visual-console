@@ -1,5 +1,22 @@
 # Paper YSM: automatic original model assets
 
+## 2026-10-13: third-person look pitch
+
+The `same_connection_java_protocol` motion wire retains Java pitch degrees
+(positive down). Convert this once to YSM `ysm.head_pitch` (positive up) in
+`PaperYsmAnimation`; legacy Mineflayer radians are already positive up. Previously
+the wire value was used directly, inverting both the native Head look and authored
+hair/eye queries. The entity-fallback wire conversion remains unchanged.
+
+`tools/test/paper-ysm-look.test.mjs` checks actual world-space head directions from
+the host observer through live/stale motion and legacy input, for own/remote
+players, up/level/down, walking, swing overlays and repeated frames. Both tests
+fail before the fix; the 29-test related appearance suite passes after it. An
+additional local check of Cormy's original 272-bone model confirms the direction
+for standing and walking with a swing. These checks do not assert Java pixel or
+complete animation parity. Consumers must rebuild their browser assets; already
+open pages require a reload. No host protocol change or bot restart is needed.
+
 Production uses AgentAppearance0.3.1 as of 2026-10-12. The animation/held-item bundle extension0.3.2 and renderer changes below are a tested candidate, not a production or remote LAN deployment. This profile is Paper1.20.6 + Worker YSM2.4.1/protocol2.4.0; native1.21.1/YSM2.6.5 remains separate.
 
 ## Transport and identity

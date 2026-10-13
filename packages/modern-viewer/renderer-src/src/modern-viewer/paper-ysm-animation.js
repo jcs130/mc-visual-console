@@ -110,8 +110,12 @@ export class PaperYsmAnimation {
     const m=state.motion??state, speed=m.horizontalSpeed??0, pose=m.pose;
     let base=pose==='sleeping'?'sleep':pose==='dying'?'death':pose==='spin_attack'?'riptide':pose==='fall_flying'?'elytra_fly':
       pose==='swimming'?'swim':m.flying===true?'fly':m.onGround===false?'jump':m.crouching===true?(speed>.05?'sneak':'sneaking'):speed>.05?(m.sprinting===true?'run':'walk'):'idle';
+    // appearanceMotion stores Java pitch degrees (positive down). YSM's
+    // head_pitch query is positive up, as is legacy Mineflayer pitch in radians.
+    // Convert here once so authored hair/eye tracks and the Head look agree.
+    const headPitch=m.headPitchDegrees!==undefined?-m.headPitchDegrees:(state.pitch??0)*180/Math.PI;
     const queries={'query.life_time':(now-this.start)/1000,'query.ground_speed':speed,'query.is_jumping':Number(m.onGround===false),
-      'ysm.head_yaw':m.headYawDegrees??0,'ysm.head_pitch':m.headPitchDegrees??(state.pitch??0)*180/Math.PI,'ysm.is_close_eyes':0};
+      'ysm.head_yaw':m.headYawDegrees??0,'ysm.head_pitch':headPitch,'ysm.is_close_eyes':0};
     const equipment=m.equipment??state.equipment??[];
     queries['ysm.has_mainhand']=Number(!!equipment[0]);queries['ysm.has_offhand']=Number(!!equipment[1]);
     for(const [field,query]of [['health','query.health'],['maxHealth','query.max_health'],['verticalSpeed','query.vertical_speed']])if(Number.isFinite(m[field]))queries[query]=m[field];
