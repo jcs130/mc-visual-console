@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { installSelfAvatarCameraVisibility, inUpperCutawayRegion } from '../../src/modern-viewer/self-avatar-camera-visibility.js';
-import { createCutawayUniforms } from '../../src/modern-viewer/room-visibility.js';
+import { createCutawayUniforms, CUTAWAY_MATERIAL_VERSION } from '../../src/modern-viewer/room-visibility.js';
 
 function fixture() {
   const scene = new Scene();
@@ -40,6 +40,26 @@ function fixture() {
   world.scene = scene;
   return { world, camera, avatar, other, special };
 }
+
+test('cutaway never clones sky backgrounds or depth-independent overlays', () => {
+  const { world, camera } = fixture();
+  camera.position.set(0, 6, 8);
+  const sky = new Mesh(new BoxGeometry(), new MeshBasicMaterial({ depthTest: false }));
+  const overlay = new Mesh(new BoxGeometry(), new MeshBasicMaterial({ depthTest: false }));
+  const sign = new Mesh(new BoxGeometry(), new MeshBasicMaterial());
+  world.skyboxRenderer = { skyMesh: sky };
+  world.scene.add(sky, overlay, sign);
+  const materials = [sky.material, overlay.material, sign.material];
+  const controller = installSelfAvatarCameraVisibility(world, () => 7, {
+    getUpperCutawayY: () => 0, cutawayUniforms: createCutawayUniforms(),
+  });
+  world.entities.render();
+  assert.equal(sky.material, materials[0]);
+  assert.equal(overlay.material, materials[1]);
+  assert.notEqual(sign.material, materials[2]);
+  controller.dispose();
+  assert.equal(sign.material, materials[2]);
+});
 
 test('close third-person camera hides whole self hierarchy after renderer reset, without moving camera or walls', () => {
   const { world, camera, avatar, other, special } = fixture();
@@ -299,7 +319,7 @@ test('large decoration geometry uses fragment bounds even when its mesh origin l
   world.entities.render();
   const patched = roof.material;
   assert.notEqual(patched, material);
-  assert.equal(patched.userData.lanternVisibilityVersion, 5);
+  assert.equal(patched.userData.lanternVisibilityVersion, CUTAWAY_MATERIAL_VERSION);
   assert.equal(patched.clippingPlanes, null, 'only fragments within the live mask are removed');
   assert.equal(avatar.children[0].material.userData.lanternVisibilityVersion, undefined);
   world.entities.render();

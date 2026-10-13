@@ -7,7 +7,7 @@ export const APERTURE_WIDTH = 1.3;
 export const APERTURE_HEIGHT = 1.85;
 export const APERTURE_EDGE = 0.22;
 export const CEILING_SCAN_HEIGHT = 64;
-export const CUTAWAY_MATERIAL_VERSION = 5;
+export const CUTAWAY_MATERIAL_VERSION = 6;
 
 export function hasRoomCeiling(avatar, cache) {
   const x = Math.floor(avatar.x), y = Math.floor(avatar.y), z = Math.floor(avatar.z);
@@ -116,6 +116,20 @@ function floorCoverage(point, target, radius, floorMask) {
   return 1 - smoothstep(radius - ROOM_EDGE, radius, Math.hypot(point.x - target.x, point.z - target.z));
 }
 
+// A stepped exterior floor may not extend to the projection of a foreground
+// wall. Open a bounded, floor-safe sight corridor in that case; do not rely on
+// a tiny screen-space circle or cut anything behind the observed actor.
+function foregroundCorridor(point, camera, target, floorMask) {
+  if (!floorMask?.contains(target)) return 0;
+  const dx = target.x - camera.x, dz = target.z - camera.z;
+  const lengthSq = dx * dx + dz * dz;
+  if (lengthSq < 0.01) return 0;
+  const px = point.x - camera.x, pz = point.z - camera.z;
+  const along = (px * dx + pz * dz) / lengthSq;
+  if (along < 0 || along > 0.95) return 0;
+  return 1 - smoothstep(1.35, 1.65, Math.abs(px * dz - pz * dx) / Math.sqrt(lengthSq));
+}
+
 // A wall may stand outside the walkable footprint yet hide the floor behind
 // it. Intersect that pixel's camera ray with the connected floor, correcting
 // its height for steps. Bounded iteration rejects ambiguous multi-level rays.
@@ -142,9 +156,10 @@ export function cutawayMask(point, { camera, target, right, up, forward, footY, 
   if (!floorMask || point.y <= footY) return 0;
   const localFloorY = floorMask?.floorYAt?.(point);
   if (localFloorY != null && point.y <= localFloorY + 0.05) return 0;
-  if (floorMask.isOpen?.(point) && point.y <= localFloorY + 1.95) return 0;
-  let mask = covered && point.y > (localFloorY == null ? cutoffY : localFloorY + 1.95)
-    ? floorCoverage(point, target, roomRadius, floorMask) : 0;
+  const corridor = foregroundCorridor(point, camera, target, floorMask);
+  if (corridor <= 0 && floorMask.isOpen?.(point) && point.y <= localFloorY + 1.95) return 0;
+  let mask = Math.max(corridor, covered && point.y > (localFloorY == null ? cutoffY : localFloorY + 1.95)
+    ? floorCoverage(point, target, roomRadius, floorMask) : 0);
   const floor = projectedRoomFloor(point, camera, footY, floorMask);
   if (floor) mask = Math.max(mask, floorCoverage(floor, target, roomRadius, floorMask));
   return mask;
@@ -188,10 +203,20 @@ void lanternApplyCutaway() {
     if (!gl_FrontFacing) faceNormal = -faceNormal;
     vec3 localFloor = lanternFloorAt(point.xz - faceNormal.xz * 0.01);
     if (u_lanternRoomMaskEnabled > 0.5 && localFloor.x > 0.0 && point.y <= localFloor.y + 0.05) return;
+    vec2 direction = u_lanternCutawayTarget.xz - u_lanternCutawayCamera.xz;
+    vec2 offset = point.xz - u_lanternCutawayCamera.xz;
+    float lengthSq = dot(direction, direction);
+    if (lengthSq > 0.01 && lanternFloorAt(u_lanternCutawayTarget.xz).x > 0.0) {
+      float along = dot(offset, direction) / lengthSq;
+      if (along >= 0.0 && along <= 0.95) {
+        float lateral = abs(offset.x * direction.y - offset.y * direction.x) / sqrt(lengthSq);
+        mask = 1.0 - smoothstep(1.35, 1.65, lateral);
+      }
+    }
     // Keep furniture and surface details inside the open room. Only a wall
     // boundary or geometry above that room can occlude its floor.
-    if (localFloor.x > 0.0 && localFloor.z > 0.5 && point.y <= localFloor.y + 1.95) return;
-    if (u_lanternCutawayEnabled < 2.5 && point.y > localFloor.y + 1.95) mask = localFloor.x;
+    if (mask <= 0.0 && localFloor.x > 0.0 && localFloor.z > 0.5 && point.y <= localFloor.y + 1.95) return;
+    if (u_lanternCutawayEnabled < 2.5 && point.y > localFloor.y + 1.95) mask = max(mask, localFloor.x);
     if (u_lanternRoomMaskEnabled > 0.5 && u_lanternCutawayCamera.y > u_lanternFootY && point.y < u_lanternCutawayCamera.y - 0.001) {
       vec3 ray = point - u_lanternCutawayCamera;
       float floorY = u_lanternFootY;

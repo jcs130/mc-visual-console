@@ -72,8 +72,10 @@ import {
 import { normalizeMotionFrame } from "./avatar-motion.js";
 import { rendererEntityEquipment } from "./renderer-equipment.js";
 import { CUTAWAY_MATERIAL_VERSION, hasRoomCeiling, hasDeepRoof, roomCutoffWorldY, roomOcclusionMode, createCutawayUniforms, patchCutawayMaterial, advanceReveal, roomRevealRadius, setRoomFloorMask } from "./room-visibility.js";
+import { installObserverSectionCulling } from "./observer-section-culling.js";
 import { RoomCoverCache } from "./room-cover-cache.js";
 import { RoomFloorMask } from "./room-floor-mask.js";
+import { createRoomCutawayCap } from "./room-cutaway-cap.js";
 import { installDungeonObserverControls } from "./dungeon-observer-controls.js";
 import { installSelfAvatarCameraVisibility } from "./self-avatar-camera-visibility.js";
 import { installEntityRenderBounds } from "./entity-render-bounds.js";
@@ -577,6 +579,8 @@ let dungeonOcclusionState = { active: false, clearSamples: 0 };
 let dungeonRoofState = { active: false, clearSamples: 0 };
 let dungeonRoomCoverCache = null;
 let dungeonFloorMask = null;
+let observerSectionCulling = null;
+let roomCutawayCap = null;
 let dungeonCutawayApplied = false;
 let dungeonCutawayMaterialScanCursor = 0;
 let dungeonOcclusionDiagnostics = {
@@ -2399,6 +2403,8 @@ function runDungeonOcclusionCheck() {
   } else {
     restoreDungeonCutaway();
   }
+  roomCutawayCap ??= createRoomCutawayCap(world, () => dungeonRoomCoverCache);
+  roomCutawayCap.update(dungeonUpperCutawayRegion, dungeonCutawayApplied);
   if (!wasActive && dungeonOcclusionState.active) viewerPerformanceCounters.cutawayActivations += 1;
   if (wasActive && !dungeonOcclusionState.active) viewerPerformanceCounters.cutawayRestores += 1;
 
@@ -2428,6 +2434,7 @@ function runDungeonOcclusionCheck() {
     roomRadius: dungeonVisibilityUniforms.u_lanternRoomRadius.value,
     coverCache: dungeonRoomCoverCache?.diagnostics ?? null,
     floorMask: dungeonFloorMask?.diagnostics ?? null,
+    solidCutSurface: roomCutawayCap?.diagnostics ?? null,
     applied: dungeonCutawayApplied,
     checks: dungeonOcclusionDiagnostics.checks + 1,
     samples: dungeonOcclusionDiagnostics.samples + trace.samples,
@@ -2521,6 +2528,7 @@ function applyDungeonCutaway({ targetWorld, cameraWorld, hardCutaway, coveredRoo
 function restoreDungeonCutaway() {
   dungeonRevealTarget = false;
   dungeonCutawayApplied = false;
+  roomCutawayCap?.hide();
 }
 
 function updateDungeonVisibilityFrame() {
@@ -2529,6 +2537,7 @@ function updateDungeonVisibilityFrame() {
   const camera = world?.camera;
   const origin = world?.sceneOrigin;
   if (!camera || !origin || !latestPosition) return;
+  roomCutawayCap?.updateOrigin();
   const now = performance.now();
   const elapsed = dungeonRevealLastFrameAt === null ? 16 : now - dungeonRevealLastFrameAt;
   dungeonRevealLastFrameAt = now;
@@ -5781,10 +5790,17 @@ function applyRendererQuality(quality) {
 
 function refreshSceneQuality(quality) {
   const world = globalThis.world;
+  if (usesWorldAvatar && !observerSectionCulling && world?.chunkMeshManager) {
+    observerSectionCulling = installObserverSectionCulling(world.chunkMeshManager, () => {
+      const region = dungeonUpperCutawayRegion;
+      return region?.roomMask?.contains(region.center) && dungeonVisibilityUniforms.u_lanternReveal.value > 0
+        ? { ...region.center, y: region.center.y + 1 } : null;
+    });
+  }
   const p = world?.cameraWorldPos, height = world?.getSectionHeight?.() ?? 16;
   const section = p ? `${Math.floor(p.x / 16) * 16},${Math.floor(p.y / height) * height},${Math.floor(p.z / 16) * 16}` : '';
   activeScenePolicy = resolveSceneQuality(sceneSettings, { mode: quality?.mode, view: viewMode,
-    gameMode: pendingAvatarState?.gameMode, overlay: isObsOverlay,
+    gameMode: pendingAvatarState?.gameMode, overlay: isObsOverlay, observerCullReady: !!observerSectionCulling,
     sectionReady: world?.chunkMeshManager?.sectionOcclusionCull?.hasRegisteredSection(section) === true });
   activeScenePolicy.anisotropy = Math.min(activeScenePolicy.anisotropy, Math.max(1, world?.renderer?.capabilities?.getMaxAnisotropy?.() ?? 1));
   if (world?.playerStateReactive && ['survival', 'adventure', 'creative', 'spectator'].includes(pendingAvatarState?.gameMode)) {
@@ -5866,6 +5882,10 @@ function installVisibilityHandling() {
     fishingVisuals = null;
     selfAvatarCameraVisibility?.dispose();
     selfAvatarCameraVisibility = null;
+    roomCutawayCap?.dispose();
+    roomCutawayCap = null;
+    observerSectionCulling?.dispose();
+    observerSectionCulling = null;
     pendingViewerEffects.length = 0;
     disposeAllPaintingEntities();
     removeSelectedPlayerModel({ restoreNative: false, restoreRig: false });

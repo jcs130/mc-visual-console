@@ -1,5 +1,6 @@
 import Chunks from "prismarine-chunk";
 import MinecraftData from "minecraft-data";
+import Blocks from "prismarine-block";
 
 const columnKey = (x, z) => `${Math.floor(x / 16) * 16},${Math.floor(z / 16) * 16}`;
 const local = value => ((value % 16) + 16) % 16;
@@ -10,6 +11,7 @@ export class RoomCoverCache {
   constructor(version) {
     this.Section = Chunks(version).section;
     const data = MinecraftData(version);
+    this.Block = Blocks(version);
     this.coverStates = new Uint8Array(Math.max(...Object.keys(data.blocksByStateId).map(Number)) + 1);
     this.opaqueStates = new Uint8Array(this.coverStates.length);
     for (const [stateId, block] of Object.entries(data.blocksByStateId)) {
@@ -51,6 +53,11 @@ export class RoomCoverCache {
   isOpaqueFullBlock(x, y, z) {
     const section = this.sectionAt(x, y, z);
     return !!section && this.opaqueStates[section.get({ x: local(x), y: local(y), z: local(z) })] === 1;
+  }
+
+  blockAt(x, y, z) {
+    const section = this.sectionAt(x, y, z);
+    return section ? this.Block.fromStateId(section.get({ x: local(x), y: local(y), z: local(z) }), 0) : null;
   }
 
   setBlockStateId(x, y, z, stateId) {

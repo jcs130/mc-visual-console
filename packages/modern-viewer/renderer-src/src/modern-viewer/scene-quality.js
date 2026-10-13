@@ -14,13 +14,12 @@ export function loadSceneSettings(storage, overrides = {}) {
   for (const key of ['quality', 'style', 'avatarSampling']) if (overrides[key] != null) settings[key] = overrides[key];
   return normalizeSceneSettings(settings);
 }
-export function resolveSceneQuality(settings, { mode = 'balanced', view = 'first', gameMode = null, overlay = false, sectionReady = false } = {}) {
+export function resolveSceneQuality(settings, { mode = 'balanced', view = 'first', gameMode = null, overlay = false, sectionReady = false, observerCullReady = false } = {}) {
   const s = normalizeSceneSettings(settings);
   const tier = choice(mode, ['high', 'balanced', 'performance'], 'balanced');
-  // Occlusion BFS starts at the player's eye, not an offset observer camera.
-  // Spectators can be inside solids; cutaway views must retain the hidden room.
-  const reason = overlay ? 'overlay' : !s.occlusion ? 'disabled' : view !== 'first' ? 'observer'
-    : !['survival', 'adventure'].includes(gameMode) ? (gameMode === 'spectator' ? 'spectator' : 'unconfirmed-mode')
+  // Observer views need the camera + revealed-room seed adapter before culling.
+  const reason = overlay ? 'overlay' : !s.occlusion ? 'disabled' : view !== 'first' && !observerCullReady ? 'observer'
+    : view === 'first' && !['survival', 'adventure'].includes(gameMode) ? (gameMode === 'spectator' ? 'spectator' : 'unconfirmed-mode')
     : !sectionReady ? 'loading-section' : null;
   return { mode: tier, style: s.style,
     smartCull: reason === null, cullingReason: reason,

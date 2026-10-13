@@ -180,6 +180,7 @@ test('render-time mask follows interpolated entity and camera between network up
   const uniforms = createCutawayUniforms(); uniforms.u_lanternCutawayEnabled.value = 2;
   const root = { getWorldPosition: out => out.set(2.5, 0.25, 3.5) };
   const context = { performance, rendererReady: true, usesWorldAvatar: true, isDungeonView: true, dungeonRevealLastFrameAt: null,
+    roomCutawayCap: null,
     dungeonRevealTarget: true, dungeonVisibilityUniforms: uniforms, latestPosition: { pos: point(0, 64, 0) },
     dungeonOcclusionTargetScene: new Vector3(), focusedCharacterId: null, pendingAvatarState: { entity: { id: 7 } },
     observerOffset: new Vec3(0, 0, 0), dungeonFloorMask: null, advanceReveal, roomRevealRadius, roomCutoffWorldY: (y) => Math.floor(y) + 1.95,
@@ -215,6 +216,17 @@ test('returning to an unchanged cave floor re-enables its cached mask after a cl
   assert.equal(uniforms.u_lanternRoomMaskEnabled.value,1,'third-person also uses the supported floor');
   apply(args);
   assert.equal(uniforms.u_lanternRoomMaskEnabled.value,1,'reused floor bytes are uploaded again after leaving the cave');
+});
+
+test('a foreground tree at a stepped exterior opens without cutting the floor or distant scenery', () => {
+  const settings = { camera: new Vector3(0,72,8), target: new Vector3(0,65,0), footY:64.05,
+    cutoffY:64.05, covered:false, roomRadius:6,
+    floorMask:{contains:p=>Math.abs(p.x)<2&&Math.abs(p.z)<1,floorYAt:p=>Math.abs(p.z)<1?64:null} };
+  assert.equal(cutawayMask(new Vector3(0,71,4),settings),1);
+  assert.equal(cutawayMask(new Vector3(0,63,4),settings),0);
+  assert.equal(cutawayMask(new Vector3(0,71,-4),settings),0);
+  assert.equal(cutawayMask(new Vector3(8,71,4),settings),0);
+  assert.equal(cutawayMask(new Vector3(0,71,4),{...settings,floorMask:{contains:()=>false}}),0);
 });
 
 test('cutaways never remove underground terrain or assume an unknown floor', () => {

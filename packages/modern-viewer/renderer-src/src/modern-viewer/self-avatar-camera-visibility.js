@@ -78,7 +78,12 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
     if (entities.playerEntity) entityRoots.add(entities.playerEntity);
     const active = new Set();
     const visit = node => {
-      if (entityRoots.has(node)) return;
+      if (entityRoots.has(node) || node.userData?.lanternCutawayCap) return;
+      // Background planes draw without depth testing. Cloning their material
+      // changes opaque-sort order and can paint the sky over terrain/actors.
+      // They are not room geometry and must never receive a cutaway shader.
+      const sky = world.skyboxRenderer;
+      if (node === sky?.mesh || node === sky?.skyMesh || node === sky?.voidMesh) return;
       if (node.isMesh && (cutawayUniforms || inUpperCutawayRegion(worldPosition(node), region))) {
         const record = clippedObjects.get(node);
         if (record && node.material !== record.applied) {
@@ -86,12 +91,12 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
           clippedObjects.delete(node);
         }
         const materials = Array.isArray(node.material) ? node.material : [node.material];
-        if (clippedObjects.has(node) || materials.some(material => material && !material.isShaderMaterial && material.userData?.lanternVisibilityVersion !== CUTAWAY_MATERIAL_VERSION)) {
+        if (clippedObjects.has(node) || materials.some(material => material && material.depthTest !== false && !material.isShaderMaterial && material.userData?.lanternVisibilityVersion !== CUTAWAY_MATERIAL_VERSION)) {
           active.add(node);
           if (!clippedObjects.has(node)) {
             const original = node.material;
             const clones = materials.map(material => {
-              if (!material || material.isShaderMaterial || material.userData?.lanternVisibilityVersion === CUTAWAY_MATERIAL_VERSION) return material;
+              if (!material || material.depthTest === false || material.isShaderMaterial || material.userData?.lanternVisibilityVersion === CUTAWAY_MATERIAL_VERSION) return material;
               const clone = material.clone();
               if (cutawayUniforms) {
                 clone.onBeforeCompile = material.onBeforeCompile;

@@ -253,7 +253,12 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getE
         root.dataset.mapCaptureMs=(captured-start).toFixed(1);
         const job=generation,observer={...self,pos:{...pos},position:{...pos}};
         pending=Promise.resolve(capture).then(image=>memory.applyBudgeted(image,pinned,observer,{
-          yieldFrame:()=>new Promise(resolve=>window.requestAnimationFrame(resolve)),
+          // Visibility/history work may lag behind the live 3D view. Do not
+          // spend three milliseconds inside every animation-frame callback.
+          budgetMs:1,
+          yieldFrame:()=>new Promise(resolve=>window.requestIdleCallback
+            ?window.requestIdleCallback(resolve,{timeout:100})
+            :window.setTimeout(resolve,0)),
           valid:()=>!disposed&&job===generation
         })).then(masked=>{
           if(!masked||disposed||job!==generation)return;
