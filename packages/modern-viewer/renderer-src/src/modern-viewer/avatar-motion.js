@@ -24,6 +24,7 @@ const LOCOMOTION_STATES = Object.freeze([
   "swim",
   "fly",
   "ride",
+  "downed",
 ]);
 const MOVING_STATES = new Set(["walk", "run", "crouchWalk", "swim", "fly"]);
 
@@ -142,6 +143,8 @@ export function normalizeMotionFrame(raw, previous, receivedAt = Date.now()) {
     sneaking: booleanValue(source.sneaking, source.crouching, entity.sneaking, entity.crouching, prior?.sneaking, false),
     sprinting: booleanValue(source.sprinting, entity.sprinting, prior?.sprinting, false),
     usingHeldItem: booleanValue(source.usingHeldItem, entity.usingHeldItem, prior?.usingHeldItem, false),
+    bodyState: (source.bodyState ?? entity.bodyState)?.source === 'server'
+      ? (source.bodyState ?? entity.bodyState) : prior?.bodyState,
 
     // Derived fields are intentionally public diagnostics.  Consumers may
     // ignore them, but keeping them on the immutable-ish frame makes tests and
@@ -307,6 +310,7 @@ export class AvatarMotionGraph {
   }
 
   classify(frame, landed) {
+    if (frame.bodyState?.canAct === false) return frame.bodyState.pose === 'downed' ? 'downed' : 'idle';
     if (frame.riding) return "ride";
     if (frame.elytraFlying) return "fly";
     if (frame.inWater || frame.inLava) return "swim";
@@ -399,7 +403,11 @@ export class PoseDrivenPlayerAnimation {
   }
 
   setMotion(raw, receivedAt = this.currentExternalTime()) {
-    return this.graph.setMotion(raw, receivedAt);
+    const frame = this.graph.setMotion(raw, receivedAt);
+    if (this.graph.frame?.bodyState?.canAct === false) {
+      this.upperAction = null; this.hurtAction = null; this.upperQueue.length = 0;
+    }
+    return frame;
   }
 
   /**
@@ -419,6 +427,7 @@ export class PoseDrivenPlayerAnimation {
    * @param {{ hand?: string, nonce?: string | number, durationMs?: number, at?: number }} [options]
    */
   trigger(action, options = {}) {
+    if (this.graph.frame?.bodyState?.canAct === false) return false;
     this.syncClock();
     this.expireActions();
     const source = typeof action === "object" && action ? action : options;
@@ -479,14 +488,17 @@ export class PoseDrivenPlayerAnimation {
     this.ensureDefaults(player);
     if (!this.defaults) return this.getDiagnostics();
     restorePlayer(player, this.defaults);
+    const restricted = motion.frame?.bodyState?.canAct === false;
+    if (restricted || this.wasRestricted) this.stateWeights.clear();
+    this.wasRestricted = restricted;
+    player._cortiDownedOffset = motion.state === 'downed' ? .72 : 0;
     this.updateStateWeights(motion.state, delta);
 
     const pose = createPose();
     for (const [state, weight] of this.stateWeights) {
       if (weight > 1e-4) applyLocomotionPose(pose, state, weight, motion, this.progress);
     }
-    applyLookPose(pose, motion);
-    this.applyActionOverlays(pose, motion);
+    if (!restricted) { applyLookPose(pose, motion); this.applyActionOverlays(pose, motion); }
     applyPose(player, this.defaults, pose);
     return this.getDiagnostics();
   }
@@ -593,6 +605,11 @@ export class PoseDrivenPlayerAnimation {
 }
 
 function applyLocomotionPose(pose, state, weight, motion, time) {
+  if (state === 'downed') {
+    addRotation(pose, 'root', Math.PI / 2, 0, 0, weight);
+    addPosition(pose, 'root', 0, -.72, 0, weight);
+    return;
+  }
   const gait = motion.gaitPhase;
   const stride = Math.sin(gait);
   const lift = Math.abs(Math.sin(gait));
@@ -902,6 +919,7 @@ function motionSampleIdentity(raw, frame) {
     frame.sneaking,
     frame.sprinting,
     frame.usingHeldItem,
+    frame.bodyState?.pose, frame.bodyState?.canAct,
   ])}`;
 }
 

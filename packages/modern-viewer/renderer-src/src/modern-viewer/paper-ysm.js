@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {batchYsmBones} from './ysm-bone-batch.js';
+import {batchStaticYsmBones} from './ysm-bone-batch.js';
 import {createNativeBedrockModel} from '../native-viewer/native-entity-model-bedrock.js';
 import {PaperYsmAnimation} from './paper-ysm-animation.js';
 import {PaperYsmHeldItems} from './paper-ysm-items.js';
@@ -32,15 +32,16 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
     material=new THREE.MeshLambertMaterial({map:texture,side:THREE.DoubleSide,alphaTest:.1});
     model=createNativeBedrockModel(geometry,material,{maxBones:512,maxCubesPerBone:256,maxCubes:2048,allowNegativeSizes:true});
     if(model.cubeCount>2048)throw Error('YSM_GEOMETRY_BUDGET');
-    batch=batchYsmBones(model,material);
+    const extra=kind=>{const path=bundle.animations?.[kind]??definition.files?.player?.animation?.[kind];return path&&bundle.files[path]?json(bundle,path):null;};
+    const arm=extra('arm'),extraAnimation=extra('extra');
+    batch=batchStaticYsmBones(model,material,[animation,arm,extraAnimation]);
     const root=new THREE.Group(),orientation=new THREE.Group(),content=new THREE.Group();
     root.name='paper-ysm-player';
     root.add(orientation);orientation.add(content);orientation.scale.set(-1,-1,1);orientation.position.y=Math.fround(.01);content.position.y=-1.5;content.add(model.root);
     // YSM2.4.1's documented omitted-property default is .7, not one.
     const width=definition.properties?.width_scale??.7,height=definition.properties?.height_scale??.7;
     if(![width,height].every(n=>Number.isFinite(n)&&n>0&&n<=4))throw Error('YSM_SCALE_UNSUPPORTED');root.scale.set(width,height,width);
-    const extra=kind=>{const path=bundle.animations?.[kind]??definition.files?.player?.animation?.[kind];return path&&bundle.files[path]?json(bundle,path):null;};
-    const animationController=new PaperYsmAnimation(model,animation,{arm:extra('arm'),extra:extra('extra'),controllers:definition.files?.player?.animation_controllers??[]});
+    const animationController=new PaperYsmAnimation(model,animation,{arm,extra:extraAnimation,controllers:definition.files?.player?.animation_controllers??[]});
     const held=new PaperYsmHeldItems(model,itemModels);
     let presentationSignature = '';
     const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3());
@@ -61,6 +62,9 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
       },
       animate(state,now) {
         this.animationState=animationController.apply(state,now);this.animationReason=this.animationState.errors[0]??null;
+        const downed=state.motion?.bodyState?.pose==='downed' && state.motion.bodyState.canAct===false;
+        // A presentation pose only: no collision, server position or inventory changes.
+        root.rotation.x=downed?Math.PI/2:0;root.position.y=downed ? .28 : 0;
         this.animationIssues??=new Set();for(const reason of this.animationState.errors)if(this.animationIssues.size<16)this.animationIssues.add(reason);
         held.apply(state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
       },
@@ -129,6 +133,10 @@ export class PaperYsmPlayers {
     const entity=row?.entity,uuid=entity?.uuid?.toLowerCase(),binding=this.states.get(uuid);
     if(!binding || binding.entityId!==entity.id || this.entity(entity.id)?.uuid?.toLowerCase()!==uuid)return;
     const local=this.fallback.get(uuid)??{};
+    if(entity.bodyState?.source==='server' && typeof entity.bodyState.canAct==='boolean') {
+      if(local.bodyState?.canAct!==entity.bodyState.canAct) {delete local.swing;this.motions.delete(uuid);}
+      local.bodyState={...entity.bodyState,epoch:binding.epoch,entityId:entity.id};
+    }
     local.body={at:now,epoch:binding.epoch,entityId:entity.id,
       ...(typeof row.inWater==='boolean'?{inWater:row.inWater}:{}),
       ...(typeof row.onGround==='boolean'?{onGround:row.onGround}:{})};
@@ -142,6 +150,7 @@ export class PaperYsmPlayers {
   action(event,now=performance.now()) {
     if(!event || event.animation!=='oneSwing')return;
     for(const [uuid,row]of this.states)if(String(row.entityId)===String(event.id)) {
+      if(this.fallback.get(uuid)?.bodyState?.canAct===false)return;
       const prior=this.fallback.get(uuid)??{};prior.swing={hand:event.hand==='left'?'offhand':'mainhand',sequence:++this.sequence,at:now};this.fallback.set(uuid,prior);
     }
   }
@@ -168,6 +177,11 @@ export class PaperYsmPlayers {
     if(latest?.row.hurt)motion.hurt={...latest.row.hurt,ageSeconds:latest.row.hurt.ageSeconds+(now-latest.at)/1000};
     // Legacy host action events cover the owner's locally initiated swing.
     if(local.swing && (!motion.swing || motion.swing.ageSeconds>2))motion.swing={...local.swing,ageSeconds:(now-local.swing.at)/1000};
+    // Unlike a velocity sample, an authoritative restriction must not time out.
+    if(local.bodyState && local.bodyState.entityId===entity.id && local.bodyState.epoch===this.states.get(uuid)?.epoch) {
+      motion.bodyState=local.bodyState;
+      if(!local.bodyState.canAct){motion.horizontalSpeed=0;motion.usingItem=false;delete motion.swing;delete motion.hurt;}
+    }
     return motion;
   }
   restore(actor){actor.actor.dispose();for(const [child,visible]of actor.hidden)child.visible=visible;actor.rendered.traverse(part=>{const position=this.nametags.get(part);if(position){part.position.copy(position);this.nametags.delete(part);}});}

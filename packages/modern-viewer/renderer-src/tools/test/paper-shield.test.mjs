@@ -24,8 +24,21 @@ test('original shield plate, handle, UV atlas and special-renderer transform rea
   const front=native.getObjectByName('plate').children.find(m=>m.userData.nativeFace==='north');
   assert.deepEqual(Array.from(front.geometry.attributes.uv.array),[13/64,63/64,1/64,63/64,1/64,41/64,13/64,41/64]);
   const expected=paperYsmItemMount(models['item/shield'].display['thirdperson_'+arm+'hand'],arm)
-   .multiply(new THREE.Matrix4().makeTranslation(-.5,-.5,-.5)).multiply(new THREE.Matrix4().makeScale(1,-1,-1));
+   .multiply(new THREE.Matrix4().makeTranslation(-.5,-.5,-.5)).multiply(new THREE.Matrix4().makeScale(1,-1,-1))
+   .multiply(new THREE.Matrix4().makeTranslation(0,0,4/16)).multiply(new THREE.Matrix4().makeRotationY(Math.PI));
   assert.ok(item.root.matrix.elements.every((v,i)=>Math.abs(v-expected.elements[i])<1e-8));
+  // Physical invariant in the actual YSM actor basis (X/Y inverted): plate
+  // outside the palm, handle inside, in BOTH hands and at any player yaw.
+  const actorBasis=new THREE.Matrix4().makeScale(-1,-1,1);
+  const shieldMatrix=actorBasis.clone().multiply(item.root.matrix);
+  const plate=new THREE.Vector3(0,0,-1.5/16).applyMatrix4(shieldMatrix);
+  const grip=new THREE.Vector3(0,0,2/16).applyMatrix4(shieldMatrix);
+  assert.ok(Math.abs(grip.x)<1e-6,'turning the shield must not move its grip off the palm');
+  for(const yaw of [0,Math.PI/2,Math.PI,-Math.PI/2]){
+   const outward=new THREE.Vector3(arm==='left'?-1:1,0,0).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+   const towardPlate=plate.clone().sub(grip).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+   assert.ok(towardPlate.dot(outward)>.2,'the plate must face away from the body, not the handle');
+  }
   item.dispose();item.dispose();assert.equal(disposals,1);
  }
 });

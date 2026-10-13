@@ -598,3 +598,13 @@ test('foreground iframe messages require current frame and matching origin, expi
   view.api.setForegroundAudio({ speech: false, music: true }); await view.advance(3500); assert.equal(musicGain(view), 0);
   view.close(); assert.equal(view.window.handlers.get('message').length, 0); await view.advance(10000);
 });
+
+test('audio diagnostics distinguish absent custom events, intentional silence and actual playback',async()=>{
+ const manifest=sampleManifest();manifest.events['pack:custom/event']=[variant('custom/event')];
+ const v=fixture({manifest});await v.ready();await v.unlock();
+ assert.equal(await v.api.play({name:'pack:custom/event',category:'players'}),true);
+ assert.equal(await v.api.play({name:'pack:missing',category:'hostile'}),false);
+ assert.equal(await v.api.play({name:'music.nether.warped_forest',category:'music'}),false);
+ const e=v.api.state().evidence;assert.equal(e.started,1);assert.equal(e.missing,1);assert.equal(e.failed,0);
+ assert.equal(e.byCategory.players,1);assert.equal(e.missingEvents[0].name,'pack:missing');v.close();
+});

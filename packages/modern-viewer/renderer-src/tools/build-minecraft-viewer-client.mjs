@@ -1,3 +1,4 @@
+import {patchRendererMovement} from './minecraft-viewer-movement-patch.mjs';
 /** Build the portable modern viewer source against Minecraft 1.20.6 data. */
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -335,7 +336,7 @@ const buildResult = await build({
           .replace(itemFallbackAnchor, 'let l=a=>a?.top??a;')
           .replace(itemUnknownAnchor,
             'return o??(o=l(e.currentResources.itemsRenderer.getItemTexture("unknown"))),o??={type:"gui",slice:[0,0,16,16]},"type"in o?')))
-        return { contents: patchObsRendererAlpha(patchRendererPlayerSkin(patchRendererEntityDamage(patchRendererEntityVisibility(corrected)))), loader: 'js', resolveDir: path.dirname(file) }
+        return { contents: patchObsRendererAlpha(patchRendererPlayerSkin(patchRendererEntityDamage(patchRendererEntityVisibility(patchRendererMovement(corrected))))), loader: 'js', resolveDir: path.dirname(file) }
       })
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]painting-variants\.js$/ }, () => ({ contents: changedPaintings, loader: 'js', resolveDir: path.dirname(paintingFile) }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]player-skins\.js$/ }, () => ({

@@ -93,16 +93,20 @@ loadViewerContentAssets().then(({assets,texture})=>{
   if(cortiContentDisposed){texture.dispose();return;}
   cortiNativeParticles.setAssets(assets,texture);cortiMapPhotos.setAssets(assets);
 }).catch(error=>{cortiContentError=String(error.message);});
+let cortiContentStatsAt = -Infinity;
 function cortiAnimateNativeContent(now) {
   if(cortiContentDisposed)return;
   if(!document.hidden){cortiNativeParticles.tick(now);cortiMapPhotos.tick();cortiTextDisplays.tick();cortiYsmPlayers.tick(now);cortiUpdateHeldMap();}
   if(!document.hidden && now-appearanceUiAt>=500){appearanceUiAt=now;updateAppearanceUi();}
+  // Keep nested diagnostics and DOM writes off the animation's frame budget.
+  if(now-cortiContentStatsAt<250){requestAnimationFrame(cortiAnimateNativeContent);return;}
+  cortiContentStatsAt=now;
   const photos=cortiMapPhotos.stats();
   const texts=cortiTextDisplays.stats();
   const ysm=cortiYsmPlayers.stats();
   // Per-action limitations remain in the stable model panel, not a flashing
   // overlay. Current frame errors are still available through stats().
-  const ysmMessage=ysm.failed?'YSM 模型渲染失败：'+ysm.errors[0]:ysm.unavailable?'部分 YSM 模型缺少可公开原始资源，当前普通皮肤仅为回退画面':ysm.pending?'正在加载原 YSM 模型':ysm.heldUnavailable.length?'部分 YSM 手持物外观暂未适配：'+ysm.heldUnavailable[0].name:'';
+  const ysmMessage=ysm.actors.some(actor=>actor.animation?.base==='downed')?'倒地待救援':ysm.failed?'YSM 模型渲染失败：'+ysm.errors[0]:ysm.unavailable?'部分 YSM 模型缺少可公开原始资源，当前普通皮肤仅为回退画面':ysm.pending?'正在加载原 YSM 模型':ysm.heldUnavailable.length?'部分 YSM 手持物外观暂未适配：'+ysm.heldUnavailable[0].name:'';
   const message=cortiTextDisplayError?'文字气泡字库不可用，请更新匹配版本的网页资源包':texts.unavailable?'部分文字显示格式暂未适配':cortiContentError?'粒子／照片资源暂不可用，请更新匹配版本的网页资源包':photos.waiting?'尚未收到可用照片像素，请靠近展示框或重新手持地图':ysmMessage;
   cortiContentStatus.dataset.ysmStates=String(cortiAppearances.size);cortiContentStatus.dataset.ysmRendererReady=String(ysm.rendered>0);cortiContentStatus.dataset.ysmRendered=String(ysm.rendered);
   cortiContentStatus.dataset.textDisplays=String(texts.visible);cortiContentStatus.dataset.textDisplayReady=String(texts.ready);

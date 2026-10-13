@@ -21,7 +21,7 @@ const ARMOR_ROOT_SYNC = 'syncArmorPositions(e){e.playerObject&&e.traverse(';
 // skinview3d rotates the PlayerObject around its centre (one block above the
 // feet). The armor meshes have their origin at the feet, so compensate their
 // translation while copying the pitch in the armor's opposite-facing frame.
-const FIXED_ARMOR_ROOT_SYNC = 'syncArmorPositions(e){if(e.playerObject)for(let armor of e.children)if(armor.name.startsWith("geometry_armor_")){let pitch=-e.playerObject.rotation.x;armor.rotation.x=pitch;armor.position.y=1-Math.cos(pitch);armor.position.z=-Math.sin(pitch)}e.playerObject&&e.traverse(';
+const FIXED_ARMOR_ROOT_SYNC = 'syncArmorPositions(e){if(e.playerObject)for(let armor of e.children)if(armor.name.startsWith("geometry_armor_")){let pitch=-e.playerObject.rotation.x;armor.rotation.x=pitch;armor.position.y=1-Math.cos(pitch)-(e.playerObject._cortiDownedOffset??0);armor.position.z=-Math.sin(pitch)}e.playerObject&&e.traverse(';
 
 /** @param {string} source @param {string} before @param {string} after @param {string} label */
 function replaceOnce(source, before, after, label) {

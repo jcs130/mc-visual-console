@@ -32,12 +32,12 @@ test('YSM smoothing is reversible sampling, with original geometry and GPU uploa
   'ysm.json':encode({spec:2,properties:{free:true}}),'m.json':encode({format_version:'1.12.0','minecraft:geometry':[{description:{texture_width:16,texture_height:16},bones:[{name:'Root',pivot:[0,0,0],cubes:[{origin:[0,0,0],size:[1,1,1],uv:[0,0]}]}]}]}),
   'a.json':encode({format_version:'1.8.0',animations:{idle:{loop:true,bones:{}}}}),'t.png':{base64:'original'}}};
  const actor=await createPaperYsmActor(bundle,'main',{loadTexture:async()=>texture});
- const before=actor.model.root.children[0].children[0].geometry.getAttribute('position').array.slice();
+ let mesh;actor.model.root.traverse(part=>{if(part.isMesh)mesh??=part;});const before=mesh.geometry.getAttribute('position').array.slice();
  const policy={avatarSampling:'smooth',anisotropy:4,shadows:false};actor.setPresentation(policy);
  assert.equal(texture.magFilter,THREE.NearestFilter);assert.equal(texture.minFilter,THREE.NearestMipmapLinearFilter);assert.equal(texture.generateMipmaps,true);
  const version=texture.version;for(let i=0;i<120;i++)actor.setPresentation(policy);assert.equal(texture.version,version,'no repeated texture uploads');
  actor.setPresentation({avatarSampling:'original',anisotropy:1,shadows:false});assert.equal(texture.magFilter,THREE.NearestFilter);assert.equal(texture.generateMipmaps,false);
- assert.deepEqual(actor.model.root.children[0].children[0].geometry.getAttribute('position').array,before);actor.dispose();
+ assert.deepEqual(mesh.geometry.getAttribute('position').array,before);actor.dispose();
 });
 test('YSM original animation is sampled without eval; unknown Molang is explicitly unavailable',()=>{
  const bone=new THREE.Group(),initial={position:bone.position.clone(),rotation:bone.rotation.clone()};

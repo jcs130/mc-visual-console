@@ -2,7 +2,7 @@
 const cortiAudioCategories = ['music', 'records', 'weather', 'blocks', 'hostile', 'neutral', 'players', 'ambient', 'voice'];
 function cortiAudioName(value) {
   const name = typeof value === 'string' ? value.replace(/^minecraft:/, '') : '';
-  return /^[a-z0-9_.-]{1,160}$/.test(name) ? name : null;
+  return name.length<=160 && /^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+$/.test(name) ? name : null;
 }
 function cortiAudioCategory(event) {
   if (cortiAudioCategories.includes(event.category) || event.category === 'master') return event.category;
@@ -136,6 +136,8 @@ function cortiInstallWorldSound(socket) {
   let context = null;
   let master = null;
   let manifest = null;
+  const audioEvidence={requested:0,started:0,failed:0,missing:0,byCategory:{}};
+  const missingEvents=new Map();
   let customCatalog = null;
   let catalogError = null;
   let catalogRequest = 0;
@@ -198,6 +200,7 @@ function cortiInstallWorldSound(socket) {
     return Number.isFinite(nextMusicAt) ? 'scheduled' : 'awaiting-schedule';
   };
   const state = () => ({ available: Boolean(AudioContextClass && (manifest || customCatalog)), unlocked: context?.state === 'running',
+    evidence:{...audioEvidence,byCategory:{...audioEvidence.byCategory},missingEvents:[...missingEvents].map(([name,count])=>({name,count}))},
     blockSoundsAvailable: Boolean(blockSounds),
     manifestEventCount: manifest?.events ? Object.keys(manifest.events).length : 0,
     soundEnabled: enabled, musicEnabled, musicSource, volumes: { ...volumes }, voices: voices.size, pendingLocalSounds: localTimers.size,
@@ -400,6 +403,7 @@ function cortiInstallWorldSound(socket) {
   const serverKey = event => `${event.name}|${event.entityId ?? ''}`;
   const play = async (raw, local = false) => {
     const name = cortiAudioName(raw?.name);
+    if(name)audioEvidence.requested++;
     if (disposed || !name || !connected || context?.state !== 'running') return false;
     const event = { ...raw, name };
     const category = cortiAudioCategory(event);
@@ -408,6 +412,11 @@ function cortiInstallWorldSound(socket) {
       || (musicSource === 'custom' && !custom)))) return false;
     if (!channelVolume(category) || !volumes.master) return false;
     const variants = custom ? customCatalog?.tracks : manifest?.events?.[name];
+    if(!custom && manifest && !Object.hasOwn(manifest.events??{},name)) {
+      audioEvidence.missing++;
+      if(missingEvents.size<16 || missingEvents.has(name))missingEvents.set(name,(missingEvents.get(name)??0)+1);
+      return false;
+    }
     const random = typeof event.seed === 'string' || Number.isFinite(event.seed)
       ? [...String(event.seed)].reduce((hash, character) => (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0, 2166136261) / 4294967296
       : Math.random();
@@ -472,8 +481,9 @@ function cortiInstallWorldSound(socket) {
       }
       if (voice.cancelled || voice.generation !== generation || disposed || !connected
         || context.state !== 'running' || !channelVolume(category) || !volumes.master) { stopVoice(voice); return false; }
-      voice.started = true; update(); return true;
+      voice.started = true;audioEvidence.started++;audioEvidence.byCategory[category]=(audioEvidence.byCategory[category]??0)+1; update(); return true;
     } catch {
+      audioEvidence.failed++;
       if (!voice.cancelled && voice.generation === generation && !disposed && connected)
         lastAudioError = '部分声音资源无法读取或解码，请检查本地音频资源';
       finish(voice); return false;

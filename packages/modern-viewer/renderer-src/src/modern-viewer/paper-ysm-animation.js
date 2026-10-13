@@ -109,10 +109,13 @@ export class PaperYsmAnimation {
     const previous=this.waterTransition?.lastPose;
     this.start??=now;this.model.reset();this.errors=[];this.selected=[];
     const m=state.motion??state, speed=m.horizontalSpeed??0, pose=m.pose;
+    const inhibited=m.bodyState?.source==='server' && m.bodyState.canAct===false;
+    const downed=inhibited && m.bodyState.pose==='downed';
     let base=pose==='sleeping'?'sleep':pose==='dying'?'death':pose==='spin_attack'?'riptide':pose==='fall_flying'?'elytra_fly':
       pose==='swimming'?'swim':m.flying===true?'fly':m.inWater===true&&m.onGround===false?
         (speed>.2?'swim':this.main.animations?.swim_stand?'swim_stand':'swim'):
         m.onGround===false?'jump':m.crouching===true?(speed>.05?'sneak':'sneaking'):speed>.05?(m.sprinting===true?'run':'walk'):'idle';
+    if(inhibited){base='idle';this.waterTransition=null;this.layers.clear();}
     // appearanceMotion stores Java pitch degrees (positive down). YSM's
     // head_pitch query is positive up, as is legacy Mineflayer pitch in radians.
     // Convert here once so authored hair/eye tracks and the Head look agree.
@@ -135,7 +138,7 @@ export class PaperYsmAnimation {
     };
     for(let n=0;n<8;n++)if(this.main.animations?.['pre_parallel'+n])layer('pre'+n,this.main,'pre_parallel'+n,{loop:true});
     layer('main',this.main,base,{loop:base!=='death'});
-    for(const [index,hand]of ['mainhand','offhand'].entries()) {
+    if(!inhibited)for(const [index,hand]of ['mainhand','offhand'].entries()) {
       const item=equipment[index],hold=item?selectArmClip(this.arm,'hold',hand,item):Object.hasOwn(this.arm?.animations??{},'hold_'+hand+':empty')?'hold_'+hand+':empty':null;
       if(hold)layer('hold'+index,this.arm,hold,{loop:true,token:JSON.stringify(item??null)});
       if(m.usingItem===true && (m.activeHand??'mainhand')===hand) {
@@ -156,12 +159,12 @@ export class PaperYsmAnimation {
         }catch(error){this.errors.push(error.message);}
       }
     }
-    if(m.hurt && m.hurt.ageSeconds>=0 && m.hurt.ageSeconds<.5)layer('hurt',this.main,'attacked',{token:m.hurt.sequence,seconds:m.hurt.ageSeconds});
-    if(state.animation && !['idle','empty'].includes(state.animation))layer('extra',this.extra?.animations?.[state.animation]?this.extra:this.main,state.animation);
+    if(!inhibited && m.hurt && m.hurt.ageSeconds>=0 && m.hurt.ageSeconds<.5)layer('hurt',this.main,'attacked',{token:m.hurt.sequence,seconds:m.hurt.ageSeconds});
+    if(!inhibited && state.animation && !['idle','empty'].includes(state.animation))layer('extra',this.extra?.animations?.[state.animation]?this.extra:this.main,state.animation);
     for(let n=0;n<8;n++)if(this.main.animations?.['parallel'+n])layer('parallel'+n,this.main,'parallel'+n,{loop:true,additiveRotation:true});
     // The native Head bone also follows the actual look direction, even when
     // the authored animation has no head channel.
-    const head=this.model.bones.get('Head');if(head){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
+    const head=this.model.bones.get('Head');if(head && !inhibited){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
     const water=base==='swim'||base==='swim_stand',transition=this.waterTransition??={base,water,lastPose:null,from:null,start:now};
     if(base!==transition.base) {
       transition.from=(water||transition.water)&&previous?new Map([...previous].map(([name,p])=>[name,
@@ -185,6 +188,6 @@ export class PaperYsmAnimation {
     }
     for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
     if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
-    return {base,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
+    return {base:downed?'downed':base,canAct:!inhibited,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
   }
 }

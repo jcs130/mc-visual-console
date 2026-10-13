@@ -2830,10 +2830,12 @@ function applyEntityAnimation(event) {
   if (!rendererReady || !event || typeof event !== "object") return;
   if (isObsOverlay) {
     const state = currentObsHandState();
+    if (state?.entity?.bodyState?.canAct===false || state?.bodyState?.canAct===false) return;
     if (!state || (obsSession?.mode === 'observer' ? event.id !== obsSession.entityId : event.isSelf !== true)) return;
     if (event.animation === 'oneSwing' && typeof cortiApplyFirstPersonSwing === 'function') cortiApplyFirstPersonSwing(event);
     return;
   }
+  if (entityCache.get(String(event.id))?.bodyState?.canAct === false) return;
   const animation = String(event.animation || "idle");
   const allowed = new Set(["walking", "running", "oneSwing", "idle", "crouch", "crouchWalking", "riding"]);
   if (!allowed.has(animation)) return;

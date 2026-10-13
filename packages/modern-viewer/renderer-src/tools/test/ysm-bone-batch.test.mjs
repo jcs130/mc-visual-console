@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {createNativeBedrockModel} from '../../src/native-viewer/native-entity-model-bedrock.js';
-import {batchYsmBones} from '../../src/modern-viewer/ysm-bone-batch.js';
+import {batchYsmBones,batchStaticYsmBones} from '../../src/modern-viewer/ysm-bone-batch.js';
 
 function samples(model) {
   model.root.updateMatrixWorld(true);
@@ -35,4 +35,16 @@ test('batching preserves world triangles, normals and UVs through animated paren
     assert.deepEqual(samples(b).rows,samples(a).rows);
   }
   batch.dispose();a.dispose();b.dispose();material.dispose();
+});
+
+test('static subtree batches retain animated ancestor transforms and all original triangles',()=>{
+ const cube={origin:[-2,2,1],size:[2,3,1],uv:[0,0]},bones=[{name:'Root',pivot:[0,0,0],cubes:[cube]},
+ {name:'Hand',parent:'Root',pivot:[4,8,0],cubes:[cube]},
+ ...Array.from({length:12},(_,i)=>({name:'detail'+i,parent:i%2?'Hand':'Root',pivot:[i,3,0],rotation:[10,i*5,3],cubes:[cube]}))];
+ const d={format_version:'1.12.0','minecraft:geometry':[{description:{texture_width:64,texture_height:64},bones}]},material=new THREE.MeshBasicMaterial();
+ const a=createNativeBedrockModel(d,material),b=createNativeBedrockModel(d,material);
+ const batch=batchStaticYsmBones(b,material,[{animations:{wave:{bones:{Root:{},Hand:{}}}}}]);
+ assert.equal(samples(b).meshes,2);assert.equal(b.bones.size,a.bones.size);
+ for(const scale of [1,.4,2]){for(const m of[a,b]){m.bones.get('Root').rotation.y=.6;m.bones.get('Hand').rotation.x=-1.2;m.bones.get('Hand').scale.set(scale,1,1);m.root.position.set(10,64,-20);}assert.deepEqual(samples(b).rows,samples(a).rows);}
+ batch.dispose();a.dispose();b.dispose();material.dispose();
 });

@@ -68,7 +68,12 @@ async function createPaperShield(model,item,arm,textureLoader,componentNames){
     const display=model.display['thirdperson_'+arm+'hand']??model.display.thirdperson_righthand??{};
     root.applyMatrix4(paperYsmItemMount(display,arm)
       .multiply(new THREE.Matrix4().makeTranslation(-.5,-.5,-.5))
-      .multiply(new THREE.Matrix4().makeScale(1,-1,-1)));
+      .multiply(new THREE.Matrix4().makeScale(1,-1,-1))
+      // YSM's authored hand frame faces the opposite way to ModelPart's
+      // shield grip. Turn around the handle centre (z=2 pixels), not the
+      // plate origin: the grip stays in the palm and the face points out.
+      .multiply(new THREE.Matrix4().makeTranslation(0,0,4/16))
+      .multiply(new THREE.Matrix4().makeRotationY(Math.PI)));
     root.name='paper-ysm-held-'+arm;
     root.userData={item:'shield',sourceModels:model.sourceModels,source:'minecraft_1.20.6_ShieldModel',
       effectReason:item.enchantments?.length?'原版附魔光效尚未适配':null,completeEntityParityVerified:false};

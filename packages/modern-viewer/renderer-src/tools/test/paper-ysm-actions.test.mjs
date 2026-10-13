@@ -169,3 +169,18 @@ test('motion identity/epoch, delayed actions and teardown preserve player nameta
   players.actors.set(uuid,{actor:{dispose(){}},rendered:parent,hidden});players.remove(uuid);assert.equal(tag.position.y,2);assert.equal(body.visible,true);
   players.clear();assert.equal(players.motions.size,0);
 });
+
+test('authoritative downed pose suppresses movement, swing, use, extra and hurt until explicit recovery',()=>{
+ const m=model(),c=new PaperYsmAnimation(m,{format_version:'1.8.0',animations:{idle:{loop:true,bones:{}},walk:{loop:true,bones:{}},swing_hand:{bones:{RightArm:{rotation:[90,0,0]}}}}});
+ const bodyState={source:'server',pose:'downed',canAct:false};
+ const r=c.apply({animation:'attack',motion:{bodyState,horizontalSpeed:8,usingItem:true,swing:{ageSeconds:.1,sequence:1},hurt:{ageSeconds:.1,sequence:1}}},1000);
+ assert.equal(r.base,'downed');assert.equal(r.canAct,false);assert.deepEqual(r.clips,['idle']);assert.equal(m.bones.get('RightArm').rotation.x,0);
+ assert.equal(c.apply({motion:{onGround:true,bodyState:{source:'server',pose:'standing',canAct:true}}},2000).base,'idle');
+ const uuid='00000000-0000-3000-8000-000000000001',entity={id:7,uuid,pos:{x:0,y:64,z:0},bodyState},players=new PaperYsmPlayers({entity:()=>entity});
+ players.state({schemaVersion:1,source:'freesia_worker',playerUuid:uuid,entityId:7,epoch:'a',available:true});
+ players.bodyMotion({entity},0);players.action({id:7,animation:'oneSwing'},100);
+ assert.equal(players.motionFor(uuid,entity,120000).bodyState.pose,'downed','no timer-based resurrection');
+ assert.equal(players.motionFor(uuid,entity,120000).swing,undefined);
+ entity.bodyState={source:'server',pose:'standing',canAct:true};players.bodyMotion({entity},120100);
+ assert.equal(players.motionFor(uuid,entity,120200).bodyState.canAct,true);assert.equal(players.motionFor(uuid,entity,120200).swing,undefined);
+});
