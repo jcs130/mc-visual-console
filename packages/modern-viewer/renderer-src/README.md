@@ -23,6 +23,7 @@
 | [Paper 插件内容适配](docs/paper-content-compatibility.md) | 1.20.6 原始粒子、ImageFrame/原版地图、展示框和手持预览接入、版本与限制 |
 | [头顶文字气泡](docs/text-display-bubbles.md) | 玩家/NPC TextDisplay、原始中文字体、私人受众、同连接桥和远端更新 |
 | [网页操控与高级运镜](docs/web-controls-camera-quality.md) | 同角色授权接管、键鼠／触摸／手柄、稳定跟随、碰撞、FOV、画质与升级说明 |
+| [Web 人物模型选择](docs/web-player-appearance.md) | 默认跟随服务器、本页 YSM 模型与配色替换、一键恢复及部署边界 |
 
 技能规则、保护预检、试炼机制和 Agent 决策由
 [千灯纪 World](https://github.com/jcs130/cortico-world-qiandengji) 等宿主扩展负责。

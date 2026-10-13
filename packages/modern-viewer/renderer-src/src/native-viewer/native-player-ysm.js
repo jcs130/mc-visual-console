@@ -40,8 +40,12 @@ async function loadPng (bytes) {
   try { return await new THREE.TextureLoader().loadAsync(url) } finally { URL.revokeObjectURL(url) }
 }
 
-export async function createNativeYsmPlayerActor (reader, { uuid, ysm, loadTexture = loadPng } = {}) {
-  const binding = nativeSelfPlayerBinding({ uuid, ysm }, uuid)
+export async function createNativeYsmPlayerActor (reader, { uuid, ysm, webAppearance, loadTexture = loadPng } = {}) {
+  // A Web choice is presentation metadata, never a fabricated server attachment.
+  if (webAppearance && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(uuid ?? '') ||
+      !nativeYsmModelProfile(webAppearance.modelId)?.textures.includes(webAppearance.texture))) throw Error('NATIVE_WEB_APPEARANCE_UNAVAILABLE')
+  const binding = webAppearance ? { kind: 'ysm', uuid: uuid.toLowerCase(), ysm: { ...webAppearance, source: 'web_viewer_override' } }
+    : nativeSelfPlayerBinding({ uuid, ysm }, uuid)
   if (binding.kind !== 'ysm') throw Error('NATIVE_YSM_MODEL_NOT_ENABLED')
   const profile = nativeYsmModelProfile(binding.ysm.modelId), assets = profile.assets, hashes = profile.hashes
   if (!(reader instanceof NativeAssetReader) || reader.manifest.clientJarSha256 !== PLAYER_CLIENT_JAR_SHA256) throw Error('NATIVE_YSM_CLIENT_SOURCE_UNSUPPORTED')
@@ -88,7 +92,7 @@ export async function createNativeYsmPlayerActor (reader, { uuid, ysm, loadTextu
       ...(profile.geometry.idleBones === null ? { notice: 'YSM Alex 原模型与移动关键帧；原包没有 idle，静止动作明确不可用；装备和客户端一致性未验' } : {}) })
     const assetInfo = Object.freeze({ kind: 'ysm', uuid: binding.uuid, name: profile.name, modelId: profile.id, texture: binding.ysm.texture,
       ysmVersion: NATIVE_YSM_VERSION, modJarSha256: NATIVE_YSM_JAR_SHA256, clientJarSha256: reader.manifest.clientJarSha256,
-      source: binding.ysm.source, selectionSource: 'same_player_native_attachment', sourcePaths: paths.map(kind => assets[kind]),
+      source: binding.ysm.source, selectionSource: webAppearance ? 'web_viewer_override' : 'same_player_native_attachment', sourcePaths: paths.map(kind => assets[kind]),
       sourceHashes: Object.fromEntries(paths.map(kind => [kind, hashes[kind]])),
       boneCount: model.bones.size, cubeCount: model.cubeCount, faceCount: model.faceCount, notice: support.notice,
       support,
