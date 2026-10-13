@@ -42,6 +42,7 @@ export function installAgentVisualization({ socket, document = globalThis.docume
   for (const [key, label] of Object.entries(KEYS)) keyElements.set(key, make('span', '', keys, label));
   const mouse = make('div', 'agent-mouse', operations), left = make('span', '', mouse, '左键'), right = make('span', '', mouse, '右键');
   const look = make('small', 'agent-look', mouse), recent = make('div', 'agent-recent-operations', operations);
+  const flightStatus = make('div', 'agent-flight-status', operations);
   const pointer = make('div', 'agent-pointer', document.body); pointer.id = 'agent-pointer'; pointer.hidden = true;
   pointer.setAttribute('aria-hidden', 'true');
   make('span', '', pointer, '↖'); make('small', '', pointer, 'Agent 指针'); roots.push(pointer);
@@ -87,7 +88,19 @@ export function installAgentVisualization({ socket, document = globalThis.docume
     }
     operations.hidden = !frame?.subject;
     if (frame?.subject) {
-      for (const [key, el] of keyElements) el.dataset.active = String(frame.input.controls.includes(key));
+      const flight = frame.input.flight;
+      for (const [key, el] of keyElements) {
+        el.dataset.active = String(frame.input.controls.includes(key));
+        setText(el, flight?.flying ? ({ jump: '上升', sneak: '下降', sprint: '加速' }[key] ?? KEYS[key]) : KEYS[key]);
+      }
+      flightStatus.hidden = !flight;
+      if (flight) {
+        const mode = !flight.allowed ? '无飞行许可' : !flight.flying ? '已获飞行许可 · 尚未起飞'
+          : ({ hover: '悬停', input: '按键飞行', route: '坐标飞行' }[flight.mode]);
+        const vertical = flight.direction?.y > .01 ? ' · 上升中' : flight.direction?.y < -.01 ? ' · 下降中' : '';
+        const remaining = flight.allowed && flight.remainingMs !== null ? ` · 许可剩余 ${Math.ceil(flight.remainingMs / 1000)} 秒` : '';
+        setText(flightStatus, `${mode}${vertical}${remaining}${flight.flying ? ' · 客户端状态' : ''}`);
+      }
       left.dataset.active = String(frame.input.operations.some(op => op.button === 'left'));
       right.dataset.active = String(frame.input.operations.some(op => op.button === 'right'));
       const yaw = frame.input.yaw, pitch = frame.input.pitch;

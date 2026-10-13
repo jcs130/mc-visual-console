@@ -6,7 +6,7 @@ import { installAgentVisualization } from '../../src/modern-viewer/agent-visual-
 import { installObsLayout, OBS_COMPONENTS } from '../../src/modern-viewer/obs-layout.js';
 import { createViewerAgentBridge, createViewerAgentHub } from '../../host/viewer-agent.mjs';
 
-function browser() {
+function browser(bridgeOptions = {}) {
   let time = 0, next = 0; const frames = new Map(), intervals = new Map(), storage = new Map(), draws = [];
   const context = () => ({ save() {}, restore() {}, setTransform() {}, clearRect() {}, beginPath() {}, closePath() {}, moveTo() {}, lineTo() {},
     stroke() { draws.push(['stroke', this.strokeStyle]); }, fill() { draws.push(['fill', this.fillStyle]); }, arc() {}, setLineDash() {},
@@ -38,7 +38,7 @@ function browser() {
   bot.username = 'ag_demo'; bot.uuid = '00000000-0000-0000-0000-000000000001';
   bot.game = { gameMode: 'survival' }; bot.entity = { id: 1, position: { x: 0, y: 64, z: 0 }, yaw: 0, pitch: 0 };
   bot.controlState = { forward: true }; bot.entities = { 9: { position: { x: 5, y: 64, z: 8 } } };
-  const bridge = createViewerAgentBridge(bot, { timers: false, now: () => time, hub: createViewerAgentHub() }); bridge.subscribeSocket(socket);
+  const bridge = createViewerAgentBridge(bot, { timers: false, now: () => time, hub: createViewerAgentHub(), ...bridgeOptions }); bridge.subscribeSocket(socket);
   const step = ms => { time += ms; const pending = [...frames]; frames.clear(); for (const [, callback] of pending) callback(time); };
   const byId = id => document.getElementById(id);
   const field = (key, prefix = 'obsField') => document.querySelectorAll('input').find(el => el.dataset[prefix] === key);
@@ -46,6 +46,26 @@ function browser() {
     dispose() { bridge.dispose(); ui.dispose(); layout.dispose(); } };
 }
 const P = (x, z) => ({ x, y: 64, z });
+
+test('flight permission, coordinate route and real combined input stay distinct through the entire viewer', () => {
+  let flight = { allowed: true, flying: false, mode: 'ground', expiresAtMs: 5000 };
+  const h = browser({ getFlightState: () => flight });
+  try {
+    const panel = h.byId('agent-operations'), status = panel.querySelector('.agent-flight-status');
+    assert.match(status.textContent, /尚未起飞/);
+    flight = { ...flight, flying: true, mode: 'route', direction: { x: 0, y: 3, z: 0 } };
+    h.bot.controlState = {}; h.bridge.flush();
+    assert.match(status.textContent, /坐标飞行.*上升中/);
+    const keys = panel.querySelector('.agent-control-keys').children;
+    assert.ok([...keys].every(key => key.dataset.active === 'false'));
+    flight.mode = 'input'; h.bot.controlState = { forward: true, jump: true, sprint: true }; h.bridge.flush();
+    assert.match(status.textContent, /按键飞行/);
+    assert.deepEqual([...keys].filter(key => key.dataset.active === 'true').map(key => key.textContent), ['前进', '上升', '加速']);
+    h.bot.controlState = {}; flight = { allowed: false, flying: false }; h.bridge.flush();
+    assert.match(status.textContent, /无飞行许可/); assert.equal(keys[4].textContent, '跳跃');
+    h.step(3501); assert.equal(panel.hidden, true);
+  } finally { h.dispose(); }
+});
 test('actual host packets reach the mounted overlay: route/candidate/gather colors, mouse and public summary', () => {
   const h = browser(); try {
     h.bridge.publish({ intent: { goal: '收集木材', summary: '<script>文字原样显示</script>' },

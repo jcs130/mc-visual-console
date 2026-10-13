@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeAgentVisualUpdate, normalizeVisualRoute, visualPoint, visualSubject,
-  sameVisualSubject, visualText } from '../src/modern-viewer/agent-visual-protocol.js';
+  sameVisualSubject, visualText, normalizeVisualFlight } from '../src/modern-viewer/agent-visual-protocol.js';
 
 /** A trusted, in-process fan-out for action players and their Eyes/live views.
  * Register the actual action bot, never infer its thoughts/inventory from an Eye.
@@ -53,6 +53,7 @@ const ownSubject = bot => visualSubject({ playerUuid: bot.player?.uuid ?? bot.en
 const controls = ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak'];
 
 export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSession = () => null, authorizePublish = null,
+  getFlightState = () => null,
   now = Date.now, intervalMs = 100, timers = true } = {}) {
   if (publishers.has(bot)) throw Error('AGENT_VISUAL_HOST_ALREADY_ATTACHED');
   const owner = {}, sockets = new Map(), hooks = [];
@@ -144,7 +145,13 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
       r.trail.push({ ...position, at: time }); r.trail = r.trail.slice(-64);
     }
     if (r.route?.source === 'pathfinder' && r.route.status === 'moving' && bot.pathfinder?.isMoving?.() === true) r.route.until = time + 10_000;
-    r.input = { controls: controls.filter(key => bot.controlState?.[key] === true), position,
+    let flight = null;
+    try {
+      const value = getFlightState();
+      flight = normalizeVisualFlight(value && { ...value,
+        remainingMs: Number.isFinite(value.expiresAtMs) ? Math.max(0, value.expiresAtMs - time) : null });
+    } catch { /* Optional telemetry cannot interrupt the viewer or gameplay. */ }
+    r.input = { controls: controls.filter(key => bot.controlState?.[key] === true), position, flight,
       yaw: Number.isFinite(bot.entity.yaw) ? bot.entity.yaw : null, pitch: Number.isFinite(bot.entity.pitch) ? bot.entity.pitch : null };
     expire(r, time);
   }

@@ -16,6 +16,17 @@ export function visualSubject(v) {
     ? { playerUuid: v.playerUuid.toLowerCase(), playerName: v.playerName, entityId: v.entityId } : null;
 }
 export const sameVisualSubject = (a, b) => !!a && !!b && a.playerUuid.toLowerCase() === b.playerUuid.toLowerCase() && a.entityId === b.entityId;
+/** Optional controller telemetry. Never infer key presses from a route or a spell receipt. */
+export function normalizeVisualFlight(v) {
+  if (!v || typeof v.allowed !== 'boolean' || typeof v.flying !== 'boolean') return null;
+  const flying = v.allowed && v.flying;
+  const mode = flying ? (['hover', 'input', 'route'].includes(v.mode) ? v.mode : 'hover') : 'ground';
+  const d = v.direction;
+  return { allowed: v.allowed, flying, mode, serverFlying: v.serverFlying === true,
+    direction: flying && ['input', 'route'].includes(mode) && d && [d.x, d.y, d.z].every(n => finite(n, -100, 100))
+      ? { x: d.x, y: d.y, z: d.z } : null,
+    remainingMs: finite(v.remainingMs, 0, 86_400_000) ? v.remainingMs : null };
+}
 export function visualPoint(v, space = 'world') {
   if (space === 'screen') return v && finite(v.x, 0, 1) && finite(v.y, 0, 1) ? { x: v.x, y: v.y } : null;
   return v && finite(v.x, -30_000_000, 30_000_000) && finite(v.y, -4096, 4096) && finite(v.z, -30_000_000, 30_000_000)

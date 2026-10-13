@@ -138,3 +138,11 @@ node tools/prepare-viewer-assets.mjs java-1.20.6 <新的资产目录> --preset=q
 - 使用原 `java-1.20.6` 资源和 `qiandengji` preset 完成隔离构建，源码摘要和 bundle SHA-256 与生成清单一致。生成资源与日志留在仓库外。
 - 当前浏览器检查工具没有可用浏览器，新增面板的像素布局、真实 OBS/原版叠加及动态 FOV 实机效果尚未验收。上面的 DOM/Canvas 调用测试不代表截图一致性。
 - 本次没有部署正式/远端 Web 宿主，也没有重启 Paper。需按上一节同时更新宿主 bridge 与浏览器资源。
+# 飞行输入遥测（schemaVersion 1 可选字段）
+
+`createViewerAgentBridge(bot, { getFlightState })` 可选回调由实际动作身体的宿主提供，返回 `allowed`、`flying`、`serverFlying`、`mode:ground|hover|input|route`、`direction:{x,y,z}|null` 和可选 `expiresAtMs`。方向表示客户端当前移动指令，不能用作服务端位移证明。桥只传递白名单字段，并将截止时间转换为剩余毫秒；没有回调或读取失败时 `input.flight` 为 null，旧宿主保持可用。
+
+网页分别显示许可、按键飞行、坐标飞行、悬停及升降。真实按键仍只取 `bot.controlState`；坐标路线或施法回执不能伪造按键。输入飞行时 jump/sneak/sprint 显示为上升/下降/加速。整帧仍按原来的本人 UUID/entity、epoch、序列和过期规则隔离。
+
+这需要同时更新宿主桥与网页资源。只有刷新网页不能使旧宿主产生新遥测。
+

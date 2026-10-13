@@ -5,6 +5,21 @@ import { createViewerAgentBridge, createViewerAgentHub, publishAgentVisualizatio
 
 const a = '00000000-0000-0000-0000-000000000001', b = '00000000-0000-0000-0000-000000000002';
 const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ1sAAAAASUVORK5CYII=';
+test('optional flight telemetry is bounded, carries permission separately and cannot invent input', () => {
+  let flight = { allowed: true, flying: false, expiresAtMs: 6000, private: 'must not leak' };
+  const h = fixture({ getFlightState: () => flight });
+  try {
+    h.bot.controlState = {}; h.bridge.flush();
+    assert.deepEqual(h.latest().input.flight, { allowed: true, flying: false, mode: 'ground', serverFlying: false, direction: null, remainingMs: 5000 });
+    flight = { ...flight, flying: true, mode: 'route', direction: { x: 0, y: 3, z: 0 } }; h.bridge.flush();
+    assert.equal(h.latest().input.flight.mode, 'route'); assert.deepEqual(h.latest().input.controls, []);
+    assert.equal(JSON.stringify(h.latest()).includes('must not leak'), false);
+    flight = { ...flight, allowed: false }; h.bridge.flush();
+    assert.equal(h.latest().input.flight.mode, 'ground'); assert.equal(h.latest().input.flight.direction, null);
+  } finally { h.bridge.dispose(); }
+  const failing = fixture({ getFlightState: () => { throw Error('unavailable'); } });
+  try { assert.equal(failing.latest().input.flight, null); } finally { failing.bridge.dispose(); }
+});
 function fixture({ hub = createViewerAgentHub(), uuid = a, id = 1, name = 'ag_test', ...options } = {}) {
   let time = 1000; const bot = new EventEmitter(), writes = [], client = new EventEmitter();
   client.state = 'play'; client.write = function (...args) { writes.push(args); return 42; };

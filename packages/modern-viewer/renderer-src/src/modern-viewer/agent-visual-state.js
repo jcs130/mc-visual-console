@@ -1,6 +1,6 @@
 import { visualSubject, sameVisualSubject, visualText, visualPoint, visualPoints, normalizeVisualIntent,
   normalizeVisualRoute, normalizeVisualCandidates, normalizeVisualMarkers, normalizeVisualPointer,
-  normalizeVisualPresentation, normalizeVisualCamera } from './agent-visual-protocol.js';
+  normalizeVisualPresentation, normalizeVisualCamera, normalizeVisualFlight } from './agent-visual-protocol.js';
 
 /** Local monotonic deadlines; no dependence on the Agent/OBS wall clock. */
 export class AgentVisualState {
@@ -49,7 +49,7 @@ export class AgentVisualState {
       candidates: candidates.map((v, i) => expires(v, value.candidates[i], 30_000)),
       markers: markers.map((v, i) => expires(v, value.markers[i], 30_000)), trail, presentation,
       input: { controls: Array.isArray(input.controls) ? ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak'].filter(k => input.controls.includes(k)) : [],
-        position: visualPoint(input.position), yaw: Number.isFinite(input.yaw) ? input.yaw : null,
+        flight: normalizeVisualFlight(input.flight), position: visualPoint(input.position), yaw: Number.isFinite(input.yaw) ? input.yaw : null,
         pitch: Number.isFinite(input.pitch) ? input.pitch : null, operations, pointer: expires(pointer, input.pointer, 3000) } };
     return true;
   }
