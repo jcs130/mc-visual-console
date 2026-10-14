@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { vanillaItemStack } from './vanilla-item-stack.mjs';
 
 const PACKETS = new Set(['login', 'respawn', 'map_chunk', 'unload_chunk', 'block_change', 'multi_block_change',
   'tile_entity_data', 'update_time', 'spawn_entity', 'entity_metadata', 'entity_equipment', 'entity_destroy',
@@ -24,9 +25,16 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
 export function vanillaPlayerPresentation(bot) {
   const uuid = bot._client?.uuid;
   if (bot.version !== '1.21.1' || !uuid || !Array.isArray(bot.inventory?.slots)) return null;
+  const componentFailures = [];
+  const slots = bot.inventory.slots.map((item, slot) => {
+    if (!item) return { slot, item: null };
+    const serialized = vanillaItemStack(item, bot.registry);
+    if (serialized.reason) componentFailures.push({ slot, reason: serialized.reason });
+    return { slot, item: serialized.item };
+  });
   return { schemaVersion: 1, playerUuid: uuid,
     inventory: { playerUuid: uuid, windowId: 0, selectedHotbarSlot: bot.quickBarSlot,
-      hotbarStart: 36, offhandSlot: 45, slots: bot.inventory.slots.map((item, slot) => ({ slot,
-        item: item ? { name: 'minecraft:' + item.name, count: item.count } : null })) },
-    nativeState: { available: true, source: 'same_player_vanilla_inventory', componentsAvailable: false } };
+      hotbarStart: 36, offhandSlot: 45, slots },
+    nativeState: { available: true, source: 'same_player_vanilla_inventory',
+      componentsAvailable: componentFailures.length === 0, componentFailures } };
 }
