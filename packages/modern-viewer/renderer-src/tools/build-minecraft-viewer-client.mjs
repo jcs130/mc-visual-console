@@ -18,6 +18,7 @@ import { verifyTextDisplayAssets } from './text-display-assets.mjs'
 import { viewerSourceDigest } from './viewer-build-source.mjs'
 import { patchObsRendererAlpha } from './minecraft-viewer-obs-alpha.mjs'
 import { verifyItemAppearanceAssets } from './item-appearance-assets.mjs'
+import { viewerVersionCss } from '../host/viewer-version.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -303,7 +304,7 @@ const buildResult = await build({
         if (!loreTable.test(original)) throw Error('NPC 本地故事表源码锚点已变化')
         return { contents: original.replace(loreTable, 'export const ORIGINAL_NPC_LORE = Object.freeze([]);'), loader: 'js', resolveDir: path.dirname(file) }
       })
-      context.onLoad({ filter: /[\\/]modern-viewer[\\/]client\.js$/ }, () => ({ contents: clientWithHud, loader: 'js', resolveDir: path.dirname(clientFile) }))
+      context.onLoad({ filter: /[\\/]modern-viewer[\\/]client\.js$/ }, () => ({ contents: viewerVersionCss(clientWithHud, version), loader: 'js', resolveDir: path.dirname(clientFile) }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]avatar-motion\.js$/ }, async ({ path: file }) => {
         correctedAvatarMotion = true
         return { contents: patchAvatarMotion((await readFile(file, 'utf8')).replaceAll('\r\n', '\n'), thirdPersonSwingSource),
@@ -347,6 +348,9 @@ const buildResult = await build({
           export const isPlayerModelId = value => value === 'minecraft-classic';
           export const resolvePlayerModel = () => PLAYER_MODELS[0];`,
         loader: 'js', resolveDir: sourceRoot,
+      }))
+      context.onLoad({ filter: /[\\/]modern-viewer[\\/][^\\/]+\.js$/ }, async ({ path: file }) => ({
+        contents: viewerVersionCss(await readFile(file, 'utf8'), version), loader: 'js', resolveDir: path.dirname(file),
       }))
     } },
     polyfillNode({ globals: { buffer: true, process: false } }),

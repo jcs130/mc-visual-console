@@ -4,7 +4,7 @@ import test from 'node:test';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { viewerVersionRegistry, viewerVersionCss, viewerVersionAssets } from '../host/viewer-version.mjs';
+import { viewerVersionRegistry, viewerVersionCss, viewerVersionAssets, viewerVersionTexture } from '../host/viewer-version.mjs';
 const require = createRequire(import.meta.url);
 const data = require('minecraft-data'), item = require('prismarine-item');
 
@@ -18,6 +18,15 @@ test('the preview uses matching real item and biome registries across both suppo
     assert.match(css, new RegExp(`/textures/${version.replaceAll('.', '\\.')}/`));
   }
   assert.throws(() => viewerVersionRegistry('1.21.1', () => data('1.20.6'), item), /VERSION_MISMATCH/);
+});
+
+test('legacy entity texture names resolve to original version assets without crossing versions', () => {
+  assert.equal(viewerVersionTexture('textures/entity/squid.png', '1.21.1'), 'textures/1.21.1/entity/squid/squid.png');
+  assert.equal(viewerVersionTexture('textures/entity/glow_squid.png', '1.21.1'), 'textures/1.21.1/entity/squid/glow_squid.png');
+  assert.equal(viewerVersionTexture('textures/entity/squid.png', '1.20.6'), 'textures/1.20.6/entity/squid.png');
+  assert.equal(viewerVersionTexture('icons/cod.png', '1.21.1'), null);
+  assert.equal(viewerVersionCss("const bow='/textures/1.20.6/item/bow.png'; const glint='/textures/1.20.6/misc/enchanted_glint_item.png';", '1.21.1'),
+    "const bow='/textures/1.21.1/item/bow.png'; const glint='/textures/1.21.1/misc/enchanted_glint_item.png';");
 });
 
 test('an explicitly packaged second version is selected while missing and mismatched resources fail closed', async () => {
