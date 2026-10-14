@@ -78,6 +78,7 @@ import { RoomCoverCache } from "./room-cover-cache.js";
 import { RoomFloorMask } from "./room-floor-mask.js";
 import { createRoomCutawayCap } from "./room-cutaway-cap.js";
 import { installDungeonObserverControls } from "./dungeon-observer-controls.js";
+import { renderedEntityPosition, installRenderedCameraFollow } from "./rendered-camera-follow.js";
 import { installSelfAvatarCameraVisibility } from "./self-avatar-camera-visibility.js";
 import { installEntityRenderBounds } from "./entity-render-bounds.js";
 import { villagerIdentityConceptColors, NPC_NAMED_ROLE_LABELS, NPC_NAMED_DIALOGUE_LINES, NPC_NAMED_QUEST_TEMPLATES } from "./presets/qiandengji/npc-copy.js";
@@ -1056,6 +1057,7 @@ async function initializeRenderer(version) {
     installOrbitControls();
     installDungeonCameraControls();
     installDungeonOcclusion();
+    if (usesWorldAvatar) installRenderedCameraFollow(globalThis.world, () => applyPosition(false, true));
     if (dungeonRoomCoverCache) installCameraWater(globalThis.world, (x,y,z) => dungeonRoomCoverCache.blockAt(x,y,z));
     installNpcGameplay();
     installDungeonInteractions();
@@ -1125,14 +1127,15 @@ function publishFirstPersonEntity(force = false) {
   return true;
 }
 
-function resolveObserverTargetPosition() {
+function resolveObserverTargetPosition(rendered = false) {
   if (!latestPosition) return null;
   if (focusedCharacterId !== null) {
     const focusedEntity = entityCache.get(String(focusedCharacterId));
     const focusedPosition = focusedEntity?.pos || focusedEntity?.position;
-    if (focusedPosition) return { position: toVec3(focusedPosition), mode: "entity", entity: focusedEntity };
+    if (focusedPosition) return { position: toVec3(rendered && renderedEntityPosition(globalThis.world, focusedCharacterId) || focusedPosition), mode: "entity", entity: focusedEntity };
   }
-  return { position: latestPosition.pos.plus(observerOffset), mode: "self", entity: null };
+  const displayed = rendered && renderedEntityPosition(globalThis.world, pendingAvatarState?.entity?.id);
+  return { position: (displayed ? toVec3(displayed) : latestPosition.pos).plus(observerOffset), mode: "self", entity: null };
 }
 
 function syncCameraFollowUi() {
@@ -1172,7 +1175,7 @@ function returnCameraToAvatar({ announce = true, resetZoom = false } = {}) {
   return wasFocused;
 }
 
-function applyPosition(instant = false) {
+function applyPosition(instant = false, animatedFrame = false) {
   if (!rendererReady || !viewer || !latestPosition) return;
   if (isObsOverlay) {
     viewer.updateCamera(latestPosition.pos, latestPosition.yaw, latestPosition.pitch, { instant: true });
@@ -1188,8 +1191,8 @@ function applyPosition(instant = false) {
       orbitDistance = isDungeonView ? DUNGEON_DEFAULT_DISTANCE : orbitDistance;
       orbitInitialized = true;
     }
-    const resolvedTarget = resolveObserverTargetPosition();
-    viewer.updateCamera(resolvedTarget?.position || pos, orbitYaw, orbitPitch, { instant });
+    const resolvedTarget = resolveObserverTargetPosition(true);
+    viewer.updateCamera(resolvedTarget?.position || pos, orbitYaw, orbitPitch, { instant: true });
     applyOrbitCameraOffset();
     scheduleDungeonOcclusionCheck();
   } else {
@@ -1200,14 +1203,18 @@ function applyPosition(instant = false) {
       { instant },
     );
   }
-  worldView.emit("chunkPosUpdate", { pos });
-  refreshChunkLoadingGuards();
-  if (isFirstPersonView && pendingPlayerEntity) {
+  if (!animatedFrame) {
+    worldView.emit("chunkPosUpdate", { pos: latestPosition.pos });
+    refreshChunkLoadingGuards();
+  }
+  if (!animatedFrame && isFirstPersonView && pendingPlayerEntity) {
     pendingPlayerEntity = { ...pendingPlayerEntity, pos, position: pos, yaw, pitch };
     publishFirstPersonEntity();
   }
-  publishCameraDataset();
-  scheduleNpcPanelRender();
+  if (!animatedFrame) {
+    publishCameraDataset();
+    scheduleNpcPanelRender();
+  }
 }
 
 function focusEntityById(value) {
@@ -5478,7 +5485,7 @@ function useManualOrbitCamera() {
 
 function applyDirectedCamera() {
   if (!cameraDirector || cameraSettings.mode === 'manual' && !cameraDirector.shot) return false;
-  const world = globalThis.world, resolved = resolveObserverTargetPosition(), entity = resolved?.entity || pendingAvatarState?.entity;
+  const world = globalThis.world, resolved = resolveObserverTargetPosition(true), entity = resolved?.entity || pendingAvatarState?.entity;
   if (!world?.cameraWorldPos || !resolved) return false;
   const eye = viewer.playerState.reactive.eyeHeight ?? 1.62;
   // The director owns its world-space tracking filter. Camera output and an

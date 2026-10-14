@@ -47,7 +47,7 @@ test('first-person rotation takes the short path across the yaw boundary', () =>
   assert.ok(next.yaw > Math.PI - 0.02 && next.yaw < Math.PI + 0.02);
 });
 
-test('built observer camera continues between packets without re-streaming chunks or refreshing panels', () => {
+test('built observer follows the displayed root without a second smoother or re-streaming chunks', () => {
   const clientSource = readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const builder = readFileSync(new URL('../build-minecraft-viewer-client.mjs', import.meta.url), 'utf8');
   const adaptation = builder.slice(builder.indexOf('const adaptedClient ='), builder.indexOf('const changedClient ='));
@@ -55,7 +55,7 @@ test('built observer camera continues between packets without re-streaming chunk
   const adapted = runInNewContext(`${adaptation}\nadaptedClient`, { clientSource, potionRenderAnchor });
   const start = adapted.indexOf('function applyPosition(');
   const end = adapted.indexOf('\nfunction focusEntityById(', start);
-  let now = 0;
+  let now = 0, displayedX=0;
   const camera = [], chunks = [], callbacks = [];
   let guardChecks = 0, panels = 0;
   class Vec3 { constructor(x, y, z) { Object.assign(this, { x, y, z }); } }
@@ -67,7 +67,7 @@ test('built observer camera continues between packets without re-streaming chunk
     focusedCharacterId: null, pendingPlayerEntity: null,
     viewer: { updateCamera: (pos, yaw, pitch, options) => camera.push({ x: pos.x, yaw, pitch, options }) },
     worldView: { emit: (event, data) => chunks.push({ event, data }) },
-    resolveObserverTargetPosition: () => ({ position: context.latestPosition.pos }),
+    resolveObserverTargetPosition: rendered => { assert.equal(rendered,true);return {position:new Vec3(displayedX,64,0)}; },
     applyOrbitCameraOffset() {}, scheduleDungeonOcclusionCheck() {}, publishCameraDataset() {},
     refreshChunkLoadingGuards: () => { guardChecks += 1; },
     scheduleNpcPanelRender: () => { panels += 1; },
@@ -79,10 +79,10 @@ test('built observer camera continues between packets without re-streaming chunk
   now = 50;
   context.latestPosition = { pos: new Vec3(1, 64, 0), yaw: 0, pitch: 0 };
   apply(false);
-  now += 16; callbacks.shift()();
-  now += 16; callbacks.shift()();
-  assert.ok(camera[1].x > 0 && camera[1].x < 1);
-  assert.ok(camera[2].x > camera[1].x && camera[3].x > camera[2].x);
+  now += 16; displayedX=.2;apply(false,true);
+  now += 16; displayedX=.4;apply(false,true);
+  assert.deepEqual(camera.map(c=>c.x),[0,0,.2,.4]);
+  assert.equal(callbacks.length,0,'observer cadence belongs to the renderer frame');
   assert.ok(camera.every(frame => frame.yaw === 2.35 && frame.options.instant === true));
   assert.equal(chunks.length, 2);
   assert.equal(chunks[1].data.pos.x, 1, 'chunk streaming uses the authoritative position');
