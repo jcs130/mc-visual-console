@@ -8,6 +8,7 @@ export class NativeEntityLayer {
   constructor(reader,{createActor=createNativeEntityActor,onChange=()=>{}}={}) {
     this.reader=reader;this.createActor=createActor;this.onChange=onChange;this.root=new THREE.Group()
     this.actors=new Map();this.failures=new Map();this.data=new Map();this.generation=0;this.pending=null;this.running=false;this.disposed=false;this.streamReason=null
+    this.pickups=new Map();this.pickupSeen=new Set();this.collected=new Map();this.clock=null
   }
   stage(state,{selfEntityId,playerUuid}={}) {
     if(this.disposed)return
@@ -16,6 +17,7 @@ export class NativeEntityLayer {
     this.streamReason=null
     const entities=state.entities.filter(entity=>entity.entityId!==selfEntityId)
     this.data=new Map(entities.map(entity=>[entity.entityId,entity]))
+    for(const [id,uuid]of this.collected)if(this.data.get(id)?.uuid!==uuid)this.collected.delete(id)
     this.pending={entities,registries,generation:this.generation};void this.drain()
   }
   signature(entity,registries) {
@@ -50,22 +52,48 @@ export class NativeEntityLayer {
       }
     } finally {this.running=false}
   }
-  frame(now) {
+  async collect(value) {
+    if(this.disposed||value.source!=='received_native_collect_packet'||!Number.isSafeInteger(value.tick)||value.count<=0)return
+    const key=`${value.epoch}:${value.sequence}`,entity=value.entity,observed=entity?.itemState?.item
+    if(this.pickupSeen.has(key)||entity?.entityId!==value.collectedEntityId||!observed?.snbt||value.count>observed.count)return
+    this.pickupSeen.add(key);if(this.pickupSeen.size>48)this.pickupSeen.delete(this.pickupSeen.values().next().value)
+    if(value.count===observed.count)this.collected.set(entity.entityId,entity.uuid)
+    if(!value.target||!['x','y','z'].every(k=>Number.isFinite(value.target[k])))return
+    while(this.pickups.size>=16){const first=this.pickups.keys().next().value;this.pickups.get(first).actor?.dispose();this.pickups.delete(first)}
+    const generation=this.generation,item={...observed,count:value.count,snbt:observed.snbt.replace(/,count:\d+/,`,count:${value.count}`)}
+    const row={actor:null,entity:{...entity,itemState:{...entity.itemState,item}},startTick:value.tick,start:{...entity.position},target:{...value.target}}
+    this.pickups.set(key,row)
+    try {
+      const actor=await this.createActor(this.reader,row.entity)
+      if(this.disposed||generation!==this.generation||this.pickups.get(key)!==row){actor.dispose();return}
+      row.actor=actor;this.root.add(actor.root)
+    }catch{if(this.pickups.get(key)===row)this.pickups.delete(key)}
+  }
+  frame(now,clock=null) {
     if(this.disposed)return
+    this.clock=clock
+    for(const [key,row]of this.pickups) {
+      if(!Number.isSafeInteger(clock?.tick)||!Number.isFinite(clock.sampledAt)||now-clock.sampledAt>1000){if(row.actor)row.actor.root.visible=false;continue}
+      const partial=Math.max(0,Math.min(1,(now-clock.sampledAt)/50)),time=(clock.tick-row.startTick+partial)/3
+      if(time>=1){row.actor?.dispose();this.pickups.delete(key);continue}
+      if(row.actor){const t=Math.max(0,time)**2;row.actor.root.visible=true;row.actor.root.position.set(...['x','y','z'].map(k=>row.start[k]+(row.target[k]-row.start[k])*t))}
+    }
     for(const [id,row] of this.actors){
       const entity=this.data.get(id)
       if(!entity){row.actor.root.visible=false;continue}
-      try {row.actor.update(entity,now)} catch(error){
+      try {row.actor.update(entity,now);if(this.collected.get(id)===entity.uuid)row.actor.root.visible=false} catch(error){
         row.actor.dispose();this.actors.delete(id);this.failures.set(id,{key:row.key,name:entity.name,reason:error.message});this.onChange()
       }
     }
   }
   diagnostics() {
     const motionIssues=[...this.actors.values()].map(row=>row.actor.root.userData.nativeContraption?.reason).filter(Boolean)
-    return {received:this.data.size,rendered:this.actors.size,issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
+    return {received:this.data.size,rendered:this.actors.size,droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
+      issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
   }
   reset() {
     this.generation++;this.pending=null;for(const row of this.actors.values())row.actor.dispose();this.actors.clear();this.failures.clear();this.data.clear();this.root.clear();this.streamReason=null
+    for(const row of this.pickups.values())row.actor?.dispose();this.pickups.clear();this.pickupSeen.clear();this.collected.clear();this.clock=null
   }
   dispose(){if(this.disposed)return;this.disposed=true;this.reset();this.root.removeFromParent()}
 }

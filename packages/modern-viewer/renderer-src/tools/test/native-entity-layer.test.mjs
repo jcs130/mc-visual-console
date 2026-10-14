@@ -7,6 +7,28 @@ const entity=(id=2)=>({entityId:id,uuid:`entity-${id}`,name:'minecraft:pig',meta
 const state=entities=>({available:true,entities})
 const finish=async layer=>{while(layer.running)await new Promise(resolve=>setImmediate(resolve))}
 
+test('received item pickup is deduplicated and follows three actual connection ticks, reset retires async geometry',async()=>{
+  let disposed=0,created=0
+  const layer=new NativeEntityLayer(null,{createActor:async()=>{created++;return {root:new THREE.Group(),update(){},dispose(){disposed++;this.root.removeFromParent()}}}})
+  const item={...entity(),name:'minecraft:item',position:{x:0,y:0,z:0},itemState:{item:{name:'minecraft:stick',count:2,snbt:'{id:"minecraft:stick",count:2}'}}}
+  layer.stage(state([item]));await finish(layer)
+  const value={source:'received_native_collect_packet',tick:10,epoch:1,sequence:8,collectedEntityId:2,count:2,entity:item,target:{x:3,y:3,z:0}}
+  await layer.collect(value);await layer.collect(value)
+  assert.equal(created,2);assert.equal(layer.pickups.size,1)
+  layer.frame(1000,{tick:11,sampledAt:1000})
+  assert.equal(layer.actors.get(2).actor.root.visible,false)
+  assert.deepEqual([...layer.pickups.values()][0].actor.root.position.toArray(),[1/3,1/3,0])
+  layer.frame(1200,{tick:11,sampledAt:1000})
+  assert.equal(layer.pickups.size,1,'browser time cannot create the third connection tick')
+  layer.frame(1250,{tick:13,sampledAt:1250});assert.equal(layer.pickups.size,0)
+  assert.equal(disposed,1)
+  let complete
+  layer.createActor=()=>new Promise(resolve=>{complete=resolve})
+  const pending=layer.collect({...value,sequence:9})
+  layer.reset();complete({root:new THREE.Group(),dispose(){disposed++}});await pending
+  assert.equal(layer.pickups.size,0);assert.equal(layer.root.children.length,0);assert.equal(disposed,3)
+})
+
 test('same-account self is excluded; entity frames reuse actors, deletion disposes them',async()=>{
   const created=[],updates=[],disposed=[]
   const layer=new NativeEntityLayer(null,{createActor:async(reader,e)=>{created.push(e.entityId);return{root:new THREE.Group(),update(e,now){updates.push([e.entityId,e.motion.tick,now])},dispose(){this.root.removeFromParent();disposed.push(e.entityId)}}}})

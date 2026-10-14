@@ -33,6 +33,12 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
             subject.playerName !== identity.player || subject.entityId !== identity.entityId)) throw Error('NATIVE_AGENT_VISUAL_IDENTITY_MISMATCH')
         return { kind: 'agent_visual', value }
       }
+      if(value.type==='entity_collect') {
+        if(!ready||value.epoch!==epoch)return {kind:'ignored'}
+        if(value.playerUuid?.toLowerCase()!==identity.playerUuid||value.source!=='received_native_collect_packet'||
+          ![value.collectedEntityId,value.collectorEntityId,value.sequence,value.count].every(Number.isSafeInteger)||value.count<0)throw Error('NATIVE_COLLECT_BINDING_MISMATCH')
+        return {kind:'entity_collect',value}
+      }
       if (value.type === 'snapshot') {
         if (value.registrySha256 !== registrySha256 || value.mode !== identity.mode || !Number.isSafeInteger(value.epoch)) throw Error('NATIVE_WORLD_SNAPSHOT_MISMATCH')
         if (epoch !== null && value.epoch < epoch) return { kind: 'ignored' }

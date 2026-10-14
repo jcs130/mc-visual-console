@@ -74,6 +74,16 @@ test('component removal and nonvisual scalar patches survive the vanilla project
   assert.equal(nativeItemIconEligible(item), true);
 });
 
+test('raw protocol removal objects survive the item resolver and unknown patches remain unavailable',()=>{
+  const require=createRequire(import.meta.url),bot=new EventEmitter();bot.version='1.21.1';bot._client=new EventEmitter()
+  bot.registry=require('minecraft-data')('1.21.1')
+  const stream=observeVanillaNativeStream(bot,'a'.repeat(64)),wire={itemId:bot.registry.itemsByName.stick.id,itemCount:33,components:[],removeComponents:[{type:'custom_name'}]}
+  const state=stream.resolveItemStack(wire);assert.equal(state.available,true);assert.equal(state.item.count,33)
+  assert.match(state.item.snbt,/"!minecraft:custom_name":\{\}/)
+  assert.equal(stream.resolveItemStack({...wire,components:[{type:'unknown',data:1}]}).available,false)
+  stream.close()
+})
+
 test('visual overrides, conflicting patches and invalid data never borrow a generic icon', () => {
   const stacks = [
     { components: [{ type: 'custom_model_data', data: 7 }], removedComponents: [] },

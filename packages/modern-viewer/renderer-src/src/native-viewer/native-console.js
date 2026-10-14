@@ -5,6 +5,8 @@ import { createAdaptiveQualityController } from '../modern-viewer/viewer-perform
 import { renderAgentStatus, startAgentStatusPolling } from './agent-status.js'
 import { installAppearanceSettings } from '../modern-viewer/appearance-settings.js'
 import { createNativeActivityUi } from './native-activity-ui.js'
+import { installCameraSettings } from '../modern-viewer/camera-settings.js'
+import { loadCameraSettings, CAMERA_SETTINGS_KEY } from '../modern-viewer/camera-preferences.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
@@ -28,6 +30,12 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const listeners = [], listen = (target, event, callback) => { target?.addEventListener(event, callback); listeners.push([target, event, callback]) }
   let disposed = false, identity = null, sceneHost = null, latestState = null, lastDiagnostics = null
   const appearanceUi = installAppearanceSettings({ document, window, onChange: id => sceneHost?.selectAppearance?.(id) })
+  let cameraSettings
+  try {cameraSettings=window.localStorage?.getItem(CAMERA_SETTINGS_KEY)?loadCameraSettings(window.localStorage):{...loadCameraSettings(null),mode:'follow'}}
+  catch {cameraSettings={...loadCameraSettings(null),mode:'follow'}}
+  const cameraUi=installCameraSettings({document,window,settings:cameraSettings,onChange:value=>{
+    cameraSettings=value;sceneHost?.setCameraSettings?.(value);if(pendingMode!=='third')switchView('third')
+  },onShot:kind=>{if(pendingMode!=='third')switchView('third');sceneHost?.startCameraShot?.(kind)}})
   let frames = 0, sampledAt = null, lastUiFrameAt = -Infinity, pendingMode = consoleViewMode(window.location?.pathname, document.body.dataset.viewMode)
   const viewport = el('viewer-canvas') ?? append(document, document.body, 'div', 'native-console-viewport')
   viewport.id = 'viewer-canvas'; viewport.setAttribute('aria-label', '同一 Agent 本人及原生世界')
@@ -61,6 +69,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     .corti-skills [data-ability-list]{grid-template-columns:1fr}.corti-skills [data-ability-list] small{display:block;color:#aebfc1;font-size:10px}
     [data-menu-body]>.corti-menu-note{color:#d4e2e3;margin:8px 0 0;padding:7px 4px;max-width:352px;font:11px/1.5 system-ui}
     .boot.is-compact{bottom:92px;right:14px;max-width:390px;font-size:11px}
+    .viewer-camera-settings{right:112px}.viewer-toolbar .viewer-camera-settings{right:auto}
     @media(max-width:720px){.native-agent-status{top:55px;font-size:10px;gap:1px 6px}.native-agent-field:has(#agent-decision-at){display:none}}
   `
   const ui = createInterface({ document })
@@ -94,7 +103,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}`),
       presentation.available ? '背包/菜单/技能：同一玩家原生状态；原生物品图标已接入，未支持的专用模型/组件及装备明确标注' : `展示数据：${presentation.reason}`,
       pendingMode === 'dungeon' ? '地下城2.5D跟随相机；遮挡/切面/点击操控未接入' : '',
-      '音效/音乐/小地图：原生接口未接入', '完整场景一致性尚未验收',
+      '小地图：本人原场景与移动轨迹；第三人称已接入原运镜设置', '音效/音乐：原生接口未接入', '完整场景一致性尚未验收',
       ...(d?.issues ?? []).slice(0, 16)].filter(Boolean).join('\n')
   }
   for (const id of ['corti-sound-toggle','corti-music-toggle','corti-sound-test','corti-music-play','corti-night-vision-toggle']) {
@@ -132,7 +141,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     onView: view => { if (!disposed) renderAgentStatus(view, el) } })
   const dispose = () => {
     if (disposed) return
-    disposed = true; stopStatus(); appearanceUi.dispose(); activityUi.dispose(); ui.dispose(); sceneHost?.dispose()
+    disposed = true; stopStatus(); appearanceUi.dispose(); cameraUi.dispose(); activityUi.dispose(); ui.dispose(); sceneHost?.dispose()
     for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     label.remove(); ysmNotice.remove(); stateBar.remove(); details.remove(); style.remove()
   }
@@ -140,6 +149,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   ui.reset(); switchView(pendingMode)
   try {
     sceneHost = await mount({ viewport, mode: pendingMode,
+      cameraSettings,onCameraManual:()=>cameraUi.manual(),
       onIdentity (value) { if (disposed) return; identity = value; ui.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },
       onState (value) {
         if (disposed) return
@@ -168,6 +178,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       onFrame (frame) {
         if (disposed) return
         frames++
+        if(frame.camera)cameraUi.status(`${({manual:'手动环绕',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称',dungeon:'地下城'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`)
         if (sampledAt === null) sampledAt = frame.now
         if (frame.now - sampledAt >= 1000) {
           const result = quality.sample({ fps: frames * 1000 / (frame.now - sampledAt), hidden: document.hidden })

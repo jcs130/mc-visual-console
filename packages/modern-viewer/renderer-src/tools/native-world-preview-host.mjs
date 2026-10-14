@@ -418,6 +418,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       if (getAgentStatus !== null && typeof getAgentStatus !== 'function') throw Error('AGENT_STATUS_PROVIDER_INVALID')
       if (getPresentationState !== null && typeof getPresentationState !== 'function') throw Error('PRESENTATION_PROVIDER_INVALID')
       const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry, entityRegistrySha256, simplifyNBT, now,
+        resolveItemStack:nativeStream.resolveItemStack??null,
         resolveDimension: resolveDimension || (p => {
           const type = typeof p.dimension === 'number' ? bot.registry.dimensionsArray[p.dimension] : bot.registry.dimensionsByName[String(p.dimension).replace('minecraft:', '')]
           return type && { name: p.name || p.worldName || type.name, minY: type.minY, height: type.height }
@@ -631,7 +632,15 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const value = { type: 'presentation', epoch: world.epoch, playerUuid: player.uuid, presentation: presentation(player) }
         for (const client of clients) if (!client.needsSnapshot) sendNativeWorldEvent(client, value)
       }
+      const collected=value=>{
+        const player=selfPlayer()
+        if(!player||closed||connectionEnded||world.error)return
+        const target=value.collectorEntityId===player.entityId?{x:player.position.x,y:player.position.y+player.eyeHeight/2,z:player.position.z}:null
+        const message={type:'entity_collect',epoch:world.epoch,playerUuid:player.uuid,source:'received_native_collect_packet',...value,target,tick:physicsTickCount}
+        for(const client of clients)if(!client.needsSnapshot)sendNativeWorldEvent(client,message)
+      }
       world.on('world', worldChanged); world.on('reset', reset); world.on('pose', pose); world.on('unavailable', unavailable)
+      world.on('collect',collected)
       bot.on('error', error); bot.on('kicked', kicked); bot.on('end', ended)
       bot.on('login', verifyIdentity); bot.on('spawn', verifyIdentity)
       bot.on('physicsTick', physicsTick); bot.on('spawn', motionReset); bot.on('death', motionDeath)
@@ -697,6 +706,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           bot.off('messagestr', message); bot.off('title', title); bot.off('title_times', titleTimes); bot.off('title_clear', titleClear)
           bot._client.off('player_info', playerInfo)
           nativeStream.events.off('presentation', presentationChanged)
+          world.off('collect',collected)
           for (const client of clients) client.response.end()
           clients.clear()
           // Both the action bot and native packet stream belong to the caller.

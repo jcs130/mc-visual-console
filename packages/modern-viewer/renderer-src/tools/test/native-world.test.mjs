@@ -45,10 +45,10 @@ try {
   if (process.env.NATIVE_METADATA_CODEC_MODULE || error.code !== 'MODULE_NOT_FOUND') throw error
 }
 
-function entityFixture (extraRegistry = '') {
+function entityFixture (extraRegistry = '',resolveItemStack=null) {
   const registryBytes = Buffer.from('minecraft:slime\t93\nexample:actual_mob\t300\n' + extraRegistry)
   const entityRegistrySha256 = createHash('sha256').update(registryBytes).digest('hex')
-  const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry: loadNativeEntityRegistry(registryBytes, entityRegistrySha256), entityRegistrySha256,
+  const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry: loadNativeEntityRegistry(registryBytes, entityRegistrySha256), entityRegistrySha256,resolveItemStack,
     resolveDimension: () => ({ name: 'minecraft:overworld', minY: 0, height: 256 }), simplifyNBT: value => value, now: () => 1000 })
   let sequence = 0
   const packet = (name, params) => world.handle({ registrySha256: hash, sequence: ++sequence, name, params })
@@ -326,6 +326,23 @@ test('entity tick clock errors clear only the entity stream and never escape the
   assert.doesNotThrow(()=>world.tickEntities())
   assert.match(world.entitySnapshot().reason,/MOTION_CLOCK_INVALID/)
   assert.equal(world.error,null);assert.equal(world.entityMotions.size,0)
+})
+
+test('dropped Slot projection uses the supplied native registry and collect survives destroy without proving inventory gain',()=>{
+  const resolved=[]
+  const {world,packet,spawn}=entityFixture('minecraft:item\t500\n',wire=>{resolved.push(wire);return {available:true,source:'same_player_vanilla_item_registry',minecraftVersion:'1.21.1',registryId:wire.itemId,
+    item:{name:'minecraft:oak_planks',count:wire.itemCount,snbt:`{id:"minecraft:oak_planks",count:${wire.itemCount}}`}}})
+  spawn(12,500)
+  const wire={itemId:6,itemCount:8,components:[],removeComponents:[{type:'custom_name'}]}
+  packet('entity_metadata',{entityId:12,metadata:[{key:8,type:'item_stack',value:wire}]})
+  const row=world.entitySnapshot().entities[0]
+  assert.equal(row.itemState.item.count,8);assert.deepEqual(resolved[0],wire);assert.equal(row.objectData,null)
+  assert.equal(row.motion.item.clientLifetimeTicks,0)
+  let collect;world.on('collect',value=>{collect=value})
+  packet('collect',{collectedEntityId:12,collectorEntityId:9,pickupItemCount:8});packet('entity_destroy',{entityIds:[12]})
+  assert.equal(world.entitySnapshot().entities.length,0)
+  assert.equal(collect.entity.uuid,row.uuid);assert.equal(collect.entity.itemState.item.count,8);assert.equal(collect.count,8)
+  assert.equal(collect.collectorEntityId,9);assert.equal(Object.hasOwn(collect,'inventoryGain'),false)
 })
 
 test('registry is byte-anchored and never accepts a proxy ID table or duplicates', () => {
