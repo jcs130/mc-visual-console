@@ -86,7 +86,14 @@ function injectedPresentation (provider, uuid) {
         'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'handAnimation', 'pose', 'ysm', 'motion']
         .filter(key => Object.hasOwn(copy.self, key)).map(key => [key, key === 'ysm' ? projectNativeYsmState(copy.self.ysm, uuid)
           : key === 'motion' ? projectNativePlayerRenderState(copy.self.motion, uuid) : copy.self[key]])) : null
+    const effects=Array.isArray(copy.effects)?copy.effects.slice(0,32).flatMap(row=>
+      /^minecraft:[a-z_]+$/.test(row?.name??'')&&Number.isInteger(row.amplifier)&&row.amplifier>=0&&row.amplifier<=255&&Number.isInteger(row.duration)&&row.duration>=-1&&row.duration<=2147483647
+        ?[{name:row.name,amplifier:row.amplifier,duration:row.duration}]:[]):[]
+    const bossBars=Array.isArray(copy.bossBars)?copy.bossBars.slice(0,8).flatMap(row=>
+      UUID.test(row?.uuid??'')&&typeof row.title==='string'&&Number.isFinite(row.health)&&row.health>=0&&row.health<=1&&['pink','blue','red','green','yellow','purple','white'].includes(row.color)&&[0,6,10,12,20].includes(row.dividers)
+        ?[{uuid:row.uuid,title:row.title.slice(0,200),health:row.health,color:row.color,dividers:row.dividers}]:[]):[]
     return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
+      profile:copy.profile==='vanilla_1.21.1'?copy.profile:null,effects,bossBars,
       modOperations: copy.modOperations ?? [],
       nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null,
       entityRenderStates: copy.entityRenderStates ?? null, contraptionRenderStates: copy.contraptionRenderStates ?? null,
@@ -479,6 +486,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             quickBarSlot: Number.isInteger(bot.quickBarSlot) && bot.quickBarSlot >= 0 && bot.quickBarSlot <= 8 ? bot.quickBarSlot : null,
             ...(injected.nativeSelf ?? {}) },
           inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, modOperations: injected.modOperations ?? [], nativeState: injected.nativeState,
+          profile:injected.profile??null,effects:injected.effects??[],bossBars:injected.bossBars??[],
           activity: nativeStream.activityState?.() ?? null,
           agentPlayback: injectedAgentStatus(getAgentStatus, now).details?.playback ?? null,
           renderRegistries: injected.renderRegistries,

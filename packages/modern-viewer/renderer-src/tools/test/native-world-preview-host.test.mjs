@@ -753,6 +753,16 @@ test('same-player private presentation rejects foreign, asynchronous, cyclic and
   assert.deepEqual(counts(), { quitCount: 0, detachCount: 0 })
 })
 
+test('the actual shared host carries only public survival fields through its provider allowlist and resets foreign data',t=>{
+  let supplied
+  const {bot,host}=attachment(t,{getPresentationState:()=>supplied});playerEntity(bot)
+  supplied={schemaVersion:1,playerUuid:bot._client.uuid,profile:'vanilla_1.21.1',effects:[{name:'minecraft:haste',amplifier:1,duration:400,secret:'never-public'}],
+    bossBars:[{uuid:'11111111-1111-1111-1111-111111111111',title:'<Boss>',health:.5,color:'purple',dividers:6,secret:'never-public'}]}
+  let p=host.status().presentation;assert.equal(p.profile,'vanilla_1.21.1');assert.equal(p.effects[0].name,'minecraft:haste');assert.equal(p.bossBars[0].health,.5)
+  assert.ok(!JSON.stringify(p).includes('never-public'))
+  supplied.playerUuid='ffffffff-ffff-ffff-ffff-ffffffffffff';p=host.status().presentation;assert.deepEqual(p.effects,[]);assert.deepEqual(p.bossBars,[]);assert.equal(p.profile,null)
+})
+
 test('own messages, title, actionbar, vitals and weather stay private and clear on native respawn/disconnect', t => {
   const { bot, host, nativeStream } = attachment(t)
   playerEntity(bot)
