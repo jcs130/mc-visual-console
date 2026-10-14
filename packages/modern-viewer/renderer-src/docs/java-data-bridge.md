@@ -22,6 +22,8 @@ Every response includes `protocol`, `minecraftVersion`, `uuid`, `server`, `dimen
 
 Chunks update only when changed or entering view. Position/avatar/entity events retain order; three consecutive volatile Socket.IO emits drop later packets while the first packet is writing. Slow clients have a bounded queue and are disconnected. Movement does not recreate equipment or emit hurt effects repeatedly. Hurt effects follow actual hurt tick rising edges.
 
+Visual polling runs only while an admitted browser/capture session needs it. HTTP page/health requests and an idle viewer host perform no native observations. Concurrent first sessions share one fresh sample, and reconnecting after idle refreshes facts before delivering the scene. Registry data is cached per native world epoch; only changed/entering chunks are fetched. `/healthz` exposes `state: idle|streaming|unavailable|closed` and `sampling`, separating ready-but-idle from a verified live scene. A bounded in-flight request may finish after the last session disconnects; no new sample is scheduled. Existing two ordinary/one capture session limits remain unchanged.
+
 ## Current coverage and limits
 
 Implemented and isolated-game tested: loaded vanilla terrain, block changes, native light, time/weather, actual own vanilla skin, own movement/turning/vitals, browser camera independence. Native registry rejection is explicit for unsupported blocks/biomes/items/skins. `/healthz` and the page show partial coverage.
