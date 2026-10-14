@@ -17,9 +17,17 @@ test('jittered arrivals stay inside received segments; teleport, long pause and 
   const c=new EntityPositionTimeline();c.push({x:0,y:64,z:0},0);c.push({x:1,y:64,z:0},90);c.push({x:2,y:64,z:0},110);
   for(let t=110;t<210;t++)assert.ok(c.sample(t).x>=0 && c.sample(t).x<=2);
   c.push({x:50,y:70,z:5},250);assert.equal(c.sample(250).x,50);
-  c.push({x:51,y:70,z:5},1000);assert.equal(c.sample(1000).x,51);
-  c.push({x:52,y:70,z:5},1050,{instant:true});assert.equal(c.sample(1050).x,52);
-  for(let t=1100;t<10000;t+=10)c.push({x:52,y:70,z:5},t);assert.ok(c.samples.length<=32);
+  c.push({x:51,y:70,z:5},2000);assert.equal(c.sample(2000).x,51);
+  c.push({x:52,y:70,z:5},2050,{instant:true});assert.equal(c.sample(2050).x,52);
+  for(let t=2100;t<10000;t+=10)c.push({x:52,y:70,z:5},t);assert.ok(c.samples.length<=32);
+});
+test('short network stalls resume from the visible position, while pose-only repeats do not restart travel',()=>{
+  const c=new EntityPositionTimeline();c.push({x:0,y:64,z:0},0);
+  c.push({x:1,y:64,z:0},50);c.push({x:1,y:64,z:0},80);
+  assert.equal(c.samples.at(-1).at,50);
+  const from={...c.sample(600)};
+  c.push({x:2,y:64,z:0},600,{from});
+  assert.equal(c.sample(600).x,1);assert.equal(c.sample(650).x,1.5);assert.equal(c.sample(700).x,2);
 });
 test('the pinned renderer uses the buffer and retains passenger/deletion tween cancellation',()=>{
   const original=readFileSync(new URL('../../node_modules/minecraft-renderer/dist/minecraft-renderer.js',import.meta.url),'utf8');

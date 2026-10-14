@@ -6,9 +6,16 @@ export class EntityPositionTimeline {
     const last=this.samples.at(-1);
     if(!['x','y','z'].every(k=>Number.isFinite(position[k])) || !Number.isFinite(now))return;
     const gap=last?now-last.at:Infinity;
-    if(instant || !last || gap>400 || Math.hypot(position.x-last.x,position.y-last.y,position.z-last.z)>4) {
+    if(!instant && last && ['x','y','z'].every(k=>position[k]===last[k]))return;
+    if(instant || !last || gap>1500 || Math.hypot(position.x-last.x,position.y-last.y,position.z-last.z)>4) {
       this.samples.length=0;
       this.samples.push({...(instant||last?position:from),at:now-this.delayMs});
+    } else if(gap>this.delayMs*2) {
+      // A delayed packet starts at the displayed position. Do not instantly
+      // consume most of an old segment just because its timestamp is stale.
+      const displayed={...from};
+      this.samples.length=0;
+      this.samples.push({...displayed,at:now-this.delayMs});
     }
     if(this.samples.at(-1)?.at===now)this.samples.pop();
     this.samples.push({x:position.x,y:position.y,z:position.z,at:now});

@@ -8,6 +8,7 @@ import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { captureOverview } from "./overview-capture.js";
 import { installSceneMinimap, dimensionLabel } from "./scene-minimap.js";
 import { SightGrid, TerrainMemory } from "./perception-view.js";
+import { installCameraWater } from './camera-water.js';
 import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
 import { installObsLayout } from "./obs-layout.js";
@@ -889,8 +890,10 @@ socket.on("entityMoved", (update) => { if (!isObsOverlay) handleEntity(update, t
 async function initializeRenderer(version) {
   initializing = true;
   if (!isObsOverlay) perceptionGrid = new SightGrid(version);
-  if (usesWorldAvatar) {
+  if (!isObsOverlay) {
     dungeonRoomCoverCache = new RoomCoverCache(version);
+  }
+  if (usesWorldAvatar) {
     dungeonFloorMask = new RoomFloorMask(dungeonRoomCoverCache);
   }
   setStatus("正在建立现代方块与实体图集…");
@@ -1053,6 +1056,7 @@ async function initializeRenderer(version) {
     installOrbitControls();
     installDungeonCameraControls();
     installDungeonOcclusion();
+    if (dungeonRoomCoverCache) installCameraWater(globalThis.world, (x,y,z) => dungeonRoomCoverCache.blockAt(x,y,z));
     installNpcGameplay();
     installDungeonInteractions();
     installDungeonContextMenu();
@@ -2804,7 +2808,9 @@ function applyAvatarState() {
   reactive.sneaking = state.sneaking === true || movementState === "SNEAKING";
   reactive.sprinting = state.sprinting === true || movementState === "SPRINTING";
   reactive.flying = state.flying === true || state.elytraFlying === true;
-  reactive.inWater = state.inWater === true;
+  // This renderer flag selects whole-camera fog. The camera-medium controller
+  // reads the actual eye position; pendingAvatarState retains body water facts.
+  reactive.inWater = false;
   reactive.itemUsageTicks = state.usingHeldItem === true ? Math.max(1, finiteOr(reactive.itemUsageTicks, 0) + 1) : 0;
   reactive.fovMultiplier = isObsOverlay || usesWorldAvatar ? 1 : reactive.sprinting ? 1.04 : 1;
 
@@ -3239,7 +3245,7 @@ function handleEntity(update, movementOnly) {
   maybeApplyPaintingEntity(normalized);
   maybeApplyCustomCharacter(normalized);
   maybeApplyVillagerAppearance(normalized);
-  if (id === focusedCharacterId) applyPosition(true);
+  if (id === focusedCharacterId) applyPosition(false);
   if (id === selectedNpcId) scheduleNpcPanelRender();
   if (id === dungeonHoverEntityId && dungeonHoverPointer) {
     const canvas = document.getElementById("viewer-canvas");

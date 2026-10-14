@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import * as THREE from 'three';
 import { Group } from 'three';
 import { patchRendererEntityVisibility, patchRendererEntityDamage } from '../minecraft-viewer-entity-visibility.mjs';
+import { tintEntityDamage } from '../../src/modern-viewer/entity-hurt-tint.js';
 
 const require = createRequire(import.meta.url);
 const native = readFileSync(require.resolve('minecraft-renderer/dist/minecraft-renderer.js'), 'utf8');
@@ -102,7 +103,7 @@ test('damage tint skips uncolored shader materials and still colors the skin', (
   const start = source.indexOf('handleDamageEvent(e,t){');
   const end = source.indexOf('raycastSceneDebug()', start);
   const method = runInNewContext(`({${source.slice(start, end)}}).handleDamageEvent`, {
-    j: THREE, Ge: class { to() { return this; } start() {} },
+    CortiTintEntityDamage: tintEntityDamage, Ge: class { to() { return this; } onComplete() { return this; } start() {return this;} },
   });
   const mesh = new Group();
   mesh.name = 'mesh';

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 /** Adapt the pinned renderer's entity culling to its floating scene origin. */
 export function patchRendererEntityVisibility(source) {
   const before = 'let c=s.position.x-t.x,u=s.position.y-t.y,h=s.position.z-t.z,p=c*c+u*u+h*h,m=this.worldRenderer.entitySectionKey(s.position.x,s.position.y,s.position.z)';
@@ -6,10 +7,13 @@ export function patchRendererEntityVisibility(source) {
   return source.replace(before, after);
 }
 
-/** Shader materials used by item glints do not have a color property. */
+/** Retain one untinted baseline across overlapping damage events. */
 export function patchRendererEntityDamage(source) {
-  const before = 'i instanceof j.Mesh&&i.material.clone';
-  const after = 'i instanceof j.Mesh&&i.material?.clone&&i.material?.color?.clone';
-  if (source.split(before).length !== 2) throw Error('minecraft-renderer entity damage anchor changed');
-  return source.replace(before, after);
+  const start = source.indexOf('handleDamageEvent(e,t){');
+  const end = source.indexOf('raycastSceneDebug()', start);
+  if (start < 0 || end < start || !source.slice(start, end).includes('i.material.clone'))
+    throw Error('minecraft-renderer entity damage anchor changed');
+  const module = fileURLToPath(new URL('../src/modern-viewer/entity-hurt-tint.js', import.meta.url));
+  return `import { tintEntityDamage as CortiTintEntityDamage } from ${JSON.stringify(module)};\n`
+    + source.slice(0,start) + 'handleDamageEvent(e,t){CortiTintEntityDamage(this.entities[e]?.children.find(i=>i.name==="mesh"),Ge)}' + source.slice(end);
 }
