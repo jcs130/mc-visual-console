@@ -1,0 +1,103 @@
+{
+  "formatVersion": 1,
+  "game": "minecraft",
+  "versionId": "0.1.0-preview.1",
+  "name": "Agent MC YSM Client — Fabric 1.21.1",
+  "summary": "Separate local YSM and shader preview. Not compatible with the 1.20.6 action bridge.",
+  "dependencies": {
+    "minecraft": "1.21.1",
+    "fabric-loader": "0.19.5"
+  },
+  "files": [
+    {
+      "path": "mods/fabric-api-0.116.17+1.21.1.jar",
+      "hashes": {
+        "sha1": "810b2b0195371a012906241d8b85a32a1d6de53c",
+        "sha512": "98c478217da19181f0e4df3ea6c2da6bdbda271c7544a4aea048513a49b444f1ff5b71dc0df6303017c48e8ff69b7bb6af6179bdf0d0e09ab3c1ee08411857a8"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/P7dR8mSH/versions/Mys3P7lK/fabric-api-0.116.17%2B1.21.1.jar"
+      ],
+      "fileSize": 2452735
+    },
+    {
+      "path": "mods/ForgeConfigAPIPort-v21.1.6-1.21.1-Fabric.jar",
+      "hashes": {
+        "sha1": "18bf1f21cd2db6dcd4e42db85eae54e2a49a48ee",
+        "sha512": "cd9296e78ba969f7aed6e3692aa25eb61c102c79c55ca5f9592576bacaa26feab5d5d48fa30cf07ca852e0f1d42afc4d4558feff69a67b225183d2bc15898cf9"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/ohNO6lps/versions/N5qzq0XV/ForgeConfigAPIPort-v21.1.6-1.21.1-Fabric.jar"
+      ],
+      "fileSize": 633065
+    },
+    {
+      "path": "mods/iris-fabric-1.8.8+mc1.21.1.jar",
+      "hashes": {
+        "sha1": "4e0df4011503b4b36ba69877ea7247c1a47fea00",
+        "sha512": "2e6ba2ffa1e1a6799288245a7e0ac68ee8df1d41b98362189df58f535cae34fa9277801e4136633467341b7dae5be0e5c698011b480b3d91b66d3dd4f7567aa6"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/YL57xq9U/versions/zsoi0dso/iris-fabric-1.8.8%2Bmc1.21.1.jar"
+      ],
+      "fileSize": 2690177
+    },
+    {
+      "path": "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
+      "hashes": {
+        "sha1": "928a2598178c3a58b0638bab842f467d2e49251a",
+        "sha512": "13032e064c554fc8671573dadb07bc70e6ea2f68706c65c086c4feb1d2f664346a3414cbf9d1367b42b8d063a35e40f2f967ef9af31642e1f0093b852161fe91"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/AANobbMI/versions/u1OEbNKx/sodium-fabric-0.6.13%2Bmc1.21.1.jar"
+      ],
+      "fileSize": 1297761
+    },
+    {
+      "path": "mods/ysm-2.6.5-fabric+mc1.21.1-release.jar",
+      "hashes": {
+        "sha512": "c5125c05c9d681ecb38ed7fca4a7915c8af65f90927393b84ab7e0494eda967c3398265c44ac15c2c25188bc2ee16b1311f5cd09848f1d38ad0846d526340ed1",
+        "sha1": "459baacc7fb787f1236b914adab00e63e66921ba"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/86xjpqqS/versions/eGOUtHWJ/ysm-2.6.5-fabric%2Bmc1.21.1-release.jar"
+      ],
+      "fileSize": 62831087
+    },
+    {
+      "path": "shaderpacks/ComplementaryReimagined_r5.2.2.zip",
+      "hashes": {
+        "sha512": "1b49966c89559e43ad7ea2466213663ee543fd302383998ea367e8a53a855a183941e5bef72e13f60086a89a92a06758feef11d49f9a1890b26261657f37d153",
+        "sha1": "07cd8165acf24ec8ddada03f60729537687dd435"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/HVnmMxH1/versions/pAOQ9Amz/ComplementaryReimagined_r5.2.2.zip"
+      ],
+      "fileSize": 441683
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+version:3955
+maxFps:60
+enableVsync:true
+renderDistance:8
+simulationDistance:5
+resourcePacks:["fabric"]

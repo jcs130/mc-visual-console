@@ -1,5 +1,8 @@
 # Optional Java client visuals — Fabric 1.20.6
 
+For YSM, see the separate [Fabric 1.21.1 YSM profile](../fabric-1.21.1-ysm/README.md).
+It is a different client version and does not upgrade an active 1.20.6 Agent.
+
 This profile is shared by action and observer clients. Import the generated
 `.mrpack` into a **new instance**, using a Java 21 runtime. It contains visual
 dependencies and settings, with no account, server, login mod, control bridge,
