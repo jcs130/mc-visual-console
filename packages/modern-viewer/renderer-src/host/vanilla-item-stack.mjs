@@ -45,7 +45,10 @@ export function vanillaItemStack(item, registry) {
       patch.set(key, componentValue(component.type, component.data));
     }
     for (const component of item.removedComponents) {
-      const key = componentName(component);
+      // Protocol 767 uses removeComponents:[{type}], while the public item
+      // projection may retain a string name. Never discard a removal patch.
+      const type=typeof component==='string'?component:component&&Object.keys(component).length===1?component.type:null;
+      const key = componentName(type);
       if (!key || patch.has(key) || patch.has('!' + key)) throw Error('VANILLA_COMPONENT_PATCH_INVALID');
       patch.set('!' + key, '{}');
     }

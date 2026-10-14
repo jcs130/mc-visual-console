@@ -3,7 +3,8 @@ import { NativeAssetReader, bakeFaces, resourcePath, textureId } from './model-l
 import { parseNativeItemStack, nativeNumericValue } from './native-item-stack.js'
 import { nativeArsItemEligible, prepareNativeArsItemIcon, bakeNativeArsGeoFaces } from './native-ars-item-icons.js'
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
-import { verifyNativeStaticItemEvidence, nativeStaticItemState } from './native-static-item-providers.js'
+import { verifyNativeStaticItemEvidence, nativeStaticItemState, nativeStaticItemEvidence } from './native-static-item-providers.js'
+import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 import { nativeBlockItemEligible, resolveNativeBlockItemModel, bakeNativeBlockItemFaces } from './native-block-item-icons.js'
 import { nativeHumanoidWalkAngles, nativePlayerCos, nativePlayerSin, toSkinviewLimbRotation } from './native-player-motion.js'
 import { nativeHandAnimation, nativeHandUse, nativeFirstPersonConsumeMatrix, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from './native-first-person-motion.js'
@@ -55,7 +56,7 @@ export function selectNativeHeldItems(frame, boundUuid) {
 // ItemTransform.Deserializer: float values, translation /16 then +/-5 clamp,
 // scale +/-4 clamp. apply(left) negates X translation and Y/Z rotation.
 export function nativeHeldItemTransform(display = {}, arm = 'right', context = 'thirdperson') {
-  if (!record(display) || !['left', 'right'].includes(arm) || !['firstperson', 'thirdperson'].includes(context)) throw Error('NATIVE_HELD_TRANSFORM_INVALID')
+  if (!record(display) || !['left', 'right'].includes(arm) || !['firstperson', 'thirdperson','ground'].includes(context)) throw Error('NATIVE_HELD_TRANSFORM_INVALID')
   const vector = (value, fallback) => {
     value ??= fallback
     if (!Array.isArray(value) || value.length !== 3 || !value.every(Number.isFinite)) throw Error('NATIVE_HELD_TRANSFORM_INVALID')
@@ -65,9 +66,9 @@ export function nativeHeldItemTransform(display = {}, arm = 'right', context = '
   const translation = vector(display.translation, [0, 0, 0]).map(value => Math.max(-5, Math.min(5, mul(value, 0.0625))))
   const scale = vector(display.scale, [1, 1, 1]).map(value => Math.max(-4, Math.min(4, value)))
   if (scale.some(value => value <= 0)) throw Error('NATIVE_HELD_REFLECTED_TRANSFORM_UNSUPPORTED')
-  if (arm === 'left') { translation[0] = -translation[0]; rotation[1] = -rotation[1]; rotation[2] = -rotation[2] }
+  if (arm === 'left'&&context!=='ground') { translation[0] = -translation[0]; rotation[1] = -rotation[1]; rotation[2] = -rotation[2] }
   const radians = rotation.map(value => mul(value, F(F(Math.PI) / 180)))
-  return { rotation, radians, translation, scale, context: `${context}_${arm}hand` }
+  return { rotation, radians, translation, scale, context: context==='ground'?'ground':`${context}_${arm}hand` }
 }
 
 function transformMatrix(transform) {
@@ -287,6 +288,23 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
   if (!(reader instanceof NativeAssetReader) || reader.manifest.clientJarSha256 !== HELD_ITEM_CLIENT_SHA256) throw Error('NATIVE_HELD_CLIENT_UNVERIFIED')
   if (!['left', 'right'].includes(arm)) throw Error('NATIVE_HELD_ARM_INVALID')
   const stack = input?.id ? input : parseNativeItemStack(input)
+  if(nativeStaticItemEvidence(stack.id)?.kind==='chest') {
+    nativeStaticItemState(stack)
+    const plan=await prepareNativeChestItemIcon(reader,stack.id),textureLayers=new Map()
+    for(const path of plan.texturePaths) {
+      const bytes=await reader.bytes(path),dimensions=textureDimensions(bytes),decoded=await readPixels(bytes)
+      if(dimensions.width!==64||dimensions.height!==64||decoded?.width!==64||decoded?.height!==64||decoded.pixels?.length!==64*64*4)throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
+      for(let n=3;n<decoded.pixels.length;n+=4)if(![0,255].includes(decoded.pixels[n]))throw Error('NATIVE_HELD_TRANSLUCENT_BLOCK_UNSUPPORTED')
+      textureLayers.set(path,{bytes,dimensions})
+    }
+    const display=plan.model.display??{}
+    return {stack,arm,kind:'native-block-held',faces:plan.faces,textureLayers,
+      transform:nativeHeldItemTransform(display[`thirdperson_${arm}hand`]??display.thirdperson_righthand??{},arm),
+      firstPersonTransform:nativeHeldItemTransform(display[`firstperson_${arm}hand`]??display.firstperson_righthand??{},arm,'firstperson'),
+      groundTransform:nativeHeldItemTransform(display.ground??{},'right','ground'),sourcePaths:plan.sourcePaths,
+      geometry:'Minecraft 1.21.1 ChestRenderer single body',geoOffsetY:0,material:'entityCutout',geometrySourceVerified:true,
+      worldLightingParityVerified:false,pixelParityVerified:false}
+  }
   if (!record(stack.components) || !Number.isSafeInteger(stack.count) || stack.count <= 0) throw Error('NATIVE_HELD_STACK_INVALID')
   if (nativeArsItemEligible(stack.id)) {
     // Shared provider validates complete components, source JARs, PNG/model
@@ -335,6 +353,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
       const firstDisplay = model.display?.[`firstperson_${arm}hand`] ?? model.display?.firstperson_righthand ?? {}
       return { stack, arm, kind: 'native-block-held', faces, textureLayers,
         transform: nativeHeldItemTransform(display, arm), firstPersonTransform: nativeHeldItemTransform(firstDisplay, arm, 'firstperson'),
+        groundTransform:nativeHeldItemTransform(model.display?.ground??{},'right','ground'),
         sourcePaths: [...new Set([...model.sourcePaths, ...paths])],
         geometry: 'Minecraft 1.21.1 original BlockItem model', geoOffsetY: 0, material: 'entityCutout',
         geometrySourceVerified: true, atlasUvShrinkAvailable: false, worldLightingParityVerified: false, pixelParityVerified: false }
@@ -364,6 +383,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
   const firstDisplay = model.display[`firstperson_${arm}hand`] ?? model.display.firstperson_righthand ?? {}
   return { stack, arm, kind: 'native-generated-held', faces, texturePath, textureBytes, dimensions,
     transform: nativeHeldItemTransform(display, arm), firstPersonTransform: nativeHeldItemTransform(firstDisplay, arm, 'firstperson'),
+    groundTransform:nativeHeldItemTransform(model.display?.ground??{},'right','ground'),
     sourcePaths: [...new Set([...(provider?.sourcePaths ?? []), ...model.sourcePaths, texturePath])],
     geometry: 'Minecraft 1.21.1 ItemModelGenerator', geoOffsetY: 0, material: 'entityCutout', alphaSilhouette: alphaSilhouette(decoded),
     geometrySourceVerified: true, atlasUvShrinkAvailable: false, worldLightingParityVerified: false, pixelParityVerified: false }

@@ -137,7 +137,7 @@ export function nativeChunk (options, states, biomeCount) {
 // Receives only already-verified native packets from the action bot's own
 // connection. Never queries disk worlds, generates chunks or decodes proxy IDs.
 export class NativeWorldState extends EventEmitter {
-  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
+  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
     super()
     this.states = states; this.registrySha256 = registrySha256
     this.resolveDimension = resolveDimension; this.simplifyNBT = simplifyNBT; this.makeChunk = makeChunk || (options => nativeChunk(options, this.states, this.biomes.size)); this.now = now
@@ -145,6 +145,8 @@ export class NativeWorldState extends EventEmitter {
     this.columns = new Map(); this.blockEntities = new Map(); this.dimension = null; this.pose = null
     this.epoch = 0; this.revision = 0; this.lastSequence = 0; this.packetCount = 0; this.error = null; this.time = null
     this.entityRegistry = entityRegistry; this.entityRegistrySha256 = entityRegistrySha256
+    if(resolveItemStack!==null&&typeof resolveItemStack!=='function')throw Error('NATIVE_ITEM_RESOLVER_INVALID')
+    this.resolveItemStack=resolveItemStack
     if (entityRegistry !== null && (!(entityRegistry instanceof Map) || !/^[a-f0-9]{64}$/.test(entityRegistrySha256 || ''))) throw Error('NATIVE_ENTITY_REGISTRY_CONFIG_INVALID')
     this.entities = new Map(); this.entityMotions = new Map(); this.entityRevision = 0; this.entityError = null; this.entityErrorDetails = null
     this.entityDataBytes = 0; this.entityEntrySizes = new Map(); this.entityCollections = new Map(); this.entitySnapshotCache = null
@@ -202,7 +204,7 @@ export class NativeWorldState extends EventEmitter {
         case 'update_time': this.time = { age: longNumber(p.age), day: longNumber(p.time), receivedAt: this.now() }; this.emit('time'); break
         case 'spawn_entity': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
         case 'rel_entity_move': case 'entity_move_look': case 'entity_look': case 'entity_teleport':
-        case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation':
+        case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'collect':
           this.handleEntity(body); break
       }
     } catch (error) { this.unavailable(error) }
@@ -212,7 +214,14 @@ export class NativeWorldState extends EventEmitter {
     if (!this.entityRegistry || this.entityError) return
     try {
       const p = body.params, timestamp = this.now()
-      if (body.name === 'entity_destroy') {
+      if(body.name==='collect') {
+        if(![p.collectedEntityId,p.collectorEntityId,p.pickupItemCount].every(Number.isSafeInteger)||p.pickupItemCount<0)throw Error('NATIVE_ENTITY_COLLECT_INVALID')
+        const entity=this.entities.get(p.collectedEntityId)
+        if(entity?.name==='minecraft:item')this.emit('collect',{sequence:body.sequence,observedAt:timestamp,
+          collectedEntityId:p.collectedEntityId,collectorEntityId:p.collectorEntityId,count:p.pickupItemCount,
+          entity:{...entity,position:{...entity.position},velocity:{...entity.velocity},metadata:[...entity.metadata.values()],equipment:[],cues:[],
+            itemState:this.itemState(entity),motion:this.entityMotions.get(entity.entityId)?.current()??null}})
+      } else if (body.name === 'entity_destroy') {
         if (!Array.isArray(p.entityIds) || p.entityIds.length > ENTITY_LIMITS.tracked || !p.entityIds.every(Number.isSafeInteger)) throw Error('NATIVE_ENTITY_DESTROY_INVALID')
         for (const id of p.entityIds) this.removeEntity(id)
       } else if (body.name === 'spawn_entity') {
@@ -221,6 +230,7 @@ export class NativeWorldState extends EventEmitter {
         this.removeEntity(p.entityId)
         this.entities.set(p.entityId, { entityId: p.entityId, uuid: p.objectUUID.toLowerCase(), typeId: p.type, name: this.entityRegistry.get(p.type), position: { x: p.x, y: p.y, z: p.z },
           yaw: entityAngle(p.yaw), pitch: entityAngle(p.pitch), headYaw: entityAngle(p.headPitch), onGround: null, velocity: this.entityVelocity(p.velocity),
+          objectData:Number.isSafeInteger(p.objectData)?p.objectData:null,
           metadata: new Map(), equipment: new Map(), cues: [], spawnedAt: timestamp, updatedAt: timestamp, lastSequence: body.sequence })
         const motion=createNativeEntityMotion(this.entities.get(p.entityId))
         if(motion)this.entityMotions.set(p.entityId,motion)
@@ -290,6 +300,13 @@ export class NativeWorldState extends EventEmitter {
     return { x: value.x / 8000, y: value.y / 8000, z: value.z / 8000 }
   }
 
+  itemState(entity) {
+    if(!this.resolveItemStack)return {available:false,reason:'NATIVE_DROPPED_ITEM_REGISTRY_UNAVAILABLE'}
+    const row=entity.metadata.get(8)
+    if(!row||!['item_stack',7].includes(row.type))return {available:false,reason:'NATIVE_DROPPED_ITEM_SLOT_UNAVAILABLE'}
+    try {return this.resolveItemStack(row.value)}catch{return {available:false,reason:'NATIVE_DROPPED_ITEM_COMPONENTS_UNAVAILABLE'}}
+  }
+
   clearEntities () {
     this.entities.clear(); this.entityMotions.clear(); this.entityEntrySizes.clear(); this.entityCollections.clear()
     this.entityDataBytes = 0; this.entitySnapshotCache = null
@@ -332,12 +349,14 @@ export class NativeWorldState extends EventEmitter {
         const metadata = Object.freeze([...entity.metadata.values()]), equipment = Object.freeze([...entity.equipment.values()]), cues = Object.freeze([...entity.cues])
         // These heavy arrays are invariant during ordinary interpolation ticks.
         // Cache their exact encoded byte cost; [] contributes two bytes each.
-        collections = { metadata, equipment, cues, bytes: [metadata,equipment,cues].reduce((sum, value) => sum + Buffer.byteLength(JSON.stringify(value)) - 2, 0) }
+        collections = { metadata, equipment, cues, ...(entity.name==='minecraft:item'?{itemState:freezeEntityJSON(this.itemState(entity))}:{}),
+          bytes: [metadata,equipment,cues].reduce((sum, value) => sum + Buffer.byteLength(JSON.stringify(value)) - 2, 0) }
         this.entityCollections.set(entity.entityId, collections)
       }
       const { metadata, equipment, cues, ...scalar } = entity
       const row = { ...scalar, position: Object.freeze({ ...entity.position }), velocity: Object.freeze({ ...entity.velocity }),
         metadata: collections.metadata, equipment: collections.equipment, cues: collections.cues,
+        ...(entity.name==='minecraft:item'?{itemState:collections.itemState}:{}),
         // current() returns a detached copy: never freeze tracker internals.
         motion: freezeEntityJSON(this.entityMotions.get(entity.entityId)?.current() ?? null) }
       snapshotBytes += Buffer.byteLength(JSON.stringify({ ...row, metadata: [], equipment: [], cues: [] })) + collections.bytes + (entities.length ? 1 : 0)

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { vanillaItemStack } from './vanilla-item-stack.mjs';
 import { observeVanillaHands } from './vanilla-hand-state.mjs';
 import { observeVanillaMenus } from './vanilla-menu-state.mjs';
-import { observeVanillaActivity } from './vanilla-activity.mjs';
+import { observeVanillaActivity, vanillaWireItem } from './vanilla-activity.mjs';
 
 // A vanilla client starts with the synchronized registry's attribute default;
 // the server sends changed values/modifiers. Never use this on a mod adapter or
@@ -23,7 +23,7 @@ export function vanillaAttributeValue(bot, leaf) {
 const PACKETS = new Set(['login', 'respawn', 'map_chunk', 'unload_chunk', 'block_change', 'multi_block_change',
   'tile_entity_data', 'update_time', 'spawn_entity', 'entity_metadata', 'entity_equipment', 'entity_destroy',
   'rel_entity_move', 'entity_move_look', 'entity_look', 'entity_teleport', 'entity_head_rotation',
-  'entity_velocity', 'entity_status', 'animation', 'hurt_animation']);
+  'entity_velocity', 'entity_status', 'animation', 'hurt_animation','collect']);
 
 /** Vanilla-only: preserve actual decoded packets from the existing action connection.
  * A mod/proxy transport must supply its own native stream and registry instead. */
@@ -40,7 +40,13 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
     events.emit('packet', { name: meta.name, params, sequence: ++sequence, registrySha256 });
   };
   bot._client.on('packet', receive);
-  return { events, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
+  const resolveItemStack=wire=>{
+    if(bot.version!==version)return {available:false,reason:'VANILLA_ITEM_REGISTRY_VERSION_MISMATCH'};
+    const item=vanillaWireItem(wire,bot.registry);
+    return item?.snbt?{available:true,source:'same_player_vanilla_item_registry',minecraftVersion:version,registryId:wire.itemId,item}
+      :{available:false,reason:'VANILLA_ITEM_COMPONENTS_OR_REGISTRY_UNAVAILABLE'};
+  };
+  return { events, resolveItemStack, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
 }
 
 /** Vanilla inventory only. Mod/proxy connections must use their native adapter. */

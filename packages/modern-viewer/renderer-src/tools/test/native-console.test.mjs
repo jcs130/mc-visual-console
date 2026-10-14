@@ -125,3 +125,20 @@ test('closing before async scene creation completes releases that scene and stop
   assert.equal(released, 1); assert.equal(stopped, 1)
   assert.equal(document.querySelector('.native-agent-status'), null)
 })
+
+test('native console exposes all original camera modes and shots without a body control channel',async()=>{
+  const {document,window}=fullShell();window.location.pathname='/'
+  let callbacks;const settings=[],shots=[],views=[]
+  const console=await bootNativeConsole({document,window,startStatus:()=>()=>{},mount:async options=>{
+    callbacks=options;return{setView:mode=>views.push(mode),setCameraSettings:value=>settings.push(value),
+      startCameraShot:kind=>shots.push(kind),dispose(){}}
+  }})
+  const panel=document.querySelector('.viewer-camera-settings'),modes=panel.querySelectorAll('[data-camera-mode]')
+  assert.equal(modes.length,6);assert.equal(callbacks.cameraSettings.mode,'follow')
+  modes.find(button=>button.dataset.cameraMode==='front').dispatch('click')
+  assert.equal(settings.at(-1).mode,'front');assert.equal(views.at(-1),'third')
+  panel.querySelectorAll('button').find(button=>button.textContent==='环绕一周').dispatch('click')
+  assert.equal(shots.at(-1),'orbit')
+  callbacks.onCameraManual();assert.equal(settings.at(-1).mode,'manual')
+  console.dispose();assert.equal(document.querySelector('.viewer-camera-settings'),null)
+})

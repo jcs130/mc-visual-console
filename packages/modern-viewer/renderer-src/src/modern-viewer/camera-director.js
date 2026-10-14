@@ -44,7 +44,7 @@ export class CameraDirector {
     this.shot = { kind, at: now, duration: kind === 'orbit' ? 14000 : 9000, startAngle: this.orbit };
   }
   reset() { this.last = null; this.lastPose = null; this.safeDistance = null; this.shot = null; this.tracking=null; this.travel=null; this.clearSince=null; }
-  update(target, options, now, { aspect = 16/9, isSolid = () => false, columnKnown = () => true, instant = false } = {}) {
+  update(target, options, now, { aspect = 16/9, isSolid = () => false, columnKnown = () => true, collisionDistance, instant = false } = {}) {
     const settings = normalizeCameraSettings(options), pos = target?.position;
     if (!pos || ![pos.x,pos.y,pos.z,now].every(Number.isFinite)) { this.reset(); return null; }
     if (settings.mode === 'manual' && !this.shot) return null;
@@ -99,8 +99,10 @@ export class CameraDirector {
     this.controls.update(dt);
     const focus={x:tracked.x,y:tracked.y+focusHeight,z:tracked.z}, v=this.camera.position;
     this.direction.set(v.x,v.y-focusHeight,v.z);const requested=this.direction.length();this.direction.normalize();
-    const allowed = settings.collision ? cameraCollisionDistance(focus, this.direction, requested,
+    const collision = collisionDistance ?? cameraCollisionDistance;
+    const allowed = settings.collision ? collision(focus, this.direction, requested,
       {isSolid, columnKnown, fov:settings.fov, aspect:this.camera.aspect}) : requested;
+    if(!Number.isFinite(allowed)||allowed<0||allowed>requested)throw Error('CAMERA_COLLISION_DISTANCE_INVALID');
     // Pull in immediately to avoid crossing a wall; recover distance gradually.
     if(this.safeDistance===null||allowed<this.safeDistance) {this.safeDistance=allowed;this.clearSince=null;}
     else if(allowed>this.safeDistance+.15) {

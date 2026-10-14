@@ -9,6 +9,7 @@ export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','mi
 const types=new Set(NATIVE_MOB_TYPES)
 
 export function createNativeEntityMotion(entity) {
+  if(entity?.name==='minecraft:item')return createNativeDroppedItemMotion(entity)
   if(!types.has(entity?.name))return null
   let position={...entity.position},yaw=entity.yaw,pitch=entity.pitch,headYaw=entity.headYaw,bodyYaw=yaw
   let target={...position},targetYaw=yaw,targetPitch=pitch,targetHead=headYaw,lerpSteps=0,headSteps=0
@@ -71,4 +72,18 @@ export function createNativeEntityMotion(entity) {
       return snapshot()
     },current:snapshot
   }
+}
+
+// Item age/bobOffs are client fields, not synchronized server despawn age.
+// Advance only from this action connection's actual physics ticks. Received
+// positions remain authoritative; no client gravity or extra physics is added.
+export function createNativeDroppedItemMotion(entity,{random=Math.random}={}) {
+  let position={...entity.position},previous={position:{...position}},ticks=0,sampledAt=entity.spawnedAt
+  const bobOffset=Math.fround(random()*Math.fround(Math.PI*2))
+  const snapshot=()=>({source:NATIVE_MOB_MOTION_SOURCE,tickMs:50,tick:ticks,sampledAt,position:{...position},previous:{position:{...previous.position}},
+    item:{clientLifetimeTicks:ticks,bobOffset,ageSource:'viewer_client_lifetime_not_server_despawn_age'}})
+  return {observe(){},current:snapshot,tick(next,now){
+    if(!Number.isFinite(now)||now<sampledAt)throw Error('NATIVE_ENTITY_MOTION_CLOCK_INVALID')
+    previous={position:{...position}};position={...next.position};sampledAt=now;ticks++;return snapshot()
+  }}
 }

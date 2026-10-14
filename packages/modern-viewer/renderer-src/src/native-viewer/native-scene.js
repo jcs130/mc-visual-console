@@ -18,11 +18,13 @@ import { nativeColonyHutEligible, prepareNativeColonyHutModel } from './native-c
 import { installAgentVisualization } from '../modern-viewer/agent-visual-overlay.js'
 import { createAgentWorldProjector } from '../modern-viewer/agent-visual-projection.js'
 import { createNativeMiniMap } from './native-mini-map.js'
+import { normalizeCameraSettings } from '../modern-viewer/camera-preferences.js'
+import { nativeCameraTarget, nativeCameraCollisionDistance } from './native-camera.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
 export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{}, onState=()=>{},
-  onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{}} = {}) {
+  onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{},cameraSettings,onCameraManual=()=>{}} = {}) {
 if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
 const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
@@ -31,6 +33,7 @@ let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, v
 let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
 let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap
+let director, cameraOptions=normalizeCameraSettings(cameraSettings??{version:1,mode:'follow'}),cameraFrame=null
 const visualListeners = new Map()
 let lastInventoryOperation = null
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
@@ -39,7 +42,7 @@ const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visu
 const agentVisual = installAgentVisualization({ socket: visualPort, document, window,
   position: () => current?.pose,
   project: createAgentWorldProjector(() => ({ camera }), () => ({ width: window.innerWidth, height: window.innerHeight })) })
-const cameraRay = new THREE.Raycaster(), labelPoint = new THREE.Vector3()
+const labelPoint = new THREE.Vector3()
 const kineticClock = new NativeKineticRenderClock()
 let kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
 const kineticVisibility = () => {
@@ -95,6 +98,10 @@ async function start () {
   viewport.append(renderer.domElement)
   miniMap = createNativeMiniMap({document,renderer,scene})
   controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxDistance = 9; controls.enabled = false
+  const {CameraDirector}=await import('../modern-viewer/camera-director.js')
+  director=new CameraDirector()
+  renderer.domElement.addEventListener('pointerdown',manualCameraInput,true)
+  renderer.domElement.addEventListener('wheel',manualCameraInput,true)
   const resize = () => {
     const host = viewport
     renderer.setSize(host.clientWidth, host.clientHeight)
@@ -110,7 +117,6 @@ async function start () {
       if (current?.pose) {
         const dt = lastPlayerFrameTime === null ? 0 : (now - lastPlayerFrameTime) / 1000
         lastPlayerFrameTime = now
-        updatePlayerCamera(now)
         if (selfActor) {
           selfActor.applyPose(current.pose)
           selfMotionState = applyNativeSelfPlayerMotion(selfActor, current, { dt, now: Date.now() })
@@ -121,6 +127,7 @@ async function start () {
           }
           selfActor.root.visible = viewMode !== 'first' && (cameraDistance === null || cameraDistance > 0.9)
         }
+        updatePlayerCamera(now)
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
         // is a freshness guard, never substituted for its absolute phase.
         const timeStatus = nativeKineticTimeStatus(current.time, Date.now(), { paused: document.hidden })
@@ -142,7 +149,7 @@ async function start () {
         }
         if (oldReason !== kineticClockState.reason) publishDiagnostics()
       }
-      entityLayer.frame(Date.now())
+      entityLayer.frame(Date.now(),current?.motion)
       renderer.render(scene, camera)
       if(selfActor?.firstPersonRoot){
         selfActor.firstPersonRoot.visible=viewMode==='first'
@@ -165,6 +172,7 @@ async function start () {
     try {
       const event = session.receive(JSON.parse(message.data)), value = event.value
       if (event.kind === 'ignored') return
+      if(event.kind==='entity_collect'){void entityLayer.collect(value);return}
       if (event.kind === 'agent_visual') {
         visualPort.emit(value.event, value.value)
         const operation = value.value?.input?.operations?.findLast(row => row.kind === 'inventory' && row.windowId === 0)
@@ -211,32 +219,39 @@ async function start () {
 }
 function orbitPosition () {
   if (!current?.pose) return
-  const view = playerCamera(current.pose, 'region')
+  const view = playerCamera(current.pose, viewMode==='region'?'region':'third')
   controls.target.fromArray(view.target); camera.position.fromArray(view.position); controls.update()
 }
 function setView (mode) {
   if (!['third', 'first', 'region', 'dungeon'].includes(mode) || disposed) return
   viewMode = mode; cameraDistance = null; cameraCollisionAt = 0
+  director?.reset();cameraFrame=null
   camera.fov = mode === 'dungeon' ? 48 : 70; camera.updateProjectionMatrix()
-  controls.enabled = mode === 'region'; if (controls.enabled) orbitPosition()
+  controls.enabled = mode === 'region'||mode==='third'&&cameraOptions.mode==='manual'; if (controls.enabled) orbitPosition()
   viewport.dataset.view = mode; onMode(mode)
 }
 function updatePlayerCamera (now) {
-  if (viewMode === 'region') { controls.update(); return }
+  if (viewMode === 'region'||viewMode==='third'&&cameraOptions.mode==='manual'&&!director.shot) { controls.enabled=true;controls.update();cameraFrame={mode:'manual'};return }
+  controls.enabled=false
+  if(viewMode==='third') {
+    const pose=director.update(nativeCameraTarget(current,selfActor),cameraOptions,now,{aspect:camera.aspect,
+      collisionDistance:(focus,direction,distance,options)=>nativeCameraCollisionDistance(focus,direction,distance,{...options,
+        scene:statics,bounds:current.bounds,receivedColumns:current.viewCoverage?.receivedColumns??[]})})
+    if(pose){camera.position.copy(pose.position);camera.lookAt(pose.focus.x,pose.focus.y,pose.focus.z);camera.fov=pose.fov;camera.updateProjectionMatrix();cameraDistance=pose.distance;cameraFrame=pose;return}
+  }
   const view = playerCamera(current.pose, viewMode)
   const target = new THREE.Vector3().fromArray(view.target), desired = new THREE.Vector3().fromArray(view.position)
-  if (viewMode === 'third') {
-    const direction = desired.clone().sub(target), length = direction.length(); direction.normalize()
-    if (now - cameraCollisionAt >= 100 || cameraDistance === null) {
-      // Collide only against geometry actually rendered from received blocks.
-      // Never reveal an unsupported block with an invented collision mesh.
-      statics.updateMatrixWorld(true); cameraRay.set(target, direction); cameraRay.far = length
-      const hit = cameraRay.intersectObjects(statics.children, true).find(hit => hit.distance > 0.05)
-      cameraDistance = hit ? Math.max(0.1, hit.distance - 0.2) : length; cameraCollisionAt = now
-    }
-    desired.copy(target).addScaledVector(direction, Math.min(cameraDistance, length))
-  } else cameraDistance = null
+  cameraDistance=null;cameraFrame={mode:viewMode}
   camera.position.copy(desired); camera.lookAt(target)
+}
+function setCameraSettings(value) {
+  const previous=cameraOptions.mode;cameraOptions=normalizeCameraSettings(value)
+  if(previous!==cameraOptions.mode){director?.reset();cameraDistance=null;if(cameraOptions.mode==='manual')orbitPosition()}
+}
+function manualCameraInput() {
+  if(viewMode!=='third'||!current?.pose)return
+  if(cameraOptions.mode!=='manual'||director.shot){const focus=director.lastPose?.focus??{x:current.pose.x,y:current.pose.y+1,z:current.pose.z};director.reset();cameraOptions={...cameraOptions,mode:'manual'};controls.target.copy(focus);onCameraManual()}
+  controls.enabled=true
 }
 async function ensureSelfActor (self) {
   const nativeSelf = current?.presentation?.self
@@ -256,7 +271,7 @@ function publishFrame(now) {
     label = { visible: labelPoint.z >= -1 && labelPoint.z <= 1 && Math.abs(labelPoint.x) <= 1 && Math.abs(labelPoint.y) <= 1,
       x: (labelPoint.x + 1) * viewport.clientWidth / 2, y: (1 - labelPoint.y) * viewport.clientHeight / 2, name: player }
   }
-  onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label })
+  onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label,camera:cameraFrame })
 }
 function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
@@ -287,6 +302,7 @@ function clearScene () {
   selfController?.clear(); selfActor = null
   lastPlayerFrameTime = null; selfMotionState = null; selfMotionSignature = null
   cameraDistance = null; skinState = null; drawn = 0; unknown = []; staticIssues = []; tickAge = null
+  director?.reset();cameraFrame=null
   kineticClock.reset(); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
   onActor(null); publishDiagnostics()
   camera?.position.set(0, 0, 0)
@@ -473,10 +489,12 @@ function dispose () {
   if (disposed) return
   disposed = true; miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
+  renderer?.domElement.removeEventListener('pointerdown',manualCameraInput,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
   controls?.dispose(); clearScene(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }
 return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,
+  setCameraSettings,startCameraShot:kind=>director?.startShot(kind,performance.now()),
   selectAppearance: id => selfController?.selectAppearance(id),
   get actor() { return selfActor }, get state() { return current } }
 }
