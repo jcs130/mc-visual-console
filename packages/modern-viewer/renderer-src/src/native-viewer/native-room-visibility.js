@@ -22,10 +22,12 @@ export function createNativeRoomVisibility() {
   let cache=null,mask=null,last=0,reveal=0,status={active:false,reason:'waiting'},lastFrame=null
   return {uniforms,patch(material){return patchCutawayMaterial(material,uniforms)},
     stage(snapshot){cache=nativeReceivedRoomCache(snapshot);mask=new RoomFloorMask(cache);last=0},
-    update({camera,pose,mode,enabled=true,raycast,now}){
+    update({camera,pose,mode,height=1.8,enabled=true,raycast,now}){
       const dt=lastFrame===null?0:now-lastFrame;lastFrame=now
       if(!cache||!pose||mode!=='dungeon'||!enabled){status={active:false,reason:enabled?'view':'disabled'};uniforms.u_lanternCutawayEnabled.value=0;return status}
       target.set(pose.x,pose.y+1,pose.z)
+      const clearance=Math.max(1,Math.min(8,Math.ceil(height)))
+      if(mask.clearance!==clearance){mask=new RoomFloorMask(cache,{clearance});last=0}
       if(now-last>=100||last===0){
         const covered=cache.hasCeiling(pose),distance=camera.position.distanceTo(target)
         direction.copy(target).sub(camera.position).normalize();ray.set(camera.position,direction);ray.far=Math.max(0,distance-.8)

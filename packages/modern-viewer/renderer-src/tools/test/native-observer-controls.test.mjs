@@ -3,6 +3,16 @@ import assert from 'node:assert/strict'
 import * as THREE from 'three'
 import { createNativeTerrainRaycast } from '../../src/native-viewer/native-terrain-raycast.js'
 import { nativeReceivedRoomCache,createNativeRoomVisibility } from '../../src/native-viewer/native-room-visibility.js'
+import { RoomFloorMask } from '../../src/modern-viewer/room-floor-mask.js'
+
+test('native observer uses actual short-mob clearance; unreceived support cannot become a floor',()=>{
+  const cache={revision:1,known:(x,y,z)=>x>=0&&x<=2&&z>=0&&z<=2&&y>=9&&y<=12,isSolidBlock:(x,y,z)=>y===9||y===11}
+  const p={x:1,y:10,z:1}
+  assert.equal(new RoomFloorMask(cache).update(p,2).openCells,0,'a player cannot fit this low cave')
+  assert.ok(new RoomFloorMask(cache,{clearance:1}).update(p,2).openCells>0,'the original .9-high spider can be observed')
+  const clipped={...cache,known:(x,y,z)=>cache.known(x,y,z)&&y>=10}
+  assert.equal(new RoomFloorMask(clipped,{clearance:1}).update(p,2).openCells,0,'an unknown floor cannot support the mask')
+})
 
 test('native terrain broad phase matches exact original triangle intersections for translated instances and thin geometry',()=>{
   const root=new THREE.Group(),geometry=new THREE.BoxGeometry(.125,1,1),material=new THREE.MeshBasicMaterial({side:THREE.DoubleSide}),mesh=new THREE.InstancedMesh(geometry,material,3)

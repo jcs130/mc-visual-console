@@ -137,7 +137,7 @@ async function start () {
         }
         entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{entityId:current.selfPlayer.entityId,position:current.pose})
         updatePlayerCamera(now)
-        roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
+        roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,height:observerTarget?.height??1.8,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
         if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
         // is a freshness guard, never substituted for its absolute phase.

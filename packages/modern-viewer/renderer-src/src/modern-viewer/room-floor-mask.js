@@ -9,8 +9,10 @@ const maxFloorRise = 6;
 // RG bytes store coverage and floor height relative to baseY (biased by 128).
 // Each column belongs to one connected floor, never a second stacked storey.
 export class RoomFloorMask {
-  constructor(cache) {
+  constructor(cache, {clearance=2} = {}) {
+    if(!Number.isInteger(clearance)||clearance<1||clearance>8)throw Error('ROOM_CLEARANCE_INVALID');
     this.cache = cache;
+    this.clearance = clearance;
     this.signature = null;
     this.current = null;
     this.rebuilds = 0;
@@ -36,9 +38,16 @@ export class RoomFloorMask {
     // Jumping/falling does not establish a floor. Search just two cells down;
     // no unsupported seed in unloaded chunks or the sky.
     let seedY = null;
+    const openFloor = (x,y,z) => {
+      // Native bounded volumes distinguish received air from unreceived cells.
+      // A closed/unknown boundary cannot supply an invented supporting floor.
+      if(typeof this.cache.known === 'function')for(let dy=-1;dy<this.clearance;dy++)if(!this.cache.known(x,y+dy,z))return false;
+      if(!this.cache.isSolidBlock(x,y-1,z))return false;
+      for(let dy=0;dy<this.clearance;dy++)if(this.cache.isSolidBlock(x,y+dy,z))return false;
+      return true;
+    };
     for (const candidate of [y, y - 1, y - 2]) {
-      if (this.cache.isSolidBlock(x, candidate - 1, z)
-        && !this.cache.isSolidBlock(x, candidate, z) && !this.cache.isSolidBlock(x, candidate + 1, z)) {
+      if (openFloor(x,candidate,z)) {
         seedY = candidate; break;
       }
     }
@@ -57,9 +66,7 @@ export class RoomFloorMask {
         let floorY = null;
         for (const candidate of [currentY, currentY + 1, currentY - 1, currentY - 2]) {
           if (Math.abs(candidate - y) > maxFloorRise) continue;
-          if (this.cache.isSolidBlock(wx, candidate - 1, wz)
-            && !this.cache.isSolidBlock(wx, candidate, wz)
-            && !this.cache.isSolidBlock(wx, candidate + 1, wz)) {
+          if (openFloor(wx,candidate,wz)) {
             floorY = candidate;
             break;
           }
@@ -68,9 +75,9 @@ export class RoomFloorMask {
           visited[index] = 1;
           mark(index, floorY);
           queue[count++] = index;
-        } else if (this.cache.isSolidBlock(wx, currentY + 1, wz)) {
+        } else if (this.cache.isSolidBlock(wx, currentY + this.clearance - 1, wz)) {
           for (let thickness = 1; thickness <= 2; thickness++) {
-            if (this.cache.isSolidBlock(wx + dx * thickness, currentY + 1, wz + dz * thickness)) continue;
+            if (this.cache.isSolidBlock(wx + dx * thickness, currentY + this.clearance - 1, wz + dz * thickness)) continue;
             for (let step = 0; step < thickness; step++) {
               const boundary = index + step * (dx + dz * width);
               if (!visited[boundary]) mark(boundary, currentY, true);

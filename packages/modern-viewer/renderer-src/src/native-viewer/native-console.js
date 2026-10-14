@@ -201,6 +201,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       onFrame (frame) {
         if (disposed) return
         frames++
+        if(frame.room)viewport.dataset.roomVisibility=JSON.stringify(frame.room)
         const options=frame.entities??[],signature=JSON.stringify(options.map(e=>[e.id,e.uuid,e.name,e.rendered]))
         if(signature!==targetSignature){
           targetSignature=signature;const value=targetSelect.value;targetSelect.replaceChildren()
