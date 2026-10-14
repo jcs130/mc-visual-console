@@ -117,7 +117,7 @@ export class PaperYsmAnimation {
       pose==='swimming'?'swim':m.flying===true?'fly':m.inWater===true&&m.onGround===false?
         (speed>.2?'swim':this.main.animations?.swim_stand?'swim_stand':'swim'):
         m.onGround===false?'jump':m.crouching===true?(this.moving?'sneak':'sneaking'):this.moving?(m.sprinting===true?'run':'walk'):'idle';
-    if(inhibited){base='idle';this.waterTransition=null;this.layers.clear();}
+    if(inhibited){base=downed&&this.main.animations?.downed?'downed':'idle';this.waterTransition=null;this.layers.clear();}
     // appearanceMotion stores Java pitch degrees (positive down). YSM's
     // head_pitch query is positive up, as is legacy Mineflayer pitch in radians.
     // Convert here once so authored hair/eye tracks and the Head look agree.

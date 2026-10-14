@@ -3,6 +3,7 @@ import {batchStaticYsmBones} from './ysm-bone-batch.js';
 import {createNativeBedrockModel} from '../native-viewer/native-entity-model-bedrock.js';
 import {PaperYsmAnimation} from './paper-ysm-animation.js';
 import {PaperYsmHeldItems} from './paper-ysm-items.js';
+import {applyRescuePose,relaxRestTail,supportsRescuePose} from './paper-ysm-rest-pose.js';
 export {applyPaperYsmAnimation} from './paper-ysm-animation.js';
 
 const json=(bundle,path)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(bundle.files[path].base64),c=>c.charCodeAt(0))));
@@ -71,10 +72,12 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
         // Living-entity sleep composes bed yaw, a sideways roll, then local
         // Y=270 degrees. Omitting the last rotation turns authored sleep face-down.
         const bedYaw=({south:Math.PI/2,west:0,north:-Math.PI/2,east:Math.PI})[state.motion?.sleepState?.bedFacing];
-        root.rotation.set(downed?Math.PI/2:0,
+        const supportedRescue=downed&&supportsRescuePose(model)&&!animation.animations?.downed;
+        const legacyDowned=downed&&!supportedRescue&&!animation.animations?.downed;
+        root.rotation.set(legacyDowned?Math.PI/2:0,
           sleeping&&Number.isFinite(bedYaw)?bedYaw-(state.renderedYaw??0):0,sleeping?Math.PI/2:0,'YXZ');
         if(sleeping)root.rotateY(3*Math.PI/2);
-        root.position.set(0,downed ? .28 : 0,0);
+        root.position.set(0,legacyDowned ? .28 : 0,0);
         const bed=state.motion?.sleepState?.bedPosition;
         if(sleeping && Number.isFinite(bedYaw) && bed && [bed.x,bed.y,bed.z].every(Number.isFinite)) {
           const bounds=paperYsmHeadBounds(model,root);
@@ -88,8 +91,16 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
             root.position.add(to.sub(from));
           }
         }
+        this.animationState.presentation={};
+        if(supportedRescue)this.animationState.presentation.rescue=applyRescuePose(model,root);
+        else if(downed)this.animationState.presentation.rescue=animation.animations?.downed?
+          {available:true,source:'original-clip',id:'downed'}:{available:false,reason:'articulated_humanoid_rig_unavailable',fallback:'legacy_downed_rotation'};
+        if(sleeping||supportedRescue){
+          const surface=sleeping&&bed?bed.y+9/16:this.animationState.presentation.rescue?.floorY;
+          this.animationState.presentation.tail=relaxRestTail(model,root,surface);
+        }
         this.animationIssues??=new Set();for(const reason of this.animationState.errors)if(this.animationIssues.size<16)this.animationIssues.add(reason);
-        held.apply(sleeping?[]:state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
+        held.apply(sleeping||downed?[]:state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
       },
       headAnchor(){return paperYsmHeadAnchor(model,root);},
       dispose(){held.dispose();model.dispose();batch.dispose();material.dispose();texture.dispose();root.removeFromParent();root.clear();}};
