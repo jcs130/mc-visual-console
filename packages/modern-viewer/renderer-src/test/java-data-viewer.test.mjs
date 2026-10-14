@@ -49,3 +49,15 @@ test('normal viewer session limit stays two',async()=>{
   assert.equal([a,b,c].filter(s=>s.connected).length,2);assert.equal(r.host.status().viewers,2);
  }finally{await r.close();}
 });
+
+test('idle views and health reads do not sample; opening resumes with fresh data and closing releases demand',async()=>{
+ const r=await rig();try {
+  await sleep(150);await fetch(r.host.url+'/');await fetch(r.host.url+'/healthz');
+  assert.deepEqual(r.methods,[]);assert.equal(r.host.status().state,'idle');
+  const a=r.connect();await sleep(180);assert.ok(r.methods.length>1);
+  a.disconnect();await sleep(80);const count=r.methods.length;
+  await sleep(180);assert.equal(r.methods.length,count);assert.equal(r.host.status().sampling,false);
+  const b=r.connect();let fresh=false;b.on('position',()=>{fresh=true});await sleep(180);
+  assert.ok(fresh);assert.ok(r.methods.length>count);assert.equal(r.host.status().state,'streaming');
+ }finally{await r.close();}
+});

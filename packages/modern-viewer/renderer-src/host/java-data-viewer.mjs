@@ -24,10 +24,11 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
     const hash=createHash('sha256').update(bytes).digest('hex');
     skins.set(resource,`/head-texture/${hash}.png`);skinBytes.set(hash,bytes);
   }
-  let activePort=port,closed=false,timer,chunkTimer,frameBusy=false,chunkBusy=false,dirty=[],error=null,lastFrameAt=0;
+  let activePort=port,closed=false,timer,chunkTimer,framePending=null,chunkBusy=false,dirty=[],error=null,lastFrameAt=0;
   let retryAfter=0,lastError=null;
   let frames=0,columns=0,chunkMs=0,registryMs=0,unsupportedEntities=0;
-  const clients=new Set(), sockets=[];
+  const clients=new Set(), waiting=new Set(), sockets=[];
+  const demanded=()=>clients.size+waiting.size>0;
   const allowed=req=>req.headers.host===`127.0.0.1:${activePort}`&&(!req.headers.origin||req.headers.origin===`http://127.0.0.1:${activePort}`)&&req.headers['sec-fetch-site']!=='cross-site';
   const emit=(name,value)=>{for(const socket of clients) {
     if(socket.conn.writeBuffer.length>128) {socket.disconnect(true);continue;}
@@ -36,7 +37,7 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
     // Keep their ordering together; the bounded queue above evicts slow viewers.
     socket.emit(name,value);
   }};
-  const status=()=>({ok:!closed&&!error&&lastFrameAt>0&&Date.now()-lastFrameAt<=3000,source:'real-java-world-data',transport:'socket.io',minecraftVersion:'1.20.6',error,lastError,epoch:data.epoch,
+  const status=()=>({ok:!closed&&!error&&(!demanded()||lastFrameAt>0&&Date.now()-lastFrameAt<=3000),state:closed?'closed':error?'unavailable':demanded()?'streaming':'idle',sampling:demanded()&&!closed,source:'real-java-world-data',transport:'socket.io',minecraftVersion:'1.20.6',error,lastError,epoch:data.epoch,
     sampledAt:data.frame?.sampledAt,ageMs:lastFrameAt?Date.now()-lastFrameAt:null,frames,columns:data.columns.size,chunkUpdates:columns,lastChunkMs:chunkMs,registryMs,
     viewers:[...clients].filter(s=>s.handshake.headers['x-mc-viewer-capture']!=='1').length,maxSessions:2,
     captureSessions:[...clients].filter(s=>s.handshake.headers['x-mc-viewer-capture']==='1').length,maxCaptureSessions:1,
@@ -63,11 +64,15 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
     // Transport closes: existing browser shows disconnected; never presents old facts as live.
     for(const socket of clients)socket.disconnect(true);
   }
-  async function frame() {
-    if(!closed&&frameBusy&&lastFrameAt&&Date.now()-lastFrameAt>3000&&!error)unavailable('JAVA_VISUAL_SAMPLE_STALE');
-    if(closed||frameBusy||Date.now()<retryAfter)return;frameBusy=true;
+  function frame() {
+    if(!closed&&demanded()&&framePending&&lastFrameAt&&Date.now()-lastFrameAt>3000&&!error)unavailable('JAVA_VISUAL_SAMPLE_STALE');
+    if(closed||!demanded()||Date.now()<retryAfter)return Promise.resolve();
+    return framePending??=sampleFrame().finally(()=>{framePending=null;});
+  }
+  async function sampleFrame() {
     try {
       const value=await rpc('visual_frame',{radius});if(closed)return;
+      if(!demanded())return;
       data.verify(value);
       if(Math.abs(Date.now()-value.sampledAt)>3000)throw Error('JAVA_VISUAL_SAMPLE_STALE');
       await prepareSkin(value.self.skinResource);if(closed)return;
@@ -78,10 +83,10 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
         if(value.epoch!==data.epoch)return;
       }
       dirty=data.applyFrame(value,emit);lastFrameAt=Date.now();frames++;unsupportedEntities=value.entities.length;error=null;
-    }catch(e){if(!closed)unavailable(e.message);}finally{frameBusy=false;}
+    }catch(e){if(!closed)unavailable(e.message);}
   }
   async function chunk() {
-    if(closed||chunkBusy||!dirty.length||!data.epoch)return;chunkBusy=true;
+    if(closed||!clients.size||chunkBusy||!dirty.length||!data.epoch)return;chunkBusy=true;
     const item=dirty.shift(),epoch=data.epoch,started=performance.now();
     try {
       const value=await rpc('visual_chunk',{x:item.x,z:item.z,epoch});
@@ -92,24 +97,27 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
   }
   for(const pathname of ['/socket.io','/third/socket.io']) {
     const io=new SocketServer(http,{path:pathname,serveClient:false,maxHttpBufferSize:1024,allowRequest:(req,done)=>done(null,allowed(req))});sockets.push(io);
-    io.on('connection',socket=>{
+    io.on('connection',async socket=>{
       const capture=socket.handshake.headers['x-mc-viewer-capture']==='1';
-      if(closed||error||!data.frame){socket.emit('viewerBusy',{reason:error??'Waiting for actual Java world'});socket.disconnect(true);return;}
-      if([...clients].filter(s=>(s.handshake.headers['x-mc-viewer-capture']==='1')===capture).length>=(capture?1:2)){socket.emit('viewerBusy',{reason:'Viewer limit',maximum:capture?1:2});socket.disconnect(true);return;}
+      if([...clients,...waiting].filter(s=>(s.handshake.headers['x-mc-viewer-capture']==='1')===capture).length>=(capture?1:2)){socket.emit('viewerBusy',{reason:'Viewer limit',maximum:capture?1:2});socket.disconnect(true);return;}
+      waiting.add(socket);
+      const lease=capture?setTimeout(()=>socket.disconnect(true),60000):null;lease?.unref();
+      socket.on('disconnect',()=>{clients.delete(socket);waiting.delete(socket);if(lease)clearTimeout(lease);});
+      // Only a real view/capture asks for observations. Never replay an idle cache
+      // as current facts; concurrent first viewers share the same fresh sample.
+      await frame();waiting.delete(socket);
+      if(!socket.connected)return;
+      if(closed||error||!data.frame||Date.now()-lastFrameAt>3000){socket.emit('viewerBusy',{reason:error??'Waiting for actual Java world'});socket.disconnect(true);return;}
       clients.add(socket);socket.emit('version','1.20.6');
       const latest=data.frame,self=data.entity(latest.self,true);
       socket.emit('position',{pos:self.pos,yaw:self.yaw,pitch:self.pitch,teleport:true});socket.emit('playerEntity',self);socket.emit('entity',self);
       for(const c of data.columns.values())socket.emit('loadChunk',c);
       socket.emit('time',((latest.time%24000)+24000)%24000);socket.emit('weather',{raining:latest.raining,thunder:latest.thunder});
       socket.emit('viewerControlState',{available:false,reason:'Read-only native data view'});
-      const lease=capture?setTimeout(()=>socket.disconnect(true),60000):null;lease?.unref();
-      socket.on('disconnect',()=>{clients.delete(socket);if(lease)clearTimeout(lease);});
     });
   }
-  await frame();
-  if(error){for(const io of sockets)io.close();throw Error(error);}
   await new Promise((resolve,reject)=>{http.once('error',reject);http.listen(port,'127.0.0.1',()=>{activePort=http.address().port;resolve();});});
   timer=setInterval(()=>void frame(),50);chunkTimer=setInterval(()=>void chunk(),100);timer.unref();chunkTimer.unref();
-  return {url:`http://127.0.0.1:${activePort}`,status,async close(){closed=true;clearInterval(timer);clearInterval(chunkTimer);for(const socket of clients)socket.disconnect(true);
+  return {url:`http://127.0.0.1:${activePort}`,status,async close(){closed=true;clearInterval(timer);clearInterval(chunkTimer);for(const socket of [...clients,...waiting])socket.disconnect(true);
     for(const io of sockets)io.close();http.closeAllConnections();if(http.listening)await new Promise(resolve=>http.close(resolve));data.clear();}};
 }
