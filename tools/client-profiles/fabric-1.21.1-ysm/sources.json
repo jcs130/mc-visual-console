@@ -1,0 +1,142 @@
+[
+  {
+    "title": "Fabric API",
+    "version": "0.116.17+1.21.1",
+    "projectId": "P7dR8mSH",
+    "versionId": "Mys3P7lK",
+    "page": "https://modrinth.com/mod/fabric-api",
+    "authors": [
+      {
+        "name": "Player7457",
+        "role": "Member"
+      },
+      {
+        "name": "modmuss50",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "Apache-2.0",
+      "name": "Apache License 2.0",
+      "url": null
+    },
+    "file": "mods/fabric-api-0.116.17+1.21.1.jar",
+    "sha256": "79ac44b40780acbd884b34c50be1e39af682847e5f5cb3b1fddeeaa768dce800"
+  },
+  {
+    "title": "Forge Config API Port",
+    "version": "v21.1.6-1.21.1-Fabric",
+    "projectId": "ohNO6lps",
+    "versionId": "N5qzq0XV",
+    "page": "https://modrinth.com/mod/forge-config-api-port",
+    "authors": [
+      {
+        "name": "Fuzs",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "MPL-2.0",
+      "name": "Mozilla Public License 2.0",
+      "url": null
+    },
+    "file": "mods/ForgeConfigAPIPort-v21.1.6-1.21.1-Fabric.jar",
+    "sha256": "2e3a8f0e3bda85a7d722720e7ce879cbd9d028d9395c6fc224d329b3c982d9b1"
+  },
+  {
+    "title": "Iris Shaders",
+    "version": "1.8.8+1.21.1-fabric",
+    "projectId": "YL57xq9U",
+    "versionId": "zsoi0dso",
+    "page": "https://modrinth.com/mod/iris",
+    "authors": [
+      {
+        "name": "IMS",
+        "role": "Lead Developer"
+      },
+      {
+        "name": "coderbot",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "LGPL-3.0-only",
+      "name": "GNU Lesser General Public License v3.0 only",
+      "url": null
+    },
+    "file": "mods/iris-fabric-1.8.8+mc1.21.1.jar",
+    "sha256": "b5ad39a6cb113ca0a1765f06689f9f4b29ccd0c81247de90b06c42f5da1092f5"
+  },
+  {
+    "title": "Sodium",
+    "version": "mc1.21.1-0.6.13-fabric",
+    "projectId": "AANobbMI",
+    "versionId": "u1OEbNKx",
+    "page": "https://modrinth.com/mod/sodium",
+    "authors": [
+      {
+        "name": "IMS",
+        "role": "Maintainer"
+      },
+      {
+        "name": "jellysquid3",
+        "role": "Project Lead"
+      },
+      {
+        "name": "douira",
+        "role": "Maintainer"
+      }
+    ],
+    "license": {
+      "id": "LicenseRef-Polyform-Shield-1.0.0",
+      "name": "",
+      "url": "https://github.com/CaffeineMC/sodium/blob/dev/LICENSE.md"
+    },
+    "file": "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
+    "sha256": "e04599514d88e41765f710eeba59e3814909833396bc11b977f48fc2e7e50353"
+  },
+  {
+    "title": "Yes Steve Model",
+    "version": "2.6.5-fabric+mc1.21.1",
+    "projectId": "86xjpqqS",
+    "versionId": "eGOUtHWJ",
+    "page": "https://modrinth.com/mod/yes-steve-model",
+    "authors": [
+      {
+        "name": "TartaricAcid",
+        "role": "Owner"
+      },
+      {
+        "name": "TomatoPuddin",
+        "role": "Member"
+      }
+    ],
+    "license": {
+      "id": "LicenseRef-All-Rights-Reserved",
+      "name": "",
+      "url": null
+    },
+    "file": "mods/ysm-2.6.5-fabric+mc1.21.1-release.jar",
+    "sha256": "a66b7265a2761d639c48f61a64179206adf5d81c38f360763fc8275a0fec9fa5"
+  },
+  {
+    "title": "Complementary Shaders - Reimagined",
+    "version": "r5.2.2",
+    "projectId": "HVnmMxH1",
+    "versionId": "pAOQ9Amz",
+    "page": "https://modrinth.com/shader/complementary-reimagined",
+    "authors": [
+      {
+        "name": "EminGT",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "LicenseRef-Custom",
+      "name": "",
+      "url": "https://github.com/ComplementaryDevelopment/ComplementaryReimagined/blob/main/License.txt"
+    },
+    "file": "shaderpacks/ComplementaryReimagined_r5.2.2.zip",
+    "sha256": "3b0cd5c36afebdcd74521a447ca5f2b0d6f9c1c8c8416a9f20d9bedc271a8e1c"
+  }
+]
