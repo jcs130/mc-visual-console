@@ -1,3 +1,4 @@
+export function viewerVersionAssets(root: string, version: string): Promise<string>;
 export function viewerVersionRegistry(version: string,
   loadData: (version: string) => { version: { minecraftVersion: string }; biomesArray: Array<{ id: number; name: string }> },
   loadItem: (version: string) => { fromNotch(packet: unknown): unknown }): {
