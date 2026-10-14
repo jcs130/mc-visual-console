@@ -25,6 +25,8 @@ test('legacy entity texture names resolve to original version assets without cro
   assert.equal(viewerVersionTexture('textures/entity/glow_squid.png', '1.21.1'), 'textures/1.21.1/entity/squid/glow_squid.png');
   assert.equal(viewerVersionTexture('textures/entity/squid.png', '1.20.6'), 'textures/1.20.6/entity/squid.png');
   assert.equal(viewerVersionTexture('icons/cod.png', '1.21.1'), null);
+  for (const version of ['1.20.6', '1.21.1'])
+    assert.equal(viewerVersionTexture('minecraft-assets/painting/aztec.png', version), `textures/${version}/painting/aztec.png`);
   assert.equal(viewerVersionCss("const bow='/textures/1.20.6/item/bow.png'; const glint='/textures/1.20.6/misc/enchanted_glint_item.png';", '1.21.1'),
     "const bow='/textures/1.21.1/item/bow.png'; const glint='/textures/1.21.1/misc/enchanted_glint_item.png';");
 });
