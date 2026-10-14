@@ -124,7 +124,7 @@ async function main() {
   }
   const [id, outputDirectory, ...options] = args;
   if (!id || !outputDirectory || options.some(option => !['--sounds', '--preset=qiandengji'].includes(option))) {
-    throw Error('Usage: node tools/prepare-viewer-assets.mjs <java-1.20.6|native-1.21.1> <output-dir> [--sounds] [--preset=qiandengji]; --verify [pack]; --list');
+    throw Error('Usage: node tools/prepare-viewer-assets.mjs <java-1.20.6|java-1.21.1|native-1.21.1> <output-dir> [--sounds] [--preset=qiandengji]; --verify [pack]; --list');
   }
   const result = await prepareAssetPack({ id, outputDirectory, sounds: options.includes('--sounds'), preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null });
   console.log(JSON.stringify(result));
