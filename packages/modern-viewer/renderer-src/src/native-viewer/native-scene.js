@@ -15,6 +15,8 @@ import { NativeEntityLayer } from './native-entity-layer.js'
 import { MILLSTONE_ID, prepareNativeMillstoneModel, NativeKineticRenderClock, nativeKineticTimeStatus } from './native-millstone.js'
 import { stageNativeKineticActors } from './native-kinetic-layer.js'
 import { nativeColonyHutEligible, prepareNativeColonyHutModel } from './native-colony-huts.js'
+import { installAgentVisualization } from '../modern-viewer/agent-visual-overlay.js'
+import { createAgentWorldProjector } from '../modern-viewer/agent-visual-projection.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
@@ -28,6 +30,13 @@ let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, v
 let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
 let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null
+const visualListeners = new Map()
+const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
+  off(event, callback) { visualListeners.get(event)?.delete(callback) },
+  emit(event, value) { for (const callback of visualListeners.get(event) || []) callback(value) } }
+const agentVisual = installAgentVisualization({ socket: visualPort, document, window,
+  position: () => current?.pose,
+  project: createAgentWorldProjector(() => ({ camera }), () => ({ width: window.innerWidth, height: window.innerHeight })) })
 const cameraRay = new THREE.Raycaster(), labelPoint = new THREE.Vector3()
 const kineticClock = new NativeKineticRenderClock()
 let kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
@@ -134,6 +143,10 @@ async function start () {
       renderer.render(scene, camera)
       if(selfActor?.firstPersonRoot){
         selfActor.firstPersonRoot.visible=viewMode==='first'
+        const hands=selfActor.firstPersonItemsState?.()
+        renderer.domElement.dataset.firstPersonHands=JSON.stringify({ rendered:viewMode==='first',available:hands?.available===true,
+          swing:hands?.swingAnimationAvailable===true,progress:hands?.swingProgress??null,
+          right:hands?.hands?.right?.visible===true,left:hands?.hands?.left?.visible===true })
         if(viewMode==='first'){
           renderer.clearDepth();renderer.autoClear=false
           try {renderer.render(firstPersonScene,firstPersonCamera)} finally {renderer.autoClear=true}
@@ -147,12 +160,16 @@ async function start () {
     try {
       const event = session.receive(JSON.parse(message.data)), value = event.value
       if (event.kind === 'ignored') return
+      if (event.kind === 'agent_visual') { visualPort.emit(value.event, value.value); return }
       if (event.kind === 'identity') {
         if (event.reset) clearScene()
+        visualPort.emit('viewerSession', { mode: 'self', attached: value.confirmed === true, playerUuid: value.playerUuid,
+          playerName: value.player, entityId: value.entityId, worldUuid: String(value.epoch) })
         player = value.player; playerUuid = value.playerUuid?.toLowerCase(); onIdentity(value); return
       }
       if (event.kind === 'unavailable') {
         if (event.reset) clearScene()
+        visualPort.emit('disconnect')
         epoch = value.epoch; onUnavailable(value.reason || 'NATIVE_WORLD_WAITING'); return
       }
       if (value.type === 'snapshot') {
@@ -162,6 +179,7 @@ async function start () {
         current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
         current.presentation = value.presentation; current.entityState = value.entityState
       } else if (value.type === 'motion' && current && value.epoch === epoch) {
+        selfActor?.applyHandAnimation?.(value.handAnimation)
         current.pose = value.pose; current.motion = value.motion; return
       } else return
       onState(value); void ensureSelfActor(current.selfPlayer)
@@ -436,7 +454,7 @@ function fail (error) {
 }
 function dispose () {
   if (disposed) return
-  disposed = true; events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
+  disposed = true; agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
   controls?.dispose(); clearScene(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }

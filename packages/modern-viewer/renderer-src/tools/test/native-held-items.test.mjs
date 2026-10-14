@@ -12,6 +12,35 @@ import { selectNativeHeldItems, nativeHeldItemTransform, nativeHeldArmMountMatri
   nativeFirstPersonIdleMountMatrix, nativeFirstPersonSilhouetteProjection, NativeHeldItems, HELD_ITEM_CLIENT_SHA256, ARS_OPEN_MODEL_SHA256 } from '../../src/native-viewer/native-held-items.js'
 
 const uuid = 'e371227c-09fa-3722-84f4-f3228a552c3c'
+
+test('observed same-body vanilla swing animates first-person original item while moving, then expires', async () => {
+  let time = 1050
+  const held = new NativeHeldItems(staticReader().reader, { uuid, playerObject: new PlayerObject(), now: () => time,
+    readPixels: async () => pixels(), loadHeldTexture: async () => new THREE.Texture({ width:16,height:16 }) })
+  held.setFirstPersonViewport({ fov:70,aspect:16/9,near:.05,far:150 })
+  const animation = { source:'same_player_vanilla_hand_packets',playerUuid:uuid,entityId:7,sampledAt:1050,
+    mainArm:'right',usingItem:false,spinAttack:false,swing:{startedAt:1000,durationTicks:6,sequence:1,hand:'mainhand'} }
+  held.apply(frame(raw(), { entityId:7, velocity:{x:.1,y:0,z:0}, swinging:true, attackAnim:.16, handAnimation:animation }))
+  await until(() => held.state().hands.right.status !== 'loading')
+  assert.equal(held.firstPersonState().available, true)
+  const a = held.hands.get('right').firstMount.matrix.clone()
+  time = 1150; held.frame(time)
+  assert.notDeepEqual(held.hands.get('right').firstMount.matrix.elements, a.elements)
+  assert.equal(held.firstPersonState().swingAnimationAvailable,true)
+  time = 3000; held.frame(time)
+  assert.equal(held.firstPersonState().available,false)
+  held.dispose()
+})
+
+test('known empty main hand renders the original player arm without borrowing another skin', () => {
+  const held = new NativeHeldItems(staticReader().reader, { uuid,playerObject:new PlayerObject(),now:()=>1000 })
+  held.apply(frame(null, {entityId:7,handAnimation:{source:'same_player_vanilla_hand_packets',playerUuid:uuid,entityId:7,sampledAt:1000,
+    mainArm:'right',usingItem:false,spinAttack:false,swing:null}}))
+  assert.equal(held.firstPersonState().emptyHandArmRenderingAvailable,true)
+  assert.equal(held.firstPersonState().hands.right.visible,true)
+  assert.equal(held.firstPersonState().hands.left.visible,false)
+  held.dispose()
+})
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 const raw = (name = 'minecraft:wooden_pickaxe', components = '') => ({ name, count: 1,
   snbt: `{id:"${name}",count:1${components ? `,components:{${components}}` : ''}}` })

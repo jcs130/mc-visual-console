@@ -5,6 +5,7 @@ import { nativeArsItemEligible, prepareNativeArsItemIcon, bakeNativeArsGeoFaces 
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
 import { verifyNativeStaticItemEvidence, nativeStaticItemState } from './native-static-item-providers.js'
 import { nativeHumanoidWalkAngles, nativePlayerCos, nativePlayerSin, toSkinviewLimbRotation } from './native-player-motion.js'
+import { nativeHandAnimation, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from './native-first-person-motion.js'
 
 // Locked 1.21.1 ItemModelGenerator / ItemInHandLayer / ItemTransform and
 // PlayerModel.translateToHand; Ars 5.13.2 SpellBookModel/TatteredTomeModel and
@@ -173,14 +174,18 @@ export function nativeFirstPersonSilhouetteProjection(plan, viewport, arm = plan
     viewport: { fov: viewport.fov, aspect: viewport.aspect, near: viewport.near, far: viewport.far }, pixelParityVerified: false }
 }
 
-function thirdPersonPoseReason(self) {
+function thirdPersonPoseReason(self, now = Date.now()) {
+  if (self?.crouching === false && nativeHandAnimation(self, self.mainArm, now)) return null
   if (!self || self.usingItem !== false) return self?.usingItem === true ? 'NATIVE_HELD_ACTIVE_USE_POSE_UNSUPPORTED' : 'NATIVE_HELD_USE_STATE_UNKNOWN'
   if (self.swinging !== false || self.attackAnim !== 0) return self.swinging === true || self.attackAnim > 0 ? 'NATIVE_HELD_SWING_POSE_UNSUPPORTED' : 'NATIVE_HELD_SWING_STATE_UNKNOWN'
   const spinAttack = self.spinAttack ?? self.autoSpinAttack
   if (spinAttack !== false) return spinAttack === true ? 'NATIVE_HELD_SPIN_ATTACK_UNSUPPORTED' : 'NATIVE_HELD_SPIN_STATE_UNKNOWN'
   return null
 }
-function firstPersonPoseReason(self) {
+function firstPersonPoseReason(self, now = Date.now()) {
+  if (self?.handAnimation && self.usingItem === false && self.spinAttack === false) {
+    return nativeHandAnimation(self, self.mainArm, now) ? null : 'NATIVE_FIRST_PERSON_HAND_STATE_STALE_OR_INVALID'
+  }
   if (!self || self.usingItem !== false) return self?.usingItem === true ? 'NATIVE_FIRST_PERSON_ACTIVE_USE_UNSUPPORTED' : 'NATIVE_FIRST_PERSON_USE_STATE_UNKNOWN'
   if (self.swinging !== false || self.attackAnim !== 0) return self.swinging === true || self.attackAnim > 0 ? 'NATIVE_FIRST_PERSON_SWING_UNSUPPORTED' : 'NATIVE_FIRST_PERSON_SWING_STATE_UNKNOWN'
   const spinAttack = self.spinAttack ?? self.autoSpinAttack
@@ -388,13 +393,21 @@ async function loadTexture(bytes) {
 }
 
 export class NativeHeldItems {
-  constructor(reader, { uuid, playerObject, slim = false, readPixels, loadHeldTexture = loadTexture, onChange = () => {} } = {}) {
+  constructor(reader, { uuid, playerObject, slim = false, readPixels, loadHeldTexture = loadTexture, onChange = () => {}, now = Date.now } = {}) {
     this.reader = reader; this.uuid = normalizeUuid(uuid); this.player = playerObject; this.slim = slim
     if (!playerObject?.skin?.rightArm?.isObject3D || !playerObject?.skin?.leftArm?.isObject3D) throw Error('NATIVE_HELD_PLAYER_MODEL_INVALID')
     this.readPixels = readPixels; this.loadTexture = loadHeldTexture; this.onChange = onChange; this.disposed = false
     this.hands = new Map(); this.selection = null; this.reason = 'NATIVE_HELD_INVENTORY_UNAVAILABLE'; this.firstViewport = null
     this.firstPersonRoot = new THREE.Group(); this.firstPersonRoot.name = 'native-own-first-person-items'
     this.firstPersonRoot.visible = false; this.firstPersonRoot.userData.playerUuid = this.uuid
+    this.now = now; this.emptyArms = new Map()
+    for (const arm of ['right','left']) {
+      const original = this.player.skin[`${arm}Arm`], clone = new THREE.Group(), mount = new THREE.Group()
+      clone.position.copy(original.position)
+      for (const part of original.children) clone.add(part.clone())
+      mount.name = `native-first-empty-${arm}`; mount.matrixAutoUpdate = false; mount.visible = false; mount.add(clone)
+      this.firstPersonRoot.add(mount); this.emptyArms.set(arm, mount)
+    }
   }
   state() {
     const available = ['right', 'left'].some(arm => this.hands.get(arm)?.status === 'ready' && this.hands.get(arm)?.mount?.visible)
@@ -403,23 +416,25 @@ export class NativeHeldItems {
         const value = this.hands.get(arm)
         return [arm, value ? { slot: value.slot, name: value.raw?.name ?? null, status: value.status, reason: value.reason ?? null,
           geometry: value.plan?.geometry ?? null, componentSource: value.componentSource ?? null, visible: value.mount?.visible ?? false,
-          armPoseAvailable: !thirdPersonPoseReason(this.selection?.self) } : { status: 'unknown', reason: this.reason }]
+          armPoseAvailable: !thirdPersonPoseReason(this.selection?.self, this.now()) } : { status: 'unknown', reason: this.reason }]
       })), equipmentRenderingAvailable: false, worldLightingParityVerified: false, pixelParityVerified: false }
   }
   firstPersonState() {
-    const available = ['right', 'left'].some(arm => this.hands.get(arm)?.status === 'ready' && this.hands.get(arm)?.firstMount?.visible)
+    const available = ['right', 'left'].some(arm => this.hands.get(arm)?.status === 'ready' && this.hands.get(arm)?.firstMount?.visible || this.emptyArms.get(arm)?.visible)
     const reason = available ? null : this.unavailableReason('firstperson')
-    return { playerUuid: this.uuid, available, reason, context: 'firstperson', poseScope: 'stationary_no_use_or_swing_equipped_endpoint',
-      equipmentTransitionAvailable: false, cameraLagAnimationAvailable: false, viewBobbingAnimationAvailable: false, emptyHandArmRenderingAvailable: false,
+    const motion = nativeHandAnimation(this.selection?.self, this.selection?.mainArm, this.now())
+    return { playerUuid: this.uuid, available, reason, context: 'firstperson', poseScope: motion ? 'observed_vanilla_swing_equipped_endpoint' : 'stationary_no_use_or_swing_equipped_endpoint',
+      swingAnimationAvailable: !!motion, swingProgress: motion?.progress ?? null,
+      equipmentTransitionAvailable: false, cameraLagAnimationAvailable: false, viewBobbingAnimationAvailable: false, emptyHandArmRenderingAvailable: !!motion,
       hands: Object.fromEntries(['right','left'].map(arm => [arm, { status: this.hands.get(arm)?.status ?? 'unknown',
-        visible: this.hands.get(arm)?.firstMount?.visible ?? false, name: this.hands.get(arm)?.raw?.name ?? null,
+        visible: !!(this.hands.get(arm)?.firstMount?.visible || this.emptyArms.get(arm)?.visible), name: this.hands.get(arm)?.raw?.name ?? null,
         reason: this.hands.get(arm)?.status === 'unsupported' ? this.hands.get(arm)?.reason : this.hands.get(arm)?.firstReason ?? null,
         projection: this.hands.get(arm)?.firstProjection ?? null }])),
       worldLightingParityVerified: false, pixelParityVerified: false }
   }
   unavailableReason(context) {
     if (this.reason) return this.reason
-    const pose = context === 'firstperson' ? firstPersonPoseReason(this.selection?.self) : thirdPersonPoseReason(this.selection?.self)
+    const pose = context === 'firstperson' ? firstPersonPoseReason(this.selection?.self, this.now()) : thirdPersonPoseReason(this.selection?.self, this.now())
     if (pose) return pose
     const entries = [...this.hands.values()]
     if (entries.some(entry => entry.status === 'loading')) return 'NATIVE_HELD_ITEMS_LOADING'
@@ -495,13 +510,32 @@ export class NativeHeldItems {
     }
   }
   armRotations(value, motion) {
-    if (!this.selection || thirdPersonPoseReason(this.selection.self)) return value?.skinview ?? null
+    this.player.skin.body.rotation.y=0
+    for(const arm of ['left','right']) {this.player.skin[`${arm}Arm`].position.x=arm==='right'?-5:5;this.player.skin[`${arm}Arm`].position.z=0}
+    if (!this.selection || thirdPersonPoseReason(this.selection.self, this.now())) return value?.skinview ?? null
     const arms = ['right', 'left'].filter(arm => this.hands.get(arm)?.status === 'ready')
-    return nativeHeldArmRotations(value, motion, arms)
+    const swing=this.selection.self.handAnimation?.swing, attackArm=swing?.hand==='offhand'?(this.selection.mainArm==='left'?'right':'left'):this.selection.mainArm
+    const base=nativeHeldArmRotations(value, motion, arms), sample=nativeHandAnimation(this.selection.self,attackArm,this.now())
+    if(!sample || !Number.isFinite(this.selection.self.pitch)) return base
+    const pose=nativeThirdPersonSwingPose(base,sample.progress,attackArm,-this.selection.self.pitch)
+    this.player.skin.body.rotation.y=pose.bodyYaw
+    for(const [arm,position] of Object.entries(pose.positions)) Object.assign(this.player.skin[`${arm}Arm`].position,position)
+    return pose.rotations
   }
+  applyHandAnimation(value) {
+    if (!this.selection || value?.playerUuid !== this.uuid || value.entityId !== this.selection.self.entityId) return
+    Object.assign(this.selection.self, { handAnimation: value, usingItem: value.usingItem, spinAttack: value.spinAttack, swinging: !!value.swing })
+  }
+  frame(now) { this.frameTime = now; this.refreshPose() }
   refreshPose() {
+    const time = this.frameTime ?? this.now()
+    for (const [arm, mount] of this.emptyArms) {
+      const motion = nativeHandAnimation(this.selection?.self, arm, time)
+      mount.visible = !!(motion && this.selection.mainArm === arm && this.hands.get(arm)?.status === 'empty')
+      if (mount.visible) { mount.matrix.copy(nativeFirstPersonEmptyArmMatrix(motion.progress, arm)); mount.matrixWorldNeedsUpdate = true }
+    }
     for (const [arm, entry] of this.hands) if (entry.mount) {
-      const poseReason = thirdPersonPoseReason(this.selection?.self)
+      const poseReason = thirdPersonPoseReason(this.selection?.self, time)
       entry.mount.visible = !poseReason
       entry.reason = poseReason
       entry.mount.matrix.copy(nativeHeldArmMountMatrix({ arm, slim: this.slim,
@@ -511,7 +545,9 @@ export class NativeHeldItems {
         entry.firstProjection = nativeFirstPersonSilhouetteProjection(entry.plan, this.firstViewport, arm)
         entry.firstProjectionKey = projectionKey
       }
-      entry.firstReason = firstPersonPoseReason(this.selection?.self) || entry.firstProjection.reason
+      const motion = nativeHandAnimation(this.selection?.self, arm, time)
+      entry.firstReason = firstPersonPoseReason(this.selection?.self, time) || entry.firstProjection.reason
+      if (motion) { entry.firstMount.matrix.copy(nativeFirstPersonSwingMatrix(motion.progress, arm).multiply(transformMatrix(entry.plan.firstPersonTransform))); entry.firstMount.matrixWorldNeedsUpdate = true }
       entry.firstMount.visible = !entry.firstReason
     }
   }
@@ -520,6 +556,7 @@ export class NativeHeldItems {
     this.disposed = true
     for (const arm of ['right', 'left']) this.retire(arm)
     this.firstPersonRoot.visible = false; this.firstPersonRoot.removeFromParent(); this.firstPersonRoot.clear()
+    this.emptyArms.clear()
     this.selection = null
   }
 }

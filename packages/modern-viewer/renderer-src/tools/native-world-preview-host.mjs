@@ -13,6 +13,7 @@ import { projectNativePlayerRenderState } from '../src/native-viewer/native-play
 import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
 import { nativePreviewAccess } from './native-preview-access.mjs'
 import { viewerSourceDigest } from './viewer-build-source.mjs'
+import { createNativeAgentVisualization } from '../host/native-agent-visual.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
@@ -82,7 +83,7 @@ function injectedPresentation (provider, uuid) {
     const ownSelf = copy.self && copy.self.playerUuid === uuid ? Object.fromEntries(
       ['health', 'maxHealth', 'absorption', 'armor', 'food', 'saturation', 'oxygen', 'airSupply', 'maxAirSupply',
         'inWater', 'experienceLevel', 'experienceProgress', 'experiencePoints', 'equipment', 'mainArm', 'usingItem',
-        'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'pose', 'ysm', 'motion']
+        'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'handAnimation', 'pose', 'ysm', 'motion']
         .filter(key => Object.hasOwn(copy.self, key)).map(key => [key, key === 'ysm' ? projectNativeYsmState(copy.self.ysm, uuid)
           : key === 'motion' ? projectNativePlayerRenderState(copy.self.motion, uuid) : copy.self[key]])) : null
     return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
@@ -416,6 +417,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         }) })
       const detach = attachNativeWorld({ bot, nativeStream, world })
       const clients = new Set()
+      const agentVisual = createNativeAgentVisualization(bot, { getAgentStatus, now })
       let closed = false, closing = null, listening = null, currentPort = port, connectionEnded = false, identityConfirmed = Boolean(bot.username)
       const cadence = new NativeSnapshotCadence()
       let cachedSnapshot = null, snapshotBuildCount = 0, snapshotBuildMs = null
@@ -510,7 +512,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             const client = { response, blocked: false, needsSnapshot: true, missedWorld: false, identitySignature: null }
             clients.add(client)
             response.on('drain', () => { client.blocked = false; client.needsSnapshot ||= client.missedWorld; client.missedWorld = false })
-            response.on('close', () => clients.delete(client))
+            response.on('close', () => { client.stopVisual?.(); clients.delete(client) })
             sendIdentity(client)
             return
           }
@@ -561,7 +563,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const motion = { ...state, epoch: world.epoch }
         if (!clients.size || ![player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)) return
         const currentPose = playerPose(player)
-        const value = { type: 'motion', epoch: world.epoch, playerUuid: player.uuid, pose: currentPose, motion }
+        const value = { type: 'motion', epoch: world.epoch, playerUuid: player.uuid, pose: currentPose, motion,
+          handAnimation: nativeStream.handState?.() ?? null }
         for (const client of clients) {
           if (client.blocked || client.needsSnapshot) continue
           if (!sendIdentity(client) || client.blocked) continue
@@ -640,7 +643,12 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             if (!sendIdentity(client) || client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
             if (snapshot || client.needsSnapshot) {
               const value = snapshot || cachedSnapshot
-              if (value && sendNativeWorldEvent(client, { ...value, mode: sourceMode, entityState: injectTrackedMaidPresentation(world.entitySnapshot(value.bounds), ownPresentation, world.dimension?.name, player?.uuid), pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) client.needsSnapshot = false
+              if (value && sendNativeWorldEvent(client, { ...value, mode: sourceMode, entityState: injectTrackedMaidPresentation(world.entitySnapshot(value.bounds), ownPresentation, world.dimension?.name, player?.uuid), pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) {
+                client.needsSnapshot = false
+                if (value.type === 'snapshot' && !client.stopVisual) client.stopVisual = agentVisual.subscribe(value => {
+                  if (!world.error && !connectionEnded && !client.needsSnapshot) sendNativeWorldEvent(client, { type: 'agent_visual', epoch: world.epoch, ...value })
+                })
+              }
             } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: playerPose(player), motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation, entityState: injectTrackedMaidPresentation(world.entitySnapshot(cachedSnapshot?.bounds), ownPresentation, world.dimension?.name, player?.uuid), time: world.time, packetSequence: world.lastSequence })
           }
         } catch (error) { world.unavailable(error) }
@@ -662,7 +670,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         },
         close () {
           if (closing) return closing
-          closed = true; clearInterval(timer); detach()
+          closed = true; clearInterval(timer); agentVisual.dispose(); detach()
           world.off('world', worldChanged); world.off('reset', reset); world.off('pose', pose); world.off('unavailable', unavailable)
           bot.off('error', error); bot.off('kicked', kicked); bot.off('end', ended)
           bot.off('login', verifyIdentity); bot.off('spawn', verifyIdentity)

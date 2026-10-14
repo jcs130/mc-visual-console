@@ -439,7 +439,7 @@ test('SSE snapshot and frames resample the action player without borrowing anoth
   assert.equal(snapshot.selfPlayer.uuid, bot._client.uuid)
   assert.equal(snapshot.selfPlayer.skin.kind, 'default')
   entity.position.x = 3.75; entity.yaw = -1.1; bot.health = 9; bot.food = 7; entity.onGround = false; entity.crouching = true
-  const frame = await stream.next()
+  const frame = await untilEvent(stream, e => e.type === 'frame')
   assert.equal(frame.type, 'frame')
   assert.equal(frame.selfPlayer.position.x, 3.75); assert.equal(frame.selfPlayer.yaw, -1.1)
   assert.equal(frame.pose.x, frame.selfPlayer.position.x); assert.equal(frame.pose.yaw, frame.selfPlayer.yaw)

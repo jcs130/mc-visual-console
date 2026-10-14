@@ -119,7 +119,7 @@ export async function createNativePlayerActor (reader, { uuid, skin, loadTexture
       }
       root.userData.motion = { available: value.available, reason: value.reason ?? null, tick: value.tick ?? null,
         scope: 'humanoid_walk_base', animationParityVerified: false }
-      heldItems.refreshPose()
+      heldItems.frame(now)
       return value
     },
     applyHeldItems (frame) {
@@ -128,6 +128,7 @@ export async function createNativePlayerActor (reader, { uuid, skin, loadTexture
     },
     heldItemsState () { return heldItems.state() },
     firstPersonItemsState () { return heldItems.firstPersonState() },
+    applyHandAnimation (value) { heldItems.applyHandAnimation(value) },
     setFirstPersonViewport (viewport) { return heldItems.setFirstPersonViewport(viewport) },
     dispose () {
       if (disposed) return

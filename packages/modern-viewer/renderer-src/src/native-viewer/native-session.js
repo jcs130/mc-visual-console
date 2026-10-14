@@ -26,6 +26,13 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
         return { kind: 'unavailable', value, reset }
       }
       if (!identity) throw Error('NATIVE_WORLD_IDENTITY_MISSING')
+      if (value.type === 'agent_visual') {
+        if (!ready || value.epoch !== epoch || !['agentVisualization', 'agentPresentation'].includes(value.event)) return { kind: 'ignored' }
+        const subject = value.value?.subject
+        if (value.value?.available !== false && (!subject || subject.playerUuid?.toLowerCase() !== identity.playerUuid ||
+            subject.playerName !== identity.player || subject.entityId !== identity.entityId)) throw Error('NATIVE_AGENT_VISUAL_IDENTITY_MISMATCH')
+        return { kind: 'agent_visual', value }
+      }
       if (value.type === 'snapshot') {
         if (value.registrySha256 !== registrySha256 || value.mode !== identity.mode || !Number.isSafeInteger(value.epoch)) throw Error('NATIVE_WORLD_SNAPSHOT_MISMATCH')
         if (epoch !== null && value.epoch < epoch) return { kind: 'ignored' }
