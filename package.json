@@ -24,7 +24,8 @@
     "./viewer-control": "./packages/modern-viewer/renderer-src/host/viewer-control.mjs",
     "./mineflayer-control": "./packages/modern-viewer/renderer-src/host/viewer-mineflayer-control.mjs",
     "./agent-visuals": "./packages/modern-viewer/renderer-src/host/viewer-agent.mjs",
-    "./performance-relay": "./packages/modern-viewer/renderer-src/host/viewer-performance-relay.mjs"
+    "./performance-relay": "./packages/modern-viewer/renderer-src/host/viewer-performance-relay.mjs",
+    "./java-data-viewer": "./packages/modern-viewer/renderer-src/host/java-data-viewer.mjs"
   },
   "files": [
     "src",
@@ -66,6 +67,7 @@
     "canvas": "3.2.3",
     "express": "^5.2.1",
     "minecraft-data": "^3.116.0",
+    "prismarine-block": "1.23.0",
     "prismarine-chunk": "^1.41.0",
     "prismarine-viewer": "1.33.0",
     "prismarine-world": "^3.7.0",
