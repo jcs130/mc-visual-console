@@ -27,7 +27,7 @@ const publishers = new WeakMap(), dispatchers = new WeakMap();
 export function publishAgentVisualization(bot, update) {
   return publishers.get(bot)?.(update) ?? { ok: false, code: 'AGENT_VISUAL_HOST_NOT_ATTACHED' };
 }
-function observeSentPackets(client, callback) {
+export function observeSentPackets(client, callback) {
   if (typeof client?.write !== 'function') return () => {};
   let row = dispatchers.get(client);
   if (!row) {

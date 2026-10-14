@@ -479,6 +479,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             quickBarSlot: Number.isInteger(bot.quickBarSlot) && bot.quickBarSlot >= 0 && bot.quickBarSlot <= 8 ? bot.quickBarSlot : null,
             ...(injected.nativeSelf ?? {}) },
           inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, modOperations: injected.modOperations ?? [], nativeState: injected.nativeState,
+          activity: nativeStream.activityState?.() ?? null,
+          agentPlayback: injectedAgentStatus(getAgentStatus, now).details?.playback ?? null,
           renderRegistries: injected.renderRegistries,
           entityRenderStates: injected.entityRenderStates,
           contraptionRenderStates: injected.contraptionRenderStates,
