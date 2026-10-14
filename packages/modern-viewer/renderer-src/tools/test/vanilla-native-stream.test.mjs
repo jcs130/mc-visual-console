@@ -1,8 +1,24 @@
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { observeVanillaNativeStream, vanillaPlayerPresentation } from '../../host/vanilla-native-stream.mjs';
 import { nativeItemIconEligible } from '../../src/native-viewer/native-item-icons.js';
+
+test('actual Prismarine decoder legacy Damage NBT cannot hide the authoritative 1.21.1 component patch', () => {
+  const require = createRequire(import.meta.url), registry = require('minecraft-data')('1.21.1');
+  const Item = require('prismarine-item')('1.21.1');
+  const item = Item.fromNotch({ itemId: registry.itemsByName.wooden_pickaxe.id, itemCount: 1,
+    components: [{ type: 'damage', data: 12 }], removeComponents: [] });
+  // prismarine-item 1.18.0 initializes legacy Damage=0 in the constructor even
+  // for this server-decoded modern stack. Its wire codec uses components=12.
+  assert.equal(item.nbt.value.Damage.value, 0);
+  const state = vanillaPlayerPresentation({ version: '1.21.1', _client: { uuid: 'player-a' }, registry,
+    inventory: { slots: [item] } });
+  assert.equal(state.nativeState.componentsAvailable, true);
+  assert.match(state.inventory.slots[0].item.snbt, /"minecraft:damage":12/);
+  assert.equal(nativeItemIconEligible(state.inventory.slots[0].item), true);
+});
 
 test('confirmed vanilla stacks are eligible for their original item icons', () => {
   const names = ['wooden_pickaxe', 'wooden_axe', 'bone', 'arrow', 'chicken', 'birch_planks'];

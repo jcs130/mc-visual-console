@@ -24,8 +24,19 @@ export function vanillaItemStack(item, registry) {
   const base = { name, count: item.count };
   try {
     if (!/^minecraft:[a-z0-9_]+$/.test(name) || !Number.isSafeInteger(item.count) || item.count <= 0 ||
-        !Array.isArray(item.components) || !Array.isArray(item.removedComponents) || item.nbt != null)
+        !Array.isArray(item.components) || !Array.isArray(item.removedComponents))
       throw Error('VANILLA_ITEM_COMPONENTS_NOT_OBSERVED');
+    if (item.nbt != null) {
+      // Prismarine Item.fromNotch can synthesize legacy Damage=0 in its
+      // constructor. Only its matching modern wire codec can establish that
+      // the observed component patch, rather than that compatibility NBT, is
+      // authoritative. Plain/mixed-source NBT still fails closed.
+      const wire = item.constructor?.toNotch?.(item);
+      if (!wire || wire.itemId !== item.type || wire.itemCount !== item.count ||
+          wire.components !== item.components || wire.removeComponents !== item.removedComponents ||
+          Object.hasOwn(wire, 'nbtData') || registry?.items?.[item.type]?.name !== item.name)
+        throw Error('VANILLA_ITEM_LEGACY_NBT_UNVERIFIED');
+    }
     const patch = new Map();
     if (item.components.length + item.removedComponents.length > 128) throw Error('VANILLA_COMPONENT_PATCH_TOO_LARGE');
     for (const component of item.components) {
@@ -40,7 +51,8 @@ export function vanillaItemStack(item, registry) {
     }
     const components = [...patch].map(([key, value]) => quote(key) + ':' + value).join(',');
     const snbt = `{id:${quote(name)},count:${item.count}${components ? ',components:{' + components + '}' : ''}}`;
-    const descriptionId = (registry?.blocksByName?.[item.name] ? 'block.' : 'item.') + 'minecraft.' + item.name;
+    const leaf = name.slice('minecraft:'.length);
+    const descriptionId = (registry?.blocksByName?.[leaf] ? 'block.' : 'item.') + 'minecraft.' + leaf;
     return { item: { ...base, snbt, descriptionId,
       ...(typeof item.displayName === 'string' ? { displayName: item.displayName } : {}) }, reason: null };
   } catch (error) { return { item: base, reason: error.message }; }
