@@ -79,7 +79,9 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
       if(data.epoch!==value.epoch){
         if(data.epoch){emit('viewerReset');for(const socket of clients)socket.disconnect(true);}
         const started=performance.now(),registry=await rpc('visual_registry',{});if(closed)return;
-        data.registry(registry);registryMs=performance.now()-started;
+        data.registry(registry);
+        if(data.nativeBiomes.size && !(await readFile(path.join(root,'public/mesher.js'),'utf8')).includes('agent-mc-native-biomes/v1')) throw Error('JAVA_VIEWER_NATIVE_BIOME_RENDERER_REQUIRED');
+        registryMs=performance.now()-started;
         if(value.epoch!==data.epoch)return;
       }
       dirty=data.applyFrame(value,emit);lastFrameAt=Date.now();frames++;unsupportedEntities=value.entities.length;error=null;

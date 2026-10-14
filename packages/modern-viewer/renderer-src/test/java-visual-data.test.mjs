@@ -65,3 +65,10 @@ test('stale revision or removed column response cannot overwrite the current vie
 test('duplicate column indices are rejected',()=>{
  assert.throws(()=>decoder().applyFrame({...frame,columns:[frame.columns[0],frame.columns[0]]},()=>{}),/COLUMN_INVALID/);
 });
+test('native custom biome palette survives chunk serialization without guessing an equivalent biome',()=>{
+ const d=decoder(),colors={grass:0x123456,foliage:0x654321,water:0x112233};
+ d.registry({...reg,registry:{...reg.registry,biomes:[{id:0,name:'test:highlands',colors}]}});
+ const result=d.decodeChunk(column()),json=JSON.parse(result.chunk),c=Chunk.fromJson(result.chunk);
+ assert.equal(c.getBiome({x:0,y:0,z:0}),1024);assert.deepEqual(json.agentMcBiomes.entries,[{id:1024,name:'test:highlands',colors}]);
+ d.registry({...reg,registry:{...reg.registry,biomes:[{id:0,name:'test:highlands'}]}});assert.throws(()=>d.decodeChunk(column()),/UNSUPPORTED_BIOME/);
+});
