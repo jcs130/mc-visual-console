@@ -215,17 +215,9 @@ const adaptedClient = clientSource
     '      style: String((targetId === String(pendingAvatarState?.entity?.id ?? "") ? pendingAvatarState?.entity : entityCache.get(targetId))?.equipment?.[0]?.name ?? "").replace(/^minecraft:/, "").endsWith("_sword") ? "sword" : null,')
   .replace('    enhanceRendererQuality();',
     '    enhanceRendererQuality();\n    cortiInitializeBiomeStyle();\n    cortiInitializeDroppedItems();\n    cortiInitializeWeaponMotion();\n    cortiInitializeShield();')
-  .replace('function applyPosition(instant = false) {', 'function applyPosition(instant = false, animatedFrame = false) {')
   .replace('  const { pos, yaw, pitch } = latestPosition;\n  if (usesWorldAvatar) {',
-    '  const observerTarget = usesWorldAvatar ? resolveObserverTargetPosition() : null;\n  const cameraPacket = observerTarget ? { ...latestPosition, pos: observerTarget.position, yaw: orbitInitialized ? orbitYaw : latestPosition.yaw, pitch: orbitInitialized ? orbitPitch : latestPosition.pitch, cameraTarget: focusedCharacterId ?? "self" } : latestPosition;\n  const cameraPose = cortiCameraPose(cameraPacket, instant);\n  const { pos, yaw, pitch } = cameraPose;\n  if (!cameraPose.settled) scheduleCortiCameraFrame();\n  if (usesWorldAvatar) {')
-  .replace('    const resolvedTarget = resolveObserverTargetPosition();\n    viewer.updateCamera(resolvedTarget?.position || pos, orbitYaw, orbitPitch, { instant });',
-    '    viewer.updateCamera(pos, orbitYaw, orbitPitch, { instant: true });')
-  .replace('      { instant },\n    );\n  }\n  worldView.emit("chunkPosUpdate", { pos });',
-    '      { instant: true },\n    );\n  }\n  if (!animatedFrame) {\n    worldView.emit("chunkPosUpdate", { pos: latestPosition.pos });\n    refreshChunkLoadingGuards();\n  }')
-  .replace('  }\n  refreshChunkLoadingGuards();\n  if (isFirstPersonView && pendingPlayerEntity) {',
-    '  }\n  if (!animatedFrame && isFirstPersonView && pendingPlayerEntity) {')
-  .replace('  publishCameraDataset();\n  scheduleNpcPanelRender();\n}',
-    '  if (!animatedFrame) {\n    publishCameraDataset();\n    scheduleNpcPanelRender();\n  }\n}')
+    '  const cameraPose = usesWorldAvatar ? { ...latestPosition, settled: true } : cortiCameraPose(latestPosition, instant);\n  const { pos, yaw, pitch } = cameraPose;\n  if (!cameraPose.settled) scheduleCortiCameraFrame();\n  if (usesWorldAvatar) {')
+  .replace('      { instant },\n    );', '      { instant: true },\n    );')
   .replace('    pendingPlayerEntity = { ...pendingPlayerEntity, pos, position: pos, yaw, pitch };',
     '    pendingPlayerEntity = { ...pendingPlayerEntity, pos: latestPosition.pos, position: latestPosition.pos, yaw: latestPosition.yaw, pitch: latestPosition.pitch };')
   .replace('    pitch: finiteOr(data?.pitch, usesWorldAvatar ? -0.22 : 0),\n  };',
@@ -241,8 +233,8 @@ if (changedClient === clientSource || changedClient.includes('String(version || 
     || !changedClient.includes('  const targetBob = movementState === "NOT_MOVING" ? 0 : movementState === "SPRINTING" ? 0.07 : 0.045;')
     || !changedClient.includes('state.usingHeldItem === undefined && cortiRangedUse?.phase === "draw"')
     || !clientSource.includes('  applyAvatarState();\n  renderInventoryHud();\n  renderMotionHud();')
-    || !changedClient.includes('const cameraPose = cortiCameraPose(cameraPacket, instant);')
-    || !changedClient.includes('viewer.updateCamera(pos, orbitYaw, orbitPitch, { instant: true });')
+    || !changedClient.includes('cortiCameraPose(latestPosition, instant);')
+    || !changedClient.includes('viewer.updateCamera(resolvedTarget?.position || pos, orbitYaw, orbitPitch, { instant: true });')
     || !changedClient.includes('teleport: data?.teleport === true,')
     || !changedClient.includes('socket.on("viewerReset"')
     || !changedClient.includes('socket.on("digProgress"')

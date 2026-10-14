@@ -27,7 +27,27 @@ test('short network stalls resume from the visible position, while pose-only rep
   assert.equal(c.samples.at(-1).at,50);
   const from={...c.sample(600)};
   c.push({x:2,y:64,z:0},600,{from});
-  assert.equal(c.sample(600).x,1);assert.equal(c.sample(650).x,1.5);assert.equal(c.sample(700).x,2);
+  assert.equal(c.sample(600).x,1);assert.equal(c.sample(675).x,1.5);assert.equal(c.sample(750).x,2);
+});
+test('10Hz jitter does not periodically run out of snapshots or rewind when the reserve grows',()=>{
+  const c=new EntityPositionTimeline(),values=[];
+  const packets=Array.from({length:61},(_,i)=>({at:i*100+(i%2?35:0),x:i*.4}));
+  for(let t=0;t<=6000;t+=5){
+    while(packets.length&&packets[0].at<=t){const p=packets.shift();c.push({x:p.x,y:64,z:0},p.at);}
+    const p=c.sample(t);if(t>500&&t<5800)values.push(p.x);
+  }
+  const steps=values.slice(1).map((x,i)=>x-values[i]);
+  assert.ok(steps.every(x=>x>0 && x<.04),`no hold, reverse or catch-up jump: ${Math.min(...steps)}..${Math.max(...steps)}`);
+  assert.ok(c.delayMs>=165 && c.delayMs<=250);
+  assert.equal(c.sample(10000).x,24,'stop at the final authoritative sample');
+});
+test('resuming ordinary motion after a long idle blends from the displayed root; stale packets are ignored',()=>{
+  const c=new EntityPositionTimeline();c.push({x:0,y:64,z:0},0,{instant:true});
+  c.push({x:.2,y:64,z:0},5000,{from:{x:0,y:64,z:0}});
+  assert.equal(c.sample(5000).x,0);
+  assert.ok(c.sample(5075).x>0 && c.sample(5075).x<.2);
+  c.push({x:-1,y:64,z:0},4900);
+  assert.equal(c.sample(5300).x,.2);
 });
 test('the pinned renderer uses the buffer and retains passenger/deletion tween cancellation',()=>{
   const original=readFileSync(new URL('../../node_modules/minecraft-renderer/dist/minecraft-renderer.js',import.meta.url),'utf8');

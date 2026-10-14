@@ -12,6 +12,6 @@ export function patchRendererMovement(source) {
     s.userData._tweenTarget??={...u};s.userData._posTween?.stop();
     let apply=()=>{let p=timeline.sample(performance.now(),s.userData._tweenTarget);if(p)s.position.set(p.x,p.y,p.z)};
     if(c===0)apply();
-    s.userData._posTween=new Ge({clock:0}).to({clock:1},150).onUpdate(apply).onComplete(apply).start()`;
+    s.userData._posTween=new Ge({clock:0}).to({clock:1},timeline.delayMs+100).onUpdate(apply).onComplete(apply).start()`;
   return `import {EntityPositionTimeline as CortiEntityPositionTimeline} from ${JSON.stringify(fileURLToPath(new URL('../src/modern-viewer/entity-position-timeline.js',import.meta.url)))};\nimport {nextRenderClock as CortiNextRenderClock} from ${JSON.stringify(fileURLToPath(new URL('../src/modern-viewer/render-clock.js',import.meta.url)))};\n`+source.replace(before,after);
 }
