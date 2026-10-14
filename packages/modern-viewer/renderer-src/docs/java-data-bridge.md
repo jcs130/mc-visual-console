@@ -12,7 +12,9 @@ Fabric ClientWorld / ClientPlayer
 
 `createJavaDataViewer` from `mc-visual-console/java-data-viewer` accepts an injected `rpc(method, params)`, expected player UUID/server, matched assets directory, loopback port, and bounded chunk radius (default 2, maximum 4). The host owns credentials and lifecycle. The viewer cannot issue game actions, launch/reconnect a client, or call a model. It only calls `visual_registry`, `visual_frame`, `visual_chunk`, and on demand `visual_skin`.
 
-## v1 observation contract (Minecraft 1.20.6)
+## v1 observation contract (Minecraft 1.20.6 and 1.21.1)
+
+Pass the negotiated `minecraftVersion` to `createJavaDataViewer`. Registry, chunk decoder, biome/item tables and exported browser assets must all match that version. An unsupported version or mismatched asset pack is an explicit error. The exporter reads `version.json` from the supplied official client JAR; the browser builder pins its data and texture imports to that version. Existing 1.20.6 consumers keep their default. This does not translate a 1.21.1 stream into old block ordinals or textures.
 
 Every response includes `protocol`, `minecraftVersion`, `uuid`, `server`, `dimension`, world `epoch`, monotonic `sequence`, and native `sampledAt` in Unix milliseconds. World replacement invalidates all cached chunks/entities. Missing/old data disconnects the view; history is never presented as current.
 

@@ -56,11 +56,12 @@ const sourceRoot = path.resolve(sourceArg)
 const outputRoot = path.resolve(outputArg)
 const renderAssets = path.join(outputRoot, 'render-assets')
 const sourceManifest = JSON.parse(await readFile(path.join(outputRoot, 'public', 'asset-source.json'), 'utf8'))
-if (sourceManifest.minecraftVersion !== '1.20.6' || !sourceManifest.clientJarSha256) {
+const version = sourceManifest.minecraftVersion
+if (!['1.20.6', '1.21.1'].includes(version) || !sourceManifest.clientJarSha256) {
   throw Error('请先从 1.20.6 客户端 JAR 导出资源')
 }
-const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256)
-const textDisplays = await verifyTextDisplayAssets(outputRoot,sourceManifest.clientJarSha256)
+const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256,{version})
+const textDisplays = await verifyTextDisplayAssets(outputRoot,sourceManifest.clientJarSha256,version)
 const itemAppearances = await verifyItemAppearanceAssets(outputRoot)
 const replacements = {
   'blockStatesModels.json': 'blockStatesModels.json',
@@ -89,7 +90,7 @@ function correctRendererWorldHeight(source) {
   return source.replace(sectionLoop, (_, variable) =>
     `for(let ${variable}=this.worldMinYRender;${variable}<this.worldSizeParams.minY+this.worldSizeParams.worldHeight;${variable}+=`)
 }
-const dataPaths = sourceRequire('minecraft-data/minecraft-data/data/dataPaths.json').pc['1.20.6']
+const dataPaths = sourceRequire('minecraft-data/minecraft-data/data/dataPaths.json').pc[version]
 if (!dataPaths) throw Error('minecraft-data 不支持 1.20.6')
 
 const fields = ['attributes', 'blocks', 'blockCollisionShapes', 'biomes', 'effects', 'items',
@@ -103,15 +104,15 @@ const alias = [
   `const createSupportFeature = require(${JSON.stringify(sourceRequire.resolve('minecraft-data/lib/supportsFeature.js'))});`,
   `const data = mcDataToNode({ ${fields.join(', ')} });`,
   `data.type = 'pc';`,
-  `const protocolVersion = protocolVersions.find(row => row.minecraftVersion === '1.20.6');`,
+  `const protocolVersion = protocolVersions.find(row => row.minecraftVersion === '${version}');`,
   `const compareTo = other => { const row = protocolVersions.find(entry => entry.minecraftVersion === String(other));
     return protocolVersion?.dataVersion !== undefined && row?.dataVersion !== undefined
-      ? protocolVersion.dataVersion - row.dataVersion : compareVersions('1.20.6', other); };`,
-  `data.version = { ...version, dataVersion: protocolVersion?.dataVersion, type: 'pc', majorVersion: '1.20',
-    minecraftVersion: '1.20.6', '>=': other => compareTo(other) >= 0, '>': other => compareTo(other) > 0,
+      ? protocolVersion.dataVersion - row.dataVersion : compareVersions('${version}', other); };`,
+  `data.version = { ...version, dataVersion: protocolVersion?.dataVersion, type: 'pc', majorVersion: '${version.split('.').slice(0,2).join('.')}',
+    minecraftVersion: '${version}', '>=': other => compareTo(other) >= 0, '>': other => compareTo(other) > 0,
     '<=': other => compareTo(other) <= 0, '<': other => compareTo(other) < 0, '==': other => compareTo(other) === 0 };`,
-  `data.isNewerOrEqualTo = other => compareVersions('1.20.6', other) >= 0;`,
-  `data.isOlderThan = other => compareVersions('1.20.6', other) < 0;`,
+  `data.isNewerOrEqualTo = other => compareVersions('${version}', other) >= 0;`,
+  `data.isOlderThan = other => compareVersions('${version}', other) < 0;`,
   `data.supportFeature = createSupportFeature(data.version, protocolVersions);`,
   `function MinecraftData() { return data; }`,
   `MinecraftData.legacy = { pc: legacyPc, bedrock: { blocks: {}, items: {} } };`,
@@ -123,7 +124,7 @@ const alias = [
 ].join('\n')
 
 const temp = await mkdtemp(path.join(tmpdir(), 'mc-modern-viewer-'))
-const aliasFile = path.join(temp, 'minecraft-data-1.20.6.cjs')
+const aliasFile = path.join(temp, `minecraft-data-${version}.cjs`)
 await writeFile(aliasFile, alias)
 const clientFile = path.join(sourceRoot, 'src', 'modern-viewer', 'client.js')
 // Git's Windows checkout may use CRLF. Anchors describe JavaScript, not EOLs.
@@ -165,8 +166,8 @@ if (clientSource.split(potionRenderAnchor).length !== 2)
 const adaptedClient = clientSource
   .replace('  for (const event of pendingChunks.values()) worldView.emit(event.type === "load" ? "loadChunk" : "unloadChunk", event.data);\n  pendingChunks.clear();\n  refreshChunkLoadingGuards();\n  if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);',
     '  if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);\n  for (const event of pendingChunks.values()) worldView.emit(event.type === "load" ? "loadChunk" : "unloadChunk", event.data);\n  pendingChunks.clear();\n  refreshChunkLoadingGuards();')
-  .replace('String(version || "1.21.1")', 'String(version || "1.20.6")')
-  .replace('"/textures/1.21.1/entity/villager"', '"/textures/1.20.6/entity/villager"')
+  .replace('String(version || "1.21.1")', `String(version || "${version}")`)
+  .replace('"/textures/1.21.1/entity/villager"', `"/textures/${version}/entity/villager"`)
   // The OBJ uses bottom-origin UVs (face V 0.72–0.88). Three must flip the
   // top-origin 1.20.6 PNG before upload or the face samples transparent legs.
   .replace('  texture.flipY = false;\n  texture.generateMipmaps = false;',
@@ -228,7 +229,7 @@ const adaptedClient = clientSource
   .replace('地牢 2.5D 视角；悬停识别对象，接管后点击地面移动，右键或长按目标选择详情、走近、攻击或使用，滚轮缩放', '地牢 2.5D 只读观察视角；滚轮缩放')
   .replaceAll('灯守', 'Minecraft 玩家')
 const changedClient = patchRoomOcclusion(adaptedClient)
-if (changedClient === clientSource || changedClient.includes('String(version || "1.21.1")')
+if (changedClient === clientSource || !changedClient.includes(`String(version || "${version}")`)
     || !clientSource.includes('starfield: true,')
     || !changedClient.includes('  const targetBob = movementState === "NOT_MOVING" ? 0 : movementState === "SPRINTING" ? 0.07 : 0.045;')
     || !changedClient.includes('state.usingHeldItem === undefined && cortiRangedUse?.phase === "draw"')
@@ -282,7 +283,7 @@ const buildResult = await build({
         const file = request.slice('mc-assets/dist/'.length)
         const legacyTexture = file.match(/^other-textures\/(?:latest|1\.21\.2)\/(.+\.png)$/)
         if (legacyTexture) {
-          const local = path.join(outputRoot, 'public', 'textures', '1.20.6', legacyTexture[1])
+          const local = path.join(outputRoot, 'public', 'textures', version, legacyTexture[1])
           return { path: local }
         }
         return replacements[file] ? { path: path.join(renderAssets, replacements[file]) } : undefined
@@ -332,7 +333,7 @@ const buildResult = await build({
       })
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]painting-variants\.js$/ }, () => ({ contents: changedPaintings, loader: 'js', resolveDir: path.dirname(paintingFile) }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]player-skins\.js$/ }, () => ({
-        contents: `import texture from ${JSON.stringify(path.join(outputRoot, 'public', 'textures', '1.20.6', 'entity', 'player', 'wide', 'steve.png'))};
+        contents: `import texture from ${JSON.stringify(path.join(outputRoot, 'public', 'textures', version, 'entity', 'player', 'wide', 'steve.png'))};
           export const DEFAULT_PLAYER_SKIN_ID = 'minecraft-default';
           export const PLAYER_SKINS = Object.freeze([{ id: 'minecraft-default', label: '原版角色', model: 'classic', texture }]);
           export const isPlayerSkinId = value => value === 'minecraft-default';
@@ -377,7 +378,7 @@ for (const name of ['mesherWasm.js', 'threeWorker.js', 'minecraft-renderer.js', 
     await copyFile(dependency, deployed)
   }
 }
-const biomeWorker = await buildBiomeMesherWorker(sourceRoot, outputRoot, aliasFile)
+const biomeWorker = await buildBiomeMesherWorker(sourceRoot, outputRoot, aliasFile, version)
 await mkdir(path.join(outputRoot, 'public', 'character-assets'), { recursive: true })
 await writeFile(path.join(outputRoot, 'public', 'character-assets', 'manifest.json'), '{"schemaVersion":1,"assets":[]}\n')
 const browserBundle = await readFile(path.join(outputRoot, 'dist', 'modern-viewer.js'))
@@ -386,7 +387,7 @@ const browserBundleSha256 = createHash('sha256').update(browserBundle).digest('h
 const mesherSha256 = createHash('sha256').update(await readFile(biomeWorker.outputFile)).digest('hex')
 await writeViewerPages(outputRoot)
 await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
-  minecraftVersion: '1.20.6', clientJarSha256: sourceManifest.clientJarSha256,
+  minecraftVersion: version, clientJarSha256: sourceManifest.clientJarSha256,
   browserBundleSha256, mesherSha256, biomeCount: biomeWorker.biomeCount,
   buildSource: await viewerSourceDigest(sourceRoot),
   preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null,
@@ -394,4 +395,4 @@ await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
   textDisplays,
   itemAppearances,
 })}\n`)
-console.log(`1.20.6 modern viewer 已生成：${outputRoot}`)
+console.log(`${version} modern viewer 已生成：${outputRoot}`)

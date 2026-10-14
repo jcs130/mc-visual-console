@@ -1,8 +1,5 @@
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const mc = require('minecraft-data')('1.20.6');
-const Block = require('prismarine-block')('1.20.6');
-const Chunk = require('prismarine-chunk')('1.20.6');
 const canonical = props => JSON.stringify(Object.entries(props).map(([k,v]) => [k,String(v)]).sort(([a],[b]) => a.localeCompare(b)));
 const identifier = /^minecraft:[a-z0-9_./-]+$/;
 const number = (v,min,max) => Number.isFinite(v) && v >= min && v <= max;
@@ -16,10 +13,13 @@ export const javaPitch = degrees => -degrees * Math.PI / 180;
 
 /** Explicit native-state to vanilla-renderer registry. Unknown mod content is never replaced. */
 export class JavaVisualData {
-  constructor({ uuid, server, skinUrl = () => null }) { this.uuid = uuid.toLowerCase(); this.server = server.toLowerCase().replace(/:25565$/,''); this.skinUrl = skinUrl; this.clear(); }
+  constructor({ uuid, server, skinUrl = () => null, minecraftVersion = '1.20.6' }) {
+    requireValue(['1.20.6','1.21.1'].includes(minecraftVersion),'VERSION_MISMATCH');
+    this.version=minecraftVersion;this.mc=require('minecraft-data')(minecraftVersion);
+    this.Block=require('prismarine-block')(minecraftVersion);this.Chunk=require('prismarine-chunk')(minecraftVersion); this.uuid = uuid.toLowerCase(); this.server = server.toLowerCase().replace(/:25565$/,''); this.skinUrl = skinUrl; this.clear(); }
   clear() { this.epoch = null; this.sequence = -1; this.blocks = null; this.biomes = null; this.nativeBiomes = new Map(); this.columns = new Map(); this.entities = new Map(); this.frame = null; }
   verify(value, epoch = false) {
-    requireValue(value?.protocol === 'agent-mc-visual/v1' && value.minecraftVersion === '1.20.6', 'VERSION_MISMATCH');
+    requireValue(value?.protocol === 'agent-mc-visual/v1' && value.minecraftVersion === this.version, 'VERSION_MISMATCH');
     requireValue(value.uuid?.toLowerCase() === this.uuid && value.server?.toLowerCase().replace(/:25565$/,'') === this.server, 'IDENTITY_MISMATCH');
     requireValue(typeof value.epoch === 'string' && value.epoch.length < 128 && integer(value.sequence,0,Number.MAX_SAFE_INTEGER) && number(value.sampledAt,0,Number.MAX_SAFE_INTEGER),'ENVELOPE_INVALID');
     if(epoch) requireValue(value.epoch === this.epoch,'EPOCH_MISMATCH');
@@ -28,7 +28,7 @@ export class JavaVisualData {
     this.verify(value); const { blocks, biomes } = value.registry ?? {};
     requireValue(Array.isArray(blocks) && blocks.length > 0 && blocks.length <= 131072 && Array.isArray(biomes) && biomes.length <= 4096,'REGISTRY_INVALID');
     const states = new Map(), biomeIds = new Map(), nativeBiomes = new Map(), vanillaStates = new Map();
-    for (const block of mc.blocksArray) for (let id=block.minStateId;id<=block.maxStateId;id++) vanillaStates.set(block.name+canonical(Block.fromStateId(id,0).getProperties()),id);
+    for (const block of this.mc.blocksArray) for (let id=block.minStateId;id<=block.maxStateId;id++) vanillaStates.set(block.name+canonical(this.Block.fromStateId(id,0).getProperties()),id);
     for(const row of blocks) {
       requireValue(integer(row.id,0,131071) && typeof row.name === 'string' && row.properties && !states.has(row.id),'STATE_INVALID');
       let target = null;
@@ -39,7 +39,7 @@ export class JavaVisualData {
     }
     for(const row of biomes) {
       requireValue(integer(row.id,0,4095) && !biomeIds.has(row.id),'BIOME_INVALID');
-      let mapped = identifier.test(row.name) ? mc.biomesByName[row.name.slice(10)]?.id ?? null : null;
+      let mapped = identifier.test(row.name) ? this.mc.biomesByName[row.name.slice(10)]?.id ?? null : null;
       if (row.colors) {
         requireValue(typeof row.name === 'string' && /^[a-z0-9_.-]+:[a-z0-9_./-]{1,128}$/.test(row.name)
           && ['grass','foliage','water'].every(k=>nativeRgb(row.colors[k])!==null), 'BIOME_COLORS_INVALID');
@@ -55,7 +55,7 @@ export class JavaVisualData {
       && integer(value.minY,-2048,2048) && value.minY%16===0 && integer(value.height,16,1024) && value.height%16===0
       && typeof value.sections === 'string' && value.sections.length <= 3*1024*1024,'CHUNK_INVALID');
     requireValue(Array.isArray(value.skyLight) && Array.isArray(value.blockLight) && value.skyLight.length === value.height/16 && value.blockLight.length === value.height/16,'LIGHT_INVALID');
-    const raw = new Chunk({ minY:value.minY,worldHeight:value.height });
+    const raw = new this.Chunk({ minY:value.minY,worldHeight:value.height });
     raw.maxBitsPerBlock = Math.ceil(Math.log2([...this.blocks.keys()].reduce((a,b)=>Math.max(a,b),0)+1));
     raw.maxBitsPerBiome = Math.ceil(Math.log2([...this.biomes.keys()].reduce((a,b)=>Math.max(a,b),0)+1));
     raw.load(Buffer.from(value.sections,'base64'));
@@ -94,7 +94,7 @@ export class JavaVisualData {
       && [row.yaw,row.pitch,row.headYaw].every(v=>number(v,-1e9,1e9)),'ENTITY_INVALID');
     const equipment=(row.equipment ?? []).map(item=>{
       if(!item) return null;
-      const native=identifier.test(item.name) && mc.itemsByName[item.name.slice(10)];
+      const native=identifier.test(item.name) && this.mc.itemsByName[item.name.slice(10)];
       requireValue(native,'UNSUPPORTED_ITEM');return { name:native.name,type:native.id,itemId:native.id,count:item.count,displayName:item.displayName };
     });
     const [x,y,z]=row.position;

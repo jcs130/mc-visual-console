@@ -16,9 +16,9 @@ const FOLIAGE = {
   ocean: 0x78ad65, mushroom: 0x7ba879, nether: 0x8b7266, end: 0x78ad65,
 }
 
-export async function buildBiomeTintData(sourceRoot) {
+export async function buildBiomeTintData(sourceRoot, version = '1.20.6') {
   const sourceRequire = createRequire(path.join(sourceRoot, 'package.json'))
-  const mcData = sourceRequire('minecraft-data')('1.20.6')
+  const mcData = sourceRequire('minecraft-data')(version)
   const styleSource = await readFile(new URL('./minecraft-viewer-biome-style.js', import.meta.url), 'utf8')
   const resolveStyle = runInNewContext(`${styleSource}\ncortiResolveBiomeStyle`, { globalThis: {} })
   const names = mcData.biomesArray.map(biome => biome.name)
@@ -38,12 +38,12 @@ export async function buildBiomeTintData(sourceRoot) {
   return tints
 }
 
-export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDataAlias) {
+export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDataAlias, version = '1.20.6') {
   if (!minecraftDataAlias) throw Error('缺少固定到 1.20.6 的 minecraft-data 别名')
   const sourceRequire = createRequire(path.join(sourceRoot, 'package.json'))
   const { build } = sourceRequire('esbuild')
   const { polyfillNode } = sourceRequire('esbuild-plugin-polyfill-node')
-  const tints = await buildBiomeTintData(sourceRoot)
+  const tints = await buildBiomeTintData(sourceRoot, version)
   const workerEntry = path.join(sourceRoot, 'node_modules', 'minecraft-renderer', 'src', 'mesher-legacy', 'mesher.ts')
   const outputFile = path.join(outputRoot, 'public', 'mesher.js')
   const tintsModule = `module.exports = { tints: ${JSON.stringify(tints)} };`
