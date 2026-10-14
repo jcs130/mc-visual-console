@@ -36,3 +36,10 @@ test('merchant stock and native queue terminals remain separate from sent clicks
   ui.update(state);assert.match(document.body.textContent,/已售罄/);assert.match(document.body.textContent,/emerald.*3/)
   assert.match(document.body.textContent,/执行中/);assert.match(document.body.textContent,/阻塞.*效果未验证/);ui.dispose()
 })
+
+test('pending window reconciliation remains explicit alongside previous confirmed item history',()=>{
+  const document=shell(),ui=createNativeActivityUi({document,itemName:item=>item.name})
+  ui.setIdentity({confirmed:true,playerUuid,entityId:7});ui.update(view({inventoryReconciling:true}))
+  assert.match(document.body.textContent,/oak_log.*\+2/)
+  assert.match(document.body.textContent,/收到完整背包同步后核对/);ui.dispose()
+})

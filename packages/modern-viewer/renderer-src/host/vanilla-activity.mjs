@@ -20,9 +20,9 @@ export function vanillaWireItem(slot,registry) {
  * observations, never instructions, model reasoning or proof of goal success. */
 export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
   const client=bot._client,hooks=[],slots=new Map()
-  let binding=null,closed=false,pending=false,inventoryReady=false,baseline=null,cursor=null
+  let binding=null,closed=false,pending=false,inventoryReady=false,baseline=null,cursor=null,awaitingOwnSnapshot=false
   let events=[],items=[],sequence=0,merchant=null,dig=null,vitals=null,revision=0,recipeKey=null,recipes=[]
-  const reset=()=>{slots.clear();inventoryReady=false;baseline=null;cursor=null;events=[];items=[];merchant=null;dig=null;vitals=null;recipes=[];recipeKey=null;revision++}
+  const reset=()=>{slots.clear();inventoryReady=false;baseline=null;cursor=null;awaitingOwnSnapshot=false;events=[];items=[];merchant=null;dig=null;vitals=null;recipes=[];recipeKey=null;revision++}
   const identity=()=>{
     const uuid=client?.uuid?.toLowerCase(),id=bot.entity?.id
     if(bot.version!=='1.21.1'||!UUID.test(uuid??'')||!Number.isSafeInteger(id))return null
@@ -46,7 +46,10 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
     return result
   }
   const reconcile=()=>{
-    if(!inventoryReady)return
+    // A workbench/merchant input is still owned while staged. Container slot
+    // packets cannot establish its final disposition; retain the pre-operation
+    // baseline until close plus an authoritative, complete window-0 snapshot.
+    if(!inventoryReady||awaitingOwnSnapshot||bot.currentWindow?.id>0)return
     const current=totals()
     if(baseline) {
       const names=new Map()
@@ -70,7 +73,7 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
   const recordSlots=(value,full)=>{
     const win=bot.currentWindow
     if(value.windowId===0) {
-      if(full&&value.items?.length===46){for(let n=0;n<46;n++)slots.set(n,decode(value.items[n]));inventoryReady=true;cursor=decode(value.carriedItem)}
+      if(full&&value.items?.length===46){for(let n=0;n<46;n++)slots.set(n,decode(value.items[n]));inventoryReady=true;cursor=decode(value.carriedItem);if(!(win?.id>0))awaitingOwnSnapshot=false}
       else if(!full&&Number.isInteger(value.slot)&&value.slot>=0&&value.slot<=45)slots.set(value.slot,decode(value.item))
     } else if([-1,255].includes(value.windowId)&&!full)cursor=decode(value.item)
     else if(win&&value.windowId===win.id&&Number.isInteger(win.inventoryStart)&&win.inventoryEnd-win.inventoryStart===36) {
@@ -97,13 +100,14 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
       })};emit('trade_offers',{count:merchant.offers.length,windowId:window.id},'server_merchant_offers')
     } else if(['open_window','close_window','respawn'].includes(meta.name)) {
       if(meta.name==='respawn'){reset();changed()}
-      else {if(meta.name==='open_window'||merchant?.windowId===value.windowId)merchant=null;emit(meta.name,{windowId:value.windowId})}
+      else {if(value.windowId>0)awaitingOwnSnapshot=true;if(meta.name==='open_window'||merchant?.windowId===value.windowId)merchant=null;emit(meta.name,{windowId:value.windowId})}
     }
   }
   on(client,'packet',packet)
   const stopSent=observeSentPackets(client,(name,data)=>{
     if(!data||client.state!=='play'||!identity())return
-    if(name==='window_click')emit('slot_click',{windowId:data.windowId,slot:data.slot,button:data.mouseButton,mode:data.mode},'sent_packet')
+    if(name==='window_click'){if(data.windowId>0)awaitingOwnSnapshot=true;emit('slot_click',{windowId:data.windowId,slot:data.slot,button:data.mouseButton,mode:data.mode},'sent_packet')}
+    else if(name==='close_window'&&data.windowId>0){awaitingOwnSnapshot=true;changed()}
     else if(name==='select_trade'&&merchant){merchant.selected=Number.isInteger(data.slot)?data.slot:null;emit('trade_selected',{index:merchant.selected},'sent_packet')}
     else if(name==='block_dig'&&[0,1,2].includes(data.status)) {
       const location=point(data.location)
@@ -146,9 +150,10 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
   // Identity() already resets a changed entity; do not discard the same body's
   // received inventory and invent a fresh baseline after its first craft.
   on(bot,'spawn',()=>{identity();changed()})
-  for(const name of ['scoreUpdated','scoreRemoved','scoreboardPosition','scoreboardTitleChanged','playerJoined','playerLeft','windowOpen','windowClose'])on(bot,name,()=>changed())
+  for(const name of ['windowOpen','windowClose'])on(bot,name,window=>{if(window?.id>0)awaitingOwnSnapshot=true;changed()})
+  for(const name of ['scoreUpdated','scoreRemoved','scoreboardPosition','scoreboardTitleChanged','playerJoined','playerLeft'])on(bot,name,()=>changed())
   function recipePreview() {
-    if(!inventoryReady)return []
+    if(!inventoryReady||awaitingOwnSnapshot||bot.currentWindow?.id>0)return []
     const counts=new Map();for(const row of totals().values())counts.set(row.item.name,(counts.get(row.item.name)??0)+row.count)
     const table=bot.currentWindow?.type==='minecraft:crafting',key=JSON.stringify([[...counts],table])
     if(key===recipeKey)return recipes
@@ -171,7 +176,7 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
     snapshot() {
       const own=identity();if(!own||closed)return null
       const board=bot.scoreboard?.sidebar
-      const result={schemaVersion:1,...own,revision,sampledAt:now(),events:[...events],items:[...items],inventoryReady,
+      const result={schemaVersion:1,...own,revision,sampledAt:now(),events:[...events],items:[...items],inventoryReady,inventoryReconciling:awaitingOwnSnapshot||bot.currentWindow?.id>0,
         dig:dig?{...dig,elapsedMs:Math.max(0,now()-dig.startedAt)}:null,merchant:merchant&&bot.currentWindow?.id===merchant.windowId?{...merchant,offers:[...merchant.offers]}:null,
         recipes:recipePreview(),server:{sidebar:board?{title:text(board.title),rows:(board.items??[]).slice(0,15).map(row=>({text:text(row.displayName??row.name),value:finite(row.value)?row.value:null}))}:null,
           players:Object.values(bot.players??{}).slice(0,40).map(player=>({name:text(player.username,32),ping:finite(player.ping)?player.ping:null})),

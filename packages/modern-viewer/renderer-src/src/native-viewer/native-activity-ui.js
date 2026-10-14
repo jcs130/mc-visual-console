@@ -88,6 +88,7 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
       if(a.items?.length){itemPanel.replaceChildren();for(const entry of a.items.slice(-12).reverse()){
         const line=itemRow(itemPanel,entry.item,`${itemText(entry.item)} ${entry.delta>0?'+':''}${entry.delta}`,`${clock(entry.at)} · 服务端背包差量；不推测来源`)
         line.className+=entry.delta>0?' native-inspector-gain':' native-inspector-loss'}}
+      if(a.inventoryReconciling)add(itemPanel,'p','native-inspector-note','窗口操作中，收支将在结束并收到完整背包同步后核对。')
       const recipePanel=panes.get('recipes');empty(recipePanel,'当前没有与已知材料匹配的原版配方')
       if(a.recipes?.length){recipePanel.replaceChildren();for(const recipe of a.recipes.slice(0,12)){
         row(recipePanel,`${itemText(recipe.output)} ×${recipe.output.count} · ${recipe.craftable?'材料齐备':recipe.requiresTable&&!recipe.tableOpen?'需要打开工作台':'材料不足'}`,

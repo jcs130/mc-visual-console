@@ -94,3 +94,32 @@ test('unrelated distant mob damage does not flood the player operation list; sel
   f.bot.emit('entityHurt',{id:7,name:'player',position:{x:1,y:64,z:2}})
   assert.equal(f.activity.snapshot().events.at(-1).entityId,7);f.activity.close()
 })
+
+test('workbench staging and cancelled transfers do not become income; close waits for a complete own inventory',async()=>{
+  const f=fixture();f.packet('window_items',{windowId:0,items:inventory(),carriedItem:{itemCount:0}});await settle()
+  const open=()=>{
+    f.bot.currentWindow={id:1,type:'minecraft:crafting',inventoryStart:10,inventoryEnd:46}
+    f.packet('open_window',{windowId:1});f.bot.emit('windowOpen',f.bot.currentWindow)
+  }
+  open()
+  const staged=Array.from({length:46},()=>({itemCount:0}))
+  staged[1]=stack(1,1);staged[37]=stack(1,7)
+  f.packet('window_items',{windowId:1,items:staged,carriedItem:{itemCount:0}});await settle()
+  assert.deepEqual(f.activity.snapshot().items,[],'placing a material still owns it')
+  assert.equal(f.activity.snapshot().inventoryReconciling,true)
+  assert.deepEqual(f.activity.snapshot().recipes,[],'do not advertise transient material deficits')
+  f.bot.currentWindow=null;f.bot.emit('windowClose',{id:1});await settle()
+  assert.deepEqual(f.activity.snapshot().items,[],'close alone is not an inventory receipt')
+  f.packet('set_slot',{windowId:0,slot:36,item:stack(1,8)});await settle()
+  assert.equal(f.activity.snapshot().inventoryReconciling,true)
+  f.packet('window_items',{windowId:0,items:inventory(),carriedItem:{itemCount:0}});await settle()
+  assert.equal(f.activity.snapshot().inventoryReconciling,false);assert.deepEqual(f.activity.snapshot().items,[])
+  open();f.packet('window_items',{windowId:1,items:staged,carriedItem:{itemCount:0}});await settle()
+  f.packet('window_items',{windowId:0,items:inventory(36,7),carriedItem:{itemCount:0}});await settle()
+  assert.deepEqual(f.activity.snapshot().items,[],'an own snapshot while the table is open is not a terminal inventory')
+  f.client.write('close_window',{windowId:1});f.bot.currentWindow=null;f.bot.emit('windowClose',{id:1});await settle()
+  const completed=inventory(36,6);completed[37]=stack(2,4)
+  f.packet('window_items',{windowId:0,items:completed,carriedItem:{itemCount:0}});await settle()
+  assert.deepEqual(f.activity.snapshot().items.map(row=>[row.item.name,row.delta]),[['minecraft:oak_planks',-2],['minecraft:stick',4]])
+  f.activity.close()
+})
