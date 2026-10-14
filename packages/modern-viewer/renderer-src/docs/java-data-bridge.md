@@ -10,7 +10,7 @@ Fabric ClientWorld / ClientPlayer
   -> existing browser WebGL renderer and independent cameras
 ```
 
-`createJavaDataViewer` from `mc-visual-console/java-data-viewer` accepts an injected `rpc(method, params)`, expected player UUID/server, matched assets directory, loopback port, and bounded chunk radius (default 2, maximum 4). The host owns credentials and lifecycle. The viewer cannot issue game actions, launch/reconnect a client, or call a model. It only calls `visual_registry`, `visual_frame`, `visual_chunk`.
+`createJavaDataViewer` from `mc-visual-console/java-data-viewer` accepts an injected `rpc(method, params)`, expected player UUID/server, matched assets directory, loopback port, and bounded chunk radius (default 2, maximum 4). The host owns credentials and lifecycle. The viewer cannot issue game actions, launch/reconnect a client, or call a model. It only calls `visual_registry`, `visual_frame`, `visual_chunk`, and on demand `visual_skin`.
 
 ## v1 observation contract (Minecraft 1.20.6)
 
@@ -28,7 +28,9 @@ Visual polling runs only while an admitted browser/capture session needs it. HTT
 
 Implemented and isolated-game tested: loaded vanilla terrain, block changes, native light, time/weather, actual own vanilla skin, own movement/turning/vitals, browser camera independence. Native registry rejection is explicit for unsupported blocks/biomes/items/skins. `/healthz` and the page show partial coverage.
 
-Not complete: other entity variants/metadata, inventories/container interfaces, block entities, custom online skins, modded resource priority, YSM model/animation state, shader parity. Do not select this preview as a complete modpack viewer. Java mods do not become WebGL implementations simply by forwarding their identifiers; port their exact assets and current state through explicit shared adapters. No alternate observer account, fake vanilla model or hidden screenshot fallback is used.
+Custom online skins use a bounded `visual_skin {resource}` read from the action client's actual current skin texture (64x32 or 64x64 PNG). The native side verifies current resource, UUID and server, restores the texture binding after readback, and never accepts arbitrary file paths or remote URLs. The web host validates the response identity/resource/dimensions and caches the exact pixels, with a maximum of 32 skin resources. Old clients without this observation explicitly report unsupported custom skins.
+
+Not complete: other entity variants/metadata, inventories/container interfaces, block entities, HD skins, modded resource priority, YSM model/animation state, shader parity. Do not select this preview as a complete modpack viewer. Java mods do not become WebGL implementations simply by forwarding their identifiers; port their exact assets and current state through explicit shared adapters. No alternate observer account, fake vanilla model or hidden screenshot fallback is used.
 
 The bridge and converter are generic. Server gameplay belongs in optional integration packs. Cormy's identity/model files stay in her private profile. Host adapters wire lifecycle and configuration only.
 

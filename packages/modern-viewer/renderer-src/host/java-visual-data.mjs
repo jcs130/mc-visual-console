@@ -7,6 +7,9 @@ const canonical = props => JSON.stringify(Object.entries(props).map(([k,v]) => [
 const identifier = /^minecraft:[a-z0-9_./-]+$/;
 const number = (v,min,max) => Number.isFinite(v) && v >= min && v <= max;
 const integer = (v,min,max) => Number.isSafeInteger(v) && v >= min && v <= max;
+// Native grass/foliage color-map lookups return signed opaque ARGB ints;
+// fixed biome overrides and water use RGB ints. Preserve the RGB channels.
+const nativeRgb = v => integer(v,0,0xffffff) ? v : integer(v,-0x1000000,-1) ? v & 0xffffff : null;
 const requireValue = (ok,why) => { if(!ok) throw Error('JAVA_VISUAL_' + why); };
 export const javaYaw = degrees => Math.PI - degrees * Math.PI / 180;
 export const javaPitch = degrees => -degrees * Math.PI / 180;
@@ -39,9 +42,9 @@ export class JavaVisualData {
       let mapped = identifier.test(row.name) ? mc.biomesByName[row.name.slice(10)]?.id ?? null : null;
       if (row.colors) {
         requireValue(typeof row.name === 'string' && /^[a-z0-9_.-]+:[a-z0-9_./-]{1,128}$/.test(row.name)
-          && ['grass','foliage','water'].every(k=>integer(row.colors[k],0,0xffffff)), 'BIOME_COLORS_INVALID');
+          && ['grass','foliage','water'].every(k=>nativeRgb(row.colors[k])!==null), 'BIOME_COLORS_INVALID');
         mapped ??= 1024+row.id;
-        nativeBiomes.set(mapped,{id:mapped,name:row.name,colors:row.colors});
+        nativeBiomes.set(mapped,{id:mapped,name:row.name,colors:Object.fromEntries(['grass','foliage','water'].map(k=>[k,nativeRgb(row.colors[k])]))});
       }
       biomeIds.set(row.id,mapped);
     }
