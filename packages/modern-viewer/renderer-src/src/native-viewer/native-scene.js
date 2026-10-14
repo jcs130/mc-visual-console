@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { nativeViewerUrl } from './native-url.js'
+import {createNativeAudio} from './native-audio.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath } from './model-loader.js'
 import { createKineticActor } from './create-kinetics.js'
@@ -35,7 +36,7 @@ const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
-let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap
+let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap,audio
 let director, cameraOptions=normalizeCameraSettings(cameraSettings??{version:1,mode:'follow'}),cameraFrame=null
 let terrainRaycast=()=>[],selectedEntity=null,pointerStart=null,lastCollision=null
 const roomVisibility=createNativeRoomVisibility()
@@ -72,6 +73,7 @@ async function start () {
     return result.arrayBuffer()
   })
   assetReader = reader
+  audio=createNativeAudio({onChange:publishDiagnostics});void audio.load()
   const session = createNativeSession(manifest.registryHashes['block-states.jsonl'], { entityRegistrySha256: manifest.registryHashes['entities.tsv'] ?? null })
   loader = new NativeModelLoader(reader)
   colormaps = {}
@@ -137,6 +139,7 @@ async function start () {
         }
         entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{...current.selfPlayer,position:current.pose},camera)
         updatePlayerCamera(now)
+        audio.frame(camera,entityLayer.data,current?.selfPlayer?{...current.selfPlayer,position:current.pose}:null)
         roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,height:observerTarget?.height??1.8,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
         if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
@@ -182,7 +185,8 @@ async function start () {
     try {
       const event = session.receive(JSON.parse(message.data)), value = event.value
       if (event.kind === 'ignored') return
-      if(event.kind==='entity_collect'){void entityLayer.collect(value);return}
+      if(event.kind==='entity_collect'){void entityLayer.collect(value);audio.collect(value);return}
+      if(event.kind==='world_effect'){audio.event(value);return}
       if (event.kind === 'agent_visual') {
         visualPort.emit(value.event, value.value)
         const operation = value.value?.input?.operations?.findLast(row => row.kind === 'inventory' && row.windowId === 0)
@@ -207,6 +211,7 @@ async function start () {
       if (value.type === 'snapshot') {
         if (epoch !== value.epoch) { clearScene(); epoch = value.epoch }
         current = value; pending = value; void rebuildLatest()
+        audio.connect(true)
       } else if (value.type === 'frame' && current && value.epoch === epoch) {
         current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
         current.presentation = value.presentation; current.entityState = value.entityState
@@ -333,6 +338,7 @@ function publishDiagnostics() {
     issues: [...unknown, ...(actors.size && !kineticClockState.available ? [kineticClockState.reason] : []),
       ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
     appearance: selfController?.appearance(),
+    audio:audio?.state(),
     selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture, selectionSource: selfActor.assetInfo.selectionSource,
       support: selfActor.assetInfo.support ?? null, notice: selfActor.assetInfo.notice, motion: selfMotionState ?? selfActor.root.userData.motion ?? null } : null,
     heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,
@@ -349,6 +355,7 @@ function clearStatics () {
 }
 function clearScene () {
   miniMap?.reset()
+  audio?.connect(false)
   generation++; pending = null; current = null; lastGroupSignature = null; clearStatics()
   for (const actor of actors.values()) removeActor(actor)
   actors.clear()
@@ -547,14 +554,14 @@ function fail (error) {
 }
 function dispose () {
   if (disposed) return
-  disposed = true; miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
+  disposed = true; audio?.dispose();miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
   renderer?.domElement.removeEventListener('pointerdown',manualCameraInput,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
   renderer?.domElement.removeEventListener('pointerdown',rememberPointer);renderer?.domElement.removeEventListener('pointerup',selectPointer)
   controls?.dispose(); clearScene(); roomVisibility.dispose(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }
-return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,
+return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,audio,
   setCameraSettings,selectTarget,startCameraShot:kind=>director?.startShot(kind,performance.now()),
   setSceneSettings:value=>{sceneOptions={...sceneOptions,...value}},getDungeonCamera:()=>({...dungeonCamera}),setDungeonCamera:value=>{dungeonCamera={...value}},
   selectAppearance: id => selfController?.selectAppearance(id),

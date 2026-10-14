@@ -53,6 +53,17 @@ test('shared pack copies the verified bytes and records version and source recei
   assert.equal(JSON.parse(await fs.readFile(path.join(f.outputDirectory, 'viewer-assets.json'))).packs[0].fileCount, 1);
 });
 
+test('native packs can select version-matched original audio without Java proxy building', async t => {
+  const f=await fixture(t);f.manifest.kind='native';await f.save();
+  const audio=path.join(f.assetRoot,'java-1.20.6-sounds');await fs.mkdir(audio)
+  const bytes=Buffer.from('offline audio pack fixture');await fs.writeFile(path.join(audio,'sound-fixture.bin'),bytes)
+  await fs.writeFile(path.join(audio,'pack.json'),JSON.stringify({schemaVersion:1,id:'java-1.20.6-sounds',kind:'sounds',minecraftVersion:'1.20.6',
+    fileCount:1,bytes:bytes.length,files:{'sound-fixture.bin':{bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')}}}))
+  const receipt=await prepareAssetPack({...f,id:f.manifest.id,sounds:true,buildJava:false})
+  assert.deepEqual(receipt.packs.map(p=>p.id),['java-1.20.6','java-1.20.6-sounds'])
+  assert.deepEqual(await fs.readFile(path.join(f.outputDirectory,'sound-fixture.bin')),bytes)
+})
+
 test('missing or corrupt original resources fail before creating a deployment', async t => {
   const f = await fixture(t);
   await fs.writeFile(path.join(f.pack, 'public/resource.bin'), 'different-resource');

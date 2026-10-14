@@ -124,15 +124,33 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}`),
       presentation.available ? '背包/菜单/技能：同一玩家原生状态；原生物品图标已接入，未支持的专用模型/组件及装备明确标注' : `展示数据：${presentation.reason}`,
       pendingMode === 'dungeon' ? '地下城2.5D跟随相机；原遮挡切面、旋转、缩放已接入' : '',
-      '小地图：本人原场景与移动轨迹；第三人称已接入原运镜设置', '音效/音乐：原生接口未接入', '完整场景一致性尚未验收',
+      '小地图：本人原场景与移动轨迹；第三人称已接入原运镜设置', d?.audio?.available?'声音：原始资源与本人实际事件；观战配乐为本机选择':'声音：'+(d?.audio?.reason??'等待原版音效包'), '完整场景一致性尚未验收',
       ...(d?.issues ?? []).slice(0, 16)].filter(Boolean).join('\n')
   }
-  for (const id of ['corti-sound-toggle','corti-music-toggle','corti-sound-test','corti-music-play','corti-night-vision-toggle']) {
+  for (const id of ['corti-night-vision-toggle']) {
     const button = el(id)
     if (button) { button.disabled = true; button.title = '对应原生接口未接入'; button.textContent = id.includes('night') ? '夜视 未支持' : id.includes('music') ? '音乐 未支持' : '音效 未支持' }
   }
   const soundStatus = q('[data-corti-audio-status]')
-  if (soundStatus) soundStatus.textContent = '原生声音资源与事件尚未接入'
+  const soundButton=el('corti-sound-toggle'),musicButton=el('corti-music-toggle'),soundTest=el('corti-sound-test'),musicPlay=el('corti-music-play')
+  const updateAudio=value=>{
+    for(const button of [soundButton,musicButton,soundTest,musicPlay])if(button)button.disabled=!value?.available
+    if(soundButton){soundButton.textContent=value?.soundEnabled?'音效 开':'音效 关';soundButton.setAttribute('aria-pressed',String(value?.soundEnabled===true));soundButton.dataset.audioStarted=String(value?.started??0)}
+    if(musicButton){musicButton.textContent=value?.musicEnabled?'配乐 开':'配乐 关';musicButton.setAttribute('aria-pressed',String(value?.musicEnabled===true))}
+    if(value?.volumes)for(const input of document.querySelectorAll('[data-corti-audio-volume]')){
+      const volume=value.volumes[input.dataset.cortiAudioVolume];if(Number.isFinite(volume))input.value=String(volume)
+    }
+    if(soundTest){soundTest.textContent='试听原版音效';soundTest.title='只在本浏览器试听，不向游戏发送操作或消息'}
+    if(musicPlay){musicPlay.textContent='播放一首观战配乐';musicPlay.title='本机观战播放原版曲目，不代表服务器正在播放音乐'}
+    if(soundStatus)soundStatus.textContent=!value?.available?(value?.reason??'等待原版声音资源'):
+      `原版声音已就绪 · ${value.soundEnabled?'游戏音效开启':'游戏音效关闭'} · ${value.unlocked?'浏览器声音已启用':'点击开启浏览器声音'} · 已播放 ${value.started}${value.failed?' · 播放失败 '+value.failed:''}`
+  }
+  updateAudio(null)
+  listen(soundButton,'click',()=>{void sceneHost?.audio?.toggle('effects')})
+  listen(musicButton,'click',async()=>{if(await sceneHost?.audio?.toggle('music'))void sceneHost.audio.playlist()})
+  listen(soundTest,'click',()=>{void sceneHost?.audio?.preview()})
+  listen(musicPlay,'click',()=>{void sceneHost?.audio?.playlist()})
+  for(const input of document.querySelectorAll('[data-corti-audio-volume]'))listen(input,'input',()=>{sceneHost?.audio?.setVolume(input.dataset.cortiAudioVolume,Number(input.value))})
   const map = el('corti-minimap')
   if (map) map.hidden = true // Missing native map is disclosed in diagnostics, not an empty terrain panel.
   // Block old stylesheet URLs until NativeUiAssets installs verified pack URLs.
@@ -193,6 +211,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       onDiagnostics (value) {
         if (disposed) return
         lastDiagnostics = value; updateDiagnosticText()
+        updateAudio(value.audio)
         boot.classList.add('is-compact'); boot.classList.remove('is-error')
         boot.textContent = `原生模型 ${value.drawn}/${value.total} · 完整场景尚未验收`
       },

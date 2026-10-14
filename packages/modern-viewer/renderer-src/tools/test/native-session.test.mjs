@@ -6,6 +6,18 @@ const hash = 'a'.repeat(64), uuid = 'e371227c-09fa-3722-84f4-f3228a552c3c'
 const identity = { type: 'identity', player: 'MawExplorer', playerUuid: uuid, minecraftVersion: '1.21.1', registrySha256: hash, mode: 'live_same_player_connection' }
 const snapshot = { type: 'snapshot', registrySha256: hash, mode: identity.mode, epoch: 1, selfPlayer: { uuid, name: identity.player }, presentation: { available: true, playerUuid: uuid } }
 
+test('transient effects require the current player snapshot and cannot replay after a new epoch',()=>{
+  const session=createNativeSession(hash);session.receive(identity)
+  const effect={type:'world_effect',epoch:1,playerUuid:uuid,source:'received_native_packet_effect',sequence:3,observedAt:1000,
+    effect:{kind:'sound',value:{name:'block.stone.break'}}}
+  assert.equal(session.receive(effect).kind,'ignored');session.receive(snapshot)
+  assert.equal(session.receive(effect).kind,'world_effect');assert.equal(session.receive(effect).kind,'ignored')
+  for(const patch of [{playerUuid:'0'.repeat(32)},{source:'historical_capture'},{effect:{kind:'unsupported'}}])assert.throws(()=>session.receive({...effect,...patch}),/EFFECT_BINDING_MISMATCH/)
+  session.receive({...snapshot,epoch:2});assert.equal(session.receive(effect).kind,'ignored')
+  assert.equal(session.receive({...effect,epoch:2,sequence:1}).kind,'world_effect')
+  session.receive({type:'unavailable'});assert.equal(session.receive({...effect,epoch:2,sequence:2}).kind,'ignored')
+})
+
 test('identity cannot be established by a world frame or a different native registry', () => {
   const session = createNativeSession(hash)
   assert.throws(() => session.receive(snapshot), /IDENTITY_MISSING/)

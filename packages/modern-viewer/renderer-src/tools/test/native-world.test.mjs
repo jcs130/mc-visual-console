@@ -34,6 +34,18 @@ function worldFixture (registryStates = states, registryHash = hash) {
   return { world, packet, chunk }
 }
 const pose = { x: -1.5, y: 64, z: -0.5, yaw: 0, pitch: 0, eyeHeight: 1.62 }
+test('received sounds are transient and bounded, but stop packets always pass the sound budget',()=>{
+  const {world,packet}=worldFixture(),events=[];world.soundRegistry={sounds:{5:{name:'minecraft:block.stone.break'}}}
+  world.resolveSelf=()=>({entityId:9,uuid:'own-body',position:{x:1,y:64,z:2}})
+  world.on('effect',e=>events.push(e))
+  packet('entity_sound_effect',{sound:{soundId:5},soundCategory:'blocks',entityId:9,volume:1,pitch:1,seed:123n})
+  assert.equal(events[0].value.entityUuid,'own-body');assert.deepEqual(events[0].value.position,{x:1,y:64,z:2});assert.equal(events[0].value.seed,'123')
+  packet('entity_sound_effect',{sound:{soundId:5},entityId:10,volume:1,pitch:1});assert.equal(events.length,1)
+  for(let i=0;i<130;i++)packet('sound_effect',{sound:{soundId:5},soundCategory:'blocks',x:8,y:512,z:16,volume:1,pitch:1})
+  assert.equal(events.length,128);packet('stop_sound',{flags:1,source:'blocks'})
+  assert.equal(events.at(-1).kind,'sound_stop');assert.equal(events.length,129)
+  assert.equal(world.snapshot().sound,undefined,'no effect replay in snapshots')
+})
 const optionalMetadataTypes = ['optional_component', 'optional_block_pos', 'optional_uuid', 'optional_global_pos']
 // The deployment's locked minecraft-protocol can be supplied without adding
 // a runtime dependency to the browser renderer. CI with that package uses its

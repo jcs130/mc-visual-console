@@ -8,7 +8,7 @@ const ownConnections = new Set(['live_same_player_connection', 'numen_server_bod
 export function createNativeSession(registrySha256, { entityRegistrySha256 = null } = {}) {
   if (!SHA.test(registrySha256 || '')) throw Error('NATIVE_WORLD_REGISTRY_HASH_INVALID')
   if (entityRegistrySha256 !== null && !SHA.test(entityRegistrySha256)) throw Error('NATIVE_ENTITY_REGISTRY_HASH_INVALID')
-  let identity = null, epoch = null, ready = false
+  let identity = null, epoch = null, ready = false, effectSequence=-1
   return {
     receive(value) {
       if (!value || typeof value !== 'object') throw Error('NATIVE_WORLD_EVENT_INVALID')
@@ -39,6 +39,13 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
           ![value.collectedEntityId,value.collectorEntityId,value.sequence,value.count].every(Number.isSafeInteger)||value.count<0)throw Error('NATIVE_COLLECT_BINDING_MISMATCH')
         return {kind:'entity_collect',value}
       }
+      if(value.type==='world_effect'){
+        if(!ready||value.epoch!==epoch)return {kind:'ignored'}
+        if(value.playerUuid?.toLowerCase()!==identity.playerUuid||value.source!=='received_native_packet_effect'||
+          !Number.isSafeInteger(value.sequence)||!Number.isFinite(value.observedAt)||!['sound','sound_stop'].includes(value.effect?.kind))throw Error('NATIVE_EFFECT_BINDING_MISMATCH')
+        if(value.sequence<=effectSequence)return {kind:'ignored'}
+        effectSequence=value.sequence;return {kind:'world_effect',value}
+      }
       if (value.type === 'snapshot') {
         if (value.registrySha256 !== registrySha256 || value.mode !== identity.mode || !Number.isSafeInteger(value.epoch)) throw Error('NATIVE_WORLD_SNAPSHOT_MISMATCH')
         if (epoch !== null && value.epoch < epoch) return { kind: 'ignored' }
@@ -51,6 +58,7 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
           value.entityState.rotationUnit !== 'minecraft_degrees' || !Array.isArray(value.entityState.entities) ||
           value.entityState.entities.length > 512)) throw Error('NATIVE_ENTITY_STREAM_BINDING_MISMATCH')
       const reset = value.type === 'snapshot' && epoch !== value.epoch
+      if(reset)effectSequence=-1
       epoch = value.epoch; ready = true
       return { kind: value.type, value, reset }
     }

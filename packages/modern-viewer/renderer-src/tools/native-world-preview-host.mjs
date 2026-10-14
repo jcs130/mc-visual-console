@@ -14,6 +14,7 @@ import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
 import { nativePreviewAccess } from './native-preview-access.mjs'
 import { viewerSourceDigest } from './viewer-build-source.mjs'
 import { createNativeAgentVisualization } from '../host/native-agent-visual.mjs'
+import {loadNativeAudioPack} from '../host/native-audio-assets.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
@@ -391,6 +392,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   const entityRegistrySha256 = manifest.registryHashes['entities.tsv'] ?? null
   const entityRegistry = entityRegistrySha256 === null ? null
     : loadNativeEntityRegistry(await fs.readFile(path.join(root, 'registry/entities.tsv')), entityRegistrySha256)
+  const audioPack=await loadNativeAudioPack(root,{nativeRegistrySha256:hash,entityRegistrySha256})
   const [bundle, consoleBundle, diagnosticsPage] = await Promise.all([
     browserBundle(path.join(SOURCE, 'world-preview.js')),
     browserBundle(path.join(SOURCE, 'native-console.js')),
@@ -418,6 +420,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       if (getAgentStatus !== null && typeof getAgentStatus !== 'function') throw Error('AGENT_STATUS_PROVIDER_INVALID')
       if (getPresentationState !== null && typeof getPresentationState !== 'function') throw Error('PRESENTATION_PROVIDER_INVALID')
       const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry, entityRegistrySha256, simplifyNBT, now,
+        soundRegistry:audioPack.registry,resolveSelf:()=>bot.entity?{entityId:bot.entity.id,uuid:bot.entity.uuid,position:bot.entity.position}:null,
         resolveItemStack:nativeStream.resolveItemStack??null,
         resolveEffect:nativeStream.resolveEffect??null,
         resolveDimension: resolveDimension || (p => {
@@ -543,6 +546,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           else if (['index.js', 'native-console.js'].includes(requestPath)) { bytes = consoleBundle; type = 'text/javascript; charset=utf-8' }
           else if (requestPath === 'client.js') { bytes = bundle; type = 'text/javascript; charset=utf-8' }
           else if (requestPath === 'manifest.json') { bytes = manifestBytes; type = 'application/json' }
+          else if(requestPath==='sound-manifest.json'){bytes=Buffer.from(JSON.stringify(audioPack.metadata));type='application/json'}
+          else if(requestPath.startsWith('sounds/')&&audioPack.available){bytes=await audioPack.read(requestPath.slice(7));type='audio/ogg'}
           else if (Object.hasOwn(manifest.assets, requestPath) && !requestPath.split('/').some(p => ['', '.', '..'].includes(p))) {
             const file = await fs.realpath(path.join(root, requestPath))
             if (!file.startsWith(`${root}${path.sep}`)) throw Error('NATIVE_WORLD_ASSET_PATH_ESCAPE')
@@ -640,8 +645,16 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const message={type:'entity_collect',epoch:world.epoch,playerUuid:player.uuid,source:'received_native_collect_packet',...value,target,tick:physicsTickCount}
         for(const client of clients)if(!client.needsSnapshot)sendNativeWorldEvent(client,message)
       }
+      const effect=value=>{
+        const player=selfPlayer()
+        if(!player||closed||connectionEnded||world.error)return
+        const message={type:'world_effect',epoch:world.epoch,playerUuid:player.uuid,source:'received_native_packet_effect',
+          effect:{kind:value.kind,value:value.value},sequence:value.sequence,observedAt:value.observedAt,tick:physicsTickCount}
+        for(const client of clients)if(!client.needsSnapshot)sendNativeWorldEvent(client,message)
+      }
       world.on('world', worldChanged); world.on('reset', reset); world.on('pose', pose); world.on('unavailable', unavailable)
       world.on('collect',collected)
+      world.on('effect',effect)
       bot.on('error', error); bot.on('kicked', kicked); bot.on('end', ended)
       bot.on('login', verifyIdentity); bot.on('spawn', verifyIdentity)
       bot.on('physicsTick', physicsTick); bot.on('spawn', motionReset); bot.on('death', motionDeath)
@@ -708,6 +721,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           bot._client.off('player_info', playerInfo)
           nativeStream.events.off('presentation', presentationChanged)
           world.off('collect',collected)
+          world.off('effect',effect)
           for (const client of clients) client.response.end()
           clients.clear()
           // Both the action bot and native packet stream belong to the caller.

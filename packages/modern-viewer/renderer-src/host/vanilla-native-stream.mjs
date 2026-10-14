@@ -23,7 +23,8 @@ export function vanillaAttributeValue(bot, leaf) {
 const PACKETS = new Set(['login', 'respawn', 'map_chunk', 'unload_chunk', 'block_change', 'multi_block_change',
   'tile_entity_data', 'update_time', 'spawn_entity', 'entity_metadata', 'entity_equipment', 'entity_destroy',
   'rel_entity_move', 'entity_move_look', 'entity_look', 'entity_teleport', 'entity_head_rotation',
-  'entity_velocity', 'entity_status', 'animation', 'hurt_animation','collect','entity_effect','remove_entity_effect','spawn_entity_experience_orb']);
+  'entity_velocity', 'entity_status', 'animation', 'hurt_animation','collect','entity_effect','remove_entity_effect','spawn_entity_experience_orb',
+  'sound_effect','named_sound_effect','entity_sound_effect','stop_sound']);
 
 /** Vanilla-only: preserve actual decoded packets from the existing action connection.
  * A mod/proxy transport must supply its own native stream and registry instead. */

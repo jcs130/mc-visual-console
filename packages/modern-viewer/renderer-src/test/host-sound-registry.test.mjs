@@ -39,7 +39,8 @@ test('exact registry rejects wrong versions, hashes, half tables, gaps and unsaf
   }
   const duplicate = metadata(); duplicate.events[325].name = duplicate.events[515].name;
   assert.throws(() => validateViewerSoundRegistry(duplicate, '1.20.6'), /duplicate/);
-  assert.throws(() => validateViewerSoundRegistry(metadata(), '1.21.1'), /Unsupported/);
+  assert.throws(() => validateViewerSoundRegistry(metadata(), '1.21.1'), /version/);
+  assert.throws(() => validateViewerSoundRegistry(metadata(), '1.22'), /Unsupported/);
 });
 
 test('unavailable exact metadata disables only numeric audio and reports a concrete diagnostic', async () => {

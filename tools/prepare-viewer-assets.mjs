@@ -76,10 +76,11 @@ export async function prepareAssetPack({ id, outputDirectory, sounds = false, pr
   }
   const primary = await verifyAssetPack(id, assetRoot);
   if (primary.manifest.kind === 'sounds') throw Error('ASSET_PACK_SELECT_VISUAL_PACK');
-  if (primary.manifest.kind !== 'java' && (sounds || preset)) throw Error('ASSET_PACK_OPTIONS_REQUIRE_JAVA');
+  if (primary.manifest.kind !== 'java' && preset) throw Error('ASSET_PACK_OPTIONS_REQUIRE_JAVA');
+  if (sounds && !['java','native'].includes(primary.manifest.kind)) throw Error('ASSET_PACK_OPTIONS_REQUIRE_JAVA');
   const packs = [primary];
   if (sounds) {
-    const audio = await verifyAssetPack(id + '-sounds', assetRoot);
+    const audio = await verifyAssetPack(primary.manifest.kind==='native'?`java-${primary.manifest.minecraftVersion}-sounds`:id+'-sounds', assetRoot);
     if (audio.manifest.kind !== 'sounds' || audio.manifest.minecraftVersion !== primary.manifest.minecraftVersion) throw Error('ASSET_PACK_SOUND_VERSION_MISMATCH');
     packs.push(audio);
   }

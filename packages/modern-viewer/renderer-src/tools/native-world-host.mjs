@@ -5,6 +5,7 @@ import chunkFactory from 'prismarine-chunk'
 import { Vec3 } from 'vec3'
 import { CUTTING_BOARD_ID, cuttingBoardContent } from '../src/native-viewer/cutting-board.js'
 import { createNativeEntityMotion } from '../src/native-viewer/native-entity-motion.js'
+import {viewerSoundPacket,viewerSoundStopPacket} from '../host/viewer-sound-packets.mjs'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 // Leave room for the same-player presentation in the host's 2 MiB SSE event.
@@ -137,7 +138,7 @@ export function nativeChunk (options, states, biomeCount) {
 // Receives only already-verified native packets from the action bot's own
 // connection. Never queries disk worlds, generates chunks or decodes proxy IDs.
 export class NativeWorldState extends EventEmitter {
-  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveEffect = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
+  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveEffect = null, resolveSelf = null, soundRegistry = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
     super()
     this.states = states; this.registrySha256 = registrySha256
     this.resolveDimension = resolveDimension; this.simplifyNBT = simplifyNBT; this.makeChunk = makeChunk || (options => nativeChunk(options, this.states, this.biomes.size)); this.now = now
@@ -149,6 +150,7 @@ export class NativeWorldState extends EventEmitter {
     this.resolveItemStack=resolveItemStack
     if(resolveEffect!==null&&typeof resolveEffect!=='function')throw Error('NATIVE_EFFECT_RESOLVER_INVALID')
     this.resolveEffect=resolveEffect
+    this.resolveSelf=resolveSelf;this.soundRegistry=soundRegistry??{sounds:{}};this.effectWindow={at:0,count:0}
     if (entityRegistry !== null && (!(entityRegistry instanceof Map) || !/^[a-f0-9]{64}$/.test(entityRegistrySha256 || ''))) throw Error('NATIVE_ENTITY_REGISTRY_CONFIG_INVALID')
     this.entities = new Map(); this.entityMotions = new Map(); this.entityRevision = 0; this.entityError = null; this.entityErrorDetails = null
     this.entityDataBytes = 0; this.entityEntrySizes = new Map(); this.entityCollections = new Map(); this.entitySnapshotCache = null
@@ -204,6 +206,20 @@ export class NativeWorldState extends EventEmitter {
         }
         case 'tile_entity_data': this.setBlockEntity(p.location, p.nbtData ?? p.nbt); this.revision++; this.emit('world'); break
         case 'update_time': this.time = { age: longNumber(p.age), day: longNumber(p.time), receivedAt: this.now() }; this.emit('time'); break
+        case 'sound_effect': case 'named_sound_effect': case 'entity_sound_effect': case 'stop_sound': {
+          const at=this.now(),stop=body.name==='stop_sound'
+          if(at-this.effectWindow.at>=1000)this.effectWindow={at,count:0}
+          const value=stop?viewerSoundStopPacket(p):viewerSoundPacket(body.name,p,this.soundRegistry,id=>{
+            const self=this.resolveSelf?.();return self?.entityId===id?self.position:this.entities.get(id)?.position
+          })
+          if(Number.isSafeInteger(value?.entityId)){
+            const self=this.resolveSelf?.(),entity=self?.entityId===value.entityId?self:this.entities.get(value.entityId)
+            if(entity?.uuid)value.entityUuid=entity.uuid
+            else if(Number.isFinite(entity?.spawnedAt))value.entitySpawnedAt=entity.spawnedAt
+          }
+          if(value&&(stop||++this.effectWindow.count<=128))this.emit('effect',{kind:stop?'sound_stop':'sound',value,sequence:body.sequence,observedAt:at})
+          break
+        }
         case 'spawn_entity': case 'spawn_entity_experience_orb': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
         case 'rel_entity_move': case 'entity_move_look': case 'entity_look': case 'entity_teleport':
         case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'collect': case 'entity_effect': case 'remove_entity_effect':

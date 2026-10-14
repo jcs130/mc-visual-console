@@ -11,6 +11,10 @@ export const VIEWER_SOUND_REGISTRY_LAYOUTS = Object.freeze({
     count: 1607,
     clientJarSha256: '02dfd345ac1ad55692d5dbc8486ac7e4fea72cd54ac494a79cd48963048e56b2',
   }),
+  '1.21.1': Object.freeze({
+    count: 1611,
+    clientJarSha256: '499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99',
+  }),
 });
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
