@@ -1,0 +1,6 @@
+version:3839
+maxFps:60
+enableVsync:true
+renderDistance:8
+simulationDistance:5
+resourcePacks:["fabric", "file/Faithful 32x - 1.20.6.zip", "file/FreshAnimations_v1.10.4.zip"]

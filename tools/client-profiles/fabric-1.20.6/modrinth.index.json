@@ -1,0 +1,148 @@
+{
+  "formatVersion": 1,
+  "game": "minecraft",
+  "versionId": "0.1.0-preview.1",
+  "name": "Agent MC Client Visuals — Fabric 1.20.6",
+  "summary": "Optional shader, 32x textures and animation profile for action and observer clients. Import as a new instance.",
+  "files": [
+    {
+      "path": "shaderpacks/ComplementaryReimagined_r5.2.2.zip",
+      "hashes": {
+        "sha1": "07cd8165acf24ec8ddada03f60729537687dd435",
+        "sha512": "1b49966c89559e43ad7ea2466213663ee543fd302383998ea367e8a53a855a183941e5bef72e13f60086a89a92a06758feef11d49f9a1890b26261657f37d153"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/HVnmMxH1/versions/pAOQ9Amz/ComplementaryReimagined_r5.2.2.zip"
+      ],
+      "fileSize": 441683
+    },
+    {
+      "path": "mods/entity_model_features_1.20.6-fabric-3.0.17.jar",
+      "hashes": {
+        "sha1": "7b0f48095a13f2c22cb07329a490363e3bee0498",
+        "sha512": "7a02ea035b9428b3ef5a1af1cabfaf1fe3f1e0f09cba1e706661033e716dc85f67fce435494033946caffffef51245c7f47f999595b7501e9e9d4094ec4d5fb9"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/4I1XuqiY/versions/iFg6ObpQ/entity_model_features_1.20.6-fabric-3.0.17.jar"
+      ],
+      "fileSize": 497294
+    },
+    {
+      "path": "mods/entity_texture_features_1.20.6-fabric-7.0.13.jar",
+      "hashes": {
+        "sha1": "f34b4686278667373618156660db3497b60045f5",
+        "sha512": "5d261360e7168443bacbad1596ce9daa2c1e1c7f75eb0831317f0811f5043045ceeda4ba95046bc924d370c28817cdc8b628824eb7a77944df957ae4ea67117c"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/BVzZfTc1/versions/75G4gPTM/entity_texture_features_1.20.6-fabric-7.0.13.jar"
+      ],
+      "fileSize": 730253
+    },
+    {
+      "path": "mods/fabric-api-0.100.8+1.20.6.jar",
+      "hashes": {
+        "sha1": "f8a4b3a551fc5bde9a2d3e4bcac9cb21a081c828",
+        "sha512": "414f19f903a093c39006e1919a81bea43c3b6728b88e358dc2611ab44b8087e25abc504c66926f245342fa2a245c07462ed62897f15d6c84006b7acf6214ca46"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/P7dR8mSH/versions/ocg4hG3t/fabric-api-0.100.8%2B1.20.6.jar"
+      ],
+      "fileSize": 2249380
+    },
+    {
+      "path": "resourcepacks/Faithful 32x - 1.20.6.zip",
+      "hashes": {
+        "sha1": "75b905e454ef5fc97051b7613dad767f1c536f9d",
+        "sha512": "125e59952ef3b0c16a6f516b5964fdd60d6f05511b06ef8ced0d5b484b54096e951db853eb853fc1f804684941c07f2623e3047523d1b0f0a26e966a94327c58"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/w0TnApzs/versions/ZYK1JOPV/Faithful%2032x%20-%201.20.6.zip"
+      ],
+      "fileSize": 11524123
+    },
+    {
+      "path": "resourcepacks/FreshAnimations_v1.10.4.zip",
+      "hashes": {
+        "sha1": "73db740a6868e043c5e615c036fca2c912615b6e",
+        "sha512": "41258f9bea1a773d823f9a014d0c08206e9e7b339bc538e1538211fff28fadd06878a836d292cbb636ed6829cd2801a509368ae3eb3ad4bedf42190a0d5f7a90"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/50dA9Sha/versions/xN57JJts/FreshAnimations_v1.10.4.zip"
+      ],
+      "fileSize": 850941
+    },
+    {
+      "path": "mods/iris-1.7.2+mc1.20.6.jar",
+      "hashes": {
+        "sha1": "4b097c3a62798634647d7b916753bced3bf606f4",
+        "sha512": "e2dfd66583bbc3f72967b3c82758cfbfc47ba75fbada75b6719d52efa830e8fa8f1c0a65dc1106ea267dfe37e6ab3307bb278ec85a223c589474df43804dbe7d"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/YL57xq9U/versions/1bvcmYOc/iris-1.7.2%2Bmc1.20.6.jar"
+      ],
+      "fileSize": 2711922
+    },
+    {
+      "path": "mods/notenoughanimations-fabric-1.12.6-mc1.20.6.jar",
+      "hashes": {
+        "sha1": "3f42334acad61c4d622d2e46d711bd14a54e8adc",
+        "sha512": "e7130269feeb4308b0a1a139dd405bff7ff23044cc020628678f9b413b91eb4581160dd3037af561c923f121acb00de8dbdc0b0c822533aab267db9eb72431da"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/MPCX6s5C/versions/pS5TdrKa/notenoughanimations-fabric-1.12.6-mc1.20.6.jar"
+      ],
+      "fileSize": 1874000
+    },
+    {
+      "path": "mods/sodium-fabric-0.5.11+mc1.20.6.jar",
+      "hashes": {
+        "sha1": "c989a844c33e04c3b7ef2f5747b4b20559b96e2f",
+        "sha512": "c1f1f0ebb779126acde462dfd010ac142ecd1467bbc0efdb97cdf8d2d4f1ebc3d9c9eb22053757f2a98130012bb9467ed0af0737d984717825c5bf3d1cabbe54"
+      },
+      "env": {
+        "client": "required",
+        "server": "unsupported"
+      },
+      "downloads": [
+        "https://cdn.modrinth.com/data/AANobbMI/versions/OwLQelEI/sodium-fabric-0.5.11%2Bmc1.20.6.jar"
+      ],
+      "fileSize": 990829
+    }
+  ],
+  "dependencies": {
+    "minecraft": "1.20.6",
+    "fabric-loader": "0.19.5"
+  }
+}
