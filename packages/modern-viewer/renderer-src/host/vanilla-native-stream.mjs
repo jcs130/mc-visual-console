@@ -62,7 +62,13 @@ export function vanillaPlayerPresentation(bot, hands = null, menuState = null) {
     carried: menu.selectedItem ? vanillaItemStack(menu.selectedItem, bot.registry).item : null,
     dataValues: menuState.dataValues, properties: menuState.properties, dataValuesSource: 'same_player_window_properties'
   } : null;
-  return { schemaVersion: 1, playerUuid: uuid, nativeMenu,
+  return { schemaVersion: 1, playerUuid: uuid, profile:'vanilla_1.21.1', nativeMenu,
+    effects:Object.values(bot.entity?.effects??{}).slice(0,32).flatMap(effect=>{
+      const name=bot.registry?.effects?.[effect.id]?.name;
+      return typeof name==='string'&&Number.isInteger(effect.amplifier)&&Number.isInteger(effect.duration)
+        ?[{name:'minecraft:'+name.replace(/[A-Z]/g,(letter,index)=>(index?'_':'')+letter.toLowerCase()),amplifier:effect.amplifier,duration:effect.duration}]:[];
+    }),
+    bossBars:Array.from(bot.bossBars??[]).slice(0,8).map(bar=>({uuid:bar.entityUUID,title:String(bar.title??'').slice(0,200),health:bar.health,color:bar.color,dividers:bar.dividers})),
     ...(hands?.playerUuid === uuid.toLowerCase() ? { self: { playerUuid: uuid.toLowerCase(), mainArm: hands.mainArm,
       maxHealth: vanillaAttributeValue(bot,'max_health'), armor: vanillaAttributeValue(bot,'armor'),
       attributeSource: 'same_player_vanilla_registry_and_attribute_packets',

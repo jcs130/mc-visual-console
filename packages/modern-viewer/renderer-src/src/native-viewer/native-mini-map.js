@@ -10,7 +10,7 @@ export function createNativeMiniMap({document,renderer,scene,size=192,span=32}={
   const note=document.createElement('small');note.textContent='等待本人世界数据';root.append(note);document.body.append(root)
   const style=document.createElement('style');style.textContent=`
     #native-terrain-map{position:fixed;left:18px;top:62px;z-index:5;background:#11242ce8;border:1px solid #aec3b45c;border-radius:8px;color:#d4e7df;padding:8px;font:11px/1.5 system-ui;width:192px}
-    #native-terrain-map summary{cursor:pointer;font-weight:600;margin-bottom:6px}#native-terrain-map canvas{display:block;width:100%;image-rendering:pixelated;border-radius:4px}#native-terrain-map small{display:block;margin-top:5px;color:#adc6bc}
+    #native-terrain-map summary{cursor:pointer;font-weight:600;margin-bottom:6px}#native-terrain-map canvas{position:static;inset:auto;display:block;width:100%;height:auto;aspect-ratio:1/1;image-rendering:pixelated;border-radius:4px}#native-terrain-map small{display:block;margin-top:5px;color:#adc6bc}
     body:has(#native-terrain-map) #agent-intent{top:312px}
     @media(max-height:800px),(max-width:720px){#native-terrain-map{width:140px;top:62px;left:8px;padding:6px;font-size:10px}body:has(#native-terrain-map) #agent-intent{top:250px;max-height:25vh;overflow:auto}}
   `;document.head.append(style)

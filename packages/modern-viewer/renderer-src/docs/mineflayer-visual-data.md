@@ -27,6 +27,11 @@ The activity inspector now provides bounded item gain/loss, health/food changes,
 route failures, server sidebar/tab and public native queue/action timelines.
 Histories reset with account/entity/dimension changes. Their evidence labels
 remain separate from private model reasoning and verified game effects.
+Nearby block replacements are retained in the activity history; distant random
+growth and same-block internal changes stay in world state without flooding
+the player's operation list. Actual status effects and Boss bars use original
+icons/sprites. Effect duration is labelled as the last server reading, not a
+newly inferred countdown. A vanilla profile hides absent magic controls.
 
 ## Inventory and crafting semantics
 

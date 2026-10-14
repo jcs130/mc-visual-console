@@ -5,6 +5,7 @@ import { NativeItemIcons } from './native-item-icons.js'
 import { NativeLanguage } from './native-language.js'
 import { nativeSoulSlabAnimationStyle, NATIVE_SOUL_SLAB_KEYFRAMES } from './native-soul-slab-icons.js'
 import { nativeClientSourceVerified } from './native-client-source.js'
+import { createNativeSurvivalUi } from './native-survival-ui.js'
 import { NATIVE_VANILLA_GUIS, standardVanillaMenuLayout, vanillaMenuPropertyLabels } from './native-vanilla-menus.js'
 export { NATIVE_VANILLA_GUIS } from './native-vanilla-menus.js'
 import { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
@@ -266,6 +267,8 @@ export class NativeUiAssets {
   async prepare () {
     await Promise.allSettled([...HUD_SPRITES.map(name => `assets/minecraft/textures/gui/sprites/hud/${name}.png`),
       'assets/minecraft/textures/gui/container/inventory.png'].map(path => this.texture(path)))
+    const extra=Object.keys(this.reader.manifest?.assets??{}).filter(path=>/^assets\/minecraft\/textures\/(mob_effect\/[a-z_]+|gui\/sprites\/boss_bar\/[a-z0-9_]+)\.png$/.test(path)).slice(0,128)
+    await Promise.allSettled(extra.map(path=>this.texture(path)))
     const prepare = async (info, kind) => {
       try { verifyGuiSource(this.reader, info, kind); await this.texture(info.path); return null } catch (error) { return error.message }
     }
@@ -401,6 +404,7 @@ export function createNativeInterface ({ document = globalThis.document,
   setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason, language = new NativeLanguage() } = {}) {
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
+  const survivalUi=createNativeSurvivalUi({document,translate:key=>language.translate(key)})
   let expectedUuid = null, actor = null, actorReason = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
   let hudSignature = null, skillsSignature = null
   const resolveIcon = item => typeof resolveItemIcon === 'function' ? resolveItemIcon(item) : itemIcons?.resolve(item)
@@ -825,7 +829,7 @@ export function createNativeInterface ({ document = globalThis.document,
     timers.clear(); seenMessages.clear(); seenTitles.clear(); fishing?.reset(); preview?.reset()
     el('corti-event-feed')?.replaceChildren()
     for (const id of ['corti-game-title', 'corti-actionbar']) { const target = el(id); if (target) target.hidden = true }
-    renderHud(); renderSkills(); renderMenu()
+    renderHud(); renderSkills(); renderMenu(); survivalUi.reset()
   }
   return {
     setIdentity (identity) {
@@ -851,7 +855,7 @@ export function createNativeInterface ({ document = globalThis.document,
         background('.corti-hotbar-selection', 'hotbar_selection'), background('.corti-xp', 'experience_bar_background'),
         background('.corti-xp-fill', 'experience_bar_progress'), NATIVE_SOUL_SLAB_KEYFRAMES].join('\n')
       q('style[data-native-hud-assets]')?.remove(); document.head?.append(style)
-      lastMenuSignature = null; hudSignature = null; renderHud(); renderMenu(); return result
+      lastMenuSignature = null; hudSignature = null; renderHud(); renderMenu(); survivalUi.update(presentation,assets); return result
     },
     update (state) {
       if (disposed) return
@@ -860,7 +864,7 @@ export function createNativeInterface ({ document = globalThis.document,
       presentation = nativePresentationView(state?.presentation, expectedUuid)
       if (!presentation.available) { cancelIdle(); manualOpen = false; fishing?.reset() }
       if (actualContainer()) cancelIdle()
-      renderHud(); renderSkills(); renderMenu(); showMessages()
+      renderHud(); renderSkills(); renderMenu(); showMessages(); survivalUi.update(presentation,assets)
       return presentation
     },
     event (event) {
@@ -884,6 +888,7 @@ export function createNativeInterface ({ document = globalThis.document,
       if (disposed) return
       reset(); disposed = true; assetsSequence++
       preview?.dispose(); fishing?.dispose(); assets?.dispose(); itemIcons?.dispose()
+      survivalUi.dispose()
       for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     }
   }

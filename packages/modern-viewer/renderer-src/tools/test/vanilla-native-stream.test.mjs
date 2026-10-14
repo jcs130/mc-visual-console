@@ -15,6 +15,14 @@ test('vanilla HUD follows actual received attribute modifiers and locked registr
   assert.equal(vanillaAttributeValue({...bot,version:'modded'},'armor'),null);assert.equal(vanillaAttributeValue({...bot,registry:{}},'armor'),null);
 });
 
+test('vanilla effects and Boss bars preserve actual observed facts and clear when the body has none',()=>{
+  const require=createRequire(import.meta.url),bot={version:'1.21.1',_client:{uuid:'own'},registry:require('minecraft-data')('1.21.1'),inventory:{slots:[]},
+    entity:{effects:{3:{id:3,amplifier:1,duration:400}}},bossBars:[{entityUUID:'boss',title:{toString:()=>'<Boss>'},health:.5,color:'purple',dividers:6}]};
+  let view=vanillaPlayerPresentation(bot);assert.equal(view.profile,'vanilla_1.21.1');assert.deepEqual(view.effects,[{name:'minecraft:mining_fatigue',amplifier:1,duration:400}]);
+  assert.equal(view.bossBars[0].title,'<Boss>');assert.equal(view.bossBars[0].health,.5);
+  bot.entity.effects={};bot.bossBars=[];view=vanillaPlayerPresentation(bot);assert.deepEqual(view.effects,[]);assert.deepEqual(view.bossBars,[]);
+});
+
 test('actual Prismarine decoder legacy Damage NBT cannot hide the authoritative 1.21.1 component patch', () => {
   const require = createRequire(import.meta.url), registry = require('minecraft-data')('1.21.1');
   const Item = require('prismarine-item')('1.21.1');

@@ -124,7 +124,14 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
     vitals=current;changed()
   })
   for(const [event,kind] of [['diggingCompleted','dig_completed'],['diggingAborted','dig_aborted']])on(bot,event,block=>{dig=null;emit(kind,{name:text(block?.name),position:point(block?.position)})})
-  on(bot,'blockUpdate',(old,block)=>{if(old&&block&&old.stateId!==block.stateId)emit('block_changed',{from:text(old.name),to:text(block.name),position:point(block.position)},'server_block_update')})
+  on(bot,'blockUpdate',(old,block)=>{
+    const at=point(block?.position),own=point(bot.entity?.position)
+    // Loaded chunks also deliver distant grass growth, amethyst and leaf
+    // distance updates. Keep the operation history about the player's vicinity;
+    // the actual world renderer still receives every native block packet.
+    if(old&&block&&old.name!==block.name&&old.stateId!==block.stateId&&at&&own&&Math.hypot(...['x','y','z'].map(k=>at[k]-own[k]))<=8)
+      emit('block_changed',{from:text(old.name),to:text(block.name),position:at},'server_block_update')
+  })
   on(bot,'path_update',value=>{if(['noPath','timeout'].includes(value?.status))emit('path_blocked',{reason:value.status,position:point(bot.entity?.position)})})
   on(bot,'path_reset',reason=>emit('path_reset',{reason:text(reason),position:point(bot.entity?.position)}))
   on(bot,'goal_reached',()=>emit('path_reached',{position:point(bot.entity?.position)}))

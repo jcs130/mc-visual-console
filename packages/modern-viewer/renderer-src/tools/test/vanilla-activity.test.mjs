@@ -68,3 +68,13 @@ test('server panels are bounded and foreign identity cannot retain old history',
   assert.ok(JSON.stringify(s).length<=49152)
   f.client.uuid='11111111-1111-1111-1111-111111111111';assert.equal(f.activity.snapshot().events.length,0);f.activity.close()
 })
+
+test('distant growth and same-block internal updates do not displace useful nearby operation history',()=>{
+  const f=fixture();f.activity.snapshot()
+  const old={name:'dirt',stateId:1}
+  f.bot.emit('blockUpdate',old,{name:'grass_block',stateId:2,position:{x:100,y:64,z:2}})
+  f.bot.emit('blockUpdate',{name:'oak_leaves',stateId:3},{name:'oak_leaves',stateId:4,position:{x:1,y:64,z:3}})
+  assert.equal(f.activity.snapshot().events.length,0)
+  f.bot.emit('blockUpdate',old,{name:'chest',stateId:5,position:{x:2,y:64,z:2}})
+  assert.equal(f.activity.snapshot().events.at(-1).kind,'block_changed');f.activity.close()
+})
