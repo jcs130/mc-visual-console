@@ -20,6 +20,17 @@ test('native registry remaps IDs by full names/properties, never assumes matchin
  const d=decoder();assert.equal(d.biomes.get(0),mc.biomesByName.plains.id);
  assert.notEqual(d.biomes.get(0),0);
 });
+test('1.21.1 uses its own copper bulb states and rejects a 1.20.6 envelope',()=>{
+ const version='1.21.1',data=require('minecraft-data')(version),B=require('prismarine-block')(version),C=require('prismarine-chunk')(version);
+ const d=new JavaVisualData({uuid,server:'example.test',minecraftVersion:version});
+ const id=data.blocksByName.copper_bulb.defaultState;
+ d.registry({...reg,minecraftVersion:version,registry:{...reg.registry,blocks:[reg.registry.blocks[0],{id:1,name:'minecraft:copper_bulb',properties:B.fromStateId(id,0).getProperties()}]}});
+ const c=new C({minY:-16,worldHeight:32});c.setBlockStateId({x:15,y:-1,z:0},1);
+ const result=d.decodeChunk({...column(),minecraftVersion:version,sections:c.dump().toString('base64')});
+ assert.equal(C.fromJson(result.chunk).getBlockStateId({x:15,y:-1,z:0}),id);
+ assert.throws(()=>d.decodeChunk(column()),/VERSION_MISMATCH/);
+ assert.throws(()=>new JavaVisualData({uuid,server:'example.test',minecraftVersion:'1.21.2'}),/VERSION_MISMATCH/);
+});
 test('unknown namespaced block fails instead of becoming vanilla stone',()=>{
  const d=decoder();d.registry({...reg,registry:{...reg.registry,blocks:[reg.registry.blocks[0],{id:1,name:'a_mod:stone',properties:{}}]}});
  assert.throws(()=>d.decodeChunk(column()),/UNSUPPORTED_BLOCK_STATE_1/);

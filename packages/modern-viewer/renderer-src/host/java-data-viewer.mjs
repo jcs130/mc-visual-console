@@ -8,20 +8,20 @@ import { serveViewerAsset } from './viewer-asset-server.mjs';
 
 /** Existing browser renderer fed by native data. rpc is injected by the body adapter;
  * tokens, screenshots and body commands never cross this read-only browser endpoint. */
-export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expectedServer,radius=2}) {
+export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expectedServer,radius=2,minecraftVersion='1.20.6'}) {
   if(!Number.isInteger(port)||port<0||port>65535||!Number.isInteger(radius)||radius<0||radius>4) throw Error('JAVA_VIEWER_CONFIG_INVALID');
   const root=path.resolve(assetsDir), source=JSON.parse(await readFile(path.join(root,'public/asset-source.json'),'utf8'));
-  if(source.minecraftVersion!=='1.20.6') throw Error('JAVA_VIEWER_ASSET_VERSION_MISMATCH');
+  if(!['1.20.6','1.21.1'].includes(minecraftVersion)||source.minecraftVersion!==minecraftVersion) throw Error('JAVA_VIEWER_ASSET_VERSION_MISMATCH');
   const notice='<div role="status" style="position:fixed;bottom:54px;left:12px;z-index:99999;background:#13242fe8;color:white;padding:8px;max-width:430px;font:13px sans-serif">原生数据预览 · 已接入地形与本人移动。其他实体、容器、YSM、模组材质与光影尚未接入；界面空槽不代表实际背包为空。</div>';
   const pages=new Map(await Promise.all(['','third/','dungeon/'].map(async route=>[route,(await readFile(path.join(root,'public',route,'index.html'),'utf8')).replace('</body>',notice+'</body>')])));
   const css=await readFile(path.join(root,'public/viewer.css'));
   const skins=new Map(),skinBytes=new Map();
-  const data=new JavaVisualData({uuid,server:expectedServer,skinUrl:resource=>skins.get(resource)??null});
+  const data=new JavaVisualData({uuid,server:expectedServer,minecraftVersion,skinUrl:resource=>skins.get(resource)??null});
   async function prepareSkin(resource) {
     if(skins.has(resource))return;
     let bytes;
     if(/^minecraft:textures\/entity\/player\/(slim|wide)\/[a-z_]+\.png$/.test(resource??'')) {
-      bytes=await readFile(path.join(root,'public/textures/1.20.6',resource.slice('minecraft:textures/'.length)));
+      bytes=await readFile(path.join(root,`public/textures/${minecraftVersion}`,resource.slice('minecraft:textures/'.length)));
     } else {
       const value=await rpc('visual_skin',{resource});data.verify(value);
       if(value.resource!==resource||value.source!=='same_java_client_skin_texture'||value.mime!=='image/png'||typeof value.base64!=='string'||value.base64.length>87384)throw Error('JAVA_VISUAL_NATIVE_SKIN_INVALID');
@@ -46,7 +46,7 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
     // Keep their ordering together; the bounded queue above evicts slow viewers.
     socket.emit(name,value);
   }};
-  const status=()=>({ok:!closed&&!error&&(!demanded()||lastFrameAt>0&&Date.now()-lastFrameAt<=3000),state:closed?'closed':error?'unavailable':demanded()?'streaming':'idle',sampling:demanded()&&!closed,source:'real-java-world-data',transport:'socket.io',minecraftVersion:'1.20.6',error,lastError,epoch:data.epoch,
+  const status=()=>({ok:!closed&&!error&&(!demanded()||lastFrameAt>0&&Date.now()-lastFrameAt<=3000),state:closed?'closed':error?'unavailable':demanded()?'streaming':'idle',sampling:demanded()&&!closed,source:'real-java-world-data',transport:'socket.io',minecraftVersion,error,lastError,epoch:data.epoch,
     sampledAt:data.frame?.sampledAt,ageMs:lastFrameAt?Date.now()-lastFrameAt:null,frames,columns:data.columns.size,chunkUpdates:columns,lastChunkMs:chunkMs,registryMs,
     viewers:[...clients].filter(s=>s.handshake.headers['x-mc-viewer-capture']!=='1').length,maxSessions:2,
     captureSessions:[...clients].filter(s=>s.handshake.headers['x-mc-viewer-capture']==='1').length,maxCaptureSessions:1,
@@ -64,7 +64,7 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
       if(skinHash&&skinBytes.has(skinHash)){res.setHeader('Content-Type','image/png');res.end(skinBytes.get(skinHash));return;}
       if(route==='index.js' && await serveViewerAsset(res,root,'dist/modern-viewer.js','no-store'))return;
       if(await serveViewerAsset(res,path.join(root,'public'),route))return;
-      if(route.startsWith('textures/')&&await serveViewerAsset(res,path.join(root,'public'),`textures/1.20.6/${route.slice(9)}`))return;
+      if(route.startsWith('textures/')&&await serveViewerAsset(res,path.join(root,'public'),`textures/${minecraftVersion}/${route.slice(9)}`))return;
       res.writeHead(404).end();
     }catch{res.writeHead(503).end('Viewer resource unavailable');}
   });
@@ -119,7 +119,7 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
       await frame();waiting.delete(socket);
       if(!socket.connected)return;
       if(closed||error||!data.frame||Date.now()-lastFrameAt>3000){socket.emit('viewerBusy',{reason:error??'Waiting for actual Java world'});socket.disconnect(true);return;}
-      clients.add(socket);socket.emit('version','1.20.6');
+      clients.add(socket);socket.emit('version',minecraftVersion);
       const latest=data.frame,self=data.entity(latest.self,true);
       socket.emit('position',{pos:self.pos,yaw:self.yaw,pitch:self.pitch,teleport:true});socket.emit('playerEntity',self);socket.emit('entity',self);
       for(const c of data.columns.values())socket.emit('loadChunk',c);

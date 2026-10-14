@@ -12,8 +12,9 @@ if (!jarArg || !rootArg) {
   process.exit(2)
 }
 const root = path.resolve(rootArg)
-const version = '1.20.6'
 const source = JSON.parse(await readFile(path.join(root, 'public', 'asset-source.json'), 'utf8'))
+const version = source.minecraftVersion
+if (!['1.20.6','1.21.1'].includes(version)) throw Error('Unsupported asset version')
 const client = JSON.parse(await readFile(path.join(root, 'viewer-client.json'), 'utf8'))
 if (source.minecraftVersion !== version || client.minecraftVersion !== version ||
   client.clientJarSha256 !== source.clientJarSha256) throw Error('资源或浏览器 bundle 版本不符')
@@ -22,7 +23,7 @@ if (source.clientJarSha256 !== jarHash) throw Error('资源不是从指定的 1.
 const browserHash = createHash('sha256').update(await readFile(path.join(root, 'dist', 'modern-viewer.js'))).digest('hex')
 if (client.browserBundleSha256 !== browserHash) throw Error('浏览器 bundle 与构建清单不符')
 if (client.viewerContent) {
-  const content=await verifyViewerContentAssets(root,jarHash,{required:true})
+  const content=await verifyViewerContentAssets(root,jarHash,{required:true,version})
   if(content.manifestSha256!==client.viewerContent.manifestSha256)throw Error('内容资源与浏览器构建清单不符')
 }
 

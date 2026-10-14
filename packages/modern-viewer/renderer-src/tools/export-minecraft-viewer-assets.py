@@ -529,7 +529,11 @@ def main():
     args = parser.parse_args()
     if not os.path.isfile(args.client_jar):
         parser.error(f'客户端 JAR 不存在：{args.client_jar}')
-    global PUBLIC, BLOCKS_DIR
+    global PUBLIC, BLOCKS_DIR, VERSION
+    with zipfile.ZipFile(args.client_jar) as jar:
+        VERSION = json.loads(jar.read("version.json"))["id"]
+    if VERSION not in ("1.20.6", "1.21.1"):
+        raise ValueError("Unsupported Minecraft asset version: " + VERSION)
     PUBLIC = os.path.abspath(os.path.join(args.output_dir, 'public'))
     os.makedirs(os.path.join(PUBLIC, 'blocksStates'), exist_ok=True)
     os.makedirs(os.path.join(PUBLIC, 'textures'), exist_ok=True)

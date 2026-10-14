@@ -8,7 +8,7 @@ function harness() {
   const builder = readFileSync(new URL('../build-minecraft-viewer-client.mjs', import.meta.url), 'utf8');
   const adaptation = builder.slice(builder.indexOf('const adaptedClient ='), builder.indexOf('const changedClient ='));
   const potionRenderAnchor = '  worldView.emit(isMove ? "entityMoved" : "entity",\n    isMove ? normalized : rendererEntityEquipment(normalized, globalThis.mcData?.itemsByName));';
-  const adapted = runInNewContext(`${adaptation}\nadaptedClient`, { clientSource, potionRenderAnchor });
+  const adapted = runInNewContext(`${adaptation}\nadaptedClient`, { clientSource, potionRenderAnchor, version: '1.21.1' });
   const start = adapted.indexOf('function handleEntity(');
   const end = adapted.indexOf('\nfunction normalizeEntity(', start);
   const integrity = readFileSync(new URL('../minecraft-viewer-avatar-integrity.js', import.meta.url), 'utf8');
