@@ -29,6 +29,12 @@ are bound to the real clicked window ID and slot. Packet changes publish
 coalesced presentation updates without waiting for a world snapshot. Reused
 window IDs require new server state.
 
+Opaque static BlockItems also use their original inherited JSON geometry, all
+face textures/UVs and first/third-person hand display transforms. GUI face
+culling and GUI images are not reused for held objects. Every potentially
+visible texture is hash-checked and opacity-checked; animated, tinted,
+translucent and dynamic providers remain explicitly unsupported here.
+
 Transforms are ported from the locked original 1.21.1 client
 `ItemInHandRenderer` and `HumanoidModel`, with the existing float/LUT math:
 client SHA256 `499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99`;

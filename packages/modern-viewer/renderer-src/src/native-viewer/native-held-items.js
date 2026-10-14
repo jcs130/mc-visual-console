@@ -4,6 +4,7 @@ import { parseNativeItemStack, nativeNumericValue } from './native-item-stack.js
 import { nativeArsItemEligible, prepareNativeArsItemIcon, bakeNativeArsGeoFaces } from './native-ars-item-icons.js'
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
 import { verifyNativeStaticItemEvidence, nativeStaticItemState } from './native-static-item-providers.js'
+import { nativeBlockItemEligible, resolveNativeBlockItemModel, bakeNativeBlockItemFaces } from './native-block-item-icons.js'
 import { nativeHumanoidWalkAngles, nativePlayerCos, nativePlayerSin, toSkinviewLimbRotation } from './native-player-motion.js'
 import { nativeHandAnimation, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from './native-first-person-motion.js'
 
@@ -307,6 +308,38 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
       geoOffsetY: F(0.51) - 0.5, material: 'entityTranslucent', animationControllerCount: 0,
       geometrySourceVerified: true, worldLightingParityVerified: false, pixelParityVerified: false }
   }
+  if (nativeBlockItemEligible(stack.id)) {
+    nativeStaticItemState(stack); verifyNativeStaticItemEvidence(reader, stack.id)
+    const model = await resolveNativeBlockItemModel(reader, `${stack.id.split(':')[0]}:item/${stack.id.split(':')[1]}`)
+    // Some BlockItems (plants, for example) use original generated sprites.
+    // Those still go through the existing generated provider below.
+    if (!model.nativeGenerated) {
+      const faces = bakeNativeBlockItemFaces(model)
+      const paths = [...new Set(faces.map(face => resourcePath(face.texture, 'textures', '.png')))]
+      if (paths.length > 32) throw Error('NATIVE_HELD_TEXTURE_LIMIT')
+      const textureLayers = new Map(); let pixels = 0
+      for (const path of paths) {
+        if (reader.manifest.assets[`${path}.mcmeta`]) throw Error('NATIVE_HELD_TEXTURE_ANIMATION_UNSUPPORTED')
+        const bytes = await reader.bytes(path), dimensions = textureDimensions(bytes), decoded = await readPixels(bytes)
+        if (decoded?.width !== dimensions.width || decoded?.height !== dimensions.height ||
+            !(decoded.pixels instanceof Uint8Array || decoded.pixels instanceof Uint8ClampedArray) ||
+            decoded.pixels.length !== dimensions.width * dimensions.height * 4) throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
+        pixels += dimensions.width * dimensions.height
+        if (pixels > 1048576) throw Error('NATIVE_HELD_TEXTURE_LIMIT')
+        // Translucent/cutout/tinted block materials need their own native
+        // rendering proof, not the opaque BlockItem provider.
+        for (let n = 3; n < decoded.pixels.length; n += 4) if (decoded.pixels[n] !== 255) throw Error('NATIVE_HELD_TRANSLUCENT_BLOCK_UNSUPPORTED')
+        textureLayers.set(path, { bytes, dimensions })
+      }
+      const display = model.display?.[`thirdperson_${arm}hand`] ?? model.display?.thirdperson_righthand ?? {}
+      const firstDisplay = model.display?.[`firstperson_${arm}hand`] ?? model.display?.firstperson_righthand ?? {}
+      return { stack, arm, kind: 'native-block-held', faces, textureLayers,
+        transform: nativeHeldItemTransform(display, arm), firstPersonTransform: nativeHeldItemTransform(firstDisplay, arm, 'firstperson'),
+        sourcePaths: [...new Set([...model.sourcePaths, ...paths])],
+        geometry: 'Minecraft 1.21.1 original BlockItem model', geoOffsetY: 0, material: 'entityCutout',
+        geometrySourceVerified: true, atlasUvShrinkAvailable: false, worldLightingParityVerified: false, pixelParityVerified: false }
+    }
+  }
   let modelId = `${stack.id.split(':')[0]}:item/${stack.id.split(':')[1]}`, provider = null
   if (nativeGuideItemEligible(stack.id)) {
     provider = await prepareNativeGuideItemIcon(reader, stack)
@@ -337,16 +370,25 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
 }
 
 export function buildNativeHeldItemObject(plan, texture) {
-  if (!texture?.isTexture || texture.image?.width !== plan.dimensions.width || texture.image?.height !== plan.dimensions.height) throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
-  texture.colorSpace = THREE.NoColorSpace; texture.magFilter = THREE.NearestFilter; texture.minFilter = THREE.NearestFilter
-  texture.generateMipmaps = false; texture.flipY = true; texture.needsUpdate = true
-  const material = new THREE.ShaderMaterial({ uniforms: { nativeTexture: { value: texture } },
+  const textures = plan.textureLayers ? texture : new Map([[plan.texturePath, texture]])
+  if (!(textures instanceof Map)) throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
+  const materials = new Map(), group = new THREE.Group(); group.position.y = plan.geoOffsetY
+  const materialFor = path => {
+    if (materials.has(path)) return materials.get(path)
+    const value = textures.get(path), dimensions = plan.textureLayers?.get(path)?.dimensions ?? plan.dimensions
+    if (!value?.isTexture || value.image?.width !== dimensions?.width || value.image?.height !== dimensions?.height) throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
+    value.colorSpace = THREE.NoColorSpace; value.magFilter = THREE.NearestFilter; value.minFilter = THREE.NearestFilter
+    value.generateMipmaps = false; value.flipY = true; value.needsUpdate = true
+    const material = new THREE.ShaderMaterial({ uniforms: { nativeTexture: { value } },
     vertexShader: 'varying vec2 nativeUV; void main(){ nativeUV=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader: 'uniform sampler2D nativeTexture; varying vec2 nativeUV; void main(){ vec4 c=texture2D(nativeTexture,nativeUV); if(c.a<0.1)discard; gl_FragColor=c; }',
-    side: THREE.DoubleSide, transparent: plan.material === 'entityTranslucent', depthWrite: true, toneMapped: false, forceSinglePass: true })
-  const group = new THREE.Group(); group.position.y = plan.geoOffsetY
+      side: plan.kind === 'native-block-held' ? THREE.FrontSide : THREE.DoubleSide,
+      transparent: plan.material === 'entityTranslucent', depthWrite: true, toneMapped: false, forceSinglePass: true })
+    materials.set(path, material); return material
+  }
   try {
     for (const face of plan.faces) {
+      const material = materialFor(plan.textureLayers ? resourcePath(face.texture, 'textures', '.png') : plan.texturePath)
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(face.position, 3))
       geometry.setAttribute('uv', new THREE.Float32BufferAttribute(face.uv, 2)); geometry.setIndex(face.indices)
@@ -357,7 +399,7 @@ export function buildNativeHeldItemObject(plan, texture) {
     group.userData = { nativeItem: plan.stack.id, kind: plan.kind, geometry: plan.geometry, sourcePaths: plan.sourcePaths,
       worldLightingParityVerified: false, pixelParityVerified: false, atlasUvShrinkAvailable: plan.atlasUvShrinkAvailable ?? null }
     return group
-  } catch (error) { disposeNativeHeldItemObject(group); if (!group.children.length) material.dispose(); throw error }
+  } catch (error) { disposeNativeHeldItemObject(group); throw error }
 }
 
 export function disposeNativeHeldItemObject(group) {
@@ -453,7 +495,8 @@ export class NativeHeldItems {
     value.cancelled = true
     if (value.object) disposeNativeHeldItemObject(value.object)
     if (value.firstObject) disposeNativeHeldItemObject(value.firstObject)
-    value.mount?.removeFromParent(); value.firstMount?.removeFromParent(); value.texture?.dispose(); value.texture?.image?.close?.()
+    value.mount?.removeFromParent(); value.firstMount?.removeFromParent()
+    for (const texture of value.textures?.values() ?? []) { texture.dispose(); texture.image?.close?.() }
     this.hands.delete(arm)
   }
   apply(frame) {
@@ -485,28 +528,35 @@ export class NativeHeldItems {
     this.refreshPose(); this.onChange(this.state()); return this.state()
   }
   async load(arm, entry) {
-    let texture, object, firstObject
+    let object, firstObject, retained = false
+    const textures = new Map()
     const current = () => !this.disposed && !entry.cancelled && this.hands.get(arm) === entry
     try {
       const stack = parseNativeItemStack(entry.raw)
       const plan = await prepareNativeHeldItem(this.reader, stack, arm, { readPixels: this.readPixels })
       if (!current()) return
-      texture = await this.loadTexture(plan.textureBytes)
-      if (!current()) { texture?.dispose(); texture?.image?.close?.(); return }
-      object = buildNativeHeldItemObject(plan, texture)
-      firstObject = buildNativeHeldItemObject(plan, texture)
+      const layers = plan.textureLayers ?? new Map([[plan.texturePath, { bytes: plan.textureBytes }]])
+      for (const [path, layer] of layers) {
+        textures.set(path, await this.loadTexture(layer.bytes))
+        if (!current()) return
+      }
+      const input = plan.textureLayers ? textures : textures.get(plan.texturePath)
+      object = buildNativeHeldItemObject(plan, input)
+      firstObject = buildNativeHeldItemObject(plan, input)
       const mount = new THREE.Group(); mount.name = `native-held-${arm}`; mount.matrixAutoUpdate = false; mount.add(object)
       const firstMount = new THREE.Group(); firstMount.name = `native-first-held-${arm}`; firstMount.matrixAutoUpdate = false; firstMount.add(firstObject)
       firstMount.matrix.copy(nativeFirstPersonIdleMountMatrix({ arm, transform: plan.firstPersonTransform }))
       this.firstPersonRoot.add(firstMount)
       this.player.skin[`${arm}Arm`].add(mount)
-      Object.assign(entry, { plan, texture, object, mount, firstObject, firstMount, status: 'ready', reason: null })
+      Object.assign(entry, { plan, textures, object, mount, firstObject, firstMount, status: 'ready', reason: null })
+      retained = true
       this.refreshPose(); this.onChange(this.state())
     } catch (error) {
       if (object) disposeNativeHeldItemObject(object)
       if (firstObject) disposeNativeHeldItemObject(firstObject)
-      texture?.dispose(); texture?.image?.close?.()
       if (current()) { entry.status = 'unsupported'; entry.reason = error.message; this.onChange(this.state()) }
+    } finally {
+      if (!retained) for (const texture of textures.values()) { texture?.dispose(); texture?.image?.close?.() }
     }
   }
   armRotations(value, motion) {

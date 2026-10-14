@@ -723,7 +723,7 @@ export function createNativeInterface ({ document = globalThis.document,
     } else {
       menu.dataset.inventorySource = manualOpen ? 'manual' : 'idle'
       if (heading) heading.textContent = '本人背包'
-      if (source) source.textContent = manualOpen ? '玩家物品 · 只读' : '待机预览 · 只读'
+      if (source) source.textContent = manualOpen ? '玩家物品 · 只读' : '自动预览 · 只读'
       if (presentation.inventory) renderInventory(body, presentation.inventory)
       else body.append(node(document, 'p', 'corti-menu-note', '本人背包未同步；当前窗口无玩家槽映射'))
     }

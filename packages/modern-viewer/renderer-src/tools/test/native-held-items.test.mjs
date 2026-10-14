@@ -97,6 +97,69 @@ function extendStaticFixture(fixture, path, value, source = 'minecraft-1.21.1-cl
   fixture.reader.manifest.assets[path] = { sha256: sha(bytes), bytes: bytes.length, source }
 }
 
+function blockReader() {
+  const fixture = staticReader()
+  fixture.reader.manifest.sources = [{ name: 'minecraft-1.21.1-client.jar', sha256: HELD_ITEM_CLIENT_SHA256 }]
+  // Locked block/block, cube and cube_column geometry/display, including the
+  // log end texture. No GUI-facing cull is valid for a moving held model.
+  const names = ['down', 'up', 'north', 'south', 'west', 'east']
+  const models = {
+    'block/block': { gui_light: 'side', display: {
+      gui: { rotation: [30,225,0], scale: [.625,.625,.625] },
+      thirdperson_righthand: { rotation: [75,45,0], translation: [0,2.5,0], scale: [.375,.375,.375] },
+      firstperson_righthand: { rotation: [0,45,0], scale: [.4,.4,.4] },
+      firstperson_lefthand: { rotation: [0,225,0], scale: [.4,.4,.4] } } },
+    'block/cube': { parent: 'minecraft:block/block', elements: [{ from: [0,0,0], to: [16,16,16],
+      faces: Object.fromEntries(names.map(name => [name, { texture: `#${name}`, cullface: name }])) }] },
+    'block/cube_column': { parent: 'minecraft:block/cube', textures: Object.fromEntries(names.map(name =>
+      [name, ['up','down'].includes(name) ? '#end' : '#side'])) },
+    'block/oak_log': { parent: 'minecraft:block/cube_column', textures: { end: 'minecraft:block/oak_log_top', side: 'minecraft:block/oak_log' } },
+    'item/oak_log': { parent: 'minecraft:block/oak_log' }
+  }
+  for (const [path, model] of Object.entries(models)) extendStaticFixture(fixture, `assets/minecraft/models/${path}.json`, model)
+  for (const leaf of ['oak_log', 'oak_log_top']) extendStaticFixture(fixture, `assets/minecraft/textures/block/${leaf}.png`, png())
+  return fixture
+}
+
+test('held BlockItem keeps all original faces, multiple textures and hand display instead of a GUI image/cull', async () => {
+  const plan = await prepareNativeHeldItem(blockReader().reader, raw('minecraft:oak_log'), 'left', { readPixels: async () => pixels() })
+  assert.equal(plan.kind, 'native-block-held'); assert.equal(plan.faces.length, 6)
+  assert.deepEqual(plan.transform.rotation, [75,-45,-0]); assert.deepEqual(plan.firstPersonTransform.rotation, [0,-225,-0])
+  assert.equal(plan.firstPersonTransform.scale[0], Math.fround(.4))
+  assert.deepEqual([...plan.textureLayers.keys()].sort(), ['assets/minecraft/textures/block/oak_log.png', 'assets/minecraft/textures/block/oak_log_top.png'])
+  const textures = new Map([...plan.textureLayers].map(([path]) => [path, new THREE.Texture({width:16,height:16})]))
+  const object = buildNativeHeldItemObject(plan, textures)
+  assert.equal(object.children.length,6); assert.deepEqual(object.rotation.toArray().slice(0,3), [0,0,0])
+  const top = object.children.find(mesh => mesh.userData.nativeFace.direction === 'up')
+  const side = object.children.find(mesh => mesh.userData.nativeFace.direction === 'north')
+  assert.equal(top.material.uniforms.nativeTexture.value, textures.get('assets/minecraft/textures/block/oak_log_top.png'))
+  assert.equal(side.material.uniforms.nativeTexture.value, textures.get('assets/minecraft/textures/block/oak_log.png'))
+  assert.notEqual(top.material,side.material); assert.equal(plan.pixelParityVerified,false)
+  assert.equal(nativeFirstPersonSilhouetteProjection(plan,{fov:70,aspect:16/9,near:.05,far:150}).available,true)
+  disposeNativeHeldItemObject(object); for(const texture of textures.values())texture.dispose()
+})
+
+test('held blocks validate hidden faces, all texture bytes, opacity and complete component state', async () => {
+  const missing = blockReader(); delete missing.reader.manifest.assets['assets/minecraft/textures/block/oak_log.png']
+  await assert.rejects(prepareNativeHeldItem(missing.reader,raw('minecraft:oak_log'),'right',{readPixels:async()=>pixels()}),/MISSING|TEXTURE_LIMIT/)
+  const altered = blockReader(); altered.bytes['assets/minecraft/textures/block/oak_log_top.png'] = png(8,8)
+  await assert.rejects(prepareNativeHeldItem(altered.reader,raw('minecraft:oak_log'),'right',{readPixels:async()=>pixels()}),/HASH_MISMATCH/)
+  const translucent = pixels(); translucent.pixels[3]=254
+  await assert.rejects(prepareNativeHeldItem(blockReader().reader,raw('minecraft:oak_log'),'right',{readPixels:async()=>translucent}),/TRANSLUCENT/)
+  await assert.rejects(prepareNativeHeldItem(blockReader().reader,raw('minecraft:oak_log','"minecraft:custom_model_data":1'),'right'),/VISUAL_COMPONENT_UNSUPPORTED/)
+})
+
+test('held multi-texture blocks retire every texture on rebound, including an in-flight decode', async () => {
+  let finish, disposed = 0, loads = 0
+  const textures = Array.from({length:2},()=>new THREE.Texture({width:16,height:16}))
+  for(const texture of textures)texture.addEventListener('dispose',()=>disposed++)
+  const held = new NativeHeldItems(blockReader().reader,{uuid,playerObject:new PlayerObject(),readPixels:async()=>pixels(),
+    loadHeldTexture:()=> ++loads===1 ? Promise.resolve(textures[0]) : new Promise(resolve=>{finish=resolve})})
+  held.apply(frame(raw('minecraft:oak_log'))); await until(()=>typeof finish==='function')
+  held.apply(frame(null)); finish(textures[1]); await until(()=>disposed===2)
+  assert.equal(held.state().hands.right.status,'empty'); held.dispose(); assert.equal(disposed,2)
+})
+
 // A source-verifier test double, NOT authentic bytes: independent real-pack
 // verification remains an offline validation. The two contexts intentionally
 // have different bone rotations/mesh extents to catch a GUI/closed fallback.

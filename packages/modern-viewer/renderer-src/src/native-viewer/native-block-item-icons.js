@@ -113,9 +113,26 @@ export async function prepareNativeBlockGuiPlan(reader, { name, model, evidence,
     if (reader.manifest.assets[path]?.sha256 !== hash) throw Error(`NATIVE_BLOCK_ITEM_SHADER_UNSUPPORTED:${path}`)
     await reader.bytes(path) // Also enforces the manifest SHA and resource priority.
   }
+  const faces = bakeNativeBlockItemFaces(model)
+  if ((model.gui_light ?? 'side') !== 'side') throw Error('NATIVE_BLOCK_ITEM_FRONT_LIGHT_UNSUPPORTED')
+  const transform=nativeGuiItemTransform(model.display.gui)
+  const culling=nativeGuiFaceCulling(faces,transform)
+  const texturePaths = [...new Set(culling.visible.map(face => resourcePath(face.texture, 'textures', '.png')))]
+  if (texturePaths.length > 32) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_LIMIT')
+  for (const path of texturePaths) {
+    if (reader.manifest.assets[`${path}.mcmeta`]) throw Error('NATIVE_BLOCK_ITEM_ANIMATION_UNSUPPORTED')
+    const size = reader.manifest.assets[path]?.bytes
+    if (!Number.isSafeInteger(size) || size <= 0 || size > 16777216) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_LIMIT')
+  }
+  return { name, model, faces, renderFaces:culling.visible, culling, transform, texturePaths, evidence,
+    sourcePaths: [...new Set([...sourcePaths, ...model.sourcePaths, ...texturePaths, ...Object.keys(BLOCK_ICON_SHADER_HASHES)])] }
+}
+
+// Geometry checks shared by original GUI and held contexts. Camera-dependent
+// GUI culling/light/transform checks deliberately stay outside this function.
+export function bakeNativeBlockItemFaces(model) {
   if (model.nativeGenerated) throw Error('NATIVE_BLOCK_ITEM_GENERATED_PROVIDER_REQUIRED')
   if (!model.elements.length || model.elements.length > 128) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
-  if ((model.gui_light ?? 'side') !== 'side') throw Error('NATIVE_BLOCK_ITEM_FRONT_LIGHT_UNSUPPORTED')
   if (model.render_type !== undefined && !['solid','minecraft:solid'].includes(model.render_type)) throw Error('NATIVE_BLOCK_ITEM_RENDER_TYPE_UNSUPPORTED')
   if (model.elements.some(element => !record(element) || !record(element.faces) || Object.keys(element.faces).length > 6)) throw Error('NATIVE_BLOCK_ITEM_FACES_INVALID')
   for (const element of model.elements) {
@@ -129,17 +146,7 @@ export async function prepareNativeBlockGuiPlan(reader, { name, model, evidence,
   }
   const faces = bakeFaces(model)
   if (!faces.length || faces.length > 768) throw Error('NATIVE_BLOCK_ITEM_FACE_LIMIT')
-  const transform=nativeGuiItemTransform(model.display.gui)
-  const culling=nativeGuiFaceCulling(faces,transform)
-  const texturePaths = [...new Set(culling.visible.map(face => resourcePath(face.texture, 'textures', '.png')))]
-  if (texturePaths.length > 32) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_LIMIT')
-  for (const path of texturePaths) {
-    if (reader.manifest.assets[`${path}.mcmeta`]) throw Error('NATIVE_BLOCK_ITEM_ANIMATION_UNSUPPORTED')
-    const size = reader.manifest.assets[path]?.bytes
-    if (!Number.isSafeInteger(size) || size <= 0 || size > 16777216) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_LIMIT')
-  }
-  return { name, model, faces, renderFaces:culling.visible, culling, transform, texturePaths, evidence,
-    sourcePaths: [...new Set([...sourcePaths, ...model.sourcePaths, ...texturePaths, ...Object.keys(BLOCK_ICON_SHADER_HASHES)])] }
+  return faces
 }
 
 function material(texture) {
