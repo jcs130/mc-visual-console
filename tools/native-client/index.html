@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent 世界 · 真实客户端</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#091119;color:#e9f0f4;font:14px system-ui;height:100vh;overflow:hidden}main{height:100%;display:grid;grid-template-rows:auto 1fr}header{display:flex;align-items:center;gap:16px;padding:12px 18px;background:#14202a}header strong{font-size:16px}#status{color:#a9bbc8}a{color:#a9dfda;margin-left:auto}#stage{position:relative;min-height:0;display:grid;place-items:center}img{width:100%;height:100%;object-fit:contain}#warning{position:absolute;bottom:20px;padding:8px 16px;border-radius:8px;background:#18242de6;color:#ffce88}body.obs header{display:none}
+</style><main><header><strong>Agent 世界</strong><span id="status">连接真实客户端画面…</span><a href="/?obs=1">直播画面</a></header><section id="stage"><img id="frame" alt="同一 Agent 的真实 Minecraft 客户端画面"><span id="warning">等待画面</span></section></main>
+<script>
+if(new URLSearchParams(location.search).get('obs')==='1')document.body.classList.add('obs');
+const frame=document.querySelector('#frame'),status=document.querySelector('#status'),warning=document.querySelector('#warning');let previous;
+async function update(){let next;try{const response=await fetch('/native/frame',{cache:'no-store'});if(!response.ok)throw Error('客户端画面暂不可用');next=URL.createObjectURL(await response.blob());const image=new Image;image.src=next;await image.decode();frame.src=next;if(previous)URL.revokeObjectURL(previous);previous=next;next=null;warning.hidden=true;const state=await fetch('/native/status',{cache:'no-store'}).then(r=>r.json());status.textContent=`${state.username||'Agent'} · ${state.connected?'在线':'离线'} · 生命 ${state.health??'—'} · 饱食 ${state.food??'—'}`;}catch(error){warning.hidden=false;warning.textContent=error.message;}finally{if(next)URL.revokeObjectURL(next);setTimeout(update,350)}}update();
+</script></html>
