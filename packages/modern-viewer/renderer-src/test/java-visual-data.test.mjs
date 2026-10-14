@@ -72,3 +72,11 @@ test('native custom biome palette survives chunk serialization without guessing 
  assert.equal(c.getBiome({x:0,y:0,z:0}),1024);assert.deepEqual(json.agentMcBiomes.entries,[{id:1024,name:'test:highlands',colors}]);
  d.registry({...reg,registry:{...reg.registry,biomes:[{id:0,name:'test:highlands'}]}});assert.throws(()=>d.decodeChunk(column()),/UNSUPPORTED_BIOME/);
 });
+
+test('native opaque signed ARGB color maps retain RGB channels; transparent and oversized values are rejected',()=>{
+ const d=decoder();
+ const registry=colors=>({...reg,registry:{...reg.registry,biomes:[{id:0,name:'test:color_map',colors}]}});
+ d.registry(registry({grass:0xff123456|0,foliage:0xff654321|0,water:0x112233}));
+ assert.deepEqual(JSON.parse(d.decodeChunk(column()).chunk).agentMcBiomes.entries[0].colors,{grass:0x123456,foliage:0x654321,water:0x112233});
+ for(const grass of [0x1000000,0x80123456|0,NaN,0x100000000])assert.throws(()=>d.registry(registry({grass,foliage:0,water:0})),/BIOME_COLORS_INVALID/);
+});
