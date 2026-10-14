@@ -124,3 +124,20 @@ The dependency facts were checked from the installed **first-party library sourc
 The installed dependency directories are verification inputs and must not be committed. Re-run the corresponding source/protocol checks when dependency versions or Minecraft versions change.
 
 The follow-up [original common mob source audit](native-hostile-source-audit.md) records locked 1.21.1 geometry/UV/pivots, texture dimensions/hashes, actual animation formulas, source layer differences and class-specific metadata defaults for the practical hostile set.
+
+## Implementation follow-up (2026-10-15)
+
+The audit above describes the earlier source snapshot. The native integration now
+has the six shared camera modes, entity picking/following, actual mob-height cave
+cutaways, fourteen original hostile/golem actors and original item drops/pickup.
+`native-projectiles.js` adds original arrow/spectral-arrow quads, the original
+five-part trident, bobber sprite and XP atlas/threshold/color animation. The
+separate XP spawn retains the actual native ID/epoch/value without inventing a
+UUID. XP and item pickup use the received collect event and three actual connection
+ticks; only authoritative inventory/XP state can establish a gain.
+
+The projectile implementation is source/asset tested. Its original impact shake,
+trident foil, bobber hand/line endpoint and XP lightmap are still disclosed as
+unavailable; packet positions are interpolated without fabricating impacts or
+server flight. Browser rendering and sustained gameplay acceptance are separate
+from these offline tests. Audio and particle transport/actors remain active work.

@@ -135,7 +135,7 @@ async function start () {
             if (signature !== selfMotionSignature) { selfMotionSignature = signature; publishDiagnostics() }
           }
         }
-        entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{entityId:current.selfPlayer.entityId,position:current.pose})
+        entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{...current.selfPlayer,position:current.pose},camera)
         updatePlayerCamera(now)
         roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,height:observerTarget?.height??1.8,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
         if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)

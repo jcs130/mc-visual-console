@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { createNativeEntityActor } from './native-entity-dispatch.js'
 import { nativeContraptionGeometryKey } from './native-contraption.js'
+const identityKey=entity=>entity?.uuid??`native-id-spawn:${entity?.spawnedAt}`
 
 // One connection, one epoch, actual entity IDs. Rendering work may complete
 // after a disconnect; generation checks discard it instead of resurrecting it.
@@ -17,11 +18,11 @@ export class NativeEntityLayer {
     this.streamReason=null
     const entities=state.entities.filter(entity=>entity.entityId!==selfEntityId)
     this.data=new Map(entities.map(entity=>[entity.entityId,entity]))
-    for(const [id,uuid]of this.collected)if(this.data.get(id)?.uuid!==uuid)this.collected.delete(id)
+    for(const [id,identity]of this.collected)if(!this.data.has(id)||identityKey(this.data.get(id))!==identity)this.collected.delete(id)
     this.pending={entities,registries,generation:this.generation};void this.drain()
   }
   signature(entity,registries) {
-    return JSON.stringify([entity.uuid,entity.name,entity.metadata,entity.equipment,Boolean(entity.motion),entity.name==='minecraft:villager'?registries:null,
+    return JSON.stringify([identityKey(entity),entity.name,entity.experienceValue,entity.objectData,entity.metadata,entity.equipment,Boolean(entity.motion),entity.name==='minecraft:villager'?registries:null,
       entity.name==='touhou_little_maid:maid'?[entity.maidRenderState,entity.motion?.maid?.hurtTime>0,entity.motion?.maid?.hurtPending,entity.motion?.maid?.swingPending,entity.motion?.maid?.animationId,entity.motion?.maid?.swimAmount>0||entity.motion?.maid?.swimAmountOld>0]:null,
       entity.name.startsWith('create:')?nativeContraptionGeometryKey(entity):null])
   }
@@ -53,15 +54,15 @@ export class NativeEntityLayer {
     } finally {this.running=false}
   }
   async collect(value) {
-    if(this.disposed||value.source!=='received_native_collect_packet'||!Number.isSafeInteger(value.tick)||value.count<=0)return
-    const key=`${value.epoch}:${value.sequence}`,entity=value.entity,observed=entity?.itemState?.item
-    if(this.pickupSeen.has(key)||entity?.entityId!==value.collectedEntityId||!observed?.snbt||value.count>observed.count)return
+    if(this.disposed||value.source!=='received_native_collect_packet'||!Number.isSafeInteger(value.tick)||!Number.isSafeInteger(value.count)||value.count<0)return
+    const key=`${value.epoch}:${value.sequence}`,entity=value.entity,observed=entity?.itemState?.item,orb=entity?.name==='minecraft:experience_orb'
+    if(this.pickupSeen.has(key)||entity?.entityId!==value.collectedEntityId||(!orb&&(!observed?.snbt||value.count<=0||value.count>observed.count)))return
     this.pickupSeen.add(key);if(this.pickupSeen.size>48)this.pickupSeen.delete(this.pickupSeen.values().next().value)
-    if(value.count===observed.count)this.collected.set(entity.entityId,entity.uuid)
+    if(orb||value.count===observed.count)this.collected.set(entity.entityId,identityKey(entity))
     if(!value.target||!['x','y','z'].every(k=>Number.isFinite(value.target[k])))return
     while(this.pickups.size>=16){const first=this.pickups.keys().next().value;this.pickups.get(first).actor?.dispose();this.pickups.delete(first)}
-    const generation=this.generation,item={...observed,count:value.count,snbt:observed.snbt.replace(/,count:\d+/,`,count:${value.count}`)}
-    const row={actor:null,entity:{...entity,itemState:{...entity.itemState,item}},startTick:value.tick,start:{...entity.position},target:{...value.target},collectorEntityId:value.collectorEntityId,lastTargetTick:value.tick,oldTarget:{...value.target}}
+    const generation=this.generation,item=orb?null:{...observed,count:value.count,snbt:observed.snbt.replace(/,count:\d+/,`,count:${value.count}`)}
+    const row={actor:null,entity:orb?entity:{...entity,itemState:{...entity.itemState,item}},startTick:value.tick,start:{...entity.position},target:{...value.target},collectorEntityId:value.collectorEntityId,lastTargetTick:value.tick,oldTarget:{...value.target}}
     this.pickups.set(key,row)
     try {
       const actor=await this.createActor(this.reader,row.entity)
@@ -69,7 +70,7 @@ export class NativeEntityLayer {
       row.actor=actor;this.root.add(actor.root)
     }catch{if(this.pickups.get(key)===row)this.pickups.delete(key)}
   }
-  frame(now,clock=null,self=null) {
+  frame(now,clock=null,self=null,camera=null) {
     if(this.disposed)return
     this.clock=clock
     for(const [key,row]of this.pickups) {
@@ -88,13 +89,13 @@ export class NativeEntityLayer {
     for(const [id,row] of this.actors){
       const entity=this.data.get(id)
       if(!entity){row.actor.root.visible=false;continue}
-      try {row.actor.update(entity,now);if(this.collected.get(id)===entity.uuid)row.actor.root.visible=false} catch(error){
+      try {row.actor.update(entity,now,{self,entities:this.data,camera});if(this.collected.get(id)===identityKey(entity))row.actor.root.visible=false} catch(error){
         row.actor.dispose();this.actors.delete(id);this.failures.set(id,{key:row.key,name:entity.name,reason:error.message});this.onChange()
       }
     }
   }
   diagnostics() {
-    const motionIssues=[...this.actors.values()].flatMap(row=>[row.actor.root.userData.nativeContraption?.reason,...(row.actor.root.userData.nativeLiving?.issues??[])]).filter(Boolean)
+    const motionIssues=[...this.actors.values()].flatMap(row=>[row.actor.root.userData.nativeContraption?.reason,...(row.actor.root.userData.nativeLiving?.issues??[]),...(row.actor.root.userData.nativeProjectile?.issues??[])]).filter(Boolean)
     return {received:this.data.size,rendered:this.actors.size,droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
       issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
   }

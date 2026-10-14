@@ -2,6 +2,7 @@
 // Chicken.aiStep, Sheep.handleEntityEvent/aiStep and Slime.tick. Runs only on
 // the action connection's actual physicsTick; browser time never creates ticks.
 import { NATIVE_HOSTILE_TYPES, createNativeLivingAnimation } from './native-living-state.js'
+import { nativeProjectileType } from './native-projectile-state.js'
 const F=Math.fround, clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 const wrap=v=>((v+180)%360+360)%360-180
 const relative=(a,b,max)=>F(b-clamp(wrap(b-a),-max,max))
@@ -11,6 +12,7 @@ const types=new Set(NATIVE_MOB_TYPES)
 
 export function createNativeEntityMotion(entity) {
   if(entity?.name==='minecraft:item')return createNativeDroppedItemMotion(entity)
+  if(nativeProjectileType(entity?.name))return createNativeProjectileMotion(entity)
   if(!types.has(entity?.name))return null
   let position={...entity.position},yaw=entity.yaw,pitch=entity.pitch,headYaw=entity.headYaw,bodyYaw=yaw
   let target={...position},targetYaw=yaw,targetPitch=pitch,targetHead=headYaw,lerpSteps=0,headSteps=0
@@ -76,6 +78,17 @@ export function createNativeEntityMotion(entity) {
       return snapshot()
     },current:snapshot
   }
+}
+
+// Received projectile positions/angles are retained exactly; this interpolation
+// never extrapolates a server flight, impact or an in-ground/shake state.
+function createNativeProjectileMotion(entity) {
+  let position={...entity.position},yaw=entity.yaw,pitch=entity.pitch,tick=0,sampledAt=entity.spawnedAt
+  let previous={position:{...position},yaw,pitch}
+  const current=()=>({source:NATIVE_MOB_MOTION_SOURCE,tickMs:50,tick,sampledAt,position:{...position},yaw,pitch,previous:{...previous,position:{...previous.position}},
+    ageSource:'viewer_client_lifetime_not_server_age',flightPrediction:false})
+  return {observe(){},current,tick(next,now){if(!Number.isFinite(now)||now<sampledAt)throw Error('NATIVE_PROJECTILE_MOTION_CLOCK_INVALID')
+    previous={position:{...position},yaw,pitch};position={...next.position};yaw=next.yaw;pitch=next.pitch;sampledAt=now;tick++;return current()}}
 }
 
 // Item age/bobOffs are client fields, not synchronized server despawn age.

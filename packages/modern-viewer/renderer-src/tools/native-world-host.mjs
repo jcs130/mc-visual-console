@@ -204,7 +204,7 @@ export class NativeWorldState extends EventEmitter {
         }
         case 'tile_entity_data': this.setBlockEntity(p.location, p.nbtData ?? p.nbt); this.revision++; this.emit('world'); break
         case 'update_time': this.time = { age: longNumber(p.age), day: longNumber(p.time), receivedAt: this.now() }; this.emit('time'); break
-        case 'spawn_entity': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
+        case 'spawn_entity': case 'spawn_entity_experience_orb': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
         case 'rel_entity_move': case 'entity_move_look': case 'entity_look': case 'entity_teleport':
         case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'collect': case 'entity_effect': case 'remove_entity_effect':
           this.handleEntity(body); break
@@ -219,13 +219,24 @@ export class NativeWorldState extends EventEmitter {
       if(body.name==='collect') {
         if(![p.collectedEntityId,p.collectorEntityId,p.pickupItemCount].every(Number.isSafeInteger)||p.pickupItemCount<0)throw Error('NATIVE_ENTITY_COLLECT_INVALID')
         const entity=this.entities.get(p.collectedEntityId)
-        if(entity?.name==='minecraft:item')this.emit('collect',{sequence:body.sequence,observedAt:timestamp,
+        if(['minecraft:item','minecraft:experience_orb'].includes(entity?.name))this.emit('collect',{sequence:body.sequence,observedAt:timestamp,
           collectedEntityId:p.collectedEntityId,collectorEntityId:p.collectorEntityId,count:p.pickupItemCount,
           entity:{...entity,position:{...entity.position},velocity:{...entity.velocity},metadata:[...entity.metadata.values()],equipment:[],cues:[],
-            itemState:this.itemState(entity),motion:this.entityMotions.get(entity.entityId)?.current()??null}})
+            ...(entity.name==='minecraft:item'?{itemState:this.itemState(entity)}:{}),motion:this.entityMotions.get(entity.entityId)?.current()??null}})
       } else if (body.name === 'entity_destroy') {
         if (!Array.isArray(p.entityIds) || p.entityIds.length > ENTITY_LIMITS.tracked || !p.entityIds.every(Number.isSafeInteger)) throw Error('NATIVE_ENTITY_DESTROY_INVALID')
         for (const id of p.entityIds) this.removeEntity(id)
+      } else if (body.name === 'spawn_entity_experience_orb') {
+        if(!Number.isSafeInteger(p.entityId)||!finite(p)||!Number.isInteger(p.count)||p.count<=0||p.count>32767)throw Error('NATIVE_EXPERIENCE_SPAWN_INVALID')
+        const typeId=[...this.entityRegistry].find(([,name])=>name==='minecraft:experience_orb')?.[0]
+        if(typeId===undefined)throw Error('NATIVE_EXPERIENCE_REGISTRY_UNAVAILABLE')
+        if(!this.entities.has(p.entityId)&&this.entities.size>=ENTITY_LIMITS.tracked)throw Error('NATIVE_ENTITY_TRACKING_BUDGET_EXCEEDED')
+        this.removeEntity(p.entityId)
+        const entity={entityId:p.entityId,uuid:null,typeId,name:'minecraft:experience_orb',experienceValue:p.count,
+          position:{x:p.x,y:p.y,z:p.z},yaw:0,pitch:0,headYaw:0,onGround:null,velocity:{x:0,y:0,z:0},objectData:null,
+          metadata:new Map(),equipment:new Map(),effects:[],cues:[],spawnedAt:timestamp,updatedAt:timestamp,lastSequence:body.sequence,
+          identitySource:'native_entity_id_and_connection_epoch_no_wire_uuid'}
+        this.entities.set(p.entityId,entity);this.entityMotions.set(p.entityId,createNativeEntityMotion(entity))
       } else if (body.name === 'spawn_entity') {
         if (!Number.isSafeInteger(p.entityId) || !UUID.test(p.objectUUID || '') || !Number.isSafeInteger(p.type) || !this.entityRegistry.has(p.type) || !finite(p)) throw Error('NATIVE_ENTITY_SPAWN_INVALID')
         if (!this.entities.has(p.entityId) && this.entities.size >= ENTITY_LIMITS.tracked) throw Error('NATIVE_ENTITY_TRACKING_BUDGET_EXCEEDED')

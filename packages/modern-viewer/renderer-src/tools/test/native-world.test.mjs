@@ -57,6 +57,19 @@ function entityFixture (extraRegistry = '',resolveItemStack=null) {
   return { world, packet, spawn, registryBytes, entityRegistrySha256 }
 }
 
+test('separate native XP spawn preserves value and ID/epoch, with no synthesized UUID or item stack',()=>{
+  const {world,packet}=entityFixture('minecraft:experience_orb\t7\n')
+  packet('spawn_entity_experience_orb',{entityId:45,x:1.5,y:64,z:3.5,count:37})
+  const e=world.entitySnapshot().entities[0]
+  assert.equal(e.name,'minecraft:experience_orb');assert.equal(e.experienceValue,37);assert.equal(e.uuid,null)
+  assert.equal(e.identitySource,'native_entity_id_and_connection_epoch_no_wire_uuid');assert.equal(e.motion.tick,0)
+  world.tickEntities();assert.equal(world.entitySnapshot().entities[0].motion.tick,1)
+  let pickup;world.once('collect',e=>{pickup=e})
+  packet('collect',{collectedEntityId:45,collectorEntityId:1,pickupItemCount:0})
+  assert.equal(pickup.entity.experienceValue,37);assert.equal(pickup.entity.itemState,undefined)
+  packet('entity_destroy',{entityIds:[45]});assert.equal(world.entitySnapshot().entities.length,0)
+})
+
 test('actual hurt and TLM animation cues only attach to already received identities', () => {
   const { world, packet, spawn } = entityFixture('touhou_little_maid:maid\t131\n')
   packet('maid_animation', { entityId: 99, animationId: 1, sourceChannel: 'touhou_little_maid:maid_animation' })

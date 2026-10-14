@@ -8,6 +8,7 @@ import { createNativeMaidActor, nativeMaidRenderState } from './native-entity-di
 import { createNativeContraptionActor, nativeContraptionState } from './native-contraption.js'
 import { createNativeWandscapeActor, nativeWandscapeRenderState, WANDSCAPE_NPC } from './native-entity-dispatch-wandscape.js'
 import { createNativeDroppedItemActor } from './native-dropped-items.js'
+import { createNativeProjectileActor,nativeProjectileType } from './native-projectiles.js'
 import { createNativeHostileActor } from './native-hostile-actors.js'
 import { NATIVE_HOSTILE_TYPES,nativeHostileType,nativeHostileState } from './native-living-state.js'
 import { nativeHostileModelDefinition } from './native-hostile-models.js'
@@ -97,6 +98,7 @@ export async function createNativeEntityActor(reader,entity,{registries,loadText
   if(!(reader instanceof NativeAssetReader)||reader.manifest.clientJarSha256!==ENTITY_MODEL_CLIENT_SHA256)throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(!nativeClientSourceVerified(reader.manifest,ENTITY_MODEL_CLIENT_SHA256))throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(entity?.name==='minecraft:item')return createNativeDroppedItemActor(reader,entity,{loadTexture})
+  if(nativeProjectileType(entity?.name))return createNativeProjectileActor(reader,entity,{loadTexture})
   if(nativeHostileType(entity?.name))return createNativeHostileActor(reader,entity,{loadTexture})
   if(entity?.name==='touhou_little_maid:maid')return createNativeMaidActor(reader,entity,{loadTexture})
   if(entity?.name===WANDSCAPE_NPC)return createNativeWandscapeActor(reader,entity,{loadTexture})
