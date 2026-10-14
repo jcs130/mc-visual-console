@@ -542,6 +542,7 @@ export function createNativeInterface ({ document = globalThis.document,
     const showWindow = window && dismissedMenu !== windowKey
     const visible = Boolean(showWindow || manualOpen || idleOpen)
     menu.hidden = !visible
+    menu.dataset.windowId = String(showWindow ? window.windowId : presentation.inventory?.windowId ?? 0)
     if (!visible) { preview?.setVisible(false); lastMenuSignature = null; return }
     const signature = JSON.stringify([showWindow ? window : presentation.inventory, presentation.modOperations, manualOpen, idleOpen, assetsSequence])
     if (signature === lastMenuSignature) return

@@ -128,6 +128,8 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
       kind = 'inventory'; detail = `槽位 ${Number.isSafeInteger(data.slot) ? data.slot : '?'} · ${data.mouseButton === 1 ? '右键' : '左键'}`;
     } else return; // Especially never record chat, /login, command text or NBT.
     r.operations.push({ id: ++operationId, kind, button: kind === 'attack' || kind === 'gather' ? 'left' : kind === 'inventory' && data.mouseButton !== 1 ? 'left' : 'right',
+      ...(kind === 'inventory' ? { slot: Number.isSafeInteger(data.slot) ? data.slot : null,
+        windowId: Number.isSafeInteger(data.windowId) ? data.windowId : null } : {}),
       detail, target, from: visualPoint(bot.entity.position), until: now() + 1800 });
     r.operations = r.operations.slice(-6);
   });

@@ -614,6 +614,13 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         currentTitle = { title: null, subtitle: null, ...currentTitle, fadeIn, stay, fadeOut, seq: ++messageSequence, observedAt: now() }
       }
       const titleClear = () => { currentTitle = null }
+      const presentationChanged = () => {
+        if (closed || connectionEnded || world.error) return
+        const player = selfPlayer()
+        if (!player) return
+        const value = { type: 'presentation', epoch: world.epoch, playerUuid: player.uuid, presentation: presentation(player) }
+        for (const client of clients) if (!client.needsSnapshot) sendNativeWorldEvent(client, value)
+      }
       world.on('world', worldChanged); world.on('reset', reset); world.on('pose', pose); world.on('unavailable', unavailable)
       bot.on('error', error); bot.on('kicked', kicked); bot.on('end', ended)
       bot.on('login', verifyIdentity); bot.on('spawn', verifyIdentity)
@@ -621,6 +628,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       bot._client.on('position', motionTeleport)
       bot.on('messagestr', message); bot.on('title', title); bot.on('title_times', titleTimes); bot.on('title_clear', titleClear)
       bot._client.on('player_info', playerInfo)
+      nativeStream.events.on('presentation', presentationChanged)
       const timer = setInterval(() => {
         if (closed || !clients.size) return
         try {
@@ -678,6 +686,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           bot._client.off('position', motionTeleport)
           bot.off('messagestr', message); bot.off('title', title); bot.off('title_times', titleTimes); bot.off('title_clear', titleClear)
           bot._client.off('player_info', playerInfo)
+          nativeStream.events.off('presentation', presentationChanged)
           for (const client of clients) client.response.end()
           clients.clear()
           // Both the action bot and native packet stream belong to the caller.

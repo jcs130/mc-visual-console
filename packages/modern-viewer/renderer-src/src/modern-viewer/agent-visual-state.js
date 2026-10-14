@@ -34,6 +34,8 @@ export class AgentVisualState {
     const operations = Array.isArray(input.operations) ? input.operations.slice(-6).flatMap(row => {
       if (!row || !['attack', 'gather', 'interact', 'inventory'].includes(row.kind) || !Number.isSafeInteger(row.id)) return [];
       return [expires({ id: row.id, kind: row.kind, button: row.button === 'left' ? 'left' : 'right',
+        ...(row.kind === 'inventory' && Number.isSafeInteger(row.slot) && row.slot >= 0 && row.slot < 256 &&
+          Number.isSafeInteger(row.windowId) && row.windowId >= 0 && row.windowId <= 255 ? { slot: row.slot, windowId: row.windowId } : {}),
         detail: visualText(row.detail, 100), from: visualPoint(row.from), target: visualPoint(row.target) }, row, 1800)];
     }) : [];
     let presentation = null;

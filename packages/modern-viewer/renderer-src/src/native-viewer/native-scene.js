@@ -31,6 +31,7 @@ let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
 let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null
 const visualListeners = new Map()
+let lastInventoryOperation = null
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
   off(event, callback) { visualListeners.get(event)?.delete(callback) },
   emit(event, value) { for (const callback of visualListeners.get(event) || []) callback(value) } }
@@ -160,7 +161,16 @@ async function start () {
     try {
       const event = session.receive(JSON.parse(message.data)), value = event.value
       if (event.kind === 'ignored') return
-      if (event.kind === 'agent_visual') { visualPort.emit(value.event, value.value); return }
+      if (event.kind === 'agent_visual') {
+        visualPort.emit(value.event, value.value)
+        const operation = value.value?.input?.operations?.findLast(row => row.kind === 'inventory' && row.windowId === 0)
+        const key = operation && `${value.value.epoch}:${operation.id}`
+        if (key && key !== lastInventoryOperation) {
+          lastInventoryOperation = key
+          onState({ type: 'inventoryPreview', playerUuid: value.value.subject.playerUuid, open: true, ttlMs: 1800 })
+        }
+        return
+      }
       if (event.kind === 'identity') {
         if (event.reset) clearScene()
         visualPort.emit('viewerSession', { mode: 'self', attached: value.confirmed === true, playerUuid: value.playerUuid,
@@ -181,6 +191,8 @@ async function start () {
       } else if (value.type === 'motion' && current && value.epoch === epoch) {
         selfActor?.applyHandAnimation?.(value.handAnimation)
         current.pose = value.pose; current.motion = value.motion; return
+      } else if (value.type === 'presentation' && current && value.epoch === epoch) {
+        current.presentation = value.presentation; selfActor?.applyHeldItems?.(value.presentation); onState(value); return
       } else return
       onState(value); void ensureSelfActor(current.selfPlayer)
       entityLayer.stage(current.entityState,{selfEntityId:current.selfPlayer?.entityId,playerUuid})

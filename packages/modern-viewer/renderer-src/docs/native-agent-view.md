@@ -20,6 +20,15 @@ The native player renders original held-item models/skin arms and supported
 first/third-person swings, including while moving. Animation state expires and
 clears on spawn, respawn, disconnect and identity changes.
 
+The vanilla adapter carries the actual Mineflayer `currentWindow`, its server
+state ID, complete native slot stacks, cursor stack and received furnace
+properties. Crafting/chest/furnace windows reuse the existing original GUI
+renderers. Player inventory retains its 2×2 crafting/output/equipment layout.
+Actual inventory-0 clicks briefly expand that read-only view; slot pointers
+are bound to the real clicked window ID and slot. Packet changes publish
+coalesced presentation updates without waiting for a world snapshot. Reused
+window IDs require new server state.
+
 Transforms are ported from the locked original 1.21.1 client
 `ItemInHandRenderer` and `HumanoidModel`, with the existing float/LUT math:
 client SHA256 `499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99`;
