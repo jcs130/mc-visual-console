@@ -194,7 +194,7 @@ export function disposeNativeBlockItemObject(group) {
   for (const value of materials) value.dispose()
 }
 
-async function loadOpaqueTexture(bytes) {
+async function loadOpaqueTexture(bytes, cutout = false) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }))
   let texture
   try {
@@ -206,7 +206,7 @@ async function loadOpaqueTexture(bytes) {
     if (!context) throw Error('NATIVE_BLOCK_ITEM_OPACITY_UNAVAILABLE')
     context.drawImage(texture.image, 0, 0)
     const pixels = context.getImageData(0, 0, width, height).data
-    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] !== 255) throw Error('NATIVE_BLOCK_ITEM_TRANSLUCENT_TEXTURE_UNSUPPORTED')
+    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] !== 255 && !(cutout && pixels[i] === 0)) throw Error('NATIVE_BLOCK_ITEM_TRANSLUCENT_TEXTURE_UNSUPPORTED')
     // Minecraft samples the PNG's stored RGB directly in light.glsl. A Three
     // sRGB-to-linear/tone-mapping round trip would change that GUI shade rule.
     texture.colorSpace = THREE.NoColorSpace; texture.magFilter = THREE.NearestFilter
@@ -214,6 +214,10 @@ async function loadOpaqueTexture(bytes) {
     return texture
   } catch (error) { texture?.dispose(); throw error } finally { URL.revokeObjectURL(url) }
 }
+
+// Only audited original cutout providers opt in; ordinary JSON icons retain
+// their existing opaque-material guard. Fractional alpha is still unavailable.
+export const loadNativeCutoutItemTexture = bytes => loadOpaqueTexture(bytes, true)
 
 const createRenderer = () => {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, preserveDrawingBuffer: true })
@@ -248,6 +252,7 @@ export class NativeBlockItemIconRenderer {
         const texture = await this.loadTexture(bytes); textures.set(path, texture); ensureOpen()
         const { width, height } = texture.image ?? {}
         if (![width, height].every(n => Number.isInteger(n) && n > 0 && n <= 2048)) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_DIMENSIONS_UNSUPPORTED')
+        if (plan.textureDimensions && (width !== plan.textureDimensions[0] || height !== plan.textureDimensions[1])) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_DIMENSIONS_UNSUPPORTED')
         pixels += width * height
         if (pixels > 4194304) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_PIXEL_LIMIT')
       }

@@ -1,11 +1,12 @@
 import { resourcePath, textureId } from './model-loader.js'
-import { NativeBlockItemIconRenderer, nativeBlockItemEligible, resolveNativeBlockItemModel, nativeGuiItemTransform } from './native-block-item-icons.js'
+import { NativeBlockItemIconRenderer, nativeBlockItemEligible, resolveNativeBlockItemModel, nativeGuiItemTransform, loadNativeCutoutItemTexture } from './native-block-item-icons.js'
 import { parseNativeItemStack } from './native-item-stack.js'
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
 import { nativeArsItemEligible, NativeArsItemIconRenderer } from './native-ars-item-icons.js'
 import { nativeStaticItemState, verifyNativeStaticItemEvidence } from './native-static-item-providers.js'
 import { nativeDomumItemEligible, nativeDomumItemState, NativeDomumItemIconRenderer } from './native-domum-item-icons.js'
 import { nativeSoulSlabEligible, nativeSoulSlabState, prepareNativeSoulSlabIcon } from './native-soul-slab-icons.js'
+import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 
 export function nativeItemIconEligible(item) {
   try {
@@ -29,13 +30,14 @@ export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {
 }
 
 export class NativeItemIcons {
-  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {} } = {}) {
+  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
     this.animationEpochMs = Date.now()
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
     this.arsRenderer = new NativeArsItemIconRenderer(reader, arsRendererOptions)
     this.domumRenderer = new NativeDomumItemIconRenderer(reader, domumRendererOptions)
+    this.chestRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeChestItemIcon,loadTexture:loadNativeCutoutItemTexture,...chestRendererOptions})
   }
   resolve(item) {
     if (this.disposed) return null
@@ -114,6 +116,12 @@ export class NativeItemIcons {
         return
       }
       const evidence = entry.provider === 'static' ? verifyNativeStaticItemEvidence(this.reader,name) : null
+      if(evidence?.kind==='chest') {
+        const {blob,...info}=await this.chestRenderer.render(name)
+        if(this.disposed)return
+        entry.result={verified:true,url:this.createUrl(blob),sourcePath:info.sourcePaths.find(path=>path.includes('/models/item/')),...info}
+        entry.reason=null;return
+      }
       const blockModel = nativeBlockItemEligible(name) ? await resolveNativeBlockItemModel(this.reader,name.replace(':',':item/')) : null
       if (blockModel && !blockModel.nativeGenerated) {
         const { blob, ...info } = await this.blockRenderer.render(name)
@@ -145,6 +153,7 @@ export class NativeItemIcons {
     this.blockRenderer.dispose()
     this.arsRenderer.dispose()
     this.domumRenderer.dispose()
+    this.chestRenderer.dispose()
     for (const entry of this.entries.values()) if (entry.result) this.revokeUrl(entry.result.url)
     this.entries.clear()
   }

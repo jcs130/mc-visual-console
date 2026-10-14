@@ -56,6 +56,10 @@ source of original client pixels or mod rendering code.
   click or predicted output must not be promoted to a verified item gain.
   Completion evidence belongs in a separate task receipt plus authoritative
   inventory reconciliation.
+- During a container/workbench operation, material staging is not a loss.
+  Reconciliation retains the previous complete own-inventory baseline until
+  the window closes and a complete server window-0 snapshot arrives. A pending
+  note replaces transient recipe deficits; no snapshot means pending evidence.
 - Furnace/blast-furnace/smoker property IDs **0–3** give remaining fuel, total
   fuel, cooking time and total cooking time. All four are required for a known
   progress display; an absent update must not become invented zero progress.
@@ -113,3 +117,13 @@ transitions, full camera bob, bow/crossbow/trident use and complete Java pixel
 parity remain separate unsupported branches; a sent use is not consumption
 success. Item icons use a bounded 128-entry LRU rather than permanently refusing
 new stacks after a long session.
+
+Ordinary, trapped and ender chest item icons now port the locked client's
+`ChestRenderer.createSingleBodyLayer` and `ModelPart.Cube` geometry/UV, using
+the original 64×64 entity textures and inherited item GUI transforms. The
+no-level item instance is single, south-facing and closed. The original
+December 24–26 material switch applies to ordinary/trapped chests; ender chest
+retains its own material. This provider verifies the original client/source,
+model/shader/texture chain and rejects custom visual components or unsupported
+models instead of using a flat replacement. Placed lid animation, full native
+equipment and Java pixel parity require their own acceptance.

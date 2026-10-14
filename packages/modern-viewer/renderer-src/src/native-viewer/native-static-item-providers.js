@@ -234,6 +234,9 @@ ender_pearl
 add('minecraft','flat','net.minecraft.world.item.SpectralArrowItem',`
 spectral_arrow
 `)
+// BlockEntityWithoutLevelRenderer uses the original closed single chest model,
+// not JSON block elements. Keep this provider separate from JSON BlockItems.
+add('minecraft','chest','net.minecraft.world.item.BlockItem',`chest trapped_chest ender_chest`)
 export const NATIVE_STATIC_ITEM_NAMES = Object.freeze([...table.keys()])
 export const NATIVE_STATIC_BLOCK_ITEM_NAMES = Object.freeze([...table].filter(([,e])=>e.kind==='json').map(([id])=>id))
 export const nativeStaticItemEvidence = name => table.get(name) ?? null
