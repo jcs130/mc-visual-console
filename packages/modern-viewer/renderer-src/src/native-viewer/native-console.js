@@ -90,6 +90,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     .viewer-camera-settings{right:112px}.viewer-toolbar .viewer-camera-settings{right:auto}
     .native-target-panel{position:fixed;z-index:7;right:14px;top:94px;padding:6px 10px;background:#11242ce8;border:1px solid #aec3b4;border-radius:7px;font:11px/1.5 system-ui;max-width:300px}
     .native-target-panel select{display:block;width:100%;margin:6px 0}.native-target-panel output{display:block;max-width:280px;overflow-wrap:anywhere}
+    .dungeon-camera-controls[hidden]{display:none!important}
     @media(max-width:720px){.native-agent-status{top:55px;font-size:10px;gap:1px 6px}.native-agent-field:has(#agent-decision-at){display:none}}
   `
   const ui = createInterface({ document })
@@ -145,6 +146,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current')
     }
     const crosshair = q('.corti-crosshair'); if (crosshair) crosshair.hidden = mode !== 'first'
+    const dungeonNav=q('.dungeon-camera-controls');if(dungeonNav)dungeonNav.hidden=mode!=='dungeon'
     updateDiagnosticText()
   }
   for (const link of document.querySelectorAll('[data-view]')) listen(link, 'click', event => {

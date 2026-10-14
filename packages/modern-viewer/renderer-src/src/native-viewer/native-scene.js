@@ -40,6 +40,7 @@ let director, cameraOptions=normalizeCameraSettings(cameraSettings??{version:1,m
 let terrainRaycast=()=>[],selectedEntity=null,pointerStart=null,lastCollision=null
 const roomVisibility=createNativeRoomVisibility()
 let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
+let observerPose=null,observerTarget=null
 const visualListeners = new Map()
 let lastInventoryOperation = null
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
@@ -136,7 +137,7 @@ async function start () {
         }
         entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{entityId:current.selfPlayer.entityId,position:current.pose})
         updatePlayerCamera(now)
-        roomStatus=roomVisibility.update({camera,pose:current.pose,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
+        roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
         if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
         // is a freshness guard, never substituted for its absolute phase.
@@ -234,24 +235,29 @@ function orbitPosition () {
 function setView (mode) {
   if (!['third', 'first', 'region', 'dungeon'].includes(mode) || disposed) return
   viewMode = mode; cameraDistance = null; cameraCollisionAt = 0
+  if(mode==='first'&&selectedEntity)selectTarget(null)
   director?.reset();cameraFrame=null
   camera.fov = mode === 'dungeon' ? 48 : 70; camera.updateProjectionMatrix()
   controls.enabled = mode === 'region'||mode==='third'&&cameraOptions.mode==='manual'; if (controls.enabled) orbitPosition()
   viewport.dataset.view = mode; onMode(mode)
 }
 function updatePlayerCamera (now) {
+  observerTarget=nativeCameraTarget(current,selfActor);observerPose=current.pose
+  if(selectedEntity){
+    const entity=entityLayer.data.get(selectedEntity.id),actor=entityLayer.actors.get(selectedEntity.id)?.actor
+    // Actor rebuilds are asynchronous. Keep selection through a metadata/skin
+    // rebuild; only actual removal or a new UUID retires the selected target.
+    if(entity?.uuid!==selectedEntity.uuid)selectTarget(null)
+    else if(actor){
+      const box=new THREE.Box3().setFromObject(actor.root),height=box.max.y-box.min.y,p=actor.root.position
+      observerTarget={key:`${entity.uuid}:${entity.entityId}:${epoch}`,position:{x:p.x,y:p.y,z:p.z},yaw:Math.PI-(entity.motion?.bodyYaw??entity.yaw)*Math.PI/180,height:Number.isFinite(height)&&height>0?height:1.8}
+      observerPose={...current.pose,...observerTarget.position,yaw:observerTarget.yaw}
+    }
+  }
   if (viewMode === 'region'||viewMode==='third'&&cameraOptions.mode==='manual'&&!director.shot) { controls.enabled=true;controls.update();cameraFrame={mode:'manual'};return }
   controls.enabled=false
   if(viewMode==='third') {
-    let target=nativeCameraTarget(current,selfActor)
-    if(selectedEntity){
-      const entity=entityLayer.data.get(selectedEntity.id),actor=entityLayer.actors.get(selectedEntity.id)?.actor
-      if(entity?.uuid===selectedEntity.uuid&&actor?.root.visible){
-        const box=new THREE.Box3().setFromObject(actor.root),height=box.max.y-box.min.y,p=actor.root.position
-        target={key:`${entity.uuid}:${entity.entityId}:${epoch}`,position:{x:p.x,y:p.y,z:p.z},yaw:Math.PI-(entity.motion?.bodyYaw??entity.yaw)*Math.PI/180,height:Number.isFinite(height)&&height>0?height:1.8}
-      }else selectTarget(null)
-    }
-    const pose=director.update(target,cameraOptions,now,{aspect:camera.aspect,
+    const pose=director.update(observerTarget,cameraOptions,now,{aspect:camera.aspect,
       collisionDistance:(focus,direction,distance,options)=>{
         const signature=JSON.stringify([focus.x,focus.y,focus.z,direction.x,direction.y,direction.z,distance,current.revision])
         if(!lastCollision||now-lastCollision.at>60||lastCollision.signature!==signature){
@@ -262,9 +268,9 @@ function updatePlayerCamera (now) {
       }})
     if(pose){camera.position.copy(pose.position);camera.lookAt(pose.focus.x,pose.focus.y,pose.focus.z);camera.fov=pose.fov;camera.updateProjectionMatrix();cameraDistance=pose.distance;cameraFrame=pose;return}
   }
-  const view = playerCamera(current.pose, viewMode)
+  const view = playerCamera(observerPose, viewMode)
   if(viewMode==='dungeon'){
-    const {yaw,pitch,distance}=dungeonCamera,p=current.pose
+    const {yaw,pitch,distance}=dungeonCamera,p=observerPose
     view.position=[p.x+Math.sin(yaw)*Math.cos(pitch)*distance,p.y+1-Math.sin(pitch)*distance,p.z+Math.cos(yaw)*Math.cos(pitch)*distance]
   }
   const target = new THREE.Vector3().fromArray(view.target), desired = new THREE.Vector3().fromArray(view.position)
@@ -312,9 +318,11 @@ function publishFrame(now) {
   const p = current?.pose
   let label = { visible: false, x: 0, y: 0, name: player }
   if (p && selfActor?.root.visible && viewMode !== 'first') {
-    labelPoint.set(p.x, p.y + 2.1, p.z).project(camera)
+    const point=selectedEntity?observerTarget?.position:p,height=selectedEntity?(observerTarget?.height??1.8)+.2:2.1
+    if(selectedEntity)label.name=entityLayer.data.get(selectedEntity.id)?.name
+    labelPoint.set(point.x, point.y + height, point.z).project(camera)
     label = { visible: labelPoint.z >= -1 && labelPoint.z <= 1 && Math.abs(labelPoint.x) <= 1 && Math.abs(labelPoint.y) <= 1,
-      x: (labelPoint.x + 1) * viewport.clientWidth / 2, y: (1 - labelPoint.y) * viewport.clientHeight / 2, name: player }
+      x: (labelPoint.x + 1) * viewport.clientWidth / 2, y: (1 - labelPoint.y) * viewport.clientHeight / 2, name: label.name }
   }
   onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label,camera:cameraFrame,room:roomStatus,
     selectedEntity,entities:[...(entityLayer?.data.values()??[])].slice(0,64).map(e=>({id:e.entityId,uuid:e.uuid,name:e.name,rendered:entityLayer.actors.has(e.entityId)})) })
