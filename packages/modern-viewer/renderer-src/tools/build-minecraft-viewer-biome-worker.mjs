@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { readFile, stat } from 'node:fs/promises'
 import { runInNewContext } from 'node:vm'
 import path from 'node:path'
+import {fileURLToPath} from 'node:url'
 
 const GRASS = {
   temperate: 0x91bd67, forest: 0x7db365, jungle: 0x61b85d, arid: 0xb9bf78,
@@ -53,6 +54,24 @@ export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDa
     banner: { js: 'globalThis.global = globalThis; globalThis.process = {env: {}, versions: {}};' },
     plugins: [
       { name: 'cortico-1.20.6-biome-tints', setup(context) {
+        const nativeModule=JSON.stringify(fileURLToPath(new URL('./native-biome-worker.mjs',import.meta.url)))
+        context.onLoad({filter:/[\\/]mesher-shared[\\/]world\.ts$/},async ({path:file})=>{
+          const source=(await readFile(file,'utf8')).replaceAll('\r\n','\n')
+          const anchor='    const chunk = this.Chunk.fromJson(json)'
+          if(!source.includes(anchor))throw Error('Native biome world anchor missing')
+          return {loader:'ts',contents:'import {installNativeBiomes,resetNativeBiomes} from '+nativeModule+';\n'+source
+            .replace('this.biomeCache = mcData(version).biomes','resetNativeBiomes(); this.biomeCache = mcData(version).biomes')
+            .replace(anchor,'    this.biomeCache = installNativeBiomes(json,this.biomeCache)\n'+anchor)}
+        })
+        context.onLoad({filter:/[\\/]mesher-shared[\\/]models\.ts$/},async ({path:file})=>{
+          let source=await readFile(file,'utf8')
+          for(const kind of ['water','grass','foliage']) {
+            const anchor='tints.'+kind+'[biome]'
+            if(!source.includes(anchor))throw Error('Native biome tint anchor missing '+kind)
+            source=source.replaceAll(anchor,'(nativeBiomeTint('+JSON.stringify(kind)+',biome) ?? '+anchor+')')
+          }
+          return {loader:'ts',contents:'import {nativeBiomeTint} from '+nativeModule+';\n'+source}
+        })
         context.onResolve({ filter: /^minecraft-data$/ }, () => ({ path: minecraftDataAlias }))
         context.onResolve({ filter: /^esbuild-data$/ }, () => ({ path: 'biome-tints', namespace: 'cortico' }))
         context.onLoad({ filter: /^biome-tints$/, namespace: 'cortico' }, () => ({ contents: tintsModule, loader: 'js' }))

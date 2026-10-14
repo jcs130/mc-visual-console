@@ -14,7 +14,7 @@ export const javaPitch = degrees => -degrees * Math.PI / 180;
 /** Explicit native-state to vanilla-renderer registry. Unknown mod content is never replaced. */
 export class JavaVisualData {
   constructor({ uuid, server, skinUrl = () => null }) { this.uuid = uuid.toLowerCase(); this.server = server.toLowerCase().replace(/:25565$/,''); this.skinUrl = skinUrl; this.clear(); }
-  clear() { this.epoch = null; this.sequence = -1; this.blocks = null; this.biomes = null; this.columns = new Map(); this.entities = new Map(); this.frame = null; }
+  clear() { this.epoch = null; this.sequence = -1; this.blocks = null; this.biomes = null; this.nativeBiomes = new Map(); this.columns = new Map(); this.entities = new Map(); this.frame = null; }
   verify(value, epoch = false) {
     requireValue(value?.protocol === 'agent-mc-visual/v1' && value.minecraftVersion === '1.20.6', 'VERSION_MISMATCH');
     requireValue(value.uuid?.toLowerCase() === this.uuid && value.server?.toLowerCase().replace(/:25565$/,'') === this.server, 'IDENTITY_MISMATCH');
@@ -24,7 +24,7 @@ export class JavaVisualData {
   registry(value) {
     this.verify(value); const { blocks, biomes } = value.registry ?? {};
     requireValue(Array.isArray(blocks) && blocks.length > 0 && blocks.length <= 131072 && Array.isArray(biomes) && biomes.length <= 4096,'REGISTRY_INVALID');
-    const states = new Map(), biomeIds = new Map(), vanillaStates = new Map();
+    const states = new Map(), biomeIds = new Map(), nativeBiomes = new Map(), vanillaStates = new Map();
     for (const block of mc.blocksArray) for (let id=block.minStateId;id<=block.maxStateId;id++) vanillaStates.set(block.name+canonical(Block.fromStateId(id,0).getProperties()),id);
     for(const row of blocks) {
       requireValue(integer(row.id,0,131071) && typeof row.name === 'string' && row.properties && !states.has(row.id),'STATE_INVALID');
@@ -36,9 +36,16 @@ export class JavaVisualData {
     }
     for(const row of biomes) {
       requireValue(integer(row.id,0,4095) && !biomeIds.has(row.id),'BIOME_INVALID');
-      biomeIds.set(row.id,identifier.test(row.name) ? mc.biomesByName[row.name.slice(10)]?.id ?? null : null);
+      let mapped = identifier.test(row.name) ? mc.biomesByName[row.name.slice(10)]?.id ?? null : null;
+      if (row.colors) {
+        requireValue(typeof row.name === 'string' && /^[a-z0-9_.-]+:[a-z0-9_./-]{1,128}$/.test(row.name)
+          && ['grass','foliage','water'].every(k=>integer(row.colors[k],0,0xffffff)), 'BIOME_COLORS_INVALID');
+        mapped ??= 1024+row.id;
+        nativeBiomes.set(mapped,{id:mapped,name:row.name,colors:row.colors});
+      }
+      biomeIds.set(row.id,mapped);
     }
-    this.clear(); this.epoch = value.epoch; this.blocks = states; this.biomes = biomeIds;
+    this.clear(); this.epoch = value.epoch; this.blocks = states; this.biomes = biomeIds; this.nativeBiomes = nativeBiomes;
   }
   decodeChunk(value) {
     this.verify(value,true); requireValue(this.blocks && integer(value.x,-1875000,1875000) && integer(value.z,-1875000,1875000)
@@ -49,6 +56,7 @@ export class JavaVisualData {
     raw.maxBitsPerBlock = Math.ceil(Math.log2([...this.blocks.keys()].reduce((a,b)=>Math.max(a,b),0)+1));
     raw.maxBitsPerBiome = Math.ceil(Math.log2([...this.biomes.keys()].reduce((a,b)=>Math.max(a,b),0)+1));
     raw.load(Buffer.from(value.sections,'base64'));
+    const usedBiomes = new Set();
     // Preserve the whole column, including underground/air, not just visible surfaces.
     for(let i=0;i<raw.sections.length;i++) {
       const section=raw.sections[i];
@@ -60,7 +68,7 @@ export class JavaVisualData {
       const biome=raw.biomes[i];
       for(let y=0;y<4;y++) for(let z=0;z<4;z++) for(let x=0;x<4;x++) {
         const p={x,y,z},before=biome.get(p),after=this.biomes.get(before);
-        requireValue(after!==undefined && after!==null,'UNSUPPORTED_BIOME_'+before);
+        requireValue(after!==undefined && after!==null,'UNSUPPORTED_BIOME_'+before); usedBiomes.add(after);
         if(before!==after) biome.set(p,after);
       }
     }
@@ -71,7 +79,10 @@ export class JavaVisualData {
       requireValue(typeof row === 'string' && row.length<=2800,'LIGHT_INVALID'); const b=Buffer.from(row,'base64');requireValue(b.length===2048,'LIGHT_INVALID');return b;
     }));
     raw.loadParsedLight(lights[0],lights[1],masks[0],masks[1],[],[]);
-    return { x:value.x*16,z:value.z*16,chunk:raw.toJson(),worldConfig:{minY:value.minY,worldHeight:value.height},
+    const json=JSON.parse(raw.toJson());
+    const palette=[...usedBiomes].map(id=>this.nativeBiomes.get(id)).filter(Boolean);
+    if(palette.length)json.agentMcBiomes={protocol:'agent-mc-native-biomes/v1',entries:palette};
+    return { x:value.x*16,z:value.z*16,chunk:JSON.stringify(json),worldConfig:{minY:value.minY,worldHeight:value.height},
       native:{epoch:value.epoch,revision:value.revision,sampledAt:value.sampledAt,blockEntitiesAvailable:false,
         missingSkySections:value.skyLight.flatMap((v,i)=>v===null?[i]:[]),missingBlockSections:value.blockLight.flatMap((v,i)=>v===null?[i]:[])} };
   }
