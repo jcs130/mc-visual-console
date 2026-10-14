@@ -137,7 +137,7 @@ export function nativeChunk (options, states, biomeCount) {
 // Receives only already-verified native packets from the action bot's own
 // connection. Never queries disk worlds, generates chunks or decodes proxy IDs.
 export class NativeWorldState extends EventEmitter {
-  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
+  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveEffect = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
     super()
     this.states = states; this.registrySha256 = registrySha256
     this.resolveDimension = resolveDimension; this.simplifyNBT = simplifyNBT; this.makeChunk = makeChunk || (options => nativeChunk(options, this.states, this.biomes.size)); this.now = now
@@ -147,6 +147,8 @@ export class NativeWorldState extends EventEmitter {
     this.entityRegistry = entityRegistry; this.entityRegistrySha256 = entityRegistrySha256
     if(resolveItemStack!==null&&typeof resolveItemStack!=='function')throw Error('NATIVE_ITEM_RESOLVER_INVALID')
     this.resolveItemStack=resolveItemStack
+    if(resolveEffect!==null&&typeof resolveEffect!=='function')throw Error('NATIVE_EFFECT_RESOLVER_INVALID')
+    this.resolveEffect=resolveEffect
     if (entityRegistry !== null && (!(entityRegistry instanceof Map) || !/^[a-f0-9]{64}$/.test(entityRegistrySha256 || ''))) throw Error('NATIVE_ENTITY_REGISTRY_CONFIG_INVALID')
     this.entities = new Map(); this.entityMotions = new Map(); this.entityRevision = 0; this.entityError = null; this.entityErrorDetails = null
     this.entityDataBytes = 0; this.entityEntrySizes = new Map(); this.entityCollections = new Map(); this.entitySnapshotCache = null
@@ -204,7 +206,7 @@ export class NativeWorldState extends EventEmitter {
         case 'update_time': this.time = { age: longNumber(p.age), day: longNumber(p.time), receivedAt: this.now() }; this.emit('time'); break
         case 'spawn_entity': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
         case 'rel_entity_move': case 'entity_move_look': case 'entity_look': case 'entity_teleport':
-        case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'collect':
+        case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'collect': case 'entity_effect': case 'remove_entity_effect':
           this.handleEntity(body); break
       }
     } catch (error) { this.unavailable(error) }
@@ -231,7 +233,7 @@ export class NativeWorldState extends EventEmitter {
         this.entities.set(p.entityId, { entityId: p.entityId, uuid: p.objectUUID.toLowerCase(), typeId: p.type, name: this.entityRegistry.get(p.type), position: { x: p.x, y: p.y, z: p.z },
           yaw: entityAngle(p.yaw), pitch: entityAngle(p.pitch), headYaw: entityAngle(p.headPitch), onGround: null, velocity: this.entityVelocity(p.velocity),
           objectData:Number.isSafeInteger(p.objectData)?p.objectData:null,
-          metadata: new Map(), equipment: new Map(), cues: [], spawnedAt: timestamp, updatedAt: timestamp, lastSequence: body.sequence })
+          metadata: new Map(), equipment: new Map(), effects: [], cues: [], spawnedAt: timestamp, updatedAt: timestamp, lastSequence: body.sequence })
         const motion=createNativeEntityMotion(this.entities.get(p.entityId))
         if(motion)this.entityMotions.set(p.entityId,motion)
       } else {
@@ -261,6 +263,15 @@ export class NativeWorldState extends EventEmitter {
             this.accountEntityEntry(p.entityId, `equipment:${entry.slot}`, Buffer.byteLength(JSON.stringify(row)))
             entity.equipment.set(entry.slot, row); this.entityCollections.delete(p.entityId)
           }
+        } else if (body.name === 'entity_effect'||body.name==='remove_entity_effect') {
+          if(!Number.isSafeInteger(p.effectId)||p.effectId<0)throw Error('NATIVE_ENTITY_EFFECT_INVALID')
+          entity.effects=entity.effects.filter(effect=>effect.typeId!==p.effectId)
+          if(body.name==='entity_effect'){
+            if(!Number.isInteger(p.amplifier)||p.amplifier<0||p.amplifier>255||!Number.isInteger(p.duration)||p.duration < -1)throw Error('NATIVE_ENTITY_EFFECT_INVALID')
+            if(entity.effects.length>=32)throw Error('NATIVE_ENTITY_EFFECT_BUDGET_EXCEEDED')
+            entity.effects.push({typeId:p.effectId,name:this.resolveEffect?.(p.effectId)??null,amplifier:p.amplifier,duration:p.duration})
+          }
+          this.entityCollections.delete(p.entityId)
         } else if (body.name === 'maid_animation') {
           if (!Number.isSafeInteger(p.animationId) || p.animationId < 0 ||
               p.sourceChannel !== 'touhou_little_maid:maid_animation' || entity.name !== 'touhou_little_maid:maid') throw Error('NATIVE_MAID_ANIMATION_INVALID')
@@ -346,7 +357,8 @@ export class NativeWorldState extends EventEmitter {
       if (bounds && (p.x < bounds.minX || p.x > bounds.maxX + 1 || p.y < bounds.minY || p.y > bounds.maxY + 1 || p.z < bounds.minZ || p.z > bounds.maxZ + 1)) continue
       let collections = this.entityCollections.get(entity.entityId)
       if (!collections) {
-        const metadata = Object.freeze([...entity.metadata.values()]), equipment = Object.freeze([...entity.equipment.values()]), cues = Object.freeze([...entity.cues])
+        const metadata = Object.freeze([...entity.metadata.values()]), equipment = Object.freeze([...entity.equipment.values()].map(row=>
+          row.item?.itemCount>0&&this.resolveItemStack?freezeEntityJSON({...row,stack:this.resolveItemStack(row.item)}):row)), cues = Object.freeze([...entity.cues])
         // These heavy arrays are invariant during ordinary interpolation ticks.
         // Cache their exact encoded byte cost; [] contributes two bytes each.
         collections = { metadata, equipment, cues, ...(entity.name==='minecraft:item'?{itemState:freezeEntityJSON(this.itemState(entity))}:{}),

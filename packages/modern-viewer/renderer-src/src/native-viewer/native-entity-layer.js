@@ -61,7 +61,7 @@ export class NativeEntityLayer {
     if(!value.target||!['x','y','z'].every(k=>Number.isFinite(value.target[k])))return
     while(this.pickups.size>=16){const first=this.pickups.keys().next().value;this.pickups.get(first).actor?.dispose();this.pickups.delete(first)}
     const generation=this.generation,item={...observed,count:value.count,snbt:observed.snbt.replace(/,count:\d+/,`,count:${value.count}`)}
-    const row={actor:null,entity:{...entity,itemState:{...entity.itemState,item}},startTick:value.tick,start:{...entity.position},target:{...value.target}}
+    const row={actor:null,entity:{...entity,itemState:{...entity.itemState,item}},startTick:value.tick,start:{...entity.position},target:{...value.target},collectorEntityId:value.collectorEntityId,lastTargetTick:value.tick,oldTarget:{...value.target}}
     this.pickups.set(key,row)
     try {
       const actor=await this.createActor(this.reader,row.entity)
@@ -69,14 +69,21 @@ export class NativeEntityLayer {
       row.actor=actor;this.root.add(actor.root)
     }catch{if(this.pickups.get(key)===row)this.pickups.delete(key)}
   }
-  frame(now,clock=null) {
+  frame(now,clock=null,self=null) {
     if(this.disposed)return
     this.clock=clock
     for(const [key,row]of this.pickups) {
       if(!Number.isSafeInteger(clock?.tick)||!Number.isFinite(clock.sampledAt)||now-clock.sampledAt>1000){if(row.actor)row.actor.root.visible=false;continue}
       const partial=Math.max(0,Math.min(1,(now-clock.sampledAt)/50)),time=(clock.tick-row.startTick+partial)/3
       if(time>=1){row.actor?.dispose();this.pickups.delete(key);continue}
-      if(row.actor){const t=Math.max(0,time)**2;row.actor.root.visible=true;row.actor.root.position.set(...['x','y','z'].map(k=>row.start[k]+(row.target[k]-row.start[k])*t))}
+      if(row.lastTargetTick!==clock.tick){
+        const p=self&&self.entityId===row.collectorEntityId?self.position:null
+        if(p&&['x','y','z','eyeHeight'].every(k=>Number.isFinite(p[k]))){row.oldTarget=row.target;row.target={x:p.x,y:p.y+p.eyeHeight/2,z:p.z}}
+        row.lastTargetTick=clock.tick
+      }
+      if(row.actor){const t=Math.max(0,time)**2;row.actor.root.visible=true;row.actor.root.position.set(...['x','y','z'].map(k=>{
+        const target=row.oldTarget[k]+(row.target[k]-row.oldTarget[k])*partial;return row.start[k]+(target-row.start[k])*t
+      }))}
     }
     for(const [id,row] of this.actors){
       const entity=this.data.get(id)
@@ -87,7 +94,7 @@ export class NativeEntityLayer {
     }
   }
   diagnostics() {
-    const motionIssues=[...this.actors.values()].map(row=>row.actor.root.userData.nativeContraption?.reason).filter(Boolean)
+    const motionIssues=[...this.actors.values()].flatMap(row=>[row.actor.root.userData.nativeContraption?.reason,...(row.actor.root.userData.nativeLiving?.issues??[])]).filter(Boolean)
     return {received:this.data.size,rendered:this.actors.size,droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
       issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
   }

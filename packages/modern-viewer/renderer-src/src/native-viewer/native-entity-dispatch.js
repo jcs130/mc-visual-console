@@ -8,11 +8,14 @@ import { createNativeMaidActor, nativeMaidRenderState } from './native-entity-di
 import { createNativeContraptionActor, nativeContraptionState } from './native-contraption.js'
 import { createNativeWandscapeActor, nativeWandscapeRenderState, WANDSCAPE_NPC } from './native-entity-dispatch-wandscape.js'
 import { createNativeDroppedItemActor } from './native-dropped-items.js'
+import { createNativeHostileActor } from './native-hostile-actors.js'
+import { NATIVE_HOSTILE_TYPES,nativeHostileType,nativeHostileState } from './native-living-state.js'
+import { nativeHostileModelDefinition } from './native-hostile-models.js'
 
 // Locked vanilla classes: fwm/fvd/fuz/fxa/fwz/fxi/fxv, fwu/fuf, glk,
 // gly/gjw/gju/gmh/gmm/gne and original saddle/fur/profession layers.
 // Original assets/geometry only; this is not a generic mob proxy renderer.
-export const NATIVE_ENTITY_RENDER_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','create:contraption','create:stationary_contraption',WANDSCAPE_NPC])
+export const NATIVE_ENTITY_RENDER_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','create:contraption','create:stationary_contraption',WANDSCAPE_NPC,...NATIVE_HOSTILE_TYPES])
 const SUPPORTED=new Set(NATIVE_ENTITY_RENDER_TYPES),F=Math.fround,PI=F(Math.PI),RAD=F(Math.PI/180)
 const wrap=v=>((v+180)%360+360)%360-180,lerp=(a,b,t)=>a+(b-a)*t,angle=(a,b,t)=>a+wrap(b-a)*t
 const cube=(uv,origin,size,dilation=0,mirror=false)=>({uv,origin,size,dilation,mirror})
@@ -32,6 +35,7 @@ function meta(entity,key,type,defaultValue){
 }
 
 export function nativeEntityRenderState(entity,{registries}={}){
+  if(nativeHostileType(entity?.name))return nativeHostileState(entity)
   if(entity?.name===WANDSCAPE_NPC)return nativeWandscapeRenderState(entity)
   if(['create:contraption','create:stationary_contraption'].includes(entity?.name))return nativeContraptionState(entity)
   if(entity?.name==='touhou_little_maid:maid')return nativeMaidRenderState(entity)
@@ -62,6 +66,7 @@ export function nativeEntityRenderState(entity,{registries}={}){
 }
 
 export function nativeEntityModelDefinition(name,layer='base'){
+  if(nativeHostileType(name))return nativeHostileModelDefinition(name,layer)
   const quadruped=(height,dilation=0)=>({parts:[
     part('head',[0,18-height,-6],[cube([0,0],[-4,-4,-8],[8,8,8],dilation)]),
     part('body',[0,17-height,2],[cube([28,8],[-5,-10,-7],[10,16,8],dilation)],[F(Math.PI/2),0,0]),
@@ -92,6 +97,7 @@ export async function createNativeEntityActor(reader,entity,{registries,loadText
   if(!(reader instanceof NativeAssetReader)||reader.manifest.clientJarSha256!==ENTITY_MODEL_CLIENT_SHA256)throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(!nativeClientSourceVerified(reader.manifest,ENTITY_MODEL_CLIENT_SHA256))throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(entity?.name==='minecraft:item')return createNativeDroppedItemActor(reader,entity,{loadTexture})
+  if(nativeHostileType(entity?.name))return createNativeHostileActor(reader,entity,{loadTexture})
   if(entity?.name==='touhou_little_maid:maid')return createNativeMaidActor(reader,entity,{loadTexture})
   if(entity?.name===WANDSCAPE_NPC)return createNativeWandscapeActor(reader,entity,{loadTexture})
   if(['create:contraption','create:stationary_contraption'].includes(entity?.name))return createNativeContraptionActor(reader,entity,{loadTexture})

@@ -50,5 +50,5 @@ export function installCameraSettings({document,window,settings,onChange,onShot,
   listen(root,'toggle',place);listen(window,'resize',place);listen(window,'keydown',e=>{if(e.code==='Escape')root.open=false;});
   function dispose(){if(disposed)return;disposed=true;for(const[el,name,fn]of listeners)el.removeEventListener(name,fn);window.removeEventListener('pagehide',dispose);root.remove();}
   document.body.append(root);window.addEventListener('pagehide',dispose,{once:true});refresh();
-  return {status(text){if(output.textContent!==text)output.textContent=text;},manual(){current={...current,mode:'manual'};publish();},dispose};
+  return {status(text){if(output.textContent!==text)output.textContent=text;},select(mode){current=normalizeCameraSettings({...current,mode});publish();},manual(){current={...current,mode:'manual'};publish();},dispose};
 }

@@ -7,7 +7,9 @@ export const ENTITY_MODEL_CLIENT_SHA256 = '499f6897d1837516680f3114072d8106e11c9
 const vector = value => Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
 
 export function nativeCubeFaces (cube, textureDimensions) {
-  if (!cube || !vector(cube.origin) || !vector(cube.size) || cube.size.some(v => v <= 0) || !Array.isArray(cube.uv) || cube.uv.length !== 2 || !cube.uv.every(Number.isFinite) || !Array.isArray(textureDimensions) || textureDimensions.length !== 2 || !textureDimensions.every(v => Number.isInteger(v) && v > 0 && v <= 4096)) throw Error('NATIVE_ENTITY_CUBE_INVALID')
+  // Original ModelPart permits zero-depth planes (e.g. Bogged mushrooms).
+  // Keep all original faces/UVs; do not thicken the authored plane.
+  if (!cube || !vector(cube.origin) || !vector(cube.size) || cube.size.some(v => v < 0) || cube.size.filter(v=>v===0).length>1 || !Array.isArray(cube.uv) || cube.uv.length !== 2 || !cube.uv.every(Number.isFinite) || !Array.isArray(textureDimensions) || textureDimensions.length !== 2 || !textureDimensions.every(v => Number.isInteger(v) && v > 0 && v <= 4096)) throw Error('NATIVE_ENTITY_CUBE_INVALID')
   const dilation = cube.dilation ?? 0
   if (!Number.isFinite(dilation) || Math.abs(dilation) > 16 || (cube.mirror !== undefined && typeof cube.mirror !== 'boolean')) throw Error('NATIVE_ENTITY_CUBE_INVALID')
   const [x,y,z] = cube.origin, [dx,dy,dz] = cube.size, [u,v] = cube.uv, [width,height] = textureDimensions

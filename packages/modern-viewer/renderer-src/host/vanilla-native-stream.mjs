@@ -23,7 +23,7 @@ export function vanillaAttributeValue(bot, leaf) {
 const PACKETS = new Set(['login', 'respawn', 'map_chunk', 'unload_chunk', 'block_change', 'multi_block_change',
   'tile_entity_data', 'update_time', 'spawn_entity', 'entity_metadata', 'entity_equipment', 'entity_destroy',
   'rel_entity_move', 'entity_move_look', 'entity_look', 'entity_teleport', 'entity_head_rotation',
-  'entity_velocity', 'entity_status', 'animation', 'hurt_animation','collect']);
+  'entity_velocity', 'entity_status', 'animation', 'hurt_animation','collect','entity_effect','remove_entity_effect']);
 
 /** Vanilla-only: preserve actual decoded packets from the existing action connection.
  * A mod/proxy transport must supply its own native stream and registry instead. */
@@ -46,7 +46,11 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
     return item?.snbt?{available:true,source:'same_player_vanilla_item_registry',minecraftVersion:version,registryId:wire.itemId,item}
       :{available:false,reason:'VANILLA_ITEM_COMPONENTS_OR_REGISTRY_UNAVAILABLE'};
   };
-  return { events, resolveItemStack, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
+  const resolveEffect=id=>{
+    const name=bot.version===version?bot.registry?.effects?.[id]?.name:null;
+    return typeof name==='string'?`minecraft:${name.replace(/[A-Z]/g,(c,i)=>(i?'_':'')+c.toLowerCase())}`:null;
+  };
+  return { events, resolveItemStack, resolveEffect, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
 }
 
 /** Vanilla inventory only. Mod/proxy connections must use their native adapter. */
