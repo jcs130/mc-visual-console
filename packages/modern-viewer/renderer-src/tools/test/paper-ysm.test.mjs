@@ -2,6 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {PaperYsmPlayers,applyPaperYsmAnimation,createPaperYsmActor,paperYsmHeadAnchor} from '../../src/modern-viewer/paper-ysm.js';
+test('sleep anchors to the confirmed bed in all directions and recovery resets every root transform',async()=>{
+ const encode=value=>({base64:Buffer.from(JSON.stringify(value)).toString('base64')});
+ const bundle={modelId:'sleep-test',model:'m',animation:'a',textures:{main:'t'},files:{
+  'ysm.json':encode({spec:2,properties:{free:true}}),m:encode({format_version:'1.12.0','minecraft:geometry':[{description:{texture_width:16,texture_height:16},bones:[{name:'Head',pivot:[0,24,0],cubes:[{origin:[-4,20,-4],size:[8,8,8],uv:[0,0]}]}]}]}),
+  a:encode({format_version:'1.8.0',animations:{idle:{loop:true,bones:{}},sleep:{loop:true,bones:{}}}}),t:{base64:''}}};
+ const actor=await createPaperYsmActor(bundle,'main',{loadTexture:async()=>new THREE.Texture()});
+ const parent=new THREE.Group();parent.position.set(-6,65,12);parent.rotation.y=.8;parent.add(actor.root);
+ for(const bedFacing of ['north','south','east','west']){
+  actor.animate({renderedYaw:.8,motion:{pose:'sleeping',sleepState:{sleeping:true,bedFacing,bedPosition:{x:-5,y:64,z:10}}}},1000);
+  const head=actor.headAnchor();assert.ok(Math.abs(head.x+4.5)<1e-8);assert.ok(Math.abs(head.z-10.5)<1e-8);
+  const direction=new THREE.Vector3(0,1,0).applyQuaternion(actor.root.getWorldQuaternion(new THREE.Quaternion()));
+  const expected={north:[0,0,-1],south:[0,0,1],west:[-1,0,0],east:[1,0,0]}[bedFacing];
+  assert.ok(direction.distanceTo(new THREE.Vector3(...expected))<1e-8);
+  assert.equal(actor.animationState.base,'sleep');
+ }
+ actor.animate({motion:{bodyState:{source:'server',pose:'downed',canAct:false}}},1100);assert.equal(actor.root.rotation.x,Math.PI/2);
+ actor.animate({motion:{onGround:true,bodyState:{source:'server',pose:'standing',canAct:true},sleepState:{sleeping:false}}},1200);
+ assert.deepEqual(actor.root.rotation.toArray().slice(0,3),[0,0,0]);assert.deepEqual(actor.root.position.toArray(),[0,0,0]);
+ actor.dispose();
+});
 
 test('nametag follows the animated head and ignores hidden bind-pose props',()=>{
  const root=new THREE.Group(),head=new THREE.Group(),prop=new THREE.Group();head.name='Head';root.add(head,prop);

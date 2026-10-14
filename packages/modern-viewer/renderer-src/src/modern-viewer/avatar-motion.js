@@ -25,6 +25,7 @@ const LOCOMOTION_STATES = Object.freeze([
   "fly",
   "ride",
   "downed",
+  "sleep",
 ]);
 const MOVING_STATES = new Set(["walk", "run", "crouchWalk", "swim", "fly"]);
 
@@ -145,6 +146,10 @@ export function normalizeMotionFrame(raw, previous, receivedAt = Date.now()) {
     usingHeldItem: booleanValue(source.usingHeldItem, entity.usingHeldItem, prior?.usingHeldItem, false),
     bodyState: (source.bodyState ?? entity.bodyState)?.source === 'server'
       ? (source.bodyState ?? entity.bodyState) : prior?.bodyState,
+    sleeping: booleanValue(source.sleepState?.sleeping, entity.sleepState?.sleeping,
+      source.pose!==undefined || entity.pose!==undefined || entity.metadata?.[6]!==undefined
+        ? ['sleeping',2].includes(source.pose??entity.pose??entity.metadata[6]) : undefined, prior?.sleeping, false),
+    bedFacing: (source.sleepState ?? entity.sleepState)?.bedFacing ?? null,
 
     // Derived fields are intentionally public diagnostics.  Consumers may
     // ignore them, but keeping them on the immutable-ish frame makes tests and
@@ -311,6 +316,7 @@ export class AvatarMotionGraph {
 
   classify(frame, landed) {
     if (frame.bodyState?.canAct === false) return frame.bodyState.pose === 'downed' ? 'downed' : 'idle';
+    if (frame.sleeping) return 'sleep';
     if (frame.riding) return "ride";
     if (frame.elytraFlying) return "fly";
     if (frame.inWater || frame.inLava) return "swim";
@@ -404,7 +410,7 @@ export class PoseDrivenPlayerAnimation {
 
   setMotion(raw, receivedAt = this.currentExternalTime()) {
     const frame = this.graph.setMotion(raw, receivedAt);
-    if (this.graph.frame?.bodyState?.canAct === false) {
+    if (this.graph.frame?.bodyState?.canAct === false || this.graph.frame?.sleeping === true) {
       this.upperAction = null; this.hurtAction = null; this.upperQueue.length = 0;
     }
     return frame;
@@ -427,7 +433,7 @@ export class PoseDrivenPlayerAnimation {
    * @param {{ hand?: string, nonce?: string | number, durationMs?: number, at?: number }} [options]
    */
   trigger(action, options = {}) {
-    if (this.graph.frame?.bodyState?.canAct === false) return false;
+    if (this.graph.frame?.bodyState?.canAct === false || this.graph.frame?.sleeping === true) return false;
     this.syncClock();
     this.expireActions();
     const source = typeof action === "object" && action ? action : options;
@@ -488,7 +494,7 @@ export class PoseDrivenPlayerAnimation {
     this.ensureDefaults(player);
     if (!this.defaults) return this.getDiagnostics();
     restorePlayer(player, this.defaults);
-    const restricted = motion.frame?.bodyState?.canAct === false;
+    const restricted = motion.frame?.bodyState?.canAct === false || motion.frame?.sleeping === true;
     if (restricted || this.wasRestricted) this.stateWeights.clear();
     this.wasRestricted = restricted;
     player._cortiDownedOffset = motion.state === 'downed' ? .72 : 0;
@@ -500,6 +506,7 @@ export class PoseDrivenPlayerAnimation {
     }
     if (!restricted) { applyLookPose(pose, motion); this.applyActionOverlays(pose, motion); }
     applyPose(player, this.defaults, pose);
+    if (motion.state === 'sleep') player.rotation.order = 'YXZ';
     return this.getDiagnostics();
   }
 
@@ -605,6 +612,11 @@ export class PoseDrivenPlayerAnimation {
 }
 
 function applyLocomotionPose(pose, state, weight, motion, time) {
+  if (state === 'sleep') {
+    const yaw=({south:0,west:-Math.PI/2,north:Math.PI,east:Math.PI/2})[motion.frame?.bedFacing];
+    addRotation(pose, 'root', Math.PI / 2, Number.isFinite(yaw)?yaw-motion.frame.yaw:0, 0, weight);
+    return;
+  }
   if (state === 'downed') {
     addRotation(pose, 'root', Math.PI / 2, 0, 0, weight);
     addPosition(pose, 'root', 0, -.72, 0, weight);
@@ -919,7 +931,7 @@ function motionSampleIdentity(raw, frame) {
     frame.sneaking,
     frame.sprinting,
     frame.usingHeldItem,
-    frame.bodyState?.pose, frame.bodyState?.canAct,
+    frame.bodyState?.pose, frame.bodyState?.canAct, frame.sleeping, frame.bedFacing,
   ])}`;
 }
 

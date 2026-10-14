@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createViewerYsmMotion} from '../host/viewer-ysm-motion.mjs';
 const uuid='00000000-0000-3000-8000-000000000001';
+test('own sleep and wake override delayed metadata and publish without a movement packet',()=>{
+ const f=fixture();f.bot.entity=f.entity;f.bot._client.uuid=uuid;f.bot.isSleeping=true;f.entity.metadata[6]=2;
+ f.bot.emit('sleep');assert.equal(f.events.at(-1).value.pose,'sleeping');
+ f.bot.isSleeping=false;f.bot.emit('wake');assert.equal(f.events.at(-1).value.pose,'standing');
+ f.bridge.dispose();assert.equal(f.bot.listenerCount('wake'),0);
+});
 function fixture(){let clock=1000;const entity={id:7,uuid,position:{x:0,y:64,z:0},yaw:0,headYaw:.5,pitch:-.2,metadata:{0:8,6:0,8:3,18:0},equipment:[{name:'diamond_sword',count:1},{name:'torch',count:12}]};const bot=Object.assign(new EventEmitter(),{entities:{7:entity},_client:new EventEmitter()});const events=[];const row={playerUuid:uuid,entityId:7,epoch:'epoch',available:true};const bridge=createViewerYsmMotion(bot,{now:()=>clock,binding:id=>id===7?row:null,emit:(name,value)=>events.push({name,value})});return {bot,entity,row,events,bridge,time:n=>clock=n};}
 test('same connection emits actual equipment/flags, ground packets and movement in blocks per second',()=>{
   const f=fixture();f.bridge.send(f.row);let motion=f.events.at(-1).value;

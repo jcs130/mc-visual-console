@@ -13,7 +13,7 @@ const compactItem = item => {
   return result;
 };
 export function createViewerYsmMotion(bot,{binding,emit,now=Date.now}={}) {
-  const states=new Map(),ground=new Map();let sequence=0;
+  const states=new Map(),ground=new Map(),sleep=new WeakMap();let sequence=0;
   const listeners=[];const on=(target,name,fn)=>{target.on(name,fn);listeners.push(()=>target.off(name,fn));};
   function actual(row) {
     const own=(bot._client.uuid??bot.player?.uuid)?.toLowerCase()===row.playerUuid;
@@ -41,6 +41,8 @@ export function createViewerYsmMotion(bot,{binding,emit,now=Date.now}={}) {
       headPitchDegrees:-pitch*180/Math.PI,crouching:!!(flags&2),sprinting:!!(flags&8),usingItem:!!(living&1),
       activeHand:living&2?'offhand':'mainhand',mainArm,pose:typeof metadata[6]==='number'?['standing','fall_flying','sleeping','swimming','spin_attack','crouching','long_jumping','dying'][metadata[6]]:metadata[6],equipment:Array.isArray(equipment)?equipment.map(compactItem):null};
     const knownGround=entity===bot.entity?entity.onGround:ground.get(entity.id);
+    const sleeping=entity===bot.entity && typeof bot.isSleeping==='boolean'?bot.isSleeping:sleep.get(entity);
+    if(typeof sleeping==='boolean')result.pose=sleeping?'sleeping':result.pose==='sleeping'?'standing':result.pose;
     if(typeof knownGround==='boolean')result.onGround=knownGround;
     const flying=entity===bot.entity?bot.game?.gameMode==='creative' && bot.entity?.isFlying:undefined;
     if(typeof flying==='boolean')result.flying=flying;
@@ -58,6 +60,10 @@ export function createViewerYsmMotion(bot,{binding,emit,now=Date.now}={}) {
   const update=entity=>{const row=binding(entity?.id);if(row)send(row);};
   for(const event of ['entityMoved','entityEquip','entityUpdate','entitySpawn'])on(bot,event,update);
   on(bot,'move',()=>update(bot.entity));on(bot,'heldItemChanged',()=>update(bot.entity));
+  for(const [event,value]of [['entitySleep',true],['entityWake',false]])on(bot,event,entity=>{
+    sleep.set(entity,value);const row=binding(entity?.id);if(row)send(row,true);
+  });
+  for(const event of ['sleep','wake'])on(bot,event,()=>{const row=binding(bot.entity?.id);if(row)send(row,true);});
   on(bot._client,'packet',(packet,meta)=>{
     if(['rel_entity_move','entity_move_look','entity_teleport','entity_position_sync'].includes(meta?.name) && typeof packet.onGround==='boolean') {
       if(ground.size<128 || ground.has(packet.entityId))ground.set(packet.entityId,packet.onGround);

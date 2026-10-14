@@ -7,7 +7,7 @@ export {applyPaperYsmAnimation} from './paper-ysm-animation.js';
 
 const json=(bundle,path)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(bundle.files[path].base64),c=>c.charCodeAt(0))));
 /** Visible animated head only: bind-pose bounds may include folded props. */
-export function paperYsmHeadAnchor(model,root) {
+function paperYsmHeadBounds(model,root) {
   const head=model.bones.get('Head')??model.bones.get('head');if(!head)return null;
   root.updateWorldMatrix(true,true);
   const bounds=new THREE.Box3(),part=new THREE.Box3(),scale=new THREE.Vector3();
@@ -16,7 +16,10 @@ export function paperYsmHeadAnchor(model,root) {
     if(![scale.x,scale.y,scale.z].every(n=>Number.isFinite(n)&&Math.abs(n)>=.001))return;
     if(!mesh.geometry.boundingBox)mesh.geometry.computeBoundingBox();part.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);bounds.union(part);
   });
-  if(bounds.isEmpty())return null;
+  return bounds.isEmpty()?null:bounds;
+}
+export function paperYsmHeadAnchor(model,root) {
+  const bounds=paperYsmHeadBounds(model,root);if(!bounds)return null;
   const point=bounds.getCenter(new THREE.Vector3());point.y=bounds.max.y+.22;return point;
 }
 export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTexture}={}) {
@@ -62,11 +65,30 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
       },
       animate(state,now) {
         this.animationState=animationController.apply(state,now);this.animationReason=this.animationState.errors[0]??null;
-        const downed=state.motion?.bodyState?.pose==='downed' && state.motion.bodyState.canAct===false;
+        const downed=this.animationState.base==='downed';
+        const sleeping=this.animationState.base==='sleep';
         // A presentation pose only: no collision, server position or inventory changes.
-        root.rotation.x=downed?Math.PI/2:0;root.position.y=downed ? .28 : 0;
+        // YSM's authored sleep clip expects the living-entity sleeping roll;
+        // the downed pitch is a different pose and would point curled legs up.
+        const bedYaw=({south:Math.PI/2,west:0,north:-Math.PI/2,east:Math.PI})[state.motion?.sleepState?.bedFacing];
+        root.rotation.set(downed?Math.PI/2:0,
+          sleeping&&Number.isFinite(bedYaw)?bedYaw-(state.renderedYaw??0):0,sleeping?Math.PI/2:0,'YXZ');
+        root.position.set(0,downed ? .28 : 0,0);
+        const bed=state.motion?.sleepState?.bedPosition;
+        if(sleeping && Number.isFinite(bedYaw) && bed && [bed.x,bed.y,bed.z].every(Number.isFinite)) {
+          const bounds=paperYsmHeadBounds(model,root);
+          if(bounds){
+            // Anchor the authored head over the confirmed head-half mattress.
+            // Both points are converted to parent space; entity interpolation
+            // or a different character scale must not slide the sleeper off-bed.
+            const from=bounds.getCenter(new THREE.Vector3());from.y=bounds.min.y;
+            const to=new THREE.Vector3(bed.x+.5,bed.y+9/16+.01,bed.z+.5);
+            root.parent?.worldToLocal(from);root.parent?.worldToLocal(to);
+            root.position.add(to.sub(from));
+          }
+        }
         this.animationIssues??=new Set();for(const reason of this.animationState.errors)if(this.animationIssues.size<16)this.animationIssues.add(reason);
-        held.apply(state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
+        held.apply(sleeping?[]:state.motion?.equipment??state.equipment,state.motion?.mainArm??'right');this.heldState=held.stats();
       },
       headAnchor(){return paperYsmHeadAnchor(model,root);},
       dispose(){held.dispose();model.dispose();batch.dispose();material.dispose();texture.dispose();root.removeFromParent();root.clear();}};
@@ -137,6 +159,10 @@ export class PaperYsmPlayers {
       if(local.bodyState?.canAct!==entity.bodyState.canAct) {delete local.swing;this.motions.delete(uuid);}
       local.bodyState={...entity.bodyState,epoch:binding.epoch,entityId:entity.id};
     }
+    if(typeof entity.sleepState?.sleeping==='boolean') {
+      if(local.sleepState?.sleeping!==entity.sleepState.sleeping){delete local.swing;this.motions.delete(uuid);}
+      local.sleepState={...entity.sleepState,epoch:binding.epoch,entityId:entity.id};
+    }
     local.body={at:now,epoch:binding.epoch,entityId:entity.id,
       ...(typeof row.inWater==='boolean'?{inWater:row.inWater}:{}),
       ...(typeof row.onGround==='boolean'?{onGround:row.onGround}:{})};
@@ -182,6 +208,11 @@ export class PaperYsmPlayers {
       motion.bodyState=local.bodyState;
       if(!local.bodyState.canAct){motion.horizontalSpeed=0;motion.usingItem=false;delete motion.swing;delete motion.hurt;}
     }
+    if(local.sleepState && local.sleepState.entityId===entity.id && local.sleepState.epoch===this.states.get(uuid)?.epoch) {
+      motion.sleepState=local.sleepState;
+      if(local.sleepState.sleeping){motion.pose='sleeping';motion.horizontalSpeed=0;motion.usingItem=false;delete motion.swing;delete motion.hurt;}
+      else if(motion.pose==='sleeping'||motion.pose===2)motion.pose='standing';
+    }
     return motion;
   }
   restore(actor){actor.actor.dispose();for(const [child,visible]of actor.hidden)child.visible=visible;actor.rendered.traverse(part=>{const position=this.nametags.get(part);if(position){part.position.copy(position);this.nametags.delete(part);}});}
@@ -200,7 +231,7 @@ export class PaperYsmPlayers {
         current.actor.setPresentation?.(this.presentation());
         current.actor.root.visible=!entity.metadata?.[0] || (entity.metadata[0]&32)===0;
         // The renderer's native scene entity already carries this player's yaw.
-        current.actor.root.rotation.y=0;current.actor.animate({...row,pitch:entity.pitch,equipment:entity.equipment,motion:this.motionFor(uuid,entity,now)},now);
+        current.actor.animate({...row,renderedYaw:rendered.rotation.y,pitch:entity.pitch,equipment:entity.equipment,motion:this.motionFor(uuid,entity,now)},now);
         if(!current.anchorAt || now-current.anchorAt>=100){const anchor=current.actor.headAnchor?.();current.anchorAt=now;
           current.anchor=anchor?rendered.worldToLocal(anchor):null;
           if(current.anchor)current.actor.framingHeight=Math.max(.5,current.anchor.y-.22);}

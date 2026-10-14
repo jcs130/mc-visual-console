@@ -6,6 +6,26 @@ import {compilePaperYsmClip,samplePaperYsmClip,PaperYsmAnimation} from '../../sr
 import {PaperYsmPlayers} from '../../src/modern-viewer/paper-ysm.js';
 import {createPaperHeldItem,resolvePaperHeldModel,PaperYsmHeldItems,paperYsmItemMount} from '../../src/modern-viewer/paper-ysm-items.js';
 const context=()=>({variables:Object.create(null),queries:{'query.anim_time':.25,'ysm.head_pitch':30},random:()=>.5});
+test('sleep preserves authored bones without attacks, held overlays or live look, then wakes immediately',()=>{
+ const m=model(),main={format_version:'1.8.0',animations:{idle:{loop:true,bones:{}},sleep:{loop:true,bones:{Head:{rotation:[15,0,0]}}},swing_hand:{bones:{Head:{rotation:[80,0,0]}}}}};
+ const c=new PaperYsmAnimation(m,main);
+ const r=c.apply({animation:'wave',motion:{pose:'sleeping',headPitchDegrees:40,usingItem:true,swing:{sequence:1,ageSeconds:0}}},1000);
+ assert.equal(r.base,'sleep');assert.deepEqual(r.clips,['sleep']);assert.ok(Math.abs(m.bones.get('Head').rotation.x-Math.PI/12)<1e-8);
+ assert.equal(c.apply({motion:{pose:'standing',onGround:true}},1010).base,'idle');
+ assert.equal(m.bones.get('Head').rotation.x,0,'no sleeping blend remains after wake');
+});
+
+test('body sleep/wake survives a motion timeout but never transfers to a new identity',()=>{
+ const uuid='00000000-0000-3000-8000-000000000001',entity={id:7,uuid,metadata:{6:2}};
+ const p=new PaperYsmPlayers({entity:()=>entity,rendered:()=>null});
+ p.states.set(uuid,{entityId:7,epoch:'a'});
+ p.bodyMotion({entity:{...entity,sleepState:{sleeping:true,bedFacing:'west'}}},1000);
+ assert.equal(p.motionFor(uuid,entity,10000).pose,'sleeping');
+ p.bodyMotion({entity:{...entity,sleepState:{sleeping:false,bedFacing:null}}},10001);
+ assert.equal(p.motionFor(uuid,entity,10002).pose,'standing');
+ p.states.set(uuid,{entityId:7,epoch:'b'});entity.metadata={};
+ assert.equal(p.motionFor(uuid,entity,10003).sleepState,undefined);
+});
 const model=()=>{const bones=new Map(['Root','Head','RightArm','LeftArm','RightHandLocator','LeftHandLocator'].map(n=>[n,new THREE.Group()]));const initial=new Map([...bones].map(([n,b])=>[n,{position:b.position.clone(),rotation:b.rotation.clone()}]));return {bones,initial,reset(){for(const[n,b]of bones){b.position.copy(initial.get(n).position);b.rotation.copy(initial.get(n).rotation);b.scale.setScalar(1);}}};};
 
 test('ground locomotion blends without snapping, retains gait phase and rejects threshold chatter',()=>{

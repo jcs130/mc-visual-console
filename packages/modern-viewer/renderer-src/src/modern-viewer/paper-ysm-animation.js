@@ -108,10 +108,11 @@ export class PaperYsmAnimation {
   apply(state,now) {
     const previous=this.waterTransition?.lastPose;
     this.start??=now;this.model.reset();this.errors=[];this.selected=[];
-    const m=state.motion??state, speed=m.horizontalSpeed??0, pose=m.pose;
+    const m=state.motion??state, speed=m.horizontalSpeed??0, pose=m.pose===2?'sleeping':m.pose;
     this.moving = speed > (this.moving ? 0.03 : 0.08);
     const inhibited=m.bodyState?.source==='server' && m.bodyState.canAct===false;
     const downed=inhibited && m.bodyState.pose==='downed';
+    const sleeping=!inhibited && pose==='sleeping', restricted=inhibited||sleeping;
     let base=pose==='sleeping'?'sleep':pose==='dying'?'death':pose==='spin_attack'?'riptide':pose==='fall_flying'?'elytra_fly':
       pose==='swimming'?'swim':m.flying===true?'fly':m.inWater===true&&m.onGround===false?
         (speed>.2?'swim':this.main.animations?.swim_stand?'swim_stand':'swim'):
@@ -145,8 +146,9 @@ export class PaperYsmAnimation {
     };
     for(let n=0;n<8;n++)if(this.main.animations?.['pre_parallel'+n])layer('pre'+n,this.main,'pre_parallel'+n,{loop:true});
     layer('main',this.main,base,{loop:base!=='death'});
-    this.blendLocomotion(base,now,previous,inhibited);
-    if(!inhibited)for(const [index,hand]of ['mainhand','offhand'].entries()) {
+    this.blendLocomotion(base,now,previous,restricted || this.wasSleeping===true);
+    this.wasSleeping=sleeping;
+    if(!restricted)for(const [index,hand]of ['mainhand','offhand'].entries()) {
       const item=equipment[index],hold=item?selectArmClip(this.arm,'hold',hand,item):Object.hasOwn(this.arm?.animations??{},'hold_'+hand+':empty')?'hold_'+hand+':empty':null;
       if(hold)layer('hold'+index,this.arm,hold,{loop:true,token:JSON.stringify(item??null)});
       if(m.usingItem===true && (m.activeHand??'mainhand')===hand) {
@@ -167,12 +169,12 @@ export class PaperYsmAnimation {
         }catch(error){this.errors.push(error.message);}
       }
     }
-    if(!inhibited && m.hurt && m.hurt.ageSeconds>=0 && m.hurt.ageSeconds<.5)layer('hurt',this.main,'attacked',{token:m.hurt.sequence,seconds:m.hurt.ageSeconds});
-    if(!inhibited && state.animation && !['idle','empty'].includes(state.animation))layer('extra',this.extra?.animations?.[state.animation]?this.extra:this.main,state.animation);
+    if(!restricted && m.hurt && m.hurt.ageSeconds>=0 && m.hurt.ageSeconds<.5)layer('hurt',this.main,'attacked',{token:m.hurt.sequence,seconds:m.hurt.ageSeconds});
+    if(!restricted && state.animation && !['idle','empty'].includes(state.animation))layer('extra',this.extra?.animations?.[state.animation]?this.extra:this.main,state.animation);
     for(let n=0;n<8;n++)if(this.main.animations?.['parallel'+n])layer('parallel'+n,this.main,'parallel'+n,{loop:true,additiveRotation:true});
     // The native Head bone also follows the actual look direction, even when
     // the authored animation has no head channel.
-    const head=this.model.bones.get('Head');if(head && !inhibited){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
+    const head=this.model.bones.get('Head');if(head && !restricted){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
     for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
     if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
     return {base:downed?'downed':base,canAct:!inhibited,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
