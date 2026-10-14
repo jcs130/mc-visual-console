@@ -84,6 +84,22 @@ test('static provider class rules are bound to unique exact locked client/mod JA
   assert.throws(()=>verifyNativeStaticItemEvidence(genericReader(name),'other:cabbage'),/PROVIDER_UNVERIFIED/)
 })
 
+test('a uniquely hash-verified vanilla client accepts its launcher filename without weakening source checks',()=>{
+  const name='minecraft:wooden_pickaxe',reader=genericReader(name)
+  const source={...STATIC_ITEM_SOURCES.minecraft,name:'1.21.1.jar',explicitOverride:false}
+  reader.manifest.sources=[source,{name:'minecraft-assets-17',sha256:'b'.repeat(64)}]
+  assert.equal(verifyNativeStaticItemEvidence(reader,name),nativeStaticItemEvidence(name))
+  for(const sources of [
+    [{...source,sha256:'wrong'}],
+    [{...source,explicitOverride:true}],
+    [source,{...source,name:'duplicate.jar'}],
+    [source,{...STATIC_ITEM_SOURCES.minecraft,sha256:'wrong'}],
+  ]) {
+    const other=genericReader(name);other.manifest.sources=sources
+    assert.throws(()=>verifyNativeStaticItemEvidence(other,name),/SOURCE_UNVERIFIED/)
+  }
+})
+
 test('complete SNBT permits proven nonvisual state and empty/removal patches while visual, foil and ambiguous states stay explicit',()=>{
   const source=raw('minecraft:iron_pickaxe','"minecraft:damage":7,"minecraft:custom_name":\'{"text":"Own Pick"}\',"minecraft:enchantment_glint_override":false,"minecraft:enchantments":{levels:{"minecraft:unbreaking":1}}')
   const state=nativeStaticItemState(source)

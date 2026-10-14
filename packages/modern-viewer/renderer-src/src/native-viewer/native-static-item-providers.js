@@ -242,7 +242,11 @@ export function verifyNativeStaticItemEvidence(reader,name) {
   if(!evidence) throw Error('NATIVE_ITEM_STATIC_PROVIDER_UNVERIFIED')
   if(reader.manifest?.minecraftVersion!=='1.21.1'||reader.manifest.assetIntegrityVerified!==true)throw Error('NATIVE_ITEM_STATIC_MANIFEST_UNVERIFIED')
   if(reader.manifest.clientJarSha256!==STATIC_ITEM_SOURCES.minecraft.sha256) throw Error('NATIVE_ITEM_STATIC_CLIENT_UNVERIFIED')
-  const sources=Array.isArray(reader.manifest.sources)?reader.manifest.sources.filter(s=>s.name===evidence.source.name):[]
+  // Launchers commonly name the identical official client "1.21.1.jar".
+  // Content identity is the locked SHA, not its local filename. Include name
+  // collisions too so a conflicting canonical declaration or duplicate alias
+  // cannot pass the uniqueness/override checks below.
+  const sources=Array.isArray(reader.manifest.sources)?reader.manifest.sources.filter(s=>s.name===evidence.source.name||s.sha256===evidence.source.sha256):[]
   if(sources.length!==1||sources[0].sha256!==evidence.source.sha256||sources[0].explicitOverride) throw Error('NATIVE_ITEM_STATIC_SOURCE_UNVERIFIED')
   return evidence
 }
