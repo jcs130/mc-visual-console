@@ -20,11 +20,14 @@ import { createAgentWorldProjector } from '../modern-viewer/agent-visual-project
 import { createNativeMiniMap } from './native-mini-map.js'
 import { normalizeCameraSettings } from '../modern-viewer/camera-preferences.js'
 import { nativeCameraTarget, nativeCameraCollisionDistance } from './native-camera.js'
+import { createNativeTerrainRaycast } from './native-terrain-raycast.js'
+import { pickEntity } from '../modern-viewer/entity-picker.js'
+import { createNativeRoomVisibility } from './native-room-visibility.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
 export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{}, onState=()=>{},
-  onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{},cameraSettings,onCameraManual=()=>{}} = {}) {
+  onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{},cameraSettings,onCameraManual=()=>{},onSelection=()=>{}} = {}) {
 if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
 const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
@@ -34,6 +37,9 @@ let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
 let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap
 let director, cameraOptions=normalizeCameraSettings(cameraSettings??{version:1,mode:'follow'}),cameraFrame=null
+let terrainRaycast=()=>[],selectedEntity=null,pointerStart=null,lastCollision=null
+const roomVisibility=createNativeRoomVisibility()
+let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
 const visualListeners = new Map()
 let lastInventoryOperation = null
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
@@ -102,6 +108,8 @@ async function start () {
   director=new CameraDirector()
   renderer.domElement.addEventListener('pointerdown',manualCameraInput,true)
   renderer.domElement.addEventListener('wheel',manualCameraInput,true)
+  renderer.domElement.addEventListener('pointerdown',rememberPointer)
+  renderer.domElement.addEventListener('pointerup',selectPointer)
   const resize = () => {
     const host = viewport
     renderer.setSize(host.clientWidth, host.clientHeight)
@@ -125,9 +133,11 @@ async function start () {
               selfMotionState?.state, selfMotionState?.mode, selfMotionState?.notice])
             if (signature !== selfMotionSignature) { selfMotionSignature = signature; publishDiagnostics() }
           }
-          selfActor.root.visible = viewMode !== 'first' && (cameraDistance === null || cameraDistance > 0.9)
         }
+        entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{entityId:current.selfPlayer.entityId,position:current.pose})
         updatePlayerCamera(now)
+        roomStatus=roomVisibility.update({camera,pose:current.pose,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
+        if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
         // is a freshness guard, never substituted for its absolute phase.
         const timeStatus = nativeKineticTimeStatus(current.time, Date.now(), { paused: document.hidden })
@@ -149,7 +159,6 @@ async function start () {
         }
         if (oldReason !== kineticClockState.reason) publishDiagnostics()
       }
-      entityLayer.frame(Date.now(),current?.motion)
       renderer.render(scene, camera)
       if(selfActor?.firstPersonRoot){
         selfActor.firstPersonRoot.visible=viewMode==='first'
@@ -234,15 +243,51 @@ function updatePlayerCamera (now) {
   if (viewMode === 'region'||viewMode==='third'&&cameraOptions.mode==='manual'&&!director.shot) { controls.enabled=true;controls.update();cameraFrame={mode:'manual'};return }
   controls.enabled=false
   if(viewMode==='third') {
-    const pose=director.update(nativeCameraTarget(current,selfActor),cameraOptions,now,{aspect:camera.aspect,
-      collisionDistance:(focus,direction,distance,options)=>nativeCameraCollisionDistance(focus,direction,distance,{...options,
-        scene:statics,bounds:current.bounds,receivedColumns:current.viewCoverage?.receivedColumns??[]})})
+    let target=nativeCameraTarget(current,selfActor)
+    if(selectedEntity){
+      const entity=entityLayer.data.get(selectedEntity.id),actor=entityLayer.actors.get(selectedEntity.id)?.actor
+      if(entity?.uuid===selectedEntity.uuid&&actor?.root.visible){
+        const box=new THREE.Box3().setFromObject(actor.root),height=box.max.y-box.min.y,p=actor.root.position
+        target={key:`${entity.uuid}:${entity.entityId}:${epoch}`,position:{x:p.x,y:p.y,z:p.z},yaw:Math.PI-(entity.motion?.bodyYaw??entity.yaw)*Math.PI/180,height:Number.isFinite(height)&&height>0?height:1.8}
+      }else selectTarget(null)
+    }
+    const pose=director.update(target,cameraOptions,now,{aspect:camera.aspect,
+      collisionDistance:(focus,direction,distance,options)=>{
+        const signature=JSON.stringify([focus.x,focus.y,focus.z,direction.x,direction.y,direction.z,distance,current.revision])
+        if(!lastCollision||now-lastCollision.at>60||lastCollision.signature!==signature){
+          lastCollision={at:now,signature,value:nativeCameraCollisionDistance(focus,direction,distance,{...options,
+            bounds:current.bounds,receivedColumns:current.viewCoverage?.receivedColumns??[],raycast:terrainRaycast})}
+        }
+        return lastCollision.value
+      }})
     if(pose){camera.position.copy(pose.position);camera.lookAt(pose.focus.x,pose.focus.y,pose.focus.z);camera.fov=pose.fov;camera.updateProjectionMatrix();cameraDistance=pose.distance;cameraFrame=pose;return}
   }
   const view = playerCamera(current.pose, viewMode)
+  if(viewMode==='dungeon'){
+    const {yaw,pitch,distance}=dungeonCamera,p=current.pose
+    view.position=[p.x+Math.sin(yaw)*Math.cos(pitch)*distance,p.y+1-Math.sin(pitch)*distance,p.z+Math.cos(yaw)*Math.cos(pitch)*distance]
+  }
   const target = new THREE.Vector3().fromArray(view.target), desired = new THREE.Vector3().fromArray(view.position)
   cameraDistance=null;cameraFrame={mode:viewMode}
   camera.position.copy(desired); camera.lookAt(target)
+}
+function rememberPointer(event){pointerStart={x:event.clientX,y:event.clientY,id:event.pointerId}}
+function selectPointer(event){
+  const start=pointerStart;pointerStart=null
+  if(!start||start.id!==event.pointerId||Math.hypot(start.x-event.clientX,start.y-event.clientY)>5||!current)return
+  const rect=renderer.domElement.getBoundingClientRect(),candidates=[...entityLayer.actors].map(([id,row])=>{
+    const e=entityLayer.data.get(id);return {id,entity:{...e,metadata:Object.fromEntries((e.metadata??[]).map(m=>[m.key,m.value]))},root:row.actor.root}
+  }),raycaster=new THREE.Raycaster()
+  const hit=pickEntity({candidates,raycaster,camera,scene:worldRoot.parent,ndc:{x:(event.clientX-rect.left)/rect.width*2-1,y:1-(event.clientY-rect.top)/rect.height*2}})
+  if(hit){raycaster.far=hit.distance;if(!(terrainRaycast(raycaster).some(h=>h.distance+.01<hit.distance)))selectTarget(hit.id)}
+}
+function selectTarget(id){
+  const entity=id===null?null:entityLayer.data.get(Number(id)),actor=entity&&entityLayer.actors.get(entity.entityId)?.actor
+  selectedEntity=entity&&actor?{id:entity.entityId,uuid:entity.uuid}:null
+  director?.reset();lastCollision=null
+  if(selectedEntity&&viewMode!=='third')setView('third')
+  if(selectedEntity&&cameraOptions.mode==='manual'){cameraOptions={...cameraOptions,mode:'follow'};onCameraManual('follow')}
+  onSelection(entity?{entityId:entity.entityId,name:entity.name,uuid:entity.uuid,position:{...entity.position},health:actor.root.userData.nativeLiving?.health??null}:null)
 }
 function setCameraSettings(value) {
   const previous=cameraOptions.mode;cameraOptions=normalizeCameraSettings(value)
@@ -271,7 +316,8 @@ function publishFrame(now) {
     label = { visible: labelPoint.z >= -1 && labelPoint.z <= 1 && Math.abs(labelPoint.x) <= 1 && Math.abs(labelPoint.y) <= 1,
       x: (labelPoint.x + 1) * viewport.clientWidth / 2, y: (1 - labelPoint.y) * viewport.clientHeight / 2, name: player }
   }
-  onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label,camera:cameraFrame })
+  onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label,camera:cameraFrame,room:roomStatus,
+    selectedEntity,entities:[...(entityLayer?.data.values()??[])].slice(0,64).map(e=>({id:e.entityId,uuid:e.uuid,name:e.name,rendered:entityLayer.actors.has(e.entityId)})) })
 }
 function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
@@ -303,6 +349,8 @@ function clearScene () {
   lastPlayerFrameTime = null; selfMotionState = null; selfMotionSignature = null
   cameraDistance = null; skinState = null; drawn = 0; unknown = []; staticIssues = []; tickAge = null
   director?.reset();cameraFrame=null
+  selectedEntity=null;onSelection(null);terrainRaycast=()=>[];lastCollision=null
+  roomVisibility.reset();roomStatus=null
   kineticClock.reset(); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
   onActor(null); publishDiagnostics()
   camera?.position.set(0, 0, 0)
@@ -410,7 +458,9 @@ async function rebuildLatest () {
               try {
                 model.traverse(part => {
                   if (!part.isMesh) return
+                  for(const material of Array.isArray(part.material)?part.material:[part.material])roomVisibility.patch(material)
                   const mesh = new THREE.InstancedMesh(part.geometry, part.material, instanceCount)
+                  mesh.userData.nativeBlockPositions=subgroup.positions
                   meshes.push(mesh)
                   const matrix = new THREE.Matrix4()
                   for (let i = 0; i < instanceCount; i++) {
@@ -433,6 +483,8 @@ async function rebuildLatest () {
         }
         if (run !== generation) { for (const mesh of next.children) { mesh.dispose?.(); if (mesh.userData.nativeFluid) mesh.geometry.dispose() } continue }
         clearStatics(); for (const mesh of [...next.children]) statics.add(mesh)
+        terrainRaycast=createNativeTerrainRaycast(statics);lastCollision=null
+        roomVisibility.stage(snapshot)
         drawn = count; lastGroupSignature = signature; staticIssues = nextStaticIssues
       }
       unknown = [...nextIssues, ...staticIssues]
@@ -490,11 +542,13 @@ function dispose () {
   disposed = true; miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
   renderer?.domElement.removeEventListener('pointerdown',manualCameraInput,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
-  controls?.dispose(); clearScene(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
+  renderer?.domElement.removeEventListener('pointerdown',rememberPointer);renderer?.domElement.removeEventListener('pointerup',selectPointer)
+  controls?.dispose(); clearScene(); roomVisibility.dispose(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }
 return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,
-  setCameraSettings,startCameraShot:kind=>director?.startShot(kind,performance.now()),
+  setCameraSettings,selectTarget,startCameraShot:kind=>director?.startShot(kind,performance.now()),
+  setSceneSettings:value=>{sceneOptions={...sceneOptions,...value}},getDungeonCamera:()=>({...dungeonCamera}),setDungeonCamera:value=>{dungeonCamera={...value}},
   selectAppearance: id => selfController?.selectAppearance(id),
   get actor() { return selfActor }, get state() { return current } }
 }

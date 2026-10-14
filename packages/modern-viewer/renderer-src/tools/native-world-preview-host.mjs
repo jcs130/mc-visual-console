@@ -419,6 +419,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       if (getPresentationState !== null && typeof getPresentationState !== 'function') throw Error('PRESENTATION_PROVIDER_INVALID')
       const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry, entityRegistrySha256, simplifyNBT, now,
         resolveItemStack:nativeStream.resolveItemStack??null,
+        resolveEffect:nativeStream.resolveEffect??null,
         resolveDimension: resolveDimension || (p => {
           const type = typeof p.dimension === 'number' ? bot.registry.dimensionsArray[p.dimension] : bot.registry.dimensionsByName[String(p.dimension).replace('minecraft:', '')]
           return type && { name: p.name || p.worldName || type.name, minY: type.minY, height: type.height }

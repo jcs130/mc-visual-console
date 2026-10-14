@@ -7,6 +7,9 @@ import { installAppearanceSettings } from '../modern-viewer/appearance-settings.
 import { createNativeActivityUi } from './native-activity-ui.js'
 import { installCameraSettings } from '../modern-viewer/camera-settings.js'
 import { loadCameraSettings, CAMERA_SETTINGS_KEY } from '../modern-viewer/camera-preferences.js'
+import { installSceneSettings } from '../modern-viewer/scene-settings.js'
+import { loadSceneSettings,sceneColourFilter } from '../modern-viewer/scene-quality.js'
+import { installDungeonObserverControls } from '../modern-viewer/dungeon-observer-controls.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
@@ -30,6 +33,11 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const listeners = [], listen = (target, event, callback) => { target?.addEventListener(event, callback); listeners.push([target, event, callback]) }
   let disposed = false, identity = null, sceneHost = null, latestState = null, lastDiagnostics = null
   const appearanceUi = installAppearanceSettings({ document, window, onChange: id => sceneHost?.selectAppearance?.(id) })
+  let sceneSettings=loadSceneSettings(window.localStorage),quality
+  const sceneUi=installSceneSettings({document,window,settings:sceneSettings,onChange:value=>{
+    sceneSettings=value;quality=createAdaptiveQualityController({nativePixelRatio:window.devicePixelRatio||1,maximumPixelRatio:1.5,preference:value.quality})
+    sceneHost?.setSceneSettings?.(value);sceneHost?.renderer?.setPixelRatio(quality.getSnapshot().pixelRatio)
+  }})
   let cameraSettings
   try {cameraSettings=window.localStorage?.getItem(CAMERA_SETTINGS_KEY)?loadCameraSettings(window.localStorage):{...loadCameraSettings(null),mode:'follow'}}
   catch {cameraSettings={...loadCameraSettings(null),mode:'follow'}}
@@ -39,6 +47,16 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   let frames = 0, sampledAt = null, lastUiFrameAt = -Infinity, pendingMode = consoleViewMode(window.location?.pathname, document.body.dataset.viewMode)
   const viewport = el('viewer-canvas') ?? append(document, document.body, 'div', 'native-console-viewport')
   viewport.id = 'viewer-canvas'; viewport.setAttribute('aria-label', '同一 Agent 本人及原生世界')
+  const targets=append(document,document.body,'details','native-target-panel');append(document,targets,'summary','','观察目标')
+  const targetSelect=append(document,targets,'select','');targetSelect.setAttribute('aria-label','观战跟随目标')
+  const targetSelf=append(document,targets,'button','','回到 Agent 本人');targetSelf.type='button'
+  const targetInfo=append(document,targets,'output','','点击画面中的实体或从列表选择，只切换观战镜头')
+  listen(targetSelect,'change',()=>sceneHost?.selectTarget?.(targetSelect.value===''?null:Number(targetSelect.value)))
+  listen(targetSelf,'click',()=>sceneHost?.selectTarget?.(null))
+  let targetSignature='',dungeonUi=null,dungeonPose={yaw:Math.PI*.75,pitch:-.82,distance:16}
+  dungeonUi=installDungeonObserverControls({document,getPose:()=>sceneHost?.getDungeonCamera?.()??dungeonPose,
+    setPose:value=>{dungeonPose=value;sceneHost?.setDungeonCamera?.(value)},limits:{yaw:Math.PI*.75,pitch:-.82,distance:16,min:5,max:32},
+    requestFrame:callback=>window.requestAnimationFrame(callback),cancelFrame:id=>window.cancelAnimationFrame(id)})
   const label = append(document, viewport, 'div', 'native-player-label'); label.hidden = true
   const ysmNotice = append(document, viewport, 'div', 'native-ysm-preview-notice'); ysmNotice.hidden = true
   const boot = q('.boot') ?? append(document, document.body, 'div', 'boot', '正在载入原生世界…')
@@ -70,12 +88,14 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     [data-menu-body]>.corti-menu-note{color:#d4e2e3;margin:8px 0 0;padding:7px 4px;max-width:352px;font:11px/1.5 system-ui}
     .boot.is-compact{bottom:92px;right:14px;max-width:390px;font-size:11px}
     .viewer-camera-settings{right:112px}.viewer-toolbar .viewer-camera-settings{right:auto}
+    .native-target-panel{position:fixed;z-index:7;right:14px;top:94px;padding:6px 10px;background:#11242ce8;border:1px solid #aec3b4;border-radius:7px;font:11px/1.5 system-ui;max-width:300px}
+    .native-target-panel select{display:block;width:100%;margin:6px 0}.native-target-panel output{display:block;max-width:280px;overflow-wrap:anywhere}
     @media(max-width:720px){.native-agent-status{top:55px;font-size:10px;gap:1px 6px}.native-agent-field:has(#agent-decision-at){display:none}}
   `
   const ui = createInterface({ document })
   const activityUi = createNativeActivityUi({ document, itemName: item => ui.itemName?.(item) ?? item?.name,
     renderItem: (target, item) => ui.renderObservedItem?.(target, item) })
-  const quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5 })
+  quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5,preference:sceneSettings.quality })
   const updateDiagnosticText = () => {
     const d = lastDiagnostics
     appearanceUi.update(d?.appearance ? { ...d.appearance, subject: identity?.player || '当前观战人物' } : null)
@@ -102,7 +122,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       ...Object.entries((pendingMode === 'first' ? d?.firstPersonItems : d?.heldItems)?.hands ?? {}).map(([arm, hand]) =>
         `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}`),
       presentation.available ? '背包/菜单/技能：同一玩家原生状态；原生物品图标已接入，未支持的专用模型/组件及装备明确标注' : `展示数据：${presentation.reason}`,
-      pendingMode === 'dungeon' ? '地下城2.5D跟随相机；遮挡/切面/点击操控未接入' : '',
+      pendingMode === 'dungeon' ? '地下城2.5D跟随相机；原遮挡切面、旋转、缩放已接入' : '',
       '小地图：本人原场景与移动轨迹；第三人称已接入原运镜设置', '音效/音乐：原生接口未接入', '完整场景一致性尚未验收',
       ...(d?.issues ?? []).slice(0, 16)].filter(Boolean).join('\n')
   }
@@ -141,7 +161,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     onView: view => { if (!disposed) renderAgentStatus(view, el) } })
   const dispose = () => {
     if (disposed) return
-    disposed = true; stopStatus(); appearanceUi.dispose(); cameraUi.dispose(); activityUi.dispose(); ui.dispose(); sceneHost?.dispose()
+    disposed = true; stopStatus(); appearanceUi.dispose(); cameraUi.dispose(); sceneUi.dispose(); dungeonUi?.dispose();targets.remove();activityUi.dispose(); ui.dispose(); sceneHost?.dispose()
     for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     label.remove(); ysmNotice.remove(); stateBar.remove(); details.remove(); style.remove()
   }
@@ -149,7 +169,8 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   ui.reset(); switchView(pendingMode)
   try {
     sceneHost = await mount({ viewport, mode: pendingMode,
-      cameraSettings,onCameraManual:()=>cameraUi.manual(),
+      cameraSettings,onCameraManual:mode=>mode&&cameraUi.select?cameraUi.select(mode):cameraUi.manual(),
+      onSelection:value=>{targetSelect.value=value?String(value.entityId):'';targetInfo.textContent=value?`${value.name} · #${value.entityId}${Number.isFinite(value.health)?' · 生命 '+value.health:''}`:'正在跟随 Agent 本人'},
       onIdentity (value) { if (disposed) return; identity = value; ui.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },
       onState (value) {
         if (disposed) return
@@ -178,12 +199,21 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       onFrame (frame) {
         if (disposed) return
         frames++
+        const options=frame.entities??[],signature=JSON.stringify(options.map(e=>[e.id,e.uuid,e.name,e.rendered]))
+        if(signature!==targetSignature){
+          targetSignature=signature;const value=targetSelect.value;targetSelect.replaceChildren()
+          const own=append(document,targetSelect,'option','','Agent 本人');own.value=''
+          for(const row of options){const option=append(document,targetSelect,'option','',`${row.name} · #${row.id}${row.rendered?'':'（模型未适配）'}`);option.value=String(row.id);option.disabled=!row.rendered}
+          targetSelect.value=value
+        }
         if(frame.camera)cameraUi.status(`${({manual:'手动环绕',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称',dungeon:'地下城'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`)
         if (sampledAt === null) sampledAt = frame.now
         if (frame.now - sampledAt >= 1000) {
           const result = quality.sample({ fps: frames * 1000 / (frame.now - sampledAt), hidden: document.hidden })
           if (result.changed) sceneHost?.renderer?.setPixelRatio(result.pixelRatio)
           viewport.dataset.qualityMode = result.mode; viewport.dataset.fps = String(result.lastFps ?? '')
+          if(sceneHost?.renderer?.domElement)sceneHost.renderer.domElement.style.filter=sceneColourFilter({},sceneSettings)
+          sceneUi.status(`${({high:'精细',balanced:'均衡',performance:'省电'})[result.mode]??result.mode} · ${Math.round(result.lastFps??0)} FPS${pendingMode==='dungeon'?' · '+(frame.room?.active?'遮挡切面已展开':'地形正常显示'):''}`)
           frames = 0; sampledAt = frame.now
         }
         if (frame.now - lastUiFrameAt < 1000 / 30) return
@@ -196,6 +226,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     })
     if (disposed) { sceneHost.dispose(); return { dispose, ui, quality, get sceneHost () { return sceneHost } } }
     sceneHost.setView(pendingMode)
+    sceneHost.setSceneSettings?.(sceneSettings)
     if (sceneHost.actor) ui.setActor(sceneHost.actor)
     if (sceneHost.assetReader) {
       const assets = await ui.setAssets(sceneHost.assetReader)
