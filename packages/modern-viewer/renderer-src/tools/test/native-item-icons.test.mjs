@@ -10,6 +10,17 @@ const reader = (overrides = {}) => ({ manifest: { minecraftVersion:'1.21.1',asse
   throw Error('NATIVE_ASSET_MISSING')
 }, bytes: async path => { assert.equal(path, 'assets/minecraft/textures/item/wheat_seeds.png'); return new Uint8Array([1,2,3]) } })
 const settled = () => new Promise(resolve => setImmediate(resolve))
+
+test('more than 128 changing complete stacks use bounded LRU entries rather than permanently losing new icons',async()=>{
+  let created=0
+  const released=[],icons=new NativeItemIcons(reader(),{createUrl:()=>`blob:${++created}`,revokeUrl:url=>released.push(url)})
+  for(let n=0;n<180;n++) {
+    const next={...item,snbt:`{id:"minecraft:wheat_seeds",count:3,components:{"minecraft:repair_cost":${n}}}`}
+    icons.resolve(next);await settled();assert.equal(icons.resolve(next)?.verified,true,`stack ${n} must resolve`)
+    assert.ok(icons.entries.size<=128)
+  }
+  assert.equal(released.length,52);icons.dispose();assert.equal(released.length,180)
+})
 test('flat icons retain native namespace and decline custom components and unknown mod providers', () => {
   assert.equal(nativeItemIconEligible(item), true)
   assert.equal(nativeItemIconEligible({ name: item.name, count: item.count }), false, 'unknown components cannot become a plain item')

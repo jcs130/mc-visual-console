@@ -58,10 +58,21 @@ export class NativeItemIcons {
     // inputs, removal patches and tag types. No name-only generic icon cache.
     key += '#' + item.snbt
     if (!this.entries.has(key)) {
-      if (this.entries.size >= 128) return null
+      if (this.entries.size >= 128 && !this.evictOldest()) return null
       this.entries.set(key, { result: null, reason: 'loading', name: item.name, provider, stack }); this.queue.push(key); this.pump()
     }
-    return this.entries.get(key).result
+    const entry = this.entries.get(key)
+    this.entries.delete(key); this.entries.set(key, entry)
+    return entry.result
+  }
+  evictOldest() {
+    for (const [key, entry] of this.entries) {
+      if (entry.loading) continue // An in-flight decoder owns its resources.
+      this.entries.delete(key); this.queue = this.queue.filter(value => value !== key)
+      if (entry.result) this.revokeUrl(entry.result.url)
+      return true
+    }
+    return false
   }
   reason(item) {
     if(this.disposed) return 'NATIVE_ITEM_ICONS_DISPOSED'
@@ -81,7 +92,10 @@ export class NativeItemIcons {
     }
   }
   async load(key) {
-    const entry = this.entries.get(key), name = entry.name
+    const entry = this.entries.get(key)
+    if (!entry) return
+    entry.loading = true
+    const name = entry.name
     try {
       if (entry.provider === 'soul-slab') {
         const { blob, ...info } = await prepareNativeSoulSlabIcon(this.reader, entry.stack)
@@ -123,7 +137,7 @@ export class NativeItemIcons {
           : { kind:'native-json-flat',sourcePaths:[...model.sourcePaths,png],providerEvidence:evidence,pixelParityVerified:false }) }
       entry.reason = null
     } catch(error) { entry.reason = error.message }
-    finally { if (!this.disposed) this.onChange() }
+    finally { entry.loading = false; if (!this.disposed && this.entries.get(key) === entry) this.onChange() }
   }
   dispose() {
     if (this.disposed) return
