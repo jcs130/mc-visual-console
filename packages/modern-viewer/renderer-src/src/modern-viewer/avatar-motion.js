@@ -613,8 +613,9 @@ export class PoseDrivenPlayerAnimation {
 
 function applyLocomotionPose(pose, state, weight, motion, time) {
   if (state === 'sleep') {
-    const yaw=({south:0,west:-Math.PI/2,north:Math.PI,east:Math.PI/2})[motion.frame?.bedFacing];
-    addRotation(pose, 'root', Math.PI / 2, Number.isFinite(yaw)?yaw-motion.frame.yaw:0, 0, weight);
+    // Skinview's face is +Z, unlike the converted original Bedrock rig.
+    const yaw=({south:Math.PI,west:Math.PI/2,north:0,east:-Math.PI/2})[motion.frame?.bedFacing];
+    addRotation(pose, 'root', -Math.PI / 2, Number.isFinite(yaw)?yaw-motion.frame.yaw:0, 0, weight);
     return;
   }
   if (state === 'downed') {
