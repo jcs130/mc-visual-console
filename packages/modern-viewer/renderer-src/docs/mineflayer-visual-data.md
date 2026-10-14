@@ -16,16 +16,17 @@ that already exists. Clicking a display is not a Minecraft action.
 | Health, food/saturation, oxygen, XP, received attributes | Survival HUD and changes | Existing native HUD; unknown attributes stay unknown |
 | Received entity/equipment/hurt/movement packets | Nearby mobs, projectiles and damage | Existing supported native entity models |
 | Messages/title/actionbar, time/weather | Server guidance and environment | Existing native presentation |
-| Merchant offers, scoreboards/teams/tab, recipe availability | Trading/quest indicators and recipe explanations | Further adapters; not claimed deployed in this change |
+| Merchant offers, sidebar/tab, recipe availability | Actual quote/stock, received server guidance and material deficits | Bounded same-player activity inspector |
 
 Recipe execution and completion belong to the game body. A real grid/result/
 click and the framework task receipt can be displayed separately. An available
 recipe or sent click does not prove that an item was produced; native inventory
 differences and task outcomes supply that evidence.
 
-Useful next views include bounded item gain/loss history, food recovery/damage,
-route failure locations and queue/step timelines. They should consume existing
-events/receipts and remain separate from private model reasoning.
+The activity inspector now provides bounded item gain/loss, health/food changes,
+route failures, server sidebar/tab and public native queue/action timelines.
+Histories reset with account/entity/dimension changes. Their evidence labels
+remain separate from private model reasoning and verified game effects.
 
 ## Inventory and crafting semantics
 
@@ -59,9 +60,9 @@ source of original client pixels or mod rendering code.
 
 ## Further useful views
 
-The following are concrete candidates, not a claim that all have been deployed.
-Keep bounded event buffers and send an initial snapshot plus changes to the
-viewer; none require another language-model call.
+The standard vanilla views below consume bounded events and public receipts;
+none require another language-model call. Optional custom server adapters and
+unported original rendering branches still require separate acceptance.
 
 | View | Actual inputs | Key distinction |
 | --- | --- | --- |
@@ -80,3 +81,30 @@ Ownership remains explicit: shared viewer owns protocol presentation and visual
 widgets; the independent framework owns goals, queue and confirmed action
 receipts; Neko supplies the thin integration, performance and narration. The
 renderer never imports a host's planner or duplicates its decision loop.
+
+## Original vanilla menu and map coverage (2026-10-15)
+
+The original inventory, crafting-table, six chest sizes and three furnace
+layouts are joined by merchant, hopper, dispenser/dropper, shulker box,
+enchantment, grindstone, loom, cartography, smithing, anvil, stonecutter, beacon
+and brewing-stand layouts. The Slot origins and original PNG crops are locked
+to client SHA256 `499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99`.
+Merchant uses its 276px GUI on the actual 512px texture; hopper is 133px tall.
+Only actually received known data slots are labelled; prices come from the
+matching merchant window. Buttons, map/book/banner previews, enchanting's
+animated book and arbitrary custom menu renderers are not claimed complete.
+
+The terrain inset renders the same original Three.js scene through a second
+camera in the existing WebGL context, at most four times per second. Route and
+walked-trail overlays require the same UUID/entity. It shows received local
+geometry only, including the main scene's explicit unsupported geometry gaps.
+No second connection, proxy block map or hidden server state is added.
+
+First-person consumption uses observed `use_item`, the actual held stack and
+locked vanilla FoodProperties/item durations with original ItemInHandRenderer
+eat/drink transforms. Release, item change, identity change and expired timing
+clear the animation. Original swing and empty-hand rendering remain. Equip
+transitions, full camera bob, bow/crossbow/trident use and complete Java pixel
+parity remain separate unsupported branches; a sent use is not consumption
+success. Item icons use a bounded 128-entry LRU rather than permanently refusing
+new stacks after a long session.

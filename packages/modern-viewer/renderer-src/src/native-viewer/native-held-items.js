@@ -6,7 +6,7 @@ import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-gu
 import { verifyNativeStaticItemEvidence, nativeStaticItemState } from './native-static-item-providers.js'
 import { nativeBlockItemEligible, resolveNativeBlockItemModel, bakeNativeBlockItemFaces } from './native-block-item-icons.js'
 import { nativeHumanoidWalkAngles, nativePlayerCos, nativePlayerSin, toSkinviewLimbRotation } from './native-player-motion.js'
-import { nativeHandAnimation, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from './native-first-person-motion.js'
+import { nativeHandAnimation, nativeHandUse, nativeFirstPersonConsumeMatrix, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from './native-first-person-motion.js'
 
 // Locked 1.21.1 ItemModelGenerator / ItemInHandLayer / ItemTransform and
 // PlayerModel.translateToHand; Ars 5.13.2 SpellBookModel/TatteredTomeModel and
@@ -465,8 +465,9 @@ export class NativeHeldItems {
     const available = ['right', 'left'].some(arm => this.hands.get(arm)?.status === 'ready' && this.hands.get(arm)?.firstMount?.visible || this.emptyArms.get(arm)?.visible)
     const reason = available ? null : this.unavailableReason('firstperson')
     const motion = nativeHandAnimation(this.selection?.self, this.selection?.mainArm, this.now())
-    return { playerUuid: this.uuid, available, reason, context: 'firstperson', poseScope: motion ? 'observed_vanilla_swing_equipped_endpoint' : 'stationary_no_use_or_swing_equipped_endpoint',
-      swingAnimationAvailable: !!motion, swingProgress: motion?.progress ?? null,
+    const consuming = ['left','right'].some(arm=>nativeHandUse(this.selection?.self,arm,this.hands.get(arm)?.raw,this.now()))
+    return { playerUuid: this.uuid, available, reason, context: 'firstperson', poseScope: consuming ? 'observed_vanilla_eat_drink' : motion ? 'observed_vanilla_swing_equipped_endpoint' : 'stationary_no_use_or_swing_equipped_endpoint',
+      swingAnimationAvailable: !!motion, swingProgress: motion?.progress ?? null, consumeAnimationAvailable: consuming,
       equipmentTransitionAvailable: false, cameraLagAnimationAvailable: false, viewBobbingAnimationAvailable: false, emptyHandArmRenderingAvailable: !!motion,
       hands: Object.fromEntries(['right','left'].map(arm => [arm, { status: this.hands.get(arm)?.status ?? 'unknown',
         visible: !!(this.hands.get(arm)?.firstMount?.visible || this.emptyArms.get(arm)?.visible), name: this.hands.get(arm)?.raw?.name ?? null,
@@ -596,8 +597,11 @@ export class NativeHeldItems {
         entry.firstProjectionKey = projectionKey
       }
       const motion = nativeHandAnimation(this.selection?.self, arm, time)
+      const consume = nativeHandUse(this.selection?.self, arm, entry.raw, time)
       entry.firstReason = firstPersonPoseReason(this.selection?.self, time) || entry.firstProjection.reason
+      if(consume)entry.firstReason=entry.firstProjection.reason
       if (motion) { entry.firstMount.matrix.copy(nativeFirstPersonSwingMatrix(motion.progress, arm).multiply(transformMatrix(entry.plan.firstPersonTransform))); entry.firstMount.matrixWorldNeedsUpdate = true }
+      else if(consume) {entry.firstMount.matrix.copy(nativeFirstPersonConsumeMatrix(consume.remainingTicks,consume.durationTicks,arm).multiply(transformMatrix(entry.plan.firstPersonTransform)));entry.firstMount.matrixWorldNeedsUpdate=true}
       entry.firstMount.visible = !entry.firstReason
     }
   }

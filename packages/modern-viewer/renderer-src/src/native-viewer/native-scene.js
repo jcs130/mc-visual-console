@@ -17,6 +17,7 @@ import { stageNativeKineticActors } from './native-kinetic-layer.js'
 import { nativeColonyHutEligible, prepareNativeColonyHutModel } from './native-colony-huts.js'
 import { installAgentVisualization } from '../modern-viewer/agent-visual-overlay.js'
 import { createAgentWorldProjector } from '../modern-viewer/agent-visual-projection.js'
+import { createNativeMiniMap } from './native-mini-map.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
@@ -29,7 +30,7 @@ const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
-let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null
+let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap
 const visualListeners = new Map()
 let lastInventoryOperation = null
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
@@ -92,6 +93,7 @@ async function start () {
   renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.domElement.setAttribute('aria-label', 'Agent 本人及实时原生世界画面')
   viewport.append(renderer.domElement)
+  miniMap = createNativeMiniMap({document,renderer,scene})
   controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxDistance = 9; controls.enabled = false
   const resize = () => {
     const host = viewport
@@ -153,6 +155,8 @@ async function start () {
           try {renderer.render(firstPersonScene,firstPersonCamera)} finally {renderer.autoClear=true}
         }
       }
+      miniMap.render({position:current?.pose,playerUuid,entityId:current?.selfPlayer?.entityId,epoch,
+        bounds:current?.bounds,visual:agentVisual.snapshot(),now})
       publishFrame(now)
     } catch (error) { fail(error) }
   })
@@ -275,6 +279,7 @@ function clearStatics () {
   statics.clear()
 }
 function clearScene () {
+  miniMap?.reset()
   generation++; pending = null; current = null; lastGroupSignature = null; clearStatics()
   for (const actor of actors.values()) removeActor(actor)
   actors.clear()
@@ -466,7 +471,7 @@ function fail (error) {
 }
 function dispose () {
   if (disposed) return
-  disposed = true; agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
+  disposed = true; miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
   controls?.dispose(); clearScene(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }

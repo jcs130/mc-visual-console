@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { observeVanillaHands } from '../../host/vanilla-hand-state.mjs'
-import { nativeHandAnimation, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from '../../src/native-viewer/native-first-person-motion.js'
+import { nativeHandAnimation, nativeHandUse, nativeFirstPersonConsumeMatrix, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from '../../src/native-viewer/native-first-person-motion.js'
 
 const uuid = '01234567-89ab-cdef-0123-456789abcdef'
 function fixture() {
@@ -49,4 +49,22 @@ test('observed humanoid swings move the attacking arm and torso, and reset at re
   const rest=nativeThirdPersonSwingPose(base,0,'right',0)
   assert.equal(rest.positions.right.x,-5);assert.equal(rest.positions.left.x,5)
   assert.equal(rest.rotations.rightArm.x,0)
+})
+
+test('consumption timing observes one actual outgoing packet, no restart on snapshots, and stops on release/item/identity change',()=>{
+  const {bot}=fixture(),writes=[];bot._client.write=(...args)=>writes.push(args);bot.registry={foodsByName:{apple:{}}}
+  bot.heldItem={name:'apple',count:1,components:[],removedComponents:[]};let time=1000
+  const hands=observeVanillaHands(bot,{now:()=>time});bot.usingHeldItem=true
+  bot._client.write('use_item',{hand:0});assert.equal(writes.length,1)
+  let state=hands.snapshot();assert.equal(state.use.durationTicks,32);assert.equal(state.use.kind,'eat')
+  time=1350;state=hands.snapshot();assert.equal(state.use.startedAt,1000)
+  const self={uuid,entityId:3,handAnimation:state},use=nativeHandUse(self,'left',{name:'minecraft:apple'},time)
+  assert.ok(use);assert.equal(nativeHandUse(self,'right',{name:'minecraft:apple'},time),null)
+  assert.equal(nativeHandUse(self,'left',{name:'minecraft:stick'},time),null)
+  assert.equal(nativeHandUse({...self,entityId:4},'left',{name:'minecraft:apple'},time),null)
+  assert.notDeepEqual(nativeFirstPersonConsumeMatrix(use.remainingTicks,32,'left').elements,nativeFirstPersonConsumeMatrix(32,32,'left').elements)
+  bot._client.write('block_dig',{status:5});assert.equal(hands.snapshot().use,null)
+  bot._client.write('use_item',{hand:0});bot.heldItem=null;assert.equal(hands.snapshot().use,null)
+  bot.heldItem={name:'honey_bottle',count:1,components:[],removedComponents:[]};bot._client.write('use_item',{hand:0});assert.equal(hands.snapshot().use.durationTicks,40)
+  bot.emit('respawn');assert.equal(hands.snapshot().use,null);hands.close();assert.equal(bot._client.listenerCount('packet'),0)
 })

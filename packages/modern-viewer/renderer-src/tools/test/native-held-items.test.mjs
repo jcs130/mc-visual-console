@@ -41,6 +41,25 @@ test('known empty main hand renders the original player arm without borrowing an
   assert.equal(held.firstPersonState().hands.left.visible,false)
   held.dispose()
 })
+
+test('a matched actual food use animates the original held geometry and clears on a changed stack or expired evidence',async()=>{
+  const fixture=staticReader();let time=1400
+  fixture.reader.manifest.sources=[{name:'minecraft-1.21.1-client.jar',sha256:HELD_ITEM_CLIENT_SHA256}]
+  extendStaticFixture(fixture,'assets/minecraft/models/item/apple.json',{parent:'minecraft:item/generated',textures:{layer0:'minecraft:item/apple'}})
+  extendStaticFixture(fixture,'assets/minecraft/textures/item/apple.png',png())
+  const held=new NativeHeldItems(fixture.reader,{uuid,playerObject:new PlayerObject(),now:()=>time,readPixels:async()=>pixels(),loadHeldTexture:async()=>new THREE.Texture({width:16,height:16})})
+  held.setFirstPersonViewport({fov:70,aspect:16/9,near:.05,far:150})
+  const handAnimation={source:'same_player_vanilla_hand_packets',playerUuid:uuid,entityId:7,sampledAt:1400,mainArm:'right',usingItem:true,spinAttack:false,swing:null,
+    use:{source:'observed_use_packet_vanilla_duration',hand:'mainhand',name:'minecraft:apple',kind:'eat',durationTicks:32,startedAt:1000}}
+  held.apply(frame(raw('minecraft:apple'),{entityId:7,usingItem:true,handAnimation}))
+  await until(()=>held.state().hands.right.status!=='loading')
+  assert.equal(held.firstPersonState().consumeAnimationAvailable,true);assert.equal(held.firstPersonState().available,true,JSON.stringify(held.firstPersonState()))
+  const before=held.hands.get('right').firstMount.matrix.clone();time=1600;held.frame(time)
+  assert.notDeepEqual(held.hands.get('right').firstMount.matrix.elements,before.elements)
+  held.apply(frame(raw(),{entityId:7,usingItem:true,handAnimation}));await until(()=>held.state().hands.right.status!=='loading')
+  assert.equal(held.firstPersonState().available,false)
+  time=3000;held.frame(time);assert.equal(held.firstPersonState().consumeAnimationAvailable,false);held.dispose()
+})
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 const raw = (name = 'minecraft:wooden_pickaxe', components = '') => ({ name, count: 1,
   snbt: `{id:"${name}",count:1${components ? `,components:{${components}}` : ''}}` })

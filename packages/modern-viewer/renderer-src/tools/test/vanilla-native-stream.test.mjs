@@ -2,8 +2,18 @@ import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { observeVanillaNativeStream, vanillaPlayerPresentation } from '../../host/vanilla-native-stream.mjs';
+import { observeVanillaNativeStream, vanillaPlayerPresentation, vanillaAttributeValue } from '../../host/vanilla-native-stream.mjs';
 import { nativeItemIconEligible } from '../../src/native-viewer/native-item-icons.js';
+
+test('vanilla HUD follows actual received attribute modifiers and locked registry defaults; malformed/modded inputs stay unknown',()=>{
+  const require=createRequire(import.meta.url),bot={version:'1.21.1',registry:require('minecraft-data')('1.21.1'),entity:{attributes:{}}};
+  assert.equal(vanillaAttributeValue(bot,'max_health'),20);assert.equal(vanillaAttributeValue(bot,'armor'),0);
+  bot.entity.attributes['generic.armor']={value:0,modifiers:[{amount:6,operation:0}]};assert.equal(vanillaAttributeValue(bot,'armor'),6);
+  bot.entity.attributes['generic.max_health']={value:20,modifiers:[{amount:4,operation:0},{amount:.5,operation:1},{amount:.1,operation:2}]};
+  assert.ok(Math.abs(vanillaAttributeValue(bot,'max_health')-39.6)<1e-10);
+  bot.entity.attributes['generic.max_health'].modifiers.push({amount:1,operation:99});assert.equal(vanillaAttributeValue(bot,'max_health'),null);
+  assert.equal(vanillaAttributeValue({...bot,version:'modded'},'armor'),null);assert.equal(vanillaAttributeValue({...bot,registry:{}},'armor'),null);
+});
 
 test('actual Prismarine decoder legacy Damage NBT cannot hide the authoritative 1.21.1 component patch', () => {
   const require = createRequire(import.meta.url), registry = require('minecraft-data')('1.21.1');

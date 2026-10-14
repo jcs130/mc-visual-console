@@ -32,6 +32,29 @@ export function nativeFirstPersonSwingMatrix(progress, arm = 'right') {
   return matrix
 }
 
+export function nativeHandUse(self,arm,item,now=Date.now()) {
+  const state=self?.handAnimation,use=state?.use
+  if(state?.source!=='same_player_vanilla_hand_packets' || state.playerUuid!==self.uuid || state.entityId!==self.entityId || state.usingItem!==true || state.spinAttack!==false ||
+    !Number.isFinite(state.sampledAt) || now-state.sampledAt>1500 || now<state.sampledAt-100 || !['left','right'].includes(state.mainArm) || !use ||
+    use.source!=='observed_use_packet_vanilla_duration' || !['eat','drink'].includes(use.kind) || !['mainhand','offhand'].includes(use.hand) ||
+    ![16,32,40].includes(use.durationTicks) || !Number.isFinite(use.startedAt) || use.startedAt>state.sampledAt || now<use.startedAt || now-use.startedAt>=use.durationTicks*50) return null
+  const active=use.hand==='offhand'?(state.mainArm==='left'?'right':'left'):state.mainArm
+  if(arm!==active || item?.name!==use.name)return null
+  return {kind:use.kind,remainingTicks:F(use.durationTicks-F((now-use.startedAt)/50)+1),durationTicks:use.durationTicks}
+}
+
+// ItemInHandRenderer.applyEatTransform (315–331), followed by original
+// applyItemArmTransform. Float32 and Mth cosine LUT order are retained.
+export function nativeFirstPersonConsumeMatrix(remainingTicks,durationTicks,arm='right') {
+  if(!Number.isFinite(remainingTicks)||remainingTicks<0||!Number.isInteger(durationTicks)||durationTicks<=0||!['left','right'].includes(arm))throw Error('NATIVE_CONSUME_ANIMATION_INVALID')
+  const side=arm==='right'?1:-1,remaining=F(remainingTicks),ratio=F(remaining/F(durationTicks)),matrix=new THREE.Matrix4()
+  if(ratio<F(.8)) matrix.multiply(new THREE.Matrix4().makeTranslation(0,Math.abs(mul(nativePlayerCos(mul(F(remaining/F(4)),PI)),.1)),0))
+  const amount=F(1-F(Math.pow(ratio,27)))
+  matrix.multiply(new THREE.Matrix4().makeTranslation(mul(mul(amount,.6),side),mul(amount,-.5),0))
+  rot(matrix,'Y',mul(mul(side,amount),90));rot(matrix,'X',mul(amount,10));rot(matrix,'Z',mul(mul(side,amount),30))
+  return matrix.multiply(new THREE.Matrix4().makeTranslation(mul(side,.56),F(-.52),F(-.72)))
+}
+
 export function nativeFirstPersonEmptyArmMatrix(progress, arm = 'right') {
   if (!Number.isFinite(progress) || progress < 0 || progress > 1 || !['left','right'].includes(arm)) throw Error('NATIVE_FIRST_PERSON_SWING_INVALID')
   const side = arm === 'right' ? 1 : -1, p = F(progress), root = F(Math.sqrt(p)), a = nativePlayerSin(mul(root, PI))
