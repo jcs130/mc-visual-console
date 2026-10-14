@@ -136,8 +136,16 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
   on(bot,'path_reset',reason=>emit('path_reset',{reason:text(reason),position:point(bot.entity?.position)}))
   on(bot,'goal_reached',()=>emit('path_reached',{position:point(bot.entity?.position)}))
   on(bot,'death',()=>emit('death'))
-  on(bot,'entityHurt',entity=>emit('entity_hurt',{entityId:entity?.id,name:text(entity?.name),position:point(entity?.position)}))
-  for(const name of ['respawn','spawn','end'])on(bot,name,()=>{reset();binding=null;changed()})
+  on(bot,'entityHurt',entity=>{
+    const at=point(entity?.position),own=point(bot.entity?.position)
+    if(entity?.id===bot.entity?.id || at&&own&&Math.hypot(...['x','y','z'].map(k=>at[k]-own[k]))<=12)
+      emit('entity_hurt',{entityId:entity?.id,name:text(entity?.name),position:at})
+  })
+  for(const name of ['respawn','end'])on(bot,name,()=>{reset();binding=null;changed()})
+  // Mineflayer can emit initial spawn AFTER the authoritative window-0 sync.
+  // Identity() already resets a changed entity; do not discard the same body's
+  // received inventory and invent a fresh baseline after its first craft.
+  on(bot,'spawn',()=>{identity();changed()})
   for(const name of ['scoreUpdated','scoreRemoved','scoreboardPosition','scoreboardTitleChanged','playerJoined','playerLeft','windowOpen','windowClose'])on(bot,name,()=>changed())
   function recipePreview() {
     if(!inventoryReady)return []

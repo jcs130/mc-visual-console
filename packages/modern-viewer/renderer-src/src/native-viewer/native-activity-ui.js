@@ -1,4 +1,4 @@
-const PHASES = {queued:'排队',running:'执行中',acting:'执行中',completed:'已返回',returned:'已返回',blocked:'阻塞',
+const PHASES = {queued:'排队',accepted:'已受理',running:'执行中',acting:'执行中',completed:'已返回',returned:'已返回',blocked:'阻塞',
   failed:'失败',cancelled:'已取消',rejected:'参数被拒绝',pending:'等待',unknown:'结果未知'}
 const LABELS = {health:'生命变化',food:'饥饿变化',dig_started:'开始挖掘',dig_cancel_sent:'发送取消挖掘',dig_finish_sent:'提交挖掘',
   dig_completed:'挖掘完成',dig_aborted:'挖掘中止',block_changed:'方块更新',path_blocked:'寻路失败',path_reset:'重算路线',

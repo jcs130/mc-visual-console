@@ -78,3 +78,19 @@ test('distant growth and same-block internal updates do not displace useful near
   f.bot.emit('blockUpdate',old,{name:'chest',stateId:5,position:{x:2,y:64,z:2}})
   assert.equal(f.activity.snapshot().events.at(-1).kind,'block_changed');f.activity.close()
 })
+
+test('late initial spawn preserves the received inventory baseline; a new entity still clears it',async()=>{
+  const f=fixture();f.packet('window_items',{windowId:0,stateId:1,items:inventory(),carriedItem:{itemCount:0}});await settle()
+  f.bot.emit('spawn');await settle();assert.equal(f.activity.snapshot().inventoryReady,true)
+  f.packet('window_items',{windowId:0,stateId:2,items:inventory(36,6),carriedItem:{itemCount:0}});await settle()
+  assert.equal(f.activity.snapshot().items.at(-1).delta,-2)
+  f.bot.entity.id++;f.bot.emit('spawn');assert.equal(f.activity.snapshot().inventoryReady,false);assert.deepEqual(f.activity.snapshot().items,[]);f.activity.close()
+})
+
+test('unrelated distant mob damage does not flood the player operation list; self damage remains visible',()=>{
+  const f=fixture();f.activity.snapshot()
+  f.bot.emit('entityHurt',{id:8,name:'zombie',position:{x:100,y:64,z:2}})
+  assert.equal(f.activity.snapshot().events.length,0)
+  f.bot.emit('entityHurt',{id:7,name:'player',position:{x:1,y:64,z:2}})
+  assert.equal(f.activity.snapshot().events.at(-1).entityId,7);f.activity.close()
+})

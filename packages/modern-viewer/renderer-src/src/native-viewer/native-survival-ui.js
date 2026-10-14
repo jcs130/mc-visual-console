@@ -2,6 +2,7 @@ const COLORS=['pink','blue','red','green','yellow','purple','white']
 export function createNativeSurvivalUi({document,translate=()=>null}={}) {
   const effects=document.getElementById('corti-effects'),boss=document.getElementById('corti-boss-bars')
   const style=document.createElement('style');style.textContent=`
+    #corti-skills[hidden],[data-corti-mana-vital][hidden]{display:none!important}
     .native-effect-row{display:flex;align-items:center;gap:5px;margin:4px 0;font:11px/1.4 system-ui;color:#e5eee9}.native-effect-row img{position:static;inset:auto;width:18px;height:18px;image-rendering:pixelated}
     .native-boss-row{width:364px;margin:7px auto;color:white;text-align:center;font:12px/1.4 system-ui}.native-boss-track,.native-boss-progress,.native-boss-notches{height:10px;background-size:364px 10px;image-rendering:pixelated}.native-boss-track{position:relative;width:364px}.native-boss-progress,.native-boss-notches{position:absolute;left:0;top:0}.native-boss-notches{width:364px}
   `;document.head.append(style)
