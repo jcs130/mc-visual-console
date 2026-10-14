@@ -4,6 +4,7 @@ import { createNativeInterface } from './native-ui-adapter.js'
 import { createAdaptiveQualityController } from '../modern-viewer/viewer-performance.js'
 import { renderAgentStatus, startAgentStatusPolling } from './agent-status.js'
 import { installAppearanceSettings } from '../modern-viewer/appearance-settings.js'
+import { createNativeActivityUi } from './native-activity-ui.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
@@ -63,6 +64,8 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     @media(max-width:720px){.native-agent-status{top:55px;font-size:10px;gap:1px 6px}.native-agent-field:has(#agent-decision-at){display:none}}
   `
   const ui = createInterface({ document })
+  const activityUi = createNativeActivityUi({ document, itemName: item => ui.itemName?.(item) ?? item?.name,
+    renderItem: (target, item) => ui.renderObservedItem?.(target, item) })
   const quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5 })
   const updateDiagnosticText = () => {
     const d = lastDiagnostics
@@ -129,7 +132,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     onView: view => { if (!disposed) renderAgentStatus(view, el) } })
   const dispose = () => {
     if (disposed) return
-    disposed = true; stopStatus(); appearanceUi.dispose(); ui.dispose(); sceneHost?.dispose()
+    disposed = true; stopStatus(); appearanceUi.dispose(); activityUi.dispose(); ui.dispose(); sceneHost?.dispose()
     for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     label.remove(); ysmNotice.remove(); stateBar.remove(); details.remove(); style.remove()
   }
@@ -137,19 +140,20 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   ui.reset(); switchView(pendingMode)
   try {
     sceneHost = await mount({ viewport, mode: pendingMode,
-      onIdentity (value) { if (disposed) return; identity = value; ui.setIdentity(value); updateDiagnosticText() },
+      onIdentity (value) { if (disposed) return; identity = value; ui.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },
       onState (value) {
         if (disposed) return
         if (value?.type === 'presentation') {
           latestState = { ...latestState, presentation: value.presentation }; ui.update(latestState)
         } else if (['fishingCatch','inventoryPreview','entityDamage','combatFeedback'].includes(value?.type)) ui.event(value)
         else { latestState = value; ui.update(value) }
+        activityUi.update(latestState, { iconRevision: ui.getState().iconRevision })
         updateDiagnosticText()
       },
       onUnavailable (reason) {
         if (disposed) return
         lastDiagnostics = null; appearanceUi.update(null)
-        label.hidden = true; ui.reset(); boot.classList.add('is-compact','is-error'); boot.textContent = `原生画面不可用：${reason}`
+        label.hidden = true; ui.reset(); activityUi.reset(); boot.classList.add('is-compact','is-error'); boot.textContent = `原生画面不可用：${reason}`
         updateDiagnosticText()
         ysmNotice.hidden = true
       },

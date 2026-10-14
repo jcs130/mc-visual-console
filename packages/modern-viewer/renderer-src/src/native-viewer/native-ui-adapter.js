@@ -726,6 +726,11 @@ export function createNativeInterface ({ document = globalThis.document,
       if (source) source.textContent = manualOpen ? '玩家物品 · 只读' : '自动预览 · 只读'
       if (presentation.inventory) renderInventory(body, presentation.inventory)
       else body.append(node(document, 'p', 'corti-menu-note', '本人背包未同步；当前窗口无玩家槽映射'))
+      if (presentation.inventory?.carried) {
+        const carried = node(document, 'div', 'native-menu-carried'), icon = node(document, 'div', 'corti-menu-slot')
+        renderNativeItemSlot(document, icon, presentation.inventory.carried, { label: '本人光标', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName })
+        carried.append(icon, node(document, 'span', '', `光标：${resolveName(presentation.inventory.carried)} × ${presentation.inventory.carried.count} · Mineflayer 窗口状态`)); body.append(carried)
+      }
     }
   }
   const renderSkills = () => {
@@ -859,7 +864,9 @@ export function createNativeInterface ({ document = globalThis.document,
       return false
     },
     reset,
-    getState () { return { expectedUuid, presentation, manualOpen, idleOpen, actorAvailable: Boolean(actorSource()) } },
+    renderObservedItem (target, item) { renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName }) },
+    itemName: resolveName,
+    getState () { return { expectedUuid, presentation, manualOpen, idleOpen, iconRevision, actorAvailable: Boolean(actorSource()) } },
     dispose () {
       if (disposed) return
       reset(); disposed = true; assetsSequence++
