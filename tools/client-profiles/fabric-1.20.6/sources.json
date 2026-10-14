@@ -1,0 +1,202 @@
+[
+  {
+    "title": "Complementary Shaders - Reimagined",
+    "version": "r5.2.2",
+    "projectId": "HVnmMxH1",
+    "versionId": "pAOQ9Amz",
+    "page": "https://modrinth.com/shader/complementary-reimagined",
+    "authors": [
+      {
+        "name": "EminGT",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "LicenseRef-Custom",
+      "name": "",
+      "url": "https://github.com/ComplementaryDevelopment/ComplementaryReimagined/blob/main/License.txt"
+    },
+    "file": "shaderpacks/ComplementaryReimagined_r5.2.2.zip",
+    "sha256": "3b0cd5c36afebdcd74521a447ca5f2b0d6f9c1c8c8416a9f20d9bedc271a8e1c"
+  },
+  {
+    "title": "[EMF] Entity Model Features",
+    "version": "3.0.17-fabric-1.20.6",
+    "projectId": "4I1XuqiY",
+    "versionId": "iFg6ObpQ",
+    "page": "https://modrinth.com/mod/entity-model-features",
+    "authors": [
+      {
+        "name": "Traben",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "LGPL-3.0-only",
+      "name": "GNU Lesser General Public License v3.0 only",
+      "url": null
+    },
+    "file": "mods/entity_model_features_1.20.6-fabric-3.0.17.jar",
+    "sha256": "15851c5aba5113e7dec8c74d42aa1e50749bc03c638b2c283095c95c9565c0eb"
+  },
+  {
+    "title": "[ETF] Entity Texture Features",
+    "version": "7.0.13-fabric-1.20.6",
+    "projectId": "BVzZfTc1",
+    "versionId": "75G4gPTM",
+    "page": "https://modrinth.com/mod/entitytexturefeatures",
+    "authors": [
+      {
+        "name": "Traben",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "LGPL-3.0-only",
+      "name": "GNU Lesser General Public License v3.0 only",
+      "url": null
+    },
+    "file": "mods/entity_texture_features_1.20.6-fabric-7.0.13.jar",
+    "sha256": "fbe60fa7b7cb75e1192b9b9a19b430770eb0ceee15050bad5d91535097765086"
+  },
+  {
+    "title": "Fabric API",
+    "version": "0.100.8+1.20.6",
+    "projectId": "P7dR8mSH",
+    "versionId": "ocg4hG3t",
+    "page": "https://modrinth.com/mod/fabric-api",
+    "authors": [
+      {
+        "name": "Player7457",
+        "role": "Member"
+      },
+      {
+        "name": "modmuss50",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "Apache-2.0",
+      "name": "Apache License 2.0",
+      "url": null
+    },
+    "file": "mods/fabric-api-0.100.8+1.20.6.jar",
+    "sha256": "ef0da4eca8aa731469dde63dbee451bc6b0d5814bc140c747a7029b9bb2a8cef"
+  },
+  {
+    "title": "Faithful 32x",
+    "version": "1.20.6-june-2026",
+    "projectId": "w0TnApzs",
+    "versionId": "ZYK1JOPV",
+    "page": "https://modrinth.com/resourcepack/faithful-32x",
+    "authors": [
+      {
+        "name": "Banjoei",
+        "role": "Faithful 32x Manager"
+      },
+      {
+        "name": "Jamiscus",
+        "role": "Faithful 32x Manager"
+      }
+    ],
+    "license": {
+      "id": "LicenseRef-Faithful-License",
+      "name": "",
+      "url": "https://faithfulpack.net/license"
+    },
+    "file": "resourcepacks/Faithful 32x - 1.20.6.zip",
+    "sha256": "12e56145bd49d168e6d148224d1599bb98693116a05e52ee98208e2403ed8b9c"
+  },
+  {
+    "title": "Fresh Animations",
+    "version": "1.10.4",
+    "projectId": "50dA9Sha",
+    "versionId": "xN57JJts",
+    "page": "https://modrinth.com/resourcepack/fresh-animations",
+    "authors": [
+      {
+        "name": "FreshLX",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "LicenseRef-See-Terms-of-Use-in-Description",
+      "name": "",
+      "url": null
+    },
+    "file": "resourcepacks/FreshAnimations_v1.10.4.zip",
+    "sha256": "8e44b29560d2e7d952c0a4f77f0451e6dcb048f827189bffc712b446be8de7f2"
+  },
+  {
+    "title": "Iris Shaders",
+    "version": "1.7.2+1.20.6",
+    "projectId": "YL57xq9U",
+    "versionId": "1bvcmYOc",
+    "page": "https://modrinth.com/mod/iris",
+    "authors": [
+      {
+        "name": "IMS",
+        "role": "Lead Developer"
+      },
+      {
+        "name": "coderbot",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "LGPL-3.0-only",
+      "name": "GNU Lesser General Public License v3.0 only",
+      "url": null
+    },
+    "file": "mods/iris-1.7.2+mc1.20.6.jar",
+    "sha256": "87d1c24c581ef6c221e9ceba700db806d2ae5f309e5ae152065e6434efedd1ec"
+  },
+  {
+    "title": "Not Enough Animations",
+    "version": "1.12.6",
+    "projectId": "MPCX6s5C",
+    "versionId": "pS5TdrKa",
+    "page": "https://modrinth.com/mod/not-enough-animations",
+    "authors": [
+      {
+        "name": "tr7zw",
+        "role": "Owner"
+      }
+    ],
+    "license": {
+      "id": "LicenseRef-tr7zw-Protective-License",
+      "name": "",
+      "url": "https://github.com/tr7zw/NotEnoughAnimations/blob/main/LICENSE"
+    },
+    "file": "mods/notenoughanimations-fabric-1.12.6-mc1.20.6.jar",
+    "sha256": "92086b5cc7d1efb619bbef73ca649aab411cbf9aa82feed75387ee23056d4fa3"
+  },
+  {
+    "title": "Sodium",
+    "version": "mc1.20.6-0.5.11",
+    "projectId": "AANobbMI",
+    "versionId": "OwLQelEI",
+    "page": "https://modrinth.com/mod/sodium",
+    "authors": [
+      {
+        "name": "IMS",
+        "role": "Maintainer"
+      },
+      {
+        "name": "jellysquid3",
+        "role": "Project Lead"
+      },
+      {
+        "name": "douira",
+        "role": "Maintainer"
+      }
+    ],
+    "license": {
+      "id": "LicenseRef-Polyform-Shield-1.0.0",
+      "name": "",
+      "url": "https://github.com/CaffeineMC/sodium/blob/dev/LICENSE.md"
+    },
+    "file": "mods/sodium-fabric-0.5.11+mc1.20.6.jar",
+    "sha256": "6f05cf6944dfd98ac8c4a3daaa53e2fa58d3df84e4ee673bcd3bf64fddb592a4"
+  }
+]
