@@ -15,6 +15,11 @@ test('sleep anchors to the confirmed bed in all directions and recovery resets e
   const direction=new THREE.Vector3(0,1,0).applyQuaternion(actor.root.getWorldQuaternion(new THREE.Quaternion()));
   const expected={north:[0,0,-1],south:[0,0,1],west:[-1,0,0],east:[1,0,0]}[bedFacing];
   assert.ok(direction.distanceTo(new THREE.Vector3(...expected))<1e-8);
+  // Neutral authored head faces local -Z. The full living-entity sleep
+  // transform must turn that face upward, independent of the bed heading.
+  // A yaw + sideways roll alone passes the bed-axis check but leaves it wrong.
+  const face=new THREE.Vector3(0,0,-1).transformDirection(actor.model.bones.get('Head').matrixWorld);
+  assert.ok(face.y>.999999,'sleep must preserve face-up orientation');
   assert.equal(actor.animationState.base,'sleep');
  }
  actor.animate({motion:{bodyState:{source:'server',pose:'downed',canAct:false}}},1100);assert.equal(actor.root.rotation.x,Math.PI/2);

@@ -68,11 +68,12 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
         const downed=this.animationState.base==='downed';
         const sleeping=this.animationState.base==='sleep';
         // A presentation pose only: no collision, server position or inventory changes.
-        // YSM's authored sleep clip expects the living-entity sleeping roll;
-        // the downed pitch is a different pose and would point curled legs up.
+        // Living-entity sleep composes bed yaw, a sideways roll, then local
+        // Y=270 degrees. Omitting the last rotation turns authored sleep face-down.
         const bedYaw=({south:Math.PI/2,west:0,north:-Math.PI/2,east:Math.PI})[state.motion?.sleepState?.bedFacing];
         root.rotation.set(downed?Math.PI/2:0,
           sleeping&&Number.isFinite(bedYaw)?bedYaw-(state.renderedYaw??0):0,sleeping?Math.PI/2:0,'YXZ');
+        if(sleeping)root.rotateY(3*Math.PI/2);
         root.position.set(0,downed ? .28 : 0,0);
         const bed=state.motion?.sleepState?.bedPosition;
         if(sleeping && Number.isFinite(bedYaw) && bed && [bed.x,bed.y,bed.z].every(Number.isFinite)) {
