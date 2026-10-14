@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { nativeClientSourceVerified } from './native-client-source.js'
 import { NativeAssetReader } from './model-loader.js'
 import { createNativeModelPart, ENTITY_MODEL_CLIENT_SHA256 } from './native-entity-model.js'
 import { nativePlayerSin as sin, nativePlayerCos as cos } from './native-player-motion.js'
@@ -88,8 +89,7 @@ export function nativeSheepColor(index){if(!Number.isInteger(index)||index<0||in
 async function texture(bytes){const url=URL.createObjectURL(new Blob([bytes],{type:'image/png'}));try{return await new THREE.TextureLoader().loadAsync(url)}finally{URL.revokeObjectURL(url)}}
 export async function createNativeEntityActor(reader,entity,{registries,loadTexture=texture}={}){
   if(!(reader instanceof NativeAssetReader)||reader.manifest.clientJarSha256!==ENTITY_MODEL_CLIENT_SHA256)throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
-  const source=reader.manifest.sources?.filter(value=>value.name==='minecraft-1.21.1-client.jar')
-  if(source?.length!==1||source[0].sha256!==ENTITY_MODEL_CLIENT_SHA256||source[0].explicitOverride)throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
+  if(!nativeClientSourceVerified(reader.manifest,ENTITY_MODEL_CLIENT_SHA256))throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(entity?.name==='touhou_little_maid:maid')return createNativeMaidActor(reader,entity,{loadTexture})
   if(entity?.name===WANDSCAPE_NPC)return createNativeWandscapeActor(reader,entity,{loadTexture})
   if(['create:contraption','create:stationary_contraption'].includes(entity?.name))return createNativeContraptionActor(reader,entity,{loadTexture})

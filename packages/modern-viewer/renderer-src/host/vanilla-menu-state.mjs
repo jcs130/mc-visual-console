@@ -30,7 +30,8 @@ export function observeVanillaMenus(bot, { onChange = () => {} } = {}) {
       if (!window || window.id <= 0 || !row || row.slotCount !== window.slots?.length || !Number.isSafeInteger(row.stateId)) return null
       const dataValues = ['minecraft:furnace','minecraft:blast_furnace','minecraft:smoker'].includes(window.type) &&
         [0,1,2,3].every(key => row.properties.has(key)) ? [0,1,2,3].map(key => row.properties.get(key)) : null
-      return { window, stateId: row.stateId, dataValues }
+      return { window, stateId: row.stateId, dataValues,
+        properties: [...row.properties].sort(([a],[b])=>a-b).map(([id,value])=>({id,value})) }
     },
     close() { closed = true; client.off('packet', packet); bot.off?.('respawn', reset); bot.off?.('end', reset); windows.clear() }
   }

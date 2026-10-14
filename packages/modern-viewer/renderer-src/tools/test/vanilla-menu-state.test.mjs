@@ -44,6 +44,18 @@ test('furnace progress requires all four real properties and tracks actual state
   assert.equal(menus.snapshot().stateId,6)
   bot.currentWindow=null;assert.equal(menus.snapshot(),null);menus.close()
 })
+
+test('non-furnace data exposes only received bounded properties and clears reused windows',()=>{
+  const bot=fixture('minecraft:anvil',39),menus=observeVanillaMenus(bot)
+  packet(bot,'window_items',{windowId:1,stateId:5,items:Array(39).fill(null)})
+  assert.deepEqual(menus.snapshot().properties,[])
+  packet(bot,'craft_progress_bar',{windowId:1,property:0,value:7})
+  packet(bot,'craft_progress_bar',{windowId:1,property:50,value:777})
+  assert.deepEqual(vanillaPlayerPresentation(bot,null,menus.snapshot()).nativeMenu.properties,[{id:0,value:7}])
+  packet(bot,'open_window',{windowId:1})
+  packet(bot,'window_items',{windowId:1,stateId:0,items:Array(39).fill(null)})
+  assert.deepEqual(menus.snapshot().properties,[]);menus.close()
+})
 test('real slot clicks keep window identity through SSE and shared visual-state normalization', () => {
   const bot=fixture(),frames=[],bridge=createNativeAgentVisualization(bot,{timers:false})
   bridge.subscribe(frame=>frames.push(frame))

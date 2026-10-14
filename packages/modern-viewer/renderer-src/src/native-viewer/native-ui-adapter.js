@@ -4,6 +4,9 @@ import { FishingCatchHud } from '../modern-viewer/fishing-catch.js'
 import { NativeItemIcons } from './native-item-icons.js'
 import { NativeLanguage } from './native-language.js'
 import { nativeSoulSlabAnimationStyle, NATIVE_SOUL_SLAB_KEYFRAMES } from './native-soul-slab-icons.js'
+import { nativeClientSourceVerified } from './native-client-source.js'
+import { NATIVE_VANILLA_GUIS, standardVanillaMenuLayout, vanillaMenuPropertyLabels } from './native-vanilla-menus.js'
+export { NATIVE_VANILLA_GUIS } from './native-vanilla-menus.js'
 import { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
   nativeCoordinateMenuLayout } from './native-mod-menus.js'
 export { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
@@ -174,10 +177,7 @@ export function nativeCookingPotState (menu, expectedUuid) {
 }
 function verifyGuiSource (reader, info, kind) {
   const manifest = reader.manifest
-  const sources = manifest?.sources?.filter(source => source.name === 'minecraft-1.21.1-client.jar')
-  if (manifest?.minecraftVersion !== '1.21.1' || manifest.assetIntegrityVerified !== true ||
-      manifest.clientJarSha256 !== info.clientJarSha256 || sources?.length !== 1 ||
-      sources[0].sha256 !== info.clientJarSha256 || sources[0].explicitOverride) throw Error(`NATIVE_${kind}_GUI_CLIENT_UNVERIFIED`)
+  if (manifest?.assetIntegrityVerified !== true || !nativeClientSourceVerified(manifest, info.clientJarSha256)) throw Error(`NATIVE_${kind}_GUI_CLIENT_UNVERIFIED`)
   if (info.sourceName) {
     const mod = manifest.sources.filter(source => source.name === info.sourceName)
     if (mod.length !== 1 || mod[0].sha256 !== info.sourceSha256 || mod[0].explicitOverride) throw Error(`NATIVE_${kind}_GUI_MOD_UNVERIFIED`)
@@ -202,6 +202,10 @@ export function nativeSlotRows (rows) {
     result.push({ ...row, item: row.item ?? null })
   }
   return result.sort((a, b) => a.slot - b.slot)
+}
+
+export function nativeVanillaMenuLayout(menu, expectedUuid) {
+  return standardVanillaMenuLayout(menu, expectedUuid, nativeSlotRows(menu?.slots))
 }
 
 export function nativePresentationView (value, expectedUuid) {
@@ -238,6 +242,7 @@ export class NativeUiAssets {
     this.craftingReason = 'NATIVE_CRAFTING_GUI_LOADING'
     this.cookingPotReason = 'NATIVE_COOKING_POT_GUI_LOADING'; this.cookingPotPlaceholderReason = 'NATIVE_COOKING_POT_GUI_LOADING'
     this.chestReason = 'NATIVE_CHEST_GUI_LOADING'; this.furnaceReasons = new Map(); this.furnaceProgressReasons = new Map()
+    this.standardReasons = new Map(Object.keys(NATIVE_VANILLA_GUIS).map(type => [type, 'NATIVE_VANILLA_GUI_LOADING']))
     this.curiosReason = 'NATIVE_CURIOS_GUI_LOADING'; this.domumReason = 'NATIVE_DOMUM_GUI_LOADING'
     for (const type of Object.keys(NATIVE_FURNACE_GUIS)) {
       this.furnaceReasons.set(type, 'NATIVE_FURNACE_GUI_LOADING')
@@ -265,6 +270,7 @@ export class NativeUiAssets {
       try { verifyGuiSource(this.reader, info, kind); await this.texture(info.path); return null } catch (error) { return error.message }
     }
     await Promise.all([
+      ...Object.entries(NATIVE_VANILLA_GUIS).map(([type, info]) => prepare(info, 'VANILLA').then(reason => { this.standardReasons.set(type, reason) })),
       prepare(NATIVE_CRAFTING_GUI, 'CRAFTING').then(reason => { this.craftingReason = reason }),
       prepare(NATIVE_CHEST_GUI, 'CHEST').then(reason => { this.chestReason = reason }),
       Promise.all([NATIVE_CURIOS_GUI, NATIVE_CURIOS_GUI.inventory].map(info => prepare(info, 'CURIOS')))
@@ -564,6 +570,9 @@ export function createNativeInterface ({ document = globalThis.document,
         } else if (Object.hasOwn(NATIVE_FURNACE_GUIS, window.menuType)) {
           kind = 'furnace'; layout = nativeFurnaceMenuLayout(window, expectedUuid)
           reason = assets ? assets.furnaceReasons.get(window.menuType) : 'NATIVE_FURNACE_GUI_LOADING'
+        } else if (Object.hasOwn(NATIVE_VANILLA_GUIS, window.menuType)) {
+          kind = 'standard'; layout = nativeVanillaMenuLayout(window, expectedUuid)
+          reason = assets ? assets.standardReasons.get(window.menuType) : 'NATIVE_VANILLA_GUI_LOADING'
         } else if (window.menuType === 'farmersdelight:cooking_pot') {
           kind = 'cooking-pot'; layout = nativeCookingPotMenuLayout(window, expectedUuid)
           reason = assets ? assets.cookingPotReason : 'NATIVE_COOKING_POT_GUI_LOADING'
@@ -599,7 +608,7 @@ export function createNativeInterface ({ document = globalThis.document,
         }
         if (layout.blits) {
           panel.style.backgroundImage = 'none'
-          for (const crop of layout.blits) blit(crop.path ? assets.urls.get(crop.path) : background, 256, 256, crop, 'native-menu-background-blit')
+          for (const crop of layout.blits) blit(crop.path ? assets.urls.get(crop.path) : background, info.textureWidth ?? 256, info.textureHeight ?? 256, crop, 'native-menu-background-blit')
         } else panel.style.backgroundImage = `url("${background}")`
         if (kind === 'curios') {
           const host = node(document, 'div', 'corti-inventory-player-preview')
@@ -674,17 +683,21 @@ export function createNativeInterface ({ document = globalThis.document,
         }
         body.append(panel)
         const label = kind === 'crafting' ? '原版 3×3 工作台与玩家背包布局'
+          : kind === 'standard' ? `原版${language.menu({ menuType: window.menuType })}与玩家背包布局`
           : kind === 'chest' ? `原版 9×${layout.rowsCount} 容器与玩家背包布局`
           : kind === 'curios' ? `Curios 原背包与饰品槽布局${layout.page !== null ? ` · 第 ${layout.page + 1}/${layout.totalPages} 页` : ' · 分页状态未同步'}`
           : kind === 'domum' ? 'Domum Ornamentum 原建筑切割台材料、产物与玩家背包布局'
           : kind === 'cooking-pot' ? 'Farmer’s Delight 原 3×2 原料、熟食缓冲、容器、成品与玩家背包布局' : '原版炉输入、燃料、结果与玩家背包布局'
         const missing = kind === 'curios' ? '配方书、饰品按钮与原生标题未接入'
           : kind === 'domum' ? `${layout.previewReason ? '分组/款式预览未同步' : '已显示原始分组/款式预览第一页'}；其他滚动页与原生标题未接入`
+            : kind === 'standard' ? '按钮与专用预览尚未接入；窗口操作请在游戏中完成'
             : kind === 'chest' ? '原生标题未接入' : '配方书与原生标题未接入'
         const progressText = progress ? `；${progress.available ? '火焰与烧炼进度来自本人原生 dataValues'
           : `火焰与烧炼进度未知（${progress.reason}）`}` : cookingPot ? `；热源${cookingPot.heat.available ? (cookingPot.heat.isHeated ? '已加热' : '未加热') : `未知（${cookingPot.heat.reason}）`}；烹饪进度${cookingPot.progress.available ? '来自本人原生 dataValues' : `未知（${cookingPot.progress.reason}）`}` : ''
         const placeholderText = kind === 'cooking-pot' && assets.cookingPotPlaceholderReason ? `；空槽图标未支持（${assets.cookingPotPlaceholderReason}）` : ''
         body.append(node(document, 'p', 'corti-menu-note', `窗口 ${window.windowId} · 状态编号 ${window.stateId}；${label} · 只读；${missing}${progressText}${placeholderText}`))
+        const properties = vanillaMenuPropertyLabels(window)
+        if (properties.length) body.append(node(document, 'p', 'corti-menu-note native-menu-properties', `服务器窗口数据 · ${properties.join('；')}`))
         if (kind === 'domum') {
           const state = layout.state, variant = state.currentVariant
           body.append(node(document, 'p', 'corti-menu-note', `本人原生选择 · 分组：${language.translate(`cuttergroup.${state.currentGroup}`) ?? state.currentGroup ?? '未选择'}；款式：${variant?.count > 0 ? resolveName({ ...variant, name: variant.id, displayName: variant.name }) : '未选择'}；可用分组：${state.groups.length}；匹配配方：${state.matchingRecipeCount ?? '未同步'}。可选款式是配方预览，不是背包物品。`))

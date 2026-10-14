@@ -44,7 +44,7 @@ export function vanillaPlayerPresentation(bot, hands = null, menuState = null) {
     title: typeof menu.title === 'string' ? menu.title.slice(0, 512) : null,
     slots: menu.slots.map((item, slot) => ({ slot, item: item ? vanillaItemStack(item, bot.registry).item : null })),
     carried: menu.selectedItem ? vanillaItemStack(menu.selectedItem, bot.registry).item : null,
-    dataValues: menuState.dataValues, dataValuesSource: 'same_player_window_properties'
+    dataValues: menuState.dataValues, properties: menuState.properties, dataValuesSource: 'same_player_window_properties'
   } : null;
   return { schemaVersion: 1, playerUuid: uuid, nativeMenu,
     ...(hands?.playerUuid === uuid.toLowerCase() ? { self: { playerUuid: uuid.toLowerCase(), mainArm: hands.mainArm,
