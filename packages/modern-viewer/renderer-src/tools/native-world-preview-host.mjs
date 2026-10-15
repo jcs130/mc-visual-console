@@ -7,6 +7,7 @@ import { createRequire } from 'node:module'
 import { build } from 'esbuild'
 import { NativeWorldState, loadNativeStateRegistry, loadNativeEntityRegistry, attachNativeWorld } from './native-world-host.mjs'
 import { NativeSnapshotCadence } from './native-snapshot-cadence.mjs'
+import {nativeTerrainSignature} from './native-occlusion.mjs'
 import { createNativePlayerMotionTracker } from '../src/native-viewer/native-player-motion.js'
 import { projectNativeYsmState } from '../src/native-viewer/native-ysm-state.js'
 import { projectNativePlayerRenderState } from '../src/native-viewer/native-player-render-state.js'
@@ -19,6 +20,7 @@ import {loadNativeAudioPack} from '../host/native-audio-assets.mjs'
 import {loadOriginalItemColors,ORIGINAL_ITEM_COLORS_PATH} from '../src/native-viewer/native-potion-items.js'
 import {NativeAssetReader} from '../src/native-viewer/model-loader.js'
 import {nativeViewerBuildSignature,withNativeViewerBuild} from '../src/native-viewer/native-viewer-build.js'
+import { loadBundledAppearances } from '../host/native-bundled-appearances.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
@@ -384,7 +386,7 @@ function injectedAgentStatus (getAgentStatus, now) {
 
 // Prepare before createBot(), then attach synchronously before login packets.
 // Preparation creates no Minecraft client, listening socket or signal handler.
-export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null }) {
+export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '' }) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('NATIVE_WORLD_PORT_INVALID')
   const access = nativePreviewAccess(lanAddress)
   const root = await fs.realpath(assetDirectory)
@@ -398,6 +400,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   const entityRegistry = entityRegistrySha256 === null ? null
     : loadNativeEntityRegistry(await fs.readFile(path.join(root, 'registry/entities.tsv')), entityRegistrySha256)
   const audioPack=await loadNativeAudioPack(root,{nativeRegistrySha256:hash,entityRegistrySha256})
+  const bundledAppearances = await loadBundledAppearances(bundledAppearanceCatalogFile)
   const itemColors=manifest.assets[ORIGINAL_ITEM_COLORS_PATH]
     ?await loadOriginalItemColors(new NativeAssetReader(manifest,p=>fs.readFile(path.join(root,p)))):null
   const [bundle, consoleBundle, diagnosticsPage] = await Promise.all([
@@ -410,8 +413,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   const buildInfo = { buildSource: await viewerSourceDigest(path.resolve(SOURCE, '../..')),
     browserBundleSha256: createHash('sha256').update(bundle).digest('hex'),
     consoleBundleSha256: createHash('sha256').update(consoleBundle).digest('hex'), registrySha256: hash,
-    assetManifestSha256:createHash('sha256').update(manifestBytes).digest('hex') }
-  const viewerBuild=nativeViewerBuildSignature(buildInfo.buildSource.sourceSha256,buildInfo.assetManifestSha256)
+    assetManifestSha256:createHash('sha256').update(manifestBytes).digest('hex'),
+    bundledAppearanceSha256: bundledAppearances.sha256 }
+  const appearanceBuildSha256 = createHash('sha256').update(buildInfo.assetManifestSha256).update(bundledAppearances.sha256).digest('hex')
+  const viewerBuild=nativeViewerBuildSignature(buildInfo.buildSource.sourceSha256,appearanceBuildSha256)
+  buildInfo.viewerBuild=viewerBuild
   const pages = new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['dungeon/', 'dungeon'], ['dungeon', 'dungeon']]
     .map(([route, mode]) => [route, Buffer.from(withNativeViewerBuild(renderViewerPage(mode),viewerBuild))]))
   const diagnosticBytes=Buffer.from(withNativeViewerBuild(diagnosticsPage.toString(),viewerBuild))
@@ -444,7 +450,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       const agentVisual = createNativeAgentVisualization(bot, { getAgentStatus, now })
       let closed = false, closing = null, listening = null, currentPort = port, connectionEnded = false, identityConfirmed = Boolean(bot.username)
       const cadence = new NativeSnapshotCadence()
-      let cachedSnapshot = null, snapshotBuildCount = 0, snapshotBuildMs = null
+      let cachedSnapshot = null, cachedTerrainSignature = null, snapshotBuildCount = 0, snapshotBuildMs = null
       const motionTracker = createNativePlayerMotionTracker()
       let physicsTickCount = 0
       let receivedProfile = null, messageSequence = 0, gameMessages = [], currentTitle = null, currentActionbar = null
@@ -499,6 +505,10 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const injected = injectedPresentation(getPresentationState, player.uuid)
         const value = { schemaVersion: 1, playerUuid: player.uuid, available: true, source: sourceMode === 'numen_server_body' ? sourceMode : 'same_player_connection', sampledAt: now(),
           self: { ...player, saturation: finiteNumber(bot.foodSaturation), oxygen: finiteNumber(bot.oxygenLevel), armor,
+            ...(bot.deathLifecycle&&typeof bot.deathLifecycle.episodeId==='string'&&['dead','respawn_pending','alive'].includes(bot.deathLifecycle.phase)?
+              {deathLifecycle:{episodeId:bot.deathLifecycle.episodeId.slice(0,160),phase:bot.deathLifecycle.phase,
+                observedAt:typeof bot.deathLifecycle.observedAt==='string'?bot.deathLifecycle.observedAt.slice(0,40):null,
+                respawnAt:typeof bot.deathLifecycle.respawnAt==='string'?bot.deathLifecycle.respawnAt.slice(0,40):null}}:{}),
             inWater: typeof bot.entity?.isInWater === 'boolean' ? bot.entity.isInWater : null,
             experienceLevel: finiteNumber(bot.experience?.level), experienceProgress: finiteNumber(bot.experience?.progress), experiencePoints: finiteNumber(bot.experience?.points),
             quickBarSlot: Number.isInteger(bot.quickBarSlot) && bot.quickBarSlot >= 0 && bot.quickBarSlot <= 8 ? bot.quickBarSlot : null,
@@ -570,6 +580,12 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           else if (['index.js', 'native-console.js'].includes(requestPath)) { bytes = consoleBundle; type = 'text/javascript; charset=utf-8' }
           else if (requestPath === 'client.js') { bytes = bundle; type = 'text/javascript; charset=utf-8' }
           else if (requestPath === 'manifest.json') { bytes = manifestBytes; type = 'application/json' }
+          else if (requestPath === 'api/bundled-appearances') { bytes = Buffer.from(JSON.stringify(bundledAppearances.metadata)); type = 'application/json' }
+          else if (requestPath.startsWith('api/bundled-appearances/assets/')) {
+            bytes = bundledAppearances.read(requestPath.slice('api/bundled-appearances/assets/'.length))
+            if (!bytes) { response.writeHead(404); response.end(); return }
+            type = requestPath.endsWith('.png') ? 'image/png' : 'application/json'
+          }
           else if(requestPath==='sound-manifest.json'){bytes=Buffer.from(JSON.stringify(audioPack.metadata));type='application/json'}
           else if(requestPath.startsWith('sounds/')&&audioPack.available){bytes=await audioPack.read(requestPath.slice(7));type='audio/ogg'}
           else if (Object.hasOwn(manifest.assets, requestPath) && !requestPath.split('/').some(p => ['', '.', '..'].includes(p))) {
@@ -589,7 +605,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       server.requestTimeout = 10000; server.headersTimeout = 10000
       const worldChanged = () => { cadence.invalidate() }
       const resetPresentation = () => { gameMessages = []; currentTitle = null; currentActionbar = null }
-      const reset = () => { cadence.reset(); cachedSnapshot = null; motionTracker.reset('dimension'); resetPresentation() }
+      const reset = () => { cadence.reset(); cachedSnapshot = null; cachedTerrainSignature = null; motionTracker.reset('dimension'); resetPresentation() }
       const pose = () => { cadence.observe(world.pose) }
       const motionReset = () => motionTracker.reset('respawn')
       const motionDeath = () => motionTracker.reset('death')
@@ -613,7 +629,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         }
       }
       const unavailable = reason => {
-        cachedSnapshot = null; cadence.reset(); motionTracker.reset('connection'); resetPresentation()
+        cachedSnapshot = null; cachedTerrainSignature = null; cadence.reset(); motionTracker.reset('connection'); resetPresentation()
         for (const client of clients) client.needsSnapshot = true
         for (const client of clients) sendNativeWorldEvent(client, { type: 'unavailable', reason })
         logger?.error?.('NATIVE_WORLD_UNAVAILABLE ' + reason)
@@ -702,6 +718,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             snapshotBuildMs = Math.round((performance.now() - startedAt) * 100) / 100; snapshotBuildCount++
             cachedSnapshot = snapshot.type === 'snapshot' ? snapshot : null
             cadence.completed(world.pose, startedAt, snapshot.type === 'snapshot', snapshot.bounds)
+            if(snapshot.type==='snapshot'){
+              const signature=createHash('sha256').update(nativeTerrainSignature(snapshot)).digest('hex')
+              if(signature===cachedTerrainSignature)snapshot=null
+              cachedTerrainSignature=signature
+            }else cachedTerrainSignature=null
           }
           for (const client of clients) {
             if (client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }

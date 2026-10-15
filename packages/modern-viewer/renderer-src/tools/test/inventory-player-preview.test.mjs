@@ -49,6 +49,22 @@ function avatar() {
   return root;
 }
 
+test('both native and classic inventory rigs face the positive-Z preview camera without rotating the world', () => {
+  for (const native of [false, true]) {
+    const source = avatar(), wrapper = source.playerObject.parent;
+    wrapper.rotation.y = native ? 0 : Math.PI;
+    source.playerObject.rotation.y = native ? Math.PI : 0;
+    const mirror = mirrorInventoryPlayer(THREE, source);
+    poseInventoryPlayer(mirror);
+    mirror.root.updateMatrixWorld(true);
+    const facing = new THREE.Vector3(0, 0, 1).transformDirection(mirror.nodes.get(source.playerObject).matrixWorld);
+    assert.ok(facing.z > .95, `${native ? 'native' : 'classic'} skin front must face the viewer`);
+    assert.equal(wrapper.rotation.y, native ? 0 : Math.PI);
+    assert.equal(source.playerObject.rotation.y, native ? Math.PI : 0);
+    releaseInventoryMirror(mirror);
+  }
+});
+
 test('mirrors real skinview3d BodyParts without constructors, circular userData or duplicate bodies', () => {
   const source = avatar();
   assert.throws(() => source.clone(true));

@@ -54,6 +54,19 @@ function harness (options = {}) {
   return { ui, document, jobs, previews, advance }
 }
 
+test('short real windows linger as a labelled replay without replacing current inventory or issuing actions',()=>{
+  const h=harness(),menu={windowId:4,stateId:2,menuType:'minecraft:generic_9x1',slots:Array.from({length:45},(_,slot)=>({slot,item:null}))}
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:menu})})
+  assert.equal(h.document.getElementById('corti-menu').dataset.inventorySource,'container')
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:null})})
+  assert.equal(h.ui.getState().presentation.nativeMenu,null)
+  assert.equal(h.document.getElementById('corti-menu').dataset.inventorySource,'replay')
+  assert.match(h.document.querySelector('[data-menu-source]').textContent,/刚关闭.*回放/)
+  h.advance(3000);assert.equal(h.document.getElementById('corti-menu').hidden,false)
+  h.advance(200);assert.equal(h.document.getElementById('corti-menu').hidden,true)
+  h.ui.dispose();assert.equal(h.jobs.size,0)
+})
+
 test('native presentation requires confirmed same-player UUID and retains mod SNBT/components', () => {
   const p = presentation()
   assert.equal(nativePresentationView(p, UUID).inventory.slots[36].item.snbt, p.inventory.slots[36].item.snbt)
@@ -197,7 +210,8 @@ test('YSM inventory mirrors only the actual own rig without fallback or disposin
 test('idle preview expires, manual takeover persists, native menus and combat cancel idle without actions', () => {
   const h = harness(), event = { type: 'inventoryPreview', playerUuid: UUID, open: true, ttlMs: 60000 }
   assert.equal(h.ui.event(event), true); assert.equal(h.ui.getState().idleOpen, true)
-  h.advance(2400); assert.equal(h.document.getElementById('corti-menu').hidden, true)
+  h.advance(2400); assert.equal(h.document.getElementById('corti-menu').hidden, false)
+  h.advance(2600); assert.equal(h.document.getElementById('corti-menu').hidden, true)
   h.ui.event(event); h.document.getElementById('corti-inventory-toggle').dispatch('click'); h.advance(5000)
   assert.equal(h.ui.getState().manualOpen, true)
   h.document.querySelector('[data-menu-close]').dispatch('click')

@@ -81,7 +81,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     r.candidates = r.candidates.filter(v => v.until > time);
     r.markers = r.markers.filter(v => v.until > time);
     r.operations = r.operations.filter(v => v.until > time);
-    r.trail = r.trail.filter(v => time - v.at <= 30_000);
+    r.trail = r.trail.filter(v => time - v.at <= 8_000);
   }
   function publish(update) {
     if (closed) return { ok: false, code: 'AGENT_VISUAL_HOST_CLOSED' };
@@ -130,7 +130,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     r.operations.push({ id: ++operationId, kind, button: kind === 'attack' || kind === 'gather' ? 'left' : kind === 'inventory' && data.mouseButton !== 1 ? 'left' : 'right',
       ...(kind === 'inventory' ? { slot: Number.isSafeInteger(data.slot) ? data.slot : null,
         windowId: Number.isSafeInteger(data.windowId) ? data.windowId : null } : {}),
-      detail, target, from: visualPoint(bot.entity.position), until: now() + 1800 });
+      detail, target, from: visualPoint(bot.entity.position), until: now() + (kind === 'inventory' ? 3200 : 1800) });
     r.operations = r.operations.slice(-6);
   });
   function sample() {
@@ -144,7 +144,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     if (position && (!previous || Math.hypot(previous.x - position.x, previous.y - position.y, previous.z - position.z) >= .3)) {
       // Teleports create a new trail; never draw an invented walk across worlds.
       if (previous && Math.hypot(previous.x - position.x, previous.y - position.y, previous.z - position.z) > 16) r.trail = [];
-      r.trail.push({ ...position, at: time }); r.trail = r.trail.slice(-64);
+      r.trail.push({ ...position, at: time }); r.trail = r.trail.slice(-24);
     }
     if (r.route?.source === 'pathfinder' && r.route.status === 'moving' && bot.pathfinder?.isMoving?.() === true) r.route.until = time + 10_000;
     let flight = null;

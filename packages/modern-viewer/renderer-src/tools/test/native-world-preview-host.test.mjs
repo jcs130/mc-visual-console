@@ -105,7 +105,7 @@ after(async () => {
   await fs.rm(resolved, { recursive: true })
 })
 
-function attachment (t, options = {}) {
+function attachment (t, { preparedHost = prepared, ...options } = {}) {
   const bot = new EventEmitter()
   bot.username = 'ExistingAgent'
   bot._client = new EventEmitter()
@@ -114,7 +114,7 @@ function attachment (t, options = {}) {
   let quitCount = 0, detachCount = 0
   bot.quit = () => { quitCount++ }
   const nativeStream = { events: new EventEmitter(), detach: () => { detachCount++ } }
-  const host = prepared.attach({ bot, nativeStream, simplifyNBT: tag => tag.value, logger: null, now: () => 1000, ...options })
+  const host = preparedHost.attach({ bot, nativeStream, simplifyNBT: tag => tag.value, logger: null, now: () => 1000, ...options })
   t.after(() => host.close())
   return { bot, nativeStream, host, counts: () => ({ quitCount, detachCount }) }
 }
@@ -124,7 +124,7 @@ function request (host, url = 'status.json', { headers = {}, method = 'GET' } = 
     const req = http.request({ hostname: '127.0.0.1', port: host.port, path: '/' + url, method, headers, agent: false }, response => {
       const bytes = []
       response.on('data', chunk => bytes.push(chunk))
-      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body: Buffer.concat(bytes).toString() }))
+      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body: Buffer.concat(bytes).toString(), bytes: Buffer.concat(bytes) }))
     })
     req.on('error', reject); req.end()
   })
@@ -349,13 +349,46 @@ test('status returns caller-provided goals, decisions and receipts without inven
 test('served HTML and SSE identity bind the same checked renderer and asset manifest',async t=>{
   const {host}=attachment(t);await host.listen()
   const build=JSON.parse((await request(host,'build.json')).body)
-  const signature=build.buildSource.sourceSha256+':'+build.assetManifestSha256
+  const signature=build.viewerBuild
+  assert.match(signature,/^[a-f0-9]{64}:[a-f0-9]{64}$/)
+  assert.equal(signature.split(':')[0],build.buildSource.sourceSha256)
   for(const route of ['','third/','dungeon/','diagnostics/']){
     const page=await request(host,route)
     assert.equal(page.status,200);assert(page.body.includes('name="native-viewer-build" content="'+signature+'"'))
   }
   const stream=await events(host);t.after(()=>stream.close())
   const identity=await stream.next();assert.equal(identity.type,'identity');assert.equal(identity.viewerBuild,signature)
+})
+
+test('optional bundled catalog serves only verified declared bytes and participates in the page build', async t => {
+  const catalogRoot = path.join(directory, 'bundled-test')
+  await fs.mkdir(catalogRoot)
+  await fs.writeFile(path.join(catalogRoot, 'skin.png'), assetBytes)
+  const catalog = { schema: 'mc-bundled-appearances/v1', source: 'plugin_bundled',
+    assets: { 'skin.png': { bytes: assetBytes.length, sha256: digest(assetBytes) } },
+    appearances: [{ id: 'test', label: 'transport fixture', kind: 'skin', model: 'slim', path: 'skin.png', provenance: 'Synthetic transport test; not an appearance asset' }] }
+  const catalogFile = path.join(catalogRoot, 'catalog.json')
+  await fs.writeFile(catalogFile, JSON.stringify(catalog))
+  const preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0, bundledAppearanceCatalogFile: catalogFile })
+  const { host } = attachment(t, { preparedHost }); await host.listen()
+  const metadata = await request(host, 'api/bundled-appearances')
+  assert.equal(metadata.status, 200); assert.equal(JSON.parse(metadata.body).available, true)
+  const source = await request(host, 'api/bundled-appearances/assets/skin.png')
+  assert.equal(source.status, 200); assert.deepEqual(source.bytes, assetBytes)
+  assert.equal((await request(host, 'api/bundled-appearances/assets/catalog.json')).status, 404)
+  const build = JSON.parse((await request(host, 'build.json')).body)
+  const expected = digest(build.assetManifestSha256 + build.bundledAppearanceSha256)
+  assert.equal(build.viewerBuild, build.buildSource.sourceSha256 + ':' + expected)
+  await fs.writeFile(path.join(catalogRoot, 'skin.png'), 'changed on disk')
+  assert.deepEqual((await request(host, 'api/bundled-appearances/assets/skin.png')).bytes, assetBytes)
+})
+
+test('absent optional bundle endpoint remains available without changing the server appearance contract', async t => {
+  const { host } = attachment(t); await host.listen()
+  const metadata = await request(host, 'api/bundled-appearances')
+  assert.equal(metadata.status, 200); assert.equal(JSON.parse(metadata.body).available, false)
+  assert.deepEqual(JSON.parse(metadata.body).appearances, [])
+  assert.equal((await request(host, 'api/bundled-appearances/assets/arbitrary.png')).status, 404)
 })
 
 test('self player reads only the caller connection, with real attribute modifiers and explicit missing fields', t => {

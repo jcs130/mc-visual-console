@@ -1,0 +1,12 @@
+# Native spectator experience
+
+The shared viewer remains host-neutral and reads the action player's own connection. Java1.21.1 is the primary target; registered assets still require exact source/version integrity.
+
+- Nearby terrain expands to a32-block half extent within the existing bounded scan budget. Only fully enclosed, known, static full opaque cubes are removed from rendered groups. Exact state IDs survive in validated hidden-solid runs for room visibility and particle collision. Unknown/partial/transparent/dynamic/fluid/block-entity states remain conservative. Identical terrain reuses the current cached snapshot while received player/entity updates continue.
+- Creature positions, facing and walk phase use bounded received-sample interpolation. Teleports, long gaps, despawn and identity changes reset it. Native facts are unchanged. Trails retain8seconds/24points.
+- Inventory preview faces the camera in both native and classic rigs. Short closed windows linger3.2seconds as explicitly labelled read-only replays. Fresh menus, damage/death, dismissal and reset cancel replay; no gameplay delay is imposed.
+- Death presentation follows actual same-player health and lifecycle timestamps. Elapsed countdown does not establish respawn; positive received health does. The viewer never dispatches respawn.
+- Optional `bundledAppearanceCatalogFile` registers verified plugin-owned resources through `api/bundled-appearances`. Every allowed relative file is checked by hash/length/budget; unknown paths and symlinks fail closed. The verified bundle digest participates in the viewer build identity separately from original source-asset manifest hashes.
+- Explicit bundled skin/YSM choices bind actual player UUID/entity ID and affect Web display only. Server appearance remains default. Cancelled loads/account changes/disconnect/disposal restore current server state. Original numeric YSM models/UVs/clips/scale remain intact; unsupported equipment, extra triggers and first-person arms remain disclosed, not fabricated as supported.
+
+Offline integrated renderer verification:942tests,929passed,13optional-skips,0failed using the installed renderer dependencies and exact native1.21.1 assets. Source/asset checks do not establish Java pixel parity, sustained browser performance, every entity model, or real death lifecycle acceptance. Consumers must rebuild their own bundle and verify the actual served build and same-player stream separately.

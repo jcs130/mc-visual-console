@@ -34,6 +34,25 @@ function worldFixture (registryStates = states, registryHash = hash) {
   return { world, packet, chunk }
 }
 const pose = { x: -1.5, y: 64, z: -0.5, yaw: 0, pitch: 0, eyeHeight: 1.62 }
+
+test('dense received terrain emits exposed geometry and lossless hidden runs; opening a hole reveals its true neighbors',()=>{
+  const opaque={stateId:70005,name:'minecraft:stone',properties:{},renderShape:'MODEL',hasBlockEntity:false,
+    solid:true,blocksMotion:true,canOcclude:true,dynamicShape:false,occlusionBoxes:[[0,0,0,1,1,1]],fluid:{empty:true}}
+  const input=Buffer.from([...rows,opaque].map(r=>JSON.stringify(r)).join('\n')),digest=createHash('sha256').update(input).digest('hex')
+  const {world,packet,chunk}=worldFixture(loadNativeStateRegistry(input,digest),digest)
+  for(let x=1;x<=7;x++)for(let y=60;y<=66;y++)for(let z=1;z<=7;z++)chunk.setBlockStateId(new Vec3(x,y,z),70005)
+  packet('map_chunk',{x:0,z:0,chunkData:chunk.dump()});world.setPose({...pose,x:4.5,y:63,z:4.5})
+  const a=world.snapshot({halfExtent:4,below:3,above:3})
+  assert.equal(a.viewCoverage.nonAirBlocks,343);assert.equal(a.viewCoverage.occludedBlocks,125);assert.equal(a.viewCoverage.renderBlocks,218)
+  assert.equal(a.occludedSolidRuns.reduce((n,r)=>n+r[3]-r[2]+1,0),125)
+  assert.ok(a.occludedSolidRuns.length*5<125*3,'hidden positions have smaller wire representation')
+  assert.ok(!groupPoints(a).some(p=>p.x===4&&p.y===63&&p.z===4))
+  packet('block_change',{location:{x:4,y:63,z:4},type:777})
+  const b=world.snapshot({halfExtent:4,below:3,above:3})
+  assert.equal(b.viewCoverage.nonAirBlocks,342);assert.equal(b.viewCoverage.occludedBlocks,118)
+  assert.ok(groupPoints(b).some(p=>p.x===3&&p.y===63&&p.z===4),'fresh exposed wall is emitted immediately')
+  assert.equal(world.stateIdAt({x:4,y:62,z:4}),70005,'body perception is unfiltered')
+})
 test('received sounds are transient and bounded, but stop packets always pass the sound budget',()=>{
   const {world,packet}=worldFixture(),events=[];world.soundRegistry={sounds:{5:{name:'minecraft:block.stone.break'}}}
   world.resolveSelf=()=>({entityId:9,uuid:'own-body',position:{x:1,y:64,z:2}})
@@ -583,7 +602,7 @@ test('a rooftop default view includes actual ground, a farther building, native 
   world.setPose({ ...pose, x: 8.5, y: 72, z: 8.5 })
   assert.deepEqual(world.snapshot({ halfExtent: 10, below: 5, above: 10 }).groups, [])
   const snapshot = world.snapshot()
-  assert.deepEqual(snapshot.bounds, { minX: -16, maxX: 32, minY: 48, maxY: 96, minZ: -16, maxZ: 32 })
+  assert.deepEqual(snapshot.bounds, { minX: -24, maxX: 40, minY: 48, maxY: 96, minZ: -24, maxZ: 40 })
   assert.deepEqual(groupPoints(snapshot), [
     { x: 8, y: 60, z: 8, stateId: 70001 }, { x: 26, y: 70, z: 8, stateId: 70001 }, { x: 9, y: 61, z: 8, stateId: 70002 }
   ])

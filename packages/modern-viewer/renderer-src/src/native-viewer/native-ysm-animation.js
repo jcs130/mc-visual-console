@@ -98,6 +98,29 @@ export function compileNativeYsmAnimations (definition, boneNames, { modelId = '
   return clips
 }
 
+// A separate explicit source contract for local original numeric Bedrock clips.
+// It does not grant a bundle the locked JAR/CC0 profile or evaluate expressions.
+export function compileBundledYsmAnimations (definition, boneNames) {
+  if (!known(definition, ['format_version', 'animations']) || definition.format_version !== '1.8.0' ||
+      !object(definition.animations) || Object.keys(definition.animations).length > 128) throw Error('BUNDLED_ANIMATION_INVALID')
+  const bones = new Set(boneNames), clips = new Map()
+  for (const [name, source] of Object.entries(definition.animations)) {
+    if (!/^[a-z0-9_:]{1,64}$/.test(name) || !known(source, ['loop', 'animation_length', 'bones']) || !object(source.bones) ||
+        Object.keys(source.bones).length > 128 || ![true, false, 'hold_on_last_frame'].includes(source.loop) ||
+        !finite(source.animation_length) || source.animation_length < 0 || source.animation_length > 60) throw Error('BUNDLED_ANIMATION_INVALID')
+    const tracks = Object.entries(source.bones).map(([bone, channels]) => {
+      if (!bones.has(bone) || !known(channels, ['rotation', 'position', 'scale'])) throw Error('BUNDLED_ANIMATION_BONE_UNSUPPORTED')
+      for (const value of Object.values(channels)) {
+        const values = vector(value) ? [value] : object(value) ? Object.values(value) : []
+        if (!values.length || values.some(value => !vector(value) || !value.every(finite))) throw Error('BUNDLED_ANIMATION_NUMERIC_REQUIRED')
+      }
+      return [bone, Object.fromEntries(Object.entries(channels).map(([channel, values]) => [channel, compileTrack(values, channel)]))]
+    })
+    clips.set(name, { name, length: source.animation_length, loop: source.loop === true, holdOnLastFrame: source.loop === 'hold_on_last_frame', tracks, source })
+  }
+  return clips
+}
+
 export function sampleNativeYsmClip (clips, name, seconds, query = null) {
   const clip = clips.get(name)
   if (!clip || !finite(seconds) || seconds < 0) throw Error('NATIVE_YSM_CLIP_UNAVAILABLE')
@@ -228,15 +251,17 @@ export function applyNativeYsmBonePose (model, poses, headQuery = null) {
   }
 }
 
-export function createNativeYsmAnimation (model, definition, playerUuid, { modelId = 'misc/3_default_boy' } = {}) {
-  const clips = compileNativeYsmAnimations(definition, model.bones.keys(), { modelId })
+export function createNativeYsmAnimation (model, definition, playerUuid, { modelId = 'misc/3_default_boy', bundledOriginal = false } = {}) {
+  const clips = bundledOriginal ? compileBundledYsmAnimations(definition, model.bones.keys()) : compileNativeYsmAnimations(definition, model.bones.keys(), { modelId })
+  const scope = bundledOriginal ? 'plugin_bundled_original_numeric_main_clips' : NATIVE_YSM_ANIMATION_SUPPORT.scope
+  const transitionSeconds = bundledOriginal ? 0 : NATIVE_YSM_ANIMATION_SUPPORT.nativeMainTransitionSeconds
   let currentClip = null, entrySeconds = 0, clipSeconds = 0, animationTicks = 0, physicsEpoch = null, previousNow = null, tickCount = null, previousPhysicsTime = null
   let lastObservation = null
-  let state = unavailable('NATIVE_YSM_MOTION_WAITING')
+  let state = unavailable('NATIVE_YSM_MOTION_WAITING', { scope })
   const reset = reason => {
     currentClip = null; entrySeconds = 0; clipSeconds = 0; animationTicks = 0; physicsEpoch = null; previousNow = null; tickCount = null; previousPhysicsTime = null
     lastObservation = null
-    model.reset(); state = unavailable(reason); return state
+    model.reset(); state = unavailable(reason, { scope }); return state
   }
   return {
     apply (input) {
@@ -280,18 +305,19 @@ export function createNativeYsmAnimation (model, definition, playerUuid, { model
       // Native main begins with a 2-tick transition whose new clip anim_time
       // stays zero. Keep this original clip clock rule without inventing the
       // unported transition blend, interruption or inactive-bone recovery.
-      clipSeconds = Math.max(0, F(entrySeconds - F(NATIVE_YSM_ANIMATION_SUPPORT.nativeMainTransitionSeconds)))
+      clipSeconds = Math.max(0, F(entrySeconds - F(transitionSeconds)))
       previousNow = value.now; previousPhysicsTime = physicsTime; tickCount = value.motion.tickCount
       lastObservation = { now: value.now, tickCount: value.motion.tickCount, physicsTime }
       try {
         const head = nativeYsmHeadQuery(value.motion, value.walk.partialTick)
-        const eye = nativeYsmEyeQuery(playerUuid, animationTicks, value.motion.sleeping)
+        const eye = bundledOriginal ? { isCloseEyes: false, blinkPhaseSource: null }
+          : nativeYsmEyeQuery(playerUuid, animationTicks, value.motion.sleeping)
         const query = { ...head, ...eye }
         const base = sampleNativeYsmClip(clips, currentClip, clipSeconds)
         applyNativeYsmBonePose(model, [base, ...['parallel0', 'parallel1'].filter(name => clips.has(name))
           .map(name => sampleNativeYsmClip(clips, name, 0, query))], head)
-        state = { available: true, reason: null, scope: NATIVE_YSM_ANIMATION_SUPPORT.scope, clip: currentClip,
-          clipTime: base.time, entryTime: entrySeconds, beginningTransition: entrySeconds < F(.1),
+        state = { available: true, reason: null, scope, clip: currentClip,
+          clipTime: base.time, entryTime: entrySeconds, beginningTransition: entrySeconds < F(transitionSeconds),
           animationTicks, playerUuid, source: NATIVE_YSM_MOTION_SOURCE, tick: value.walk.tick,
           nativeTickCount: value.motion.tickCount, physicsEpoch, sampledAt: value.motion.sampledAt, frozen: false,
           bodyYaw: head.bodyYaw, bodyRotationRadians: head.bodyRotationRadians,

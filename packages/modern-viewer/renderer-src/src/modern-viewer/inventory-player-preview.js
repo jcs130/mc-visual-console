@@ -1,4 +1,5 @@
 import { PlayerObject } from 'skinview3d/libs/model.js';
+import { Vector3 } from 'three';
 import { rendererEntityEquipment } from './renderer-equipment.js';
 
 /** A read-only mirror of the renderer's current player, with no new assets. */
@@ -87,6 +88,12 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
   if (!player || !skin) return;
   const playerCopy = nodes.get(player);
   if (!playerCopy) return;
+  // Classic puts PI on the wrapper; native puts it on PlayerObject itself.
+  // Once its animated rotation is neutralized below, compensate the actual
+  // parent frame rather than always turning the preview's back to the camera.
+  const front = new Vector3(0, 0, 1);
+  for (let parent = playerCopy.parent; parent && parent !== root; parent = parent.parent) front.applyQuaternion(parent.quaternion);
+  root.rotation.y = .20 + yaw - Math.atan2(front.x, front.z);
   playerCopy.visible = true;
   playerCopy.position.set(0, 16, 0);
   playerCopy.rotation.set(0, 0, 0);

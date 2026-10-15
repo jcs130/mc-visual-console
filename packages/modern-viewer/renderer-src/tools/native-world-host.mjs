@@ -8,6 +8,7 @@ import { createNativeEntityMotion } from '../src/native-viewer/native-entity-mot
 import {viewerSoundPacket,viewerSoundStopPacket} from '../host/viewer-sound-packets.mjs'
 import {nativeParticlePacket} from '../src/native-viewer/native-particle-state.js'
 import {nativeThrownItemType,nativeThrownItemState} from '../src/native-viewer/native-thrown-item-state.js'
+import {nativeOpaqueFullCube,appendOccludedSolid} from './native-occlusion.mjs'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 // Leave room for the same-player presentation in the host's 2 MiB SSE event.
@@ -482,7 +483,7 @@ export class NativeWorldState extends EventEmitter {
 
   // Bounded received-chunk volume, clearly reported to the UI. All block IDs
   // and positions are native; only actual registry air is absent from groups.
-  snapshot ({ halfExtent = 24, below = 24, above = 24 } = {}) {
+  snapshot ({ halfExtent = 32, below = 24, above = 24 } = {}) {
     if (this.error) return { type: 'unavailable', reason: this.error, epoch: this.epoch }
     if (!this.pose || !this.dimension) return { type: 'waiting', epoch: this.epoch, reason: 'waiting_for_native_world_and_player' }
     if (![halfExtent, below, above].every(Number.isInteger) || halfExtent < 1 || halfExtent > 32 || below < 0 || above < 0 || below + above > 96) throw Error('NATIVE_WORLD_VIEW_BOUNDS_INVALID')
@@ -490,9 +491,9 @@ export class NativeWorldState extends EventEmitter {
     let selectedExtent = halfExtent, scanWork = 0
     for (;;) {
       const bounds = viewBounds(this.pose, this.dimension, selectedExtent, below, above)
-      // Count a complete one-block halo pessimistically even when no fluid is
-      // present. It bounds all native-fluid height/flow/occlusion reads.
-      if (volume(bounds) + volume(haloBounds(bounds, this.dimension)) > SNAPSHOT_LIMITS.maxScanVoxels) {
+      // The numeric ID cache shares every center, occlusion and fluid-stencil
+      // read. Each received voxel in the complete halo is fetched at most once.
+      if (volume(haloBounds(bounds, this.dimension)) > SNAPSHOT_LIMITS.maxScanVoxels) {
         clippedBy.add('scan_budget'); selectedExtent--; continue
       }
       const snapshot = this.#snapshotVolume(bounds)
@@ -501,7 +502,7 @@ export class NativeWorldState extends EventEmitter {
         horizontalRangeReduced: selectedExtent !== halfExtent, verticalRangeLimited: bounds.minY > this.dimension.minY || bounds.maxY < this.dimension.minY + this.dimension.height - 1,
         limits: SNAPSHOT_LIMITS, scanWorkVoxels: scanWork }
       const bytes = Buffer.byteLength(JSON.stringify(snapshot))
-      const renderCount = snapshot.viewCoverage.nonAirBlocks
+      const renderCount = snapshot.viewCoverage.renderBlocks
       if (renderCount <= SNAPSHOT_LIMITS.maxRenderBlocks && bytes <= SNAPSHOT_LIMITS.maxSnapshotBytes) return snapshot
       if (renderCount > SNAPSHOT_LIMITS.maxRenderBlocks) clippedBy.add('render_budget')
       if (bytes > SNAPSHOT_LIMITS.maxSnapshotBytes) clippedBy.add('event_byte_budget')
@@ -521,7 +522,22 @@ export class NativeWorldState extends EventEmitter {
     // Fixed-size numeric stencil mask avoids millions of absolute-coordinate
     // string allocations when the received volume happens to be all water.
     const fluidNeighbors = new Uint8Array(volume(halo))
-    let scannedVoxels = 0, nonAirBlocks = 0
+    const ids = new Int32Array(volume(halo)).fill(-2), opaque = new Map(), occludedSolidRuns = []
+    const stateAt = (x,y,z) => {
+      if(x<halo.minX||x>halo.maxX||y<halo.minY||y>halo.maxY||z<halo.minZ||z>halo.maxZ)return null
+      const index=(y-halo.minY)*haloLayer+(z-halo.minZ)*haloWidth+x-halo.minX
+      if(ids[index]===-2){ids[index]=this.stateIdAt({x,y,z})??-1;scannedVoxels++}
+      if(ids[index]<0)return null
+      const state=this.states.get(ids[index]);if(!state)throw Error(`NATIVE_WORLD_STATE_UNREGISTERED:${ids[index]}`)
+      return state
+    }
+    const full = state => {
+      if(!state)return false
+      if(!opaque.has(state.stateId))opaque.set(state.stateId,nativeOpaqueFullCube(state))
+      return opaque.get(state.stateId)
+    }
+    let occludedBlocks=0
+    let scannedVoxels = 0, nonAirBlocks = 0, renderBlocks = 0
     for (let cz = Math.floor(bounds.minZ / 16); cz <= Math.floor(bounds.maxZ / 16); cz++)
       for (let cx = Math.floor(bounds.minX / 16); cx <= Math.floor(bounds.maxX / 16); cx++) {
         const ck = columnKey(cx, cz)
@@ -539,14 +555,18 @@ export class NativeWorldState extends EventEmitter {
       const id = this.biomeIdAtQuart(x, y, z); biomeGrid.ids.push(id); if (id !== null) usedBiomes.add(id)
     }
     for (let y = bounds.minY; y <= bounds.maxY; y++) for (let z = bounds.minZ; z <= bounds.maxZ; z++) for (let x = bounds.minX; x <= bounds.maxX; x++) {
-      const p = { x, y, z }, id = this.stateIdAt(p); scannedVoxels++
-      if (id === null) continue
-      const state = this.states.get(id)
-      if (!state) throw Error(`NATIVE_WORLD_STATE_UNREGISTERED:${id}`)
+      const p = { x, y, z }, state = stateAt(x,y,z)
+      if (!state) continue
+      const id=state.stateId
       if (AIR.has(state.name)) continue
+      nonAirBlocks++
       definitions.set(id, state)
+      if(x>bounds.minX&&x<bounds.maxX&&y>bounds.minY&&y<bounds.maxY&&z>bounds.minZ&&z<bounds.maxZ&&full(state)&&
+          full(stateAt(x-1,y,z))&&full(stateAt(x+1,y,z))&&full(stateAt(x,y-1,z))&&full(stateAt(x,y+1,z))&&full(stateAt(x,y,z-1))&&full(stateAt(x,y,z+1))){
+        appendOccludedSolid(occludedSolidRuns,x,y,z,id);occludedBlocks++;continue
+      }
       if (!groups.has(id)) groups.set(id, [])
-      groups.get(id).push(x, y, z); nonAirBlocks++
+      groups.get(id).push(x, y, z); renderBlocks++
       if (state.fluid && !state.fluid.empty) {
         const center = (y - halo.minY) * haloLayer + (z - halo.minZ) * haloWidth + x - halo.minX
         for (let dy = -1; dy <= 1; dy++) {
@@ -569,20 +589,18 @@ export class NativeWorldState extends EventEmitter {
     let neighborIndex = 0
     for (let y = halo.minY; y <= halo.maxY; y++) for (let z = halo.minZ; z <= halo.maxZ; z++) for (let x = halo.minX; x <= halo.maxX; x++, neighborIndex++) {
       if (!fluidNeighbors[neighborIndex]) continue
-      const id = this.stateIdAt({ x, y, z }); scannedVoxels++
-      if (id === null) continue
-      const state = this.states.get(id)
-      if (!state) throw Error(`NATIVE_WORLD_STATE_UNREGISTERED:${id}`)
+      const state=stateAt(x,y,z);if(!state)continue
+      const id=state.stateId
       neighbors.push(x, y, z, id); definitions.set(id, state)
     }
     return { type: 'snapshot', schemaVersion: 1, mode: 'live_same_player_connection', minecraftVersion: '1.21.1', registrySha256: this.registrySha256,
       epoch: this.epoch, revision: this.revision, packetSequence: this.lastSequence, dimension: this.dimension, pose: this.pose, time: this.time, bounds,
-      states: [...definitions.values()], groups: [...groups].map(([stateId, positions]) => ({ stateId, positions })), kinetic, cuttingBoards, missingColumns: [...missingColumns],
+      states: [...definitions.values()], groups: [...groups].map(([stateId, positions]) => ({ stateId, positions })), occludedSolidRuns, kinetic, cuttingBoards, missingColumns: [...missingColumns],
       particleCollisions:this.particleCollisions,
       entityState: this.entitySnapshot(bounds),
       neighbors, biomeSeed: this.biomeSeed, biomeGrid, biomes: [...usedBiomes].map(id => this.biomes.get(id)).filter(Boolean),
       viewCoverage: { source: 'received_native_chunks', policy: 'complete_bounded_volume', receivedColumns, missingColumns: [...missingColumns],
-        scannedVoxels, nonAirBlocks, fluidNeighborVoxels: neighbors.length / 4, neighborCoverage: 'fluid_stencil_only',
+        scannedVoxels, nonAirBlocks, renderBlocks, occludedBlocks, visibilityPolicy: 'exposed_surfaces_with_lossless_hidden_solid_runs', fluidNeighborVoxels: neighbors.length / 4, neighborCoverage: 'fluid_stencil_only',
         outsideBounds: 'not_in_snapshot', unloadedColumns: 'unknown' },
       entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false }
   }

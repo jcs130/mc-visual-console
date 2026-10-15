@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import {resourcePath} from './model-loader.js'
 import {nativeClientSourceVerified} from './native-client-source.js'
 import {ENTITY_MODEL_CLIENT_SHA256} from './native-entity-model.js'
+import {createHiddenSolidLookup} from './native-hidden-solids.js'
 import {NativeParticleRandom,NATIVE_PARTICLE_TYPES,expandNativeParticlePacket,createNativeParticle,tickNativeParticle,nativeParticleFrame,collideNativeParticleShapes} from './native-particle-state.js'
 const key=(x,y,z)=>`${x},${y},${z}`
 async function texture(bytes){const url=URL.createObjectURL(new Blob([bytes],{type:'image/png'}));try{return await new THREE.TextureLoader().loadAsync(url)}finally{URL.revokeObjectURL(url)}}
@@ -10,7 +11,7 @@ export function createNativeParticleCollision(snapshot){
   if(snapshot?.particleCollisions?.available!==true)throw Error('NATIVE_PARTICLE_COLLISION_TABLE_UNAVAILABLE')
   const states=new Map(snapshot.states.map(s=>[s.stateId,s])),cells=new Map(),received=new Set(snapshot.viewCoverage?.receivedColumns??[])
   for(const g of snapshot.groups)for(let i=0;i<g.positions.length;i+=3)cells.set(key(...g.positions.slice(i,i+3)),states.get(g.stateId))
-  const bounds=snapshot.bounds
+  const bounds=snapshot.bounds,hidden=createHiddenSolidLookup(snapshot)
   return(box,v)=>{
     const shapes=[],sweep=box.map((n,i)=>n+(i<3?Math.min:Math.max)(0,v[['x','y','z'][i%3]])),epsilon=1e-7
     const lo=[0,1,2].map(i=>Math.floor(sweep[i]-epsilon)-1)
@@ -18,7 +19,7 @@ export function createNativeParticleCollision(snapshot){
     if((hi[0]-lo[0]+1)*(hi[1]-lo[1]+1)*(hi[2]-lo[2]+1)>512)throw Error('NATIVE_PARTICLE_COLLISION_BUDGET_EXCEEDED')
     for(let z=lo[2];z<=hi[2];z++)for(let y=lo[1];y<=hi[1];y++)for(let x=lo[0];x<=hi[0];x++){
       if(x<bounds.minX||x>bounds.maxX||y<bounds.minY||y>bounds.maxY||z<bounds.minZ||z>bounds.maxZ||!received.has(`${Math.floor(x/16)},${Math.floor(z/16)}`))throw Error('NATIVE_PARTICLE_COLLISION_WORLD_UNRECEIVED')
-      const state=cells.get(key(x,y,z));if(!state)continue // Complete received volume: an absent non-air cell is air.
+      const state=cells.get(key(x,y,z))??hidden(x,y,z);if(!state)continue // Hidden solids remain real collision data.
       const padding=[x===lo[0]||x===hi[0],y===lo[1]||y===hi[1],z===lo[2]||z===hi[2]].filter(Boolean).length
       if(padding===3||padding===1&&!state.collisionLarge||padding===2&&state.name!=='minecraft:moving_piston')continue
       if(!Array.isArray(state.collisionBoxes)||!state.collisionVoxel)throw Error('NATIVE_PARTICLE_DYNAMIC_COLLISION_UNAVAILABLE')

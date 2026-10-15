@@ -1,5 +1,6 @@
 import { createNativePlayerActor } from './native-player.js'
 import { createNativeYsmPlayerActor } from './native-player-ysm.js'
+import { createNativeBundledYsmPlayerActor } from './native-player-bundled-ysm.js'
 import { nativeSelfPlayerBinding, nativeYsmSourcePresent, NATIVE_YSM_NOTICE } from './native-ysm-state.js'
 import { nativeAppearanceChoices, nativeWebAppearanceBinding, assertNativeAppearanceIdentity } from './native-appearance.js'
 
@@ -22,19 +23,25 @@ export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Dat
 // Keep this ownership outside WebGL so switch/disable/disconnect races can be
 // checked with the same production controller used by the scene.
 export class NativeSelfPlayerController {
-  constructor (reader, { minecraftFactory = createNativePlayerActor, ysmFactory = createNativeYsmPlayerActor, onChange = () => {} } = {}) {
+  constructor (reader, { minecraftFactory = createNativePlayerActor, ysmFactory = createNativeYsmPlayerActor,
+    bundledYsmFactory = createNativeBundledYsmPlayerActor, bundledAppearanceReader = null, onChange = () => {} } = {}) {
     this.reader = reader; this.minecraftFactory = minecraftFactory; this.ysmFactory = ysmFactory; this.onChange = onChange
+    this.bundledAppearanceReader = bundledAppearanceReader; this.bundledYsmFactory = bundledYsmFactory
     this.ysmAssetsPresent = nativeYsmSourcePresent(reader.manifest)
     this.actor = null; this.key = null; this.revision = 0; this.disposed = false
     this.appearanceId = 'server'; this.lastInput = null; this.status = '等待当前观战玩家'
   }
   notify (actor, status) { this.status = status; this.onChange(actor, status) }
   appearance () {
-    return { available: !!this.lastInput && !this.disposed, selected: this.appearanceId, choices: nativeAppearanceChoices(this.reader.manifest),
+    return { available: !!this.lastInput && !this.disposed, selected: this.appearanceId, choices: nativeAppearanceChoices(this.reader.manifest, this.bundledAppearanceReader),
       status: `${this.appearanceId === 'server' ? '跟随服务器外观' : 'Web 外观替换'} · ${this.status ?? '等待当前观战玩家'}` }
   }
   selectAppearance (id) {
-    if (this.disposed || !this.lastInput || !nativeAppearanceChoices(this.reader.manifest).some(row => row.id === id)) return false
+    if (this.disposed || !this.lastInput) return false
+    if (!nativeAppearanceChoices(this.reader.manifest, this.bundledAppearanceReader).some(row => row.id === id)) {
+      if (typeof id === 'string' && id.startsWith('bundled:')) this.notify(this.actor, '自带外观不可用: BUNDLED_APPEARANCE_UNAVAILABLE')
+      return false
+    }
     this.appearanceId = id
     // An explicit repeat selection allows retry after a load error.
     this.key = null
@@ -49,26 +56,38 @@ export class NativeSelfPlayerController {
     let binding
     try { binding = this.appearanceId === 'server'
       ? nativeSelfPlayerBinding(self, playerUuid, ysm, { ysmAssetsPresent: this.ysmAssetsPresent })
-      : nativeWebAppearanceBinding(self, playerUuid, this.appearanceId, this.reader.manifest) }
+      : nativeWebAppearanceBinding(self, playerUuid, this.appearanceId, this.reader.manifest, this.bundledAppearanceReader) }
     catch (error) { this.clear(error.message, true); return null }
     if (this.key === binding.key) return this.actor
     const revision = ++this.revision; this.key = binding.key
     this.actor?.dispose(); this.actor = null; this.notify(null, '本人模型正在载入')
     let candidate
     try {
-      candidate = binding.kind === 'ysm'
+      candidate = binding.kind === 'bundled-ysm'
+        ? await this.bundledYsmFactory(this.reader, { uuid: binding.uuid, bundledAppearance: binding.bundledAppearance })
+        : binding.kind === 'ysm'
         ? await this.ysmFactory(this.reader, { uuid: binding.uuid, ysm: binding.ysm, ...(binding.webAppearance ? { webAppearance: binding.webAppearance } : {}) })
-        : await this.minecraftFactory(this.reader, { uuid: binding.uuid })
+        : await this.minecraftFactory(this.reader, { uuid: binding.uuid, ...(binding.bundledAppearance ? { bundledAppearance: binding.bundledAppearance } : {}) })
       if (this.disposed || revision !== this.revision) { candidate.dispose(); return null }
+      if (binding.bundledAppearance && (candidate.assetInfo.uuid !== binding.uuid || candidate.assetInfo.source !== 'plugin_bundled')) {
+        throw Error('BUNDLED_APPEARANCE_ACTOR_BINDING_MISMATCH')
+      }
       if (binding.kind === 'minecraft' && (candidate.assetInfo.path !== binding.skin.assetPath || candidate.assetInfo.sha256 !== binding.skin.sha256)) {
         throw Error('NATIVE_PLAYER_SKIN_BINDING_MISMATCH')
       }
       this.actor = candidate
-      this.notify(candidate, binding.kind === 'ysm' ? candidate.assetInfo.support?.notice || candidate.assetInfo.notice || NATIVE_YSM_NOTICE
-        : `1.21.1 ${candidate.assetInfo.name || binding.skin.model}; 本人步态和部分持物已接入，完整动画未验收`)
+      this.notify(candidate, ['ysm', 'bundled-ysm'].includes(binding.kind) ? candidate.assetInfo.support?.notice || candidate.assetInfo.notice || NATIVE_YSM_NOTICE
+        : `1.21.1 ${candidate.assetInfo.name || candidate.assetInfo.model || binding.skin?.model}; 本人步态和部分持物已接入，完整动画未验收`)
       return candidate
     } catch (error) {
       candidate?.dispose()
+      if (!this.disposed && revision === this.revision && binding.bundledAppearance) {
+        this.appearanceId = 'server'; this.key = null
+        const restorationRevision = this.revision + 1
+        const original = await this.update(...this.lastInput)
+        if (!this.disposed && this.revision === restorationRevision && this.appearanceId === 'server' && this.actor === original) this.notify(original, `自带外观不可用: ${error.message} · 已恢复服务器外观`)
+        return original
+      }
       if (!this.disposed && revision === this.revision) this.notify(null, error.message)
       return null
     }

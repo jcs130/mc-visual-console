@@ -3,6 +3,7 @@ import { PlayerObject } from 'skinview3d/libs/model.js'
 import { NativeAssetReader } from './model-loader.js'
 import { renderNativePlayerMotion } from './native-player-motion.js'
 import { NativeHeldItems } from './native-held-items.js'
+import { BundledAppearanceReader } from './native-bundled-appearance.js'
 
 // Minecraft 1.21.1 client JAR, official client mappings: DefaultPlayerSkin
 // (grd.get(UUID): UUID.hashCode -> Math.floorMod(...,18)), PlayerRenderer
@@ -58,11 +59,20 @@ async function nativeSkinTexture (bytes) {
 
 // loadTexture is an optional decoder shared with NativeModelLoader/test code;
 // its newly created texture belongs to this actor and is disposed with it.
-export async function createNativePlayerActor (reader, { uuid, skin, loadTexture = nativeSkinTexture, heldItemOptions = {} } = {}) {
+export async function createNativePlayerActor (reader, { uuid, skin, bundledAppearance, loadTexture = nativeSkinTexture, heldItemOptions = {} } = {}) {
   if (!(reader instanceof NativeAssetReader) || reader.manifest.clientJarSha256 !== PLAYER_CLIENT_JAR_SHA256) throw Error('NATIVE_PLAYER_SOURCE_UNSUPPORTED')
   if (typeof loadTexture !== 'function') throw Error('NATIVE_PLAYER_TEXTURE_LOADER_INVALID')
-  const selected = selectedSkin(uuid, skin)
-  const bytes = await reader.bytes(selected.path) // Hash + priority verified before image decoding.
+  let selected, skinReader = reader
+  if (bundledAppearance) {
+    if (skin || !(bundledAppearance.reader instanceof BundledAppearanceReader)) throw Error('BUNDLED_SKIN_INVALID')
+    const choice = bundledAppearance.reader.get(bundledAppearance.id)
+    if (choice.kind !== 'skin') throw Error('BUNDLED_SKIN_INVALID')
+    const original = defaultPlayerSkin(uuid)
+    selected = { uuid: original.uuid, model: choice.model, name: choice.label, path: choice.path,
+      provenance: choice.provenance, bundledId: choice.id }
+    skinReader = bundledAppearance.reader
+  } else selected = selectedSkin(uuid, skin)
+  const bytes = await skinReader.bytes(selected.path) // Hash + priority verified before image decoding.
   const dimensions = pngDimensions(bytes)
   const texture = await loadTexture(bytes)
   if (!texture?.isTexture || texture.image?.width !== dimensions.width || texture.image?.height !== dimensions.height) {
@@ -85,11 +95,11 @@ export async function createNativePlayerActor (reader, { uuid, skin, loadTexture
   playerObject.skin.map = texture
   playerObject.backEquipment = null; playerObject.ears.visible = false
   body.add(playerObject); root.add(body)
-  const entry = reader.manifest.assets[selected.path]
+  const entry = bundledAppearance ? skinReader.catalog.assets[selected.path] : reader.manifest.assets[selected.path]
   const assetInfo = Object.freeze({ ...selected, ...dimensions, sha256: entry.sha256, bytes: entry.bytes,
-    source: entry.source, clientJarSha256: reader.manifest.clientJarSha256,
+    source: bundledAppearance ? 'plugin_bundled' : entry.source, clientJarSha256: reader.manifest.clientJarSha256,
     geometrySource: 'skinview3d@3.4.2 PlayerObject (MIT)',
-    selectionSource: skin ? 'caller_profile_binding' : 'Minecraft 1.21.1 DefaultPlayerSkin.get(UUID)',
+    selectionSource: bundledAppearance ? 'web_viewer_override' : skin ? 'caller_profile_binding' : 'Minecraft 1.21.1 DefaultPlayerSkin.get(UUID)',
     standingScale: 0.9375, animationParityVerified: false, equipmentRenderingAvailable: false })
   root.userData = { playerUuid: selected.uuid, assetInfo }
   const heldItems = new NativeHeldItems(reader, { ...heldItemOptions, uuid: selected.uuid,

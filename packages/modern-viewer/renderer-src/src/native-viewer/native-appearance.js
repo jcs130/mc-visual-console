@@ -4,8 +4,9 @@ import { PLAYER_CLIENT_JAR_SHA256 } from './native-player.js'
 
 // Offer only original profiles with exact resources in this deployment.
 // Rendering still verifies the actual bytes and original definition on load.
-export function nativeAppearanceChoices (manifest) {
+export function nativeAppearanceChoices (manifest, bundledAppearanceReader = null) {
   const choices = [{ id: 'server', label: '跟随服务器' }]
+  choices.push(...(bundledAppearanceReader?.choices() ?? []))
   if (manifest?.clientJarSha256 !== PLAYER_CLIENT_JAR_SHA256) return choices
   const sources = manifest.sources?.filter(source => /^ysm-2\.6\.5-neoforge\+mc1\.21\.1(?:-release)?\.jar$/.test(source.name ?? ''))
   if (sources?.length !== 1 || sources[0].sha256 !== NATIVE_YSM_JAR_SHA256 || sources[0].explicitOverride) return choices
@@ -24,8 +25,15 @@ export function assertNativeAppearanceIdentity (self, playerUuid) {
   if (typeof playerUuid !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(playerUuid) ||
       typeof self?.uuid !== 'string' || self.uuid.toLowerCase() !== playerUuid.toLowerCase()) throw Error('NATIVE_SELF_PLAYER_IDENTITY_MISMATCH')
 }
-export function nativeWebAppearanceBinding (self, playerUuid, selection, manifest) {
+export function nativeWebAppearanceBinding (self, playerUuid, selection, manifest, bundledAppearanceReader = null) {
   assertNativeAppearanceIdentity(self, playerUuid)
+  if (selection?.startsWith('bundled:')) {
+    const choice = bundledAppearanceReader?.get(selection)
+    if (!choice) throw Error('BUNDLED_APPEARANCE_UNAVAILABLE')
+    const uuid = playerUuid.toLowerCase()
+    return { kind: choice.kind === 'skin' ? 'bundled-skin' : 'bundled-ysm', uuid,
+      bundledAppearance: { reader: bundledAppearanceReader, id: selection }, key: `bundled:${uuid}:${self.entityId ?? ''}:${selection}` }
+  }
   const choice = nativeAppearanceChoices(manifest).find(row => row.id === selection)
   if (!choice?.modelId) throw Error('NATIVE_WEB_APPEARANCE_UNAVAILABLE')
   const uuid = playerUuid.toLowerCase()

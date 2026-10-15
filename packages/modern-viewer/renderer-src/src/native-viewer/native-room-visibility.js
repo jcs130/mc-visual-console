@@ -2,13 +2,15 @@ import * as THREE from 'three'
 import { RoomFloorMask } from '../modern-viewer/room-floor-mask.js'
 import { createCutawayUniforms,patchCutawayMaterial,setRoomFloorMask,roomRevealRadius,advanceReveal } from '../modern-viewer/room-visibility.js'
 import {createObserverTransparency} from '../modern-viewer/observer-transparency.js'
+import {createHiddenSolidLookup} from './native-hidden-solids.js'
 
 export function nativeReceivedRoomCache(snapshot) {
   const states=new Map(snapshot.states.map(s=>[s.stateId,s])),blocks=new Map(),b=snapshot.bounds,columns=new Set(snapshot.viewCoverage?.receivedColumns??[])
+  const hidden=createHiddenSolidLookup(snapshot)
   for(const group of snapshot.groups){const state=states.get(group.stateId);for(let i=0;i<group.positions.length;i+=3)blocks.set(group.positions.slice(i,i+3).join(','),state)}
   const known=(x,y,z)=>x>=b.minX&&x<=b.maxX&&y>=b.minY&&y<=b.maxY&&z>=b.minZ&&z<=b.maxZ&&columns.has(`${Math.floor(x/16)},${Math.floor(z/16)}`)
   return {revision:`${snapshot.revision}:${Object.values(b).join(':')}`,known,
-    isSolidBlock(x,y,z){if(!known(x,y,z))return true;const state=blocks.get(`${x},${y},${z}`);return state?.solid===true&&state.blocksMotion===true},
+    isSolidBlock(x,y,z){if(!known(x,y,z))return true;const state=blocks.get(`${x},${y},${z}`)??hidden(x,y,z);return state?.solid===true&&state.blocksMotion===true},
     hasCeiling(p){for(let height=2;height<=64;height++){
       let solid=0,received=0
       for(const [dx,dz]of [[0,0],[1,0],[-1,0],[0,1],[0,-1]]){

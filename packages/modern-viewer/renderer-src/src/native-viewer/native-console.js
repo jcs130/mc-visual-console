@@ -14,6 +14,7 @@ import {createNativeViewerBuildGuard} from './native-viewer-build.js'
 import { installViewerLayout } from '../modern-viewer/viewer-layout.js'
 import { installChatHistory } from '../modern-viewer/chat-history.js'
 import { installAgentViewGallery } from '../modern-viewer/agent-view-gallery.js'
+import {createNativeDeathUi} from './native-death-ui.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
@@ -122,6 +123,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     @media(max-width:720px){.native-agent-status{top:55px;font-size:10px;gap:1px 6px}.native-agent-field:has(#agent-decision-at){display:none}}
   `
   const ui = createInterface({ document })
+  const deathUi=createNativeDeathUi({document})
   const activityUi = createNativeActivityUi({ document, itemName: item => ui.itemName?.(item) ?? item?.name,
     renderItem: (target, item) => ui.renderObservedItem?.(target, item) })
   quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5,preference:sceneSettings.quality })
@@ -210,7 +212,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     onView: view => { if (!disposed) renderAgentStatus(view, el) } })
   const dispose = () => {
     if (disposed) return
-    disposed = true; stopStatus(); layoutUi.dispose(); chatUi?.dispose(); galleryUi.dispose(); appearanceUi.dispose(); cameraUi.dispose(); sceneUi.dispose(); dungeonUi?.dispose();targets.remove();activityUi.dispose(); ui.dispose(); sceneHost?.dispose()
+    disposed = true; stopStatus(); layoutUi.dispose(); chatUi?.dispose(); galleryUi.dispose(); appearanceUi.dispose(); cameraUi.dispose(); sceneUi.dispose(); dungeonUi?.dispose();targets.remove();activityUi.dispose(); deathUi.dispose(); ui.dispose(); sceneHost?.dispose()
     for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     label.remove(); ysmNotice.remove(); stateBar.remove(); details.remove(); style.remove()
   }
@@ -221,7 +223,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       onBuild:buildChanged,
       cameraSettings,onCameraManual:mode=>mode&&cameraUi.select?cameraUi.select(mode):cameraUi.manual(),
       onSelection:value=>{targetSelect.value=value?String(value.entityId):'';targetInfo.textContent=value?`${value.name} · #${value.entityId}${Number.isFinite(value.health)?' · 生命 '+value.health:''}`:'正在跟随 Agent 本人'},
-      onIdentity (value) { if (disposed) return; resetMessages(); identity = value; ui.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },
+      onIdentity (value) { if (disposed) return; resetMessages(); identity = value; ui.setIdentity(value); deathUi.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },
       onState (value) {
         if (disposed) return
         if (value?.type === 'presentation') {
@@ -229,6 +231,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         } else if (['fishingCatch','inventoryPreview','entityDamage','combatFeedback'].includes(value?.type)) ui.event(value)
         else { latestState = value; ui.update(value) }
         activityUi.update(latestState, { iconRevision: ui.getState().iconRevision })
+        deathUi.update(latestState?.presentation)
         updateMessages(latestState)
         updateDiagnosticText()
       },
@@ -236,7 +239,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         if (disposed) return
         lastDiagnostics = null; appearanceUi.update(null)
         resetMessages()
-        label.hidden = true; ui.reset(); activityUi.reset(); boot.classList.add('is-compact','is-error'); boot.textContent = `原生画面不可用：${reason}`
+        label.hidden = true; ui.reset(); deathUi.reset(); activityUi.reset(); boot.classList.add('is-compact','is-error'); boot.textContent = `原生画面不可用：${reason}`
         updateDiagnosticText()
         ysmNotice.hidden = true
       },

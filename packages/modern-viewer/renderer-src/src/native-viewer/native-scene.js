@@ -10,6 +10,7 @@ import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.
 import { nativeFluidFamily,nativeFluidGeometry } from './native-fluid.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
 import { NativeSelfPlayerController, applyNativeSelfPlayerMotion } from './native-self-player.js'
+import {BundledAppearanceReader} from './native-bundled-appearance.js'
 import { playerCamera } from './player-camera.js'
 import { createNativeSession } from './native-session.js'
 import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
@@ -45,7 +46,7 @@ const roomVisibility=createNativeRoomVisibility()
 let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
 let observerPose=null,observerTarget=null
 const visualListeners = new Map()
-let lastInventoryOperation = null
+let lastInventoryOperation = null, frameEntitiesData = null, frameEntitiesCount = -1, frameEntities = []
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
   off(event, callback) { visualListeners.get(event)?.delete(callback) },
   emit(event, value) { for (const callback of visualListeners.get(event) || []) callback(value) } }
@@ -90,7 +91,8 @@ async function start () {
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#111820')
   worldRoot = new THREE.Group(); statics = new THREE.Group(); worldRoot.add(statics); scene.add(worldRoot)
   roomVisibility.attach(worldRoot)
-  selfController = new NativeSelfPlayerController(reader, { onChange (actor, status) {
+  const bundledAppearanceReader=await BundledAppearanceReader.load(nativeViewerUrl('api/bundled-appearances'))
+  selfController = new NativeSelfPlayerController(reader, { bundledAppearanceReader, onChange (actor, status) {
     selfActor = actor; skinState = status
     selfMotionState = null; selfMotionSignature = null; lastPlayerFrameTime = null
     if (actor) {
@@ -205,7 +207,7 @@ async function start () {
         const key = operation && `${value.value.epoch}:${operation.id}`
         if (key && key !== lastInventoryOperation) {
           lastInventoryOperation = key
-          onState({ type: 'inventoryPreview', playerUuid: value.value.subject.playerUuid, open: true, ttlMs: 1800 })
+          onState({ type: 'inventoryPreview', playerUuid: value.value.subject.playerUuid, open: true, ttlMs: 3200 })
         }
         return
       }
@@ -341,8 +343,11 @@ function publishFrame(now) {
     label = { visible: labelPoint.z >= -1 && labelPoint.z <= 1 && Math.abs(labelPoint.x) <= 1 && Math.abs(labelPoint.y) <= 1,
       x: (labelPoint.x + 1) * viewport.clientWidth / 2, y: (1 - labelPoint.y) * viewport.clientHeight / 2, name: label.name }
   }
-  onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label,camera:cameraFrame,room:roomStatus,
-    selectedEntity,entities:[...(entityLayer?.data.values()??[])].slice(0,64).map(e=>({id:e.entityId,uuid:e.uuid,name:e.name,rendered:entityLayer.actors.has(e.entityId)})) })
+  if(frameEntitiesData!==entityLayer?.data||frameEntitiesCount!==entityLayer?.actors.size){
+    frameEntitiesData=entityLayer?.data;frameEntitiesCount=entityLayer?.actors.size
+    frameEntities=[...(entityLayer?.data.values()??[])].slice(0,64).map(e=>({id:e.entityId,uuid:e.uuid,name:e.name,rendered:entityLayer.actors.has(e.entityId)}))
+  }
+  onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label,camera:cameraFrame,room:roomStatus,selectedEntity,entities:frameEntities })
 }
 function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
@@ -432,7 +437,7 @@ async function rebuildLatest () {
       const snapshot = pending, run = generation; pending = null
       const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
       const cuttingBoards = new Map((snapshot.cuttingBoards || []).map(board => [pointKey(board.position), board]))
-      const signature = JSON.stringify([snapshot.groups, snapshot.neighbors, snapshot.biomeGrid?.ids, snapshot.biomes, snapshot.biomeSeed, snapshot.cuttingBoards])
+      const signature = JSON.stringify([snapshot.groups, snapshot.occludedSolidRuns, snapshot.neighbors, snapshot.biomeGrid?.ids, snapshot.biomes, snapshot.biomeSeed, snapshot.cuttingBoards])
       const staged = await stageNativeKineticActors({nodes:snapshot.kinetic,definitions,actors,
         createActor:(state,position)=>createKineticActor(loader,state,position),attach:actor=>worldRoot.add(actor.root),remove:removeActor,
         isCurrent:()=>run===generation&&!disposed})

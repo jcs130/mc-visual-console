@@ -1,15 +1,17 @@
 import * as THREE from 'three'
 import { createNativeEntityActor } from './native-entity-dispatch.js'
 import { nativeContraptionGeometryKey } from './native-contraption.js'
+import { NativeEntityPresentation } from './native-entity-presentation.js'
 const identityKey=entity=>entity?.uuid??`native-id-spawn:${entity?.spawnedAt}`
 
 // One connection, one epoch, actual entity IDs. Rendering work may complete
 // after a disconnect; generation checks discard it instead of resurrecting it.
 export class NativeEntityLayer {
-  constructor(reader,{createActor=createNativeEntityActor,onChange=()=>{}}={}) {
+  constructor(reader,{createActor=createNativeEntityActor,onChange=()=>{},now=()=>Date.now()}={}) {
     this.reader=reader;this.createActor=createActor;this.onChange=onChange;this.root=new THREE.Group()
     this.actors=new Map();this.failures=new Map();this.data=new Map();this.generation=0;this.pending=null;this.running=false;this.disposed=false;this.streamReason=null
     this.pickups=new Map();this.pickupSeen=new Set();this.collected=new Map();this.clock=null
+    this.now=now;this.presentations=new Map()
   }
   stage(state,{selfEntityId,playerUuid}={}) {
     if(this.disposed)return
@@ -18,6 +20,13 @@ export class NativeEntityLayer {
     this.streamReason=null
     const entities=state.entities.filter(entity=>entity.entityId!==selfEntityId)
     this.data=new Map(entities.map(entity=>[entity.entityId,entity]))
+    const receivedAt=this.now()
+    for(const [id,row]of this.presentations)if(!this.data.has(id)||identityKey(this.data.get(id))!==row.identity)this.presentations.delete(id)
+    for(const entity of entities)if(entity.motion?.walk){
+      let row=this.presentations.get(entity.entityId)
+      if(!row){row={identity:identityKey(entity),buffer:new NativeEntityPresentation()};this.presentations.set(entity.entityId,row)}
+      row.buffer.push(entity,receivedAt)
+    }
     for(const [id,identity]of this.collected)if(!this.data.has(id)||identityKey(this.data.get(id))!==identity)this.collected.delete(id)
     this.pending={entities,registries,generation:this.generation};void this.drain()
   }
@@ -89,7 +98,7 @@ export class NativeEntityLayer {
     for(const [id,row] of this.actors){
       const entity=this.data.get(id)
       if(!entity){row.actor.root.visible=false;continue}
-      try {row.actor.update(entity,now,{self,entities:this.data,camera});if(this.collected.get(id)===identityKey(entity))row.actor.root.visible=false} catch(error){
+      try {row.actor.update(this.presentations.get(id)?.buffer.sample(entity,now)??entity,now,{self,entities:this.data,camera});if(this.collected.get(id)===identityKey(entity))row.actor.root.visible=false} catch(error){
         row.actor.dispose();this.actors.delete(id);this.failures.set(id,{key:row.key,name:entity.name,reason:error.message});this.onChange()
       }
     }
@@ -101,7 +110,7 @@ export class NativeEntityLayer {
   }
   reset() {
     this.generation++;this.pending=null;for(const row of this.actors.values())row.actor.dispose();this.actors.clear();this.failures.clear();this.data.clear();this.root.clear();this.streamReason=null
-    for(const row of this.pickups.values())row.actor?.dispose();this.pickups.clear();this.pickupSeen.clear();this.collected.clear();this.clock=null
+    for(const row of this.pickups.values())row.actor?.dispose();this.pickups.clear();this.pickupSeen.clear();this.collected.clear();this.presentations.clear();this.clock=null
   }
   dispose(){if(this.disposed)return;this.disposed=true;this.reset();this.root.removeFromParent()}
 }

@@ -423,6 +423,7 @@ export function createNativeInterface ({ document = globalThis.document,
   let presentation = unavailable('等待本人状态'), manualOpen = false, idleOpen = false,
     idleTimer = null, dismissedMenu = null, preview = null, disposed = false, lastMenuSignature = null
   let combatUntil = 0
+  let recentWindow = null, recentTimer = null
   const timers = new Set(), seenMessages = new Set(), seenTitles = new Set(), listeners = []
   const listen = (target, event, callback) => { target?.addEventListener(event, callback); listeners.push([target, event, callback]) }
   const later = (callback, delay) => {
@@ -430,6 +431,7 @@ export function createNativeInterface ({ document = globalThis.document,
     timers.add(handle); return handle
   }
   const cancelIdle = () => { if (idleTimer !== null) { clearTimer(idleTimer); timers.delete(idleTimer) }; idleTimer = null; idleOpen = false }
+  const clearRecent = () => { if(recentTimer!==null){clearTimer(recentTimer);timers.delete(recentTimer)}recentTimer=null;recentWindow=null }
   const note = (target, label) => {
     if (!target) return
     target.replaceChildren(node(document, 'span', 'native-unavailable', label))
@@ -556,21 +558,21 @@ export function createNativeInterface ({ document = globalThis.document,
   const renderMenu = () => {
     const menu = el('corti-menu'), body = q('[data-menu-body]')
     if (!menu || !body) return
-    const window = actualContainer()
+    const actual = actualContainer(), window = actual || recentWindow, replay = Boolean(!actual && recentWindow)
     const windowKey = window ? `${window.windowId ?? ''}:${window.stateId ?? ''}` : null
     const showWindow = window && dismissedMenu !== windowKey
     const visible = Boolean(showWindow || manualOpen || idleOpen)
     menu.hidden = !visible
     menu.dataset.windowId = String(showWindow ? window.windowId : presentation.inventory?.windowId ?? 0)
     if (!visible) { preview?.setVisible(false); lastMenuSignature = null; return }
-    const signature = JSON.stringify([showWindow ? window : presentation.inventory, presentation.modOperations, manualOpen, idleOpen, assetsSequence])
+    const signature = JSON.stringify([showWindow ? window : presentation.inventory, presentation.modOperations, manualOpen, idleOpen, replay, assetsSequence])
     if (signature === lastMenuSignature) return
     lastMenuSignature = signature; preview?.setVisible(false); body.replaceChildren()
     const heading = q('[data-menu-title]'), source = q('[data-menu-source]')
     if (showWindow) {
-      menu.dataset.inventorySource = 'container'
+      menu.dataset.inventorySource = replay ? 'replay' : 'container'
       if (heading) heading.textContent = language.menu(window)
-      if (source) source.textContent = '真实游戏窗口 · 只读'
+      if (source) source.textContent = replay ? '刚关闭的窗口 · 操作回放 · 只读' : '真实游戏窗口 · 只读'
       let layout = null, kind = null, reason = null
       try {
         if (window.menuType === 'minecraft:crafting') {
@@ -836,16 +838,16 @@ export function createNativeInterface ({ document = globalThis.document,
     }
   }
   const closeMenu = () => {
-    cancelIdle(); manualOpen = false
+    cancelIdle(); clearRecent(); manualOpen = false
     const window = actualContainer()
     if (window) dismissedMenu = `${window.windowId ?? ''}:${window.stateId ?? ''}`
     renderMenu()
   }
-  listen(el('corti-inventory-toggle'), 'click', () => { cancelIdle(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu() })
+  listen(el('corti-inventory-toggle'), 'click', () => { cancelIdle(); clearRecent(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu() })
   listen(q('[data-menu-close]'), 'click', closeMenu)
   listen(document, 'keydown', event => {
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return
-    if (event.code === 'KeyE') { event.preventDefault(); cancelIdle(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu() }
+    if (event.code === 'KeyE') { event.preventDefault(); cancelIdle(); clearRecent(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu() }
     else if (event.code === 'Escape') { event.preventDefault(); closeMenu() }
   })
   const fishingRoot = el('viewer-fishing-catch')
@@ -854,7 +856,7 @@ export function createNativeInterface ({ document = globalThis.document,
     renderIcon: (target, item) => renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName }) }) : null
   const reset = () => {
     current = null; actor = null; actorReason = null; presentation = unavailable('本人状态不可用')
-    manualOpen = false; cancelIdle(); dismissedMenu = null; lastMenuSignature = null; hudSignature = null; skillsSignature = null
+    manualOpen = false; cancelIdle(); clearRecent(); dismissedMenu = null; lastMenuSignature = null; hudSignature = null; skillsSignature = null
     for (const timer of timers) clearTimer(timer)
     timers.clear(); seenMessages.clear(); seenTitles.clear(); fishing?.reset(); preview?.reset()
     el('corti-event-feed')?.replaceChildren()
@@ -891,7 +893,13 @@ export function createNativeInterface ({ document = globalThis.document,
       if (disposed) return
       if (current?.epoch !== undefined && state?.epoch !== current.epoch) { const saved = actor; reset(); actor = saved }
       current = state
+      const previousWindow=actualContainer()
       presentation = nativePresentationView(state?.presentation, expectedUuid)
+      if(actualContainer()||!presentation.available||now()<combatUntil||presentation.self?.health===0)clearRecent()
+      else if(previousWindow){
+        clearRecent();recentWindow=previousWindow
+        recentTimer=later(()=>{recentWindow=null;recentTimer=null;renderMenu()},3200)
+      }
       if (!presentation.available) { cancelIdle(); manualOpen = false; fishing?.reset() }
       if (actualContainer()) cancelIdle()
       renderHud(); renderSkills(); renderMenu(); showMessages(); survivalUi.update(presentation,assets)
@@ -903,10 +911,10 @@ export function createNativeInterface ({ document = globalThis.document,
         if (event.open !== true) { cancelIdle(); renderMenu(); return true }
         if (manualOpen || actualContainer() || !presentation.inventory || now() < combatUntil) return false
         cancelIdle(); idleOpen = true; renderMenu()
-        idleTimer = later(() => { idleTimer = null; idleOpen = false; renderMenu() }, finite(event.ttlMs) ? clamp(event.ttlMs, 1, 2400) : 2400)
+        idleTimer = later(() => { idleTimer = null; idleOpen = false; renderMenu() }, finite(event.ttlMs) ? clamp(event.ttlMs, 800, 5000) : 3200)
         return true
       }
-      if (event.type === 'entityDamage' || event.type === 'combatFeedback') { combatUntil = now() + 5000; cancelIdle(); renderMenu(); return true }
+      if (event.type === 'entityDamage' || event.type === 'combatFeedback') { combatUntil = now() + 5000; cancelIdle(); clearRecent(); renderMenu(); return true }
       if (event.type === 'fishingCatch') return fishing?.push(event) ?? false
       return false
     },
