@@ -27,6 +27,7 @@ import { nativeCameraTarget, nativeCameraCollisionDistance } from './native-came
 import { createNativeTerrainRaycast } from './native-terrain-raycast.js'
 import { pickEntity } from '../modern-viewer/entity-picker.js'
 import { createNativeRoomVisibility } from './native-room-visibility.js'
+import { nativeStaticBatches } from './native-static-batch.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
@@ -36,6 +37,7 @@ if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)
 const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
 const templates = new Map(), actors = new Map(), bedTemplates = new Set()
+const staticBatches=new Map()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
 let colormaps, originalModelLayers=null, vanillaRegistry=false, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
@@ -45,6 +47,7 @@ let terrainRaycast=()=>[],selectedEntity=null,pointerStart=null,lastCollision=nu
 const roomVisibility=createNativeRoomVisibility()
 let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
 let observerPose=null,observerTarget=null
+let frameCost=null,lastCostAt=0
 const visualListeners = new Map()
 let lastInventoryOperation = null, frameEntitiesData = null, frameEntitiesCount = -1, frameEntities = []
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
@@ -132,6 +135,7 @@ async function start () {
   renderer.setAnimationLoop(now => {
     try {
       if (disposed || document.hidden) return
+      const frameStarted=performance.now()
       loader.animateTextures((now - textureStart) / 50)
       if (current?.pose) {
         const dt = lastPlayerFrameTime === null ? 0 : (now - lastPlayerFrameTime) / 1000
@@ -173,7 +177,9 @@ async function start () {
         }
         if (oldReason !== kineticClockState.reason) publishDiagnostics()
       }
+      const beforeRender=performance.now()
       renderer.render(scene, camera)
+      const afterRender=performance.now(),mainDraw={...renderer.info.render}
       if(selfActor?.firstPersonRoot){
         selfActor.firstPersonRoot.visible=viewMode==='first'
         const hands=selfActor.firstPersonItemsState?.()
@@ -185,9 +191,18 @@ async function start () {
           try {renderer.render(firstPersonScene,firstPersonCamera)} finally {renderer.autoClear=true}
         }
       }
-      miniMap.render({position:current?.pose,playerUuid,entityId:current?.selfPlayer?.entityId,epoch,
+      const beforeMap=performance.now()
+      const mapDrawn=miniMap.render({position:current?.pose,playerUuid,entityId:current?.selfPlayer?.entityId,epoch,
         bounds:current?.bounds,visual:agentVisual.snapshot(),now})
+      const afterMap=performance.now()
       publishFrame(now)
+      if(now-lastCostAt>=1000){
+        frameCost={updateMs:beforeRender-frameStarted,mainMs:afterRender-beforeRender,handsMs:beforeMap-afterRender,mapMs:afterMap-beforeMap,
+          uiMs:performance.now()-afterMap,mainCalls:mainDraw.calls,mainTriangles:mainDraw.triangles,
+          mapCalls:mapDrawn?renderer.info.render.calls:0,mapTriangles:mapDrawn?renderer.info.render.triangles:0,
+          mapReadback:miniMap.root.dataset.readback??null,room:roomStatus?.reason??null}
+        lastCostAt=now;renderer.domElement.dataset.frameCost=JSON.stringify(frameCost);publishDiagnostics()
+      }
     } catch (error) { fail(error) }
   })
   events = new EventSource(nativeViewerUrl('events'))
@@ -363,7 +378,7 @@ function publishDiagnostics() {
     kineticClock: kineticClockState,
     deviceVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeDevice).map(actor => ({ position: actor.position, stateId: actor.state.stateId, ...actor.root.userData.nativeDevice })),
     windmillVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeBearing).map(actor => ({ position: actor.position, ...actor.root.userData.nativeBearing })),
-    skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
+    frameCost,skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
 function clearStatics () {
   if (!statics) return
@@ -447,6 +462,7 @@ async function rebuildLatest () {
       if (signature !== lastGroupSignature) {
         const next = new THREE.Group(), tintCache = new Map(); let count = 0
         let workStarted = performance.now()
+        const yieldWork=async()=>{if(performance.now()-workStarted<=8)return;await new Promise(resolve=>requestAnimationFrame(resolve));workStarted=performance.now();if(run!==generation)throw Error('NATIVE_SCENE_REBUILD_RETIRED')}
         for (const group of snapshot.groups) {
           // A larger native volume must leave the controls/HUD responsive.
           // Only scheduling changes; no geometry, state or texture is omitted.
@@ -468,6 +484,7 @@ async function rebuildLatest () {
           try {
             const positions = []
             for (let i = 0; i < group.positions.length; i += 3) {
+              if(i%768===0)await yieldWork()
               const position = { x: group.positions[i], y: group.positions[i + 1], z: group.positions[i + 2] }
               if (state.name === CUTTING_BOARD_ID) {
                 const support = cuttingBoardStaticModelStatus(state, cuttingBoards.get(pointKey(position)), loader.reader.manifest)
@@ -483,7 +500,9 @@ async function rebuildLatest () {
             if (isBed) nativeBedState(state)
             const blockstate = isBed ? null : await loader.blockstate(state.name)
             const subgroups = new Map()
+            let selected=0
             for (const position of positions) {
+              if(selected++%256===0)await yieldWork()
               const variants = isBed ? [] : selectBlockVariants(blockstate, state, position), key = JSON.stringify(variants)
               if (!subgroups.has(key)) subgroups.set(key, { variants, positions: [] })
               subgroups.get(key).positions.push(position.x, position.y, position.z)
@@ -495,14 +514,16 @@ async function rebuildLatest () {
               const instanceCount = subgroup.positions.length / 3
               const meshes = []
               try {
-                model.traverse(part => {
-                  if (!part.isMesh) return
+                if(!staticBatches.has(model))staticBatches.set(model,nativeStaticBatches(model))
+                for(const part of staticBatches.get(model).batches){
+                  await yieldWork()
                   for(const material of Array.isArray(part.material)?part.material:[part.material])roomVisibility.patch(material)
                   const mesh = new THREE.InstancedMesh(part.geometry, part.material, instanceCount)
                   mesh.userData.nativeBlockPositions=subgroup.positions
                   meshes.push(mesh)
                   const matrix = new THREE.Matrix4()
                   for (let i = 0; i < instanceCount; i++) {
+                    if(i%256===0)await yieldWork()
                     const p = { x: subgroup.positions[i * 3], y: subgroup.positions[i * 3 + 1], z: subgroup.positions[i * 3 + 2] }, offset = modelOffset(state, p)
                     matrix.makeTranslation(p.x + 0.5 + offset[0], p.y + 0.5 + offset[1], p.z + 0.5 + offset[2]).multiply(part.matrixWorld)
                     mesh.setMatrixAt(i, matrix)
@@ -513,7 +534,7 @@ async function rebuildLatest () {
                     }
                   }
                   mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-                })
+                }
               } catch (error) { for (const mesh of meshes) mesh.dispose(); throw error }
               for (const mesh of meshes) next.add(mesh)
               count += instanceCount
@@ -523,9 +544,11 @@ async function rebuildLatest () {
         if (run !== generation) { for (const mesh of next.children) { mesh.dispose?.(); if (mesh.userData.nativeFluid) mesh.geometry.dispose() } continue }
         clearStatics(); for (const mesh of [...next.children]) statics.add(mesh)
         terrainRaycast=createNativeTerrainRaycast(statics);lastCollision=null
-        roomVisibility.stage(snapshot)
         drawn = count; lastGroupSignature = signature; staticIssues = nextStaticIssues
       }
+      // Received bounds/states/columns can change without mesh arrays changing.
+      // The room cache must use this snapshot, independently of mesh rebuilding.
+      roomVisibility.stage(snapshot)
       unknown = [...nextIssues, ...staticIssues]
       if (run !== generation) continue
       if (!current) continue
@@ -585,7 +608,7 @@ function dispose () {
   document.removeEventListener('visibilitychange', kineticVisibility)
   renderer?.domElement.removeEventListener('pointerdown',manualCameraInput,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
   renderer?.domElement.removeEventListener('pointerdown',rememberPointer);renderer?.domElement.removeEventListener('pointerup',selectPointer)
-  controls?.dispose(); clearScene(); roomVisibility.dispose(); selfController?.dispose(); entityLayer?.dispose(); loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
+  controls?.dispose(); clearScene(); roomVisibility.dispose(); selfController?.dispose(); entityLayer?.dispose(); for(const batch of staticBatches.values())batch.dispose();staticBatches.clear();loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }
 return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,audio,

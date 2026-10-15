@@ -54,6 +54,22 @@ function harness (options = {}) {
   return { ui, document, jobs, previews, advance }
 }
 
+test('same UUID with a replacement entity immediately clears old manual inventory and replay before the next snapshot',()=>{
+  const h=harness(),menu=h.document.getElementById('corti-menu')
+  h.ui.setIdentity({confirmed:true,playerUuid:UUID,entityId:1,epoch:1})
+  h.ui.update({epoch:1,presentation:presentation()})
+  h.document.getElementById('corti-inventory-toggle').dispatch('click')
+  assert.equal(h.ui.getState().manualOpen,true);assert.equal(menu.hidden,false)
+  h.ui.setIdentity({confirmed:true,playerUuid:UUID,entityId:1,epoch:1})
+  assert.equal(h.ui.getState().manualOpen,true)
+  h.ui.setIdentity({confirmed:true,playerUuid:UUID,entityId:2,epoch:1})
+  assert.equal(h.ui.getState().presentation.available,false);assert.equal(h.ui.getState().manualOpen,false);assert.equal(menu.hidden,true)
+  h.ui.update({epoch:1,presentation:presentation({nativeMenu:{windowId:4,stateId:2,menuType:'minecraft:generic_9x1',slots:[]}})})
+  h.ui.update({epoch:1,presentation:presentation()});assert.ok(h.jobs.size>0)
+  h.ui.setIdentity({confirmed:true,playerUuid:UUID,entityId:2,epoch:2})
+  assert.equal(h.jobs.size,0);assert.equal(menu.hidden,true);h.ui.dispose()
+})
+
 test('short real windows linger as a labelled replay without replacing current inventory or issuing actions',()=>{
   const h=harness(),menu={windowId:4,stateId:2,menuType:'minecraft:generic_9x1',slots:Array.from({length:45},(_,slot)=>({slot,item:null}))}
   h.ui.update({epoch:1,presentation:presentation({nativeMenu:menu})})

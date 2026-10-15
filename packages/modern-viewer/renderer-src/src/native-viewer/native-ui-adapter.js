@@ -414,7 +414,7 @@ export function createNativeInterface ({ document = globalThis.document,
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   const survivalUi=createNativeSurvivalUi({document,translate:key=>language.translate(key)})
-  let expectedUuid = null, actor = null, actorReason = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
+  let expectedUuid = null, identityKey = null, actor = null, actorReason = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
   let hudSignature = null, skillsSignature = null
   const resolveIcon = item => typeof resolveItemIcon === 'function' ? resolveItemIcon(item) : itemIcons?.resolve(item)
   const resolveName = item => language.item(item)
@@ -866,7 +866,8 @@ export function createNativeInterface ({ document = globalThis.document,
   return {
     setIdentity (identity) {
       const next = identity?.confirmed === true ? uuid(identity.playerUuid) : null
-      if (expectedUuid !== next) { reset(); expectedUuid = next }
+      const key = next && JSON.stringify([next, identity.entityId ?? null, identity.epoch ?? null, identity.player ?? null, identity.mode ?? null])
+      if (identityKey !== key) { reset(); expectedUuid = next; identityKey = key }
     },
     setActor (value, reason = null) { actor = value; actorReason = reason; lastMenuSignature = null; renderMenu() },
     async setAssets (reader) {

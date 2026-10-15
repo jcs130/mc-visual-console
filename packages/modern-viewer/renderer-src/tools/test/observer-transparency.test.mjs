@@ -78,13 +78,15 @@ test('standard decorations use a separate pass uniform while sky and unpatched a
 test('native instanced terrain shares its actual instance buffers across both obstruction passes',()=>{
   const scene=new Scene(),room=createNativeRoomVisibility();room.attach(scene);
   const source=new InstancedMesh(new BoxGeometry(),new MeshBasicMaterial(),2);room.patch(source.material);scene.add(source);
+  source.userData.nativeBlockPositions=[0,64,0,1,64,0]
+  source.clone=()=>{throw Error('large source cloning is forbidden')}
   source.instanceColor=new InstancedBufferAttribute(new Float32Array([1,0,0,0,1,0]),3);
   let disposed=0;source.geometry.addEventListener('dispose',()=>disposed++);
   const snapshot={states:[],groups:[],revision:1,bounds:{minX:0,minY:63,minZ:0,maxX:15,maxY:68,maxZ:15},viewCoverage:{receivedColumns:['0,0']}};
   room.stage(snapshot);room.uniforms.u_lanternReveal.value=1;
   const overlays=scene.children.filter(mesh=>mesh.userData.lanternTransparencyOverlay);
   assert.equal(overlays.length,2);
-  for(const mesh of overlays){assert.equal(mesh.instanceMatrix,source.instanceMatrix);assert.equal(mesh.instanceColor,source.instanceColor);assert.equal(mesh.geometry,source.geometry)}
+  for(const mesh of overlays){assert.equal(mesh.instanceMatrix,source.instanceMatrix);assert.equal(mesh.instanceColor,source.instanceColor);assert.equal(mesh.geometry,source.geometry);assert.equal(mesh.userData.nativeBlockPositions,undefined)}
   source.count=1;source.instanceColor=new InstancedBufferAttribute(new Float32Array([0,0,1]),3);
   room.update({camera:new PerspectiveCamera(),pose:{x:.5,y:64,z:.5},mode:'first',now:1});
   for(const mesh of overlays){assert.equal(mesh.count,1);assert.equal(mesh.instanceColor,source.instanceColor);assert.equal(mesh.visible,false)}

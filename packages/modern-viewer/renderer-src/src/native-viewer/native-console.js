@@ -148,6 +148,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       d?.coverage?.horizontalRangeReduced ? '地形因预算收缩，实际范围以上述数值为准' : '',
       d?.skinState ?? '本人模型未同步',
       d?.entities ? `周围实体：原生收到 ${d.entities.received}，已渲染 ${d.entities.rendered}` : '',
+      d?.frameCost ? `帧耗时(CPU)：更新 ${d.frameCost.updateMs.toFixed(1)} / 主画面 ${d.frameCost.mainMs.toFixed(1)} / 手部 ${d.frameCost.handsMs.toFixed(1)} / 地图 ${d.frameCost.mapMs.toFixed(1)} / HUD ${d.frameCost.uiMs.toFixed(1)} ms；主画面 ${d.frameCost.mainCalls} 次绘制 / ${d.frameCost.mainTriangles} 三角形；地图读回 ${d.frameCost.mapReadback??'等待'}` : '',
       d?.heldItems ? `第三人称持物：${d.heldItems.available ? '原始模型已接入' : d.heldItems.reason || '未支持'}` : '',
       pendingMode === 'first' && d?.firstPersonItems ? `第一人称持物：${d.firstPersonItems.available ? (d.firstPersonItems.swingAnimationAvailable ? '本人挥手与持物动画' : '原始静止持物姿态') : d.firstPersonItems.reason || '未支持'}；装备切换与完整使用动画待适配` : '',
       ...Object.entries((pendingMode === 'first' ? d?.firstPersonItems : d?.heldItems)?.hands ?? {}).map(([arm, hand]) =>

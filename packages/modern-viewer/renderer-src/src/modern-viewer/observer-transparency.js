@@ -1,4 +1,4 @@
-import { EqualDepth, NormalBlending } from 'three';
+import { EqualDepth, NormalBlending, Mesh, InstancedMesh } from 'three';
 import { CUTAWAY_MATERIAL_VERSION } from './room-visibility.js';
 
 // Reuse the renderer's uploaded geometry and visible multi-draw spans. Only
@@ -17,7 +17,14 @@ export function createObserverTransparency(world, uniforms) {
     // Geometry, textures and native GPU buffers belong to the original mesh.
   }
   function clonePass(source, depthOnly) {
-    const mesh = source.clone(false);
+    // InstancedMesh.copy duplicates large instance buffers and Object3D.copy
+    // serializes native position metadata before we would replace both. These
+    // read-only passes borrow the original buffers from their owner instead.
+    const mesh = source.isInstancedMesh ? new InstancedMesh(source.geometry, source.material, 0) : new Mesh(source.geometry, source.material);
+    mesh.count = source.count;
+    mesh.layers.mask = source.layers.mask;
+    mesh.morphTargetInfluences = source.morphTargetInfluences;
+    mesh.morphTargetDictionary = source.morphTargetDictionary;
     const clone = material => {
       const result = material.clone();
       result.onBeforeCompile = material.onBeforeCompile;

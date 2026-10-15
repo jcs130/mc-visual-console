@@ -32,3 +32,30 @@ test('route/trail require the same UUID and entity, identity reset clears pixels
   document.hidden=false;assert.equal(map.render({...frame,entityId:8,epoch:2,now:2001}),true)
   map.reset();assert.equal(map.root.dataset.state,'unavailable');map.dispose();assert.equal(map.root.parentNode,null)
 })
+
+test('asynchronous GPU readback restores main state immediately, stays single-flight and discards a retired identity',async()=>{
+  const {map,renderer,calls,original,frame}=fixture();let finish
+  renderer.readRenderTargetPixels=()=>{throw Error('synchronous GPU readback must not run')}
+  renderer.readRenderTargetPixelsAsync=(...args)=>new Promise(resolve=>{finish=()=>{args.at(-1).fill(127);resolve(args.at(-1))}})
+  assert.equal(map.render(frame),true);assert.equal(renderer.target,original);assert.equal(renderer.autoClear,false)
+  assert.equal(map.root.dataset.state,'unavailable');assert.equal(map.root.dataset.readback,'async')
+  assert.equal(map.render({...frame,now:1500}),false);assert.equal(calls.length,1)
+  map.reset();finish();await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(map.root.dataset.state,'unavailable')
+  assert.equal(map.render({...frame,entityId:8,epoch:2,now:1600}),true);finish();await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(map.root.dataset.state,'available');assert.match(map.root.textContent,/10, 65, 20/)
+  assert.equal(map.render({...frame,entityId:8,epoch:2,now:2000}),true);map.dispose();finish();await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(map.root.parentNode,null)
+})
+
+test('failed asynchronous pixels leave an honest unavailable map and allow the next real read',async()=>{
+  const {map,renderer,original,frame}=fixture()
+  renderer.readRenderTargetPixelsAsync=()=>Promise.reject(Error('GPU_READ_FAILED'))
+  assert.equal(map.render(frame),true);assert.equal(renderer.target,original)
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(map.root.dataset.state,'unavailable');assert.equal(map.root.dataset.reason,'GPU_READ_FAILED')
+  renderer.readRenderTargetPixelsAsync=(...args)=>Promise.resolve(args.at(-1))
+  assert.equal(map.render({...frame,now:1500}),true)
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(map.root.dataset.state,'available');map.dispose()
+})
