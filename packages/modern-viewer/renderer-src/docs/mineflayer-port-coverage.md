@@ -33,6 +33,19 @@ and UI rows below remain open until their actual original implementations and
 same-player browser observations pass. Exported layers are available inputs for
 those ports; no missing type is silently classified as out of scope.
 
+The same original `LiquidBlockRenderer` path now handles **all 9,246 nonempty
+fluid states in the exported vanilla registry**, spanning 344 block IDs:
+source/flowing water and lava, bubble columns and all waterlogged states. The
+ordinary block mesh remains alongside its fluid mesh. Fluid identity, heights,
+neighbor occlusion, original still/flow/overlay sprites and animation metadata
+are preserved; lava uses white tint and a solid chunk material, water uses the
+actual biome tint and translucent material. One received-neighbor index is
+shared across a rebuild. Unknown modded overlay providers and unreceived
+neighbors remain explicit errors. Atlas shrink/lightmap/full Java scene parity
+are still unverified, not inferred from this geometry port. The reference is
+the locked 1.21.1 `LiquidBlockRenderer` (gfu) `tesselate`, `getHeight` and
+`calculateAverageHeight`, plus `FlowingFluid.getFlow`.
+
 The baseline matrix below is retained as the audit input. Subsequent native work restores the six original camera modes and short shots; actual displayed-root following; original dropped-item models, count stacking/bob/spin and collect events; fourteen original common hostile/golem models with walking/head/received swing/hurt/death/fuse animation; native entity pick/list/follow/return; original dungeon floor-mask cutaway/observer rotation/zoom; and the shared quality controls. Collision uses indexed original terrain triangles, not replacement cubes. Particle/projectile/audio gaps in the matrix remain implementation work. Original lighting, special equipment/poses and complete Java scene parity are still unverified; the strict complete flags stay false. Offline regression and original asset checks are recorded separately from live browser acceptance.
 
 Audit date: 2026-10-15. This is a source audit of shared renderer `main` at `2dc7ac3507260342cb9224558c892adb2148d92a`, independent core/framework `main` at `7d456b660b6576a9bf429ae23a421b78aa28cb1c`, and the thin plugin at `0f507b767216f640d82e4bde497366c10f3bdbbd`. Those are the synchronized inputs checked before implementation. Statements about missing native support below describe that baseline; subsequent changes need their own verification. No game connection, server change, model request or runtime inspection was used for this audit.

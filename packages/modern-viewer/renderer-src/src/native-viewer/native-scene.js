@@ -7,7 +7,7 @@ import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath
 import { createKineticActor } from './create-kinetics.js'
 import { WINDMILL_BEARING_ID, verifyNativeWindmillBearing } from './native-windmill-bearing.js'
 import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
-import { waterGeometry } from './native-fluid.js'
+import { nativeFluidFamily,nativeFluidGeometry } from './native-fluid.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
 import { NativeSelfPlayerController, applyNativeSelfPlayerMotion } from './native-self-player.js'
 import { playerCamera } from './player-camera.js'
@@ -432,6 +432,7 @@ async function rebuildLatest () {
         isCurrent:()=>run===generation&&!disposed})
       if (!staged.current) continue
       const nextIssues = staged.issues, nextStaticIssues = []
+      let fluidStateAt=null
       if (signature !== lastGroupSignature) {
         const next = new THREE.Group(), tintCache = new Map(); let count = 0
         let workStarted = performance.now()
@@ -444,13 +445,15 @@ async function rebuildLatest () {
           }
           const state = definitions.get(group.stateId)
           if (['create:shaft', 'create:hand_crank'].includes(state.name)) continue
-          if (state.name === 'minecraft:water') {
-            const result = await waterMeshes(snapshot, group, definitions)
+          if (nativeFluidFamily(state)) {
+            fluidStateAt??=fluidStateReader(snapshot,definitions)
+            const result = await fluidMeshes(snapshot, group, definitions,fluidStateAt)
             if (run !== generation) { for (const mesh of result.meshes) mesh.geometry.dispose(); break }
             for (const mesh of result.meshes) next.add(mesh)
-            count += result.count; nextStaticIssues.push(...result.issues); continue
+            nextStaticIssues.push(...result.issues)
+            if(state.renderShape==='INVISIBLE'){count+=result.count;continue}
           }
-          if (state.fluid && !state.fluid.empty) nextStaticIssues.push(`${state.name}：${state.fluid.name === 'minecraft:water' || state.fluid.name === 'minecraft:flowing_water' ? '原生含水方块的液体面未适配' : '原生液体渲染提供器未适配'}`)
+          else if (state.fluid && !state.fluid.empty) nextStaticIssues.push(`${state.name}：原生液体渲染提供器未适配 (${state.fluid.name})`)
           try {
             const positions = []
             for (let i = 0; i < group.positions.length; i += 3) {
@@ -521,15 +524,18 @@ async function rebuildLatest () {
   } catch (error) { fail(error) } finally { rebuilding = false }
 }
 
-async function waterMeshes (snapshot, group, definitions) {
-  const neighbors = new Map(), data = new Map(), issues = new Set()
+function fluidStateReader(snapshot,definitions){
+  const neighbors = new Map()
   for (let i = 0; i < (snapshot.neighbors || []).length; i += 4) neighbors.set(`${snapshot.neighbors[i]},${snapshot.neighbors[i + 1]},${snapshot.neighbors[i + 2]}`, definitions.get(snapshot.neighbors[i + 3]))
-  const get = p => { const state = neighbors.get(pointKey(p)); if (!state) throw Error('NATIVE_FLUID_NEIGHBOR_NOT_RECEIVED'); return state }
+  return p=>{const state=neighbors.get(pointKey(p));if(!state)throw Error('NATIVE_FLUID_NEIGHBOR_NOT_RECEIVED');return state}
+}
+async function fluidMeshes (snapshot, group, definitions,get) {
+  const data = new Map(), issues = new Set()
   let count = 0
   for (let i = 0; i < group.positions.length; i += 3) {
     const p = { x: group.positions[i], y: group.positions[i + 1], z: group.positions[i + 2] }
     try {
-      const result = waterGeometry(p, get), color = new THREE.Color().setHex(blendedBiomeColor(snapshot, p, 'water', colormaps))
+      const result = nativeFluidGeometry(p, get), color = new THREE.Color().setHex(result.family==='water'?blendedBiomeColor(snapshot, p, 'water', colormaps):0xffffff)
       for (const quad of result.quads) {
         if (!data.has(quad.texture)) data.set(quad.texture, { positions: [], colors: [], uv: [], indices: [] })
         const batch = data.get(quad.texture), base = batch.positions.length / 3
@@ -542,7 +548,7 @@ async function waterMeshes (snapshot, group, definitions) {
         if (quad.backwards) batch.indices.push(base, base + 2, base + 1, base, base + 3, base + 2)
       }
       count++
-    } catch (error) { issues.add(`minecraft:water：${error.message}`) }
+    } catch (error) { issues.add(`${definitions.get(group.stateId)?.name}：${error.message}`) }
   }
   const meshes = []
   try {

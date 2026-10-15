@@ -194,7 +194,9 @@ export class NativeModelLoader {
     const key = `native-fluid:${id}`
     if (!this.materials.has(key)) this.materials.set(key, (async () => {
       const material = (await this.material(id)).clone()
-      material.transparent = true; material.vertexColors = true
+      // Original chunk layers: lava is solid, water is translucent. Preserve
+      // original sprites/animation; complete Java lightmap parity is separate.
+      material.transparent = !['minecraft:block/lava_still','minecraft:block/lava_flow'].includes(id); material.vertexColors = true
       const original = this.animations.get(id)
       if (original) {
         if (original.animation.interpolate) enableInterpolation(material, THREE)
