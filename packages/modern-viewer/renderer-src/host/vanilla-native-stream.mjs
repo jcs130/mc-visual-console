@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { vanillaItemStack } from './vanilla-item-stack.mjs';
+import { vanillaItemStack,configureVanillaItemRegistries } from './vanilla-item-stack.mjs';
 import { observeVanillaHands } from './vanilla-hand-state.mjs';
 import { observeVanillaMenus } from './vanilla-menu-state.mjs';
 import { observeVanillaActivity, vanillaWireItem } from './vanilla-activity.mjs';
@@ -51,7 +51,8 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
     const name=bot.version===version?bot.registry?.effects?.[id]?.name:null;
     return typeof name==='string'?`minecraft:${name.replace(/[A-Z]/g,(c,i)=>(i?'_':'')+c.toLowerCase())}`:null;
   };
-  return { events, resolveItemStack, resolveEffect, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
+  return { events, resolveItemStack, resolveEffect, configureItemRegistries:data=>configureVanillaItemRegistries(bot.registry,data),
+    handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
 }
 
 /** Vanilla inventory only. Mod/proxy connections must use their native adapter. */

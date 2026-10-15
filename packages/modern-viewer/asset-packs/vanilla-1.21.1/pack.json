@@ -3,8 +3,8 @@
   "id": "vanilla-1.21.1",
   "kind": "native",
   "minecraftVersion": "1.21.1",
-  "fileCount": 8455,
-  "bytes": 29744551,
+  "fileCount": 8456,
+  "bytes": 29890682,
   "files": {
     "assets/.mcassetsroot": {
       "bytes": 0,
@@ -19918,6 +19918,14 @@
       "bytes": 51,
       "sha256": "bf9ffcac57be53bce7a37f1940e6dcc9ecb5be628ffebfd4337e84cdc03f0033"
     },
+    "assets/minecraft/native/client-item-colors.json": {
+      "bytes": 145878,
+      "sha256": "21c83de83b6f57d38f93c0881edaa98a2d2c06ec8c14eceb260a79c380f9e936"
+    },
+    "assets/minecraft/native/client-model-layers.json": {
+      "bytes": 1774930,
+      "sha256": "3571f2c6d4fbaa2e07db239853e0baf5db9dd07c5b66653cafa7588da466fbe3"
+    },
     "assets/minecraft/particles/ambient_entity_effect.json": {
       "bytes": 230,
       "sha256": "a1467e12ed10bb0b031b3ef85c605cf6d2f35731b8fa1d55c878e873e1a340a2"
@@ -33803,8 +33811,8 @@
       "sha256": "71a714f737f4101da7710743585cbf86dbea4995f5acc252554a0384cf833888"
     },
     "native-assets.json": {
-      "bytes": 2132219,
-      "sha256": "d84e1dc046311c06c6e459b78e9216e97af2effed42dc30c870641a5db14831e"
+      "bytes": 2132472,
+      "sha256": "4430d725d7f663bc48fece65cde8ee9cbadc4f4df5b9aa4cfef01e7e3f122cf1"
     },
     "registry/block-states.jsonl": {
       "bytes": 11753620,
@@ -33821,10 +33829,6 @@
     "registry/particle-collisions.json": {
       "bytes": 8689716,
       "sha256": "3eb554012eb5c5fad976ab944fff7ae3b2ee5a723bb9fbe7024ba7605348959a"
-    },
-    "assets/minecraft/native/client-model-layers.json": {
-      "bytes": 1774930,
-      "sha256": "3571f2c6d4fbaa2e07db239853e0baf5db9dd07c5b66653cafa7588da466fbe3"
     }
   },
   "source": {

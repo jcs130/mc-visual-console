@@ -234,6 +234,9 @@ ender_pearl
 add('minecraft','flat','net.minecraft.world.item.SpectralArrowItem',`
 spectral_arrow
 `)
+add('minecraft','flat','net.minecraft.world.item.EnderEyeItem',`ender_eye`)
+add('minecraft','flat','net.minecraft.world.item.ExperienceBottleItem',`experience_bottle`)
+add('minecraft','flat','net.minecraft.world.item.FireChargeItem',`fire_charge`)
 // BlockEntityWithoutLevelRenderer uses the original closed single chest model,
 // not JSON block elements. Keep this provider separate from JSON BlockItems.
 add('minecraft','chest','net.minecraft.world.item.BlockItem',`chest trapped_chest ender_chest`)

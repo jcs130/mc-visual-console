@@ -33,6 +33,24 @@ and UI rows below remain open until their actual original implementations and
 same-player browser observations pass. Exported layers are available inputs for
 those ports; no missing type is silently classified as out of scope.
 
+The complete original `ThrownItemRenderer` family is now dispatched: egg,
+ender pearl, experience bottle, potion, snowball, eye of ender, fireball and
+small fireball. It uses the actual component-bearing Slot, the verified original
+constructor default only when metadata is absent, and no geometry for explicit
+empty Slots. Original constructor scales, GROUND item transform, camera quaternion
+and the first-two-ticks proximity gate are retained, without dropped-item bob or
+spin. Full-bright block-light settings are recorded; the world lightmap is still
+an explicit missing pass, not a false lighting-parity claim.
+
+The original CPU exporter also inventories all 1,333 items, 46 potion bases and
+39 effects. Independent exports are byte-identical. All potion-base colors are
+checked against original `PotionContents.getColor()`, including signed custom
+colors, visible-effect weighting and the no-effect blue. All four original
+potion-colored item models retain their separate generated layers and tint
+indices. The host validates every item/effect registry ID before decoding the
+potion wire component. This supplies held/dropped/thrown item geometry; it does
+not claim all GUI icons, animated item textures, glint or complete item rendering.
+
 The same original `LiquidBlockRenderer` path now handles **all 9,246 nonempty
 fluid states in the exported vanilla registry**, spanning 344 block IDs:
 source/flowing water and lava, bubble columns and all waterlogged states. The

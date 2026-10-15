@@ -8,6 +8,7 @@ import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 import { nativeBlockItemEligible, resolveNativeBlockItemModel, bakeNativeBlockItemFaces } from './native-block-item-icons.js'
 import { nativeHumanoidWalkAngles, nativePlayerCos, nativePlayerSin, toSkinviewLimbRotation } from './native-player-motion.js'
 import { nativeHandAnimation, nativeHandUse, nativeFirstPersonConsumeMatrix, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from './native-first-person-motion.js'
+import {nativePotionItemEligible,prepareNativePotionItem} from './native-potion-items.js'
 
 // Locked 1.21.1 ItemModelGenerator / ItemInHandLayer / ItemTransform and
 // PlayerModel.translateToHand; Ars 5.13.2 SpellBookModel/TatteredTomeModel and
@@ -202,7 +203,8 @@ function firstPersonPoseReason(self, now = Date.now()) {
 // one span, including gaps. Its LEFT sprite edge uses EAST; RIGHT uses WEST.
 // Alpha == 0 (not the render alpha-test threshold) is the native transparency
 // test. Only the observed single static PNG frame is supported here.
-export function nativeGeneratedItemElements({ width, height, pixels } = {}) {
+export function nativeGeneratedItemElements({ width, height, pixels } = {}, layer=0) {
+  if(!Number.isInteger(layer)||layer<0||layer>4)throw Error('NATIVE_HELD_LAYER_INVALID')
   if (![width, height].every(value => Number.isInteger(value) && value > 0 && value <= 512) ||
       width * height > MAX_PIXELS || !(pixels instanceof Uint8Array || pixels instanceof Uint8ClampedArray) ||
       pixels.length !== width * height * 4) throw Error('NATIVE_HELD_SPRITE_INVALID')
@@ -218,7 +220,7 @@ export function nativeGeneratedItemElements({ width, height, pixels } = {}) {
       else { const span = byAnchor.get(key); span.min = Math.min(span.min, coord); span.max = Math.max(span.max, coord) }
     }
   }
-  const face = uv => ({ texture: '#layer0', uv, tintindex: 0 })
+  const face = uv => ({ texture: '#layer'+layer, uv, tintindex: layer })
   const elements = [{ from: [0, 0, 7.5], to: [16, 16, 8.5], faces: { south: face([0, 0, 16, 16]), north: face([16, 0, 0, 16]) } }]
   const sx = F(16 / width), sy = F(16 / height)
   for (const { direction, anchor: a, min, max } of spans) {
@@ -363,7 +365,8 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
   if (nativeGuideItemEligible(stack.id)) {
     provider = await prepareNativeGuideItemIcon(reader, stack)
     modelId = provider.modelId
-  } else if (TOOL.test(stack.id) || stack.id === 'minecraft:stick') validateStaticStack(stack)
+  } else if(nativePotionItemEligible(stack.id)) provider=await prepareNativePotionItem(reader,stack)
+  else if (TOOL.test(stack.id) || stack.id === 'minecraft:stick') validateStaticStack(stack)
   else {
     // Registration/ItemColors/ItemProperties evidence is positive and bound
     // to the exact JARs, not inferred from a conveniently named JSON file.
@@ -371,21 +374,33 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
     verifyNativeStaticItemEvidence(reader, checked.stack.id)
   }
   const model = await generatedModel(reader, modelId)
-  if (!model.textures.layer0 || Object.keys(model.textures).some(key => /^layer[1-9]/.test(key))) throw Error('NATIVE_HELD_LAYERS_UNSUPPORTED')
-  const texturePath = resourcePath(textureId(model, model.textures.layer0), 'textures', '.png')
-  if (reader.manifest.assets[`${texturePath}.mcmeta`]) throw Error('NATIVE_HELD_TEXTURE_ANIMATION_UNSUPPORTED')
-  const textureBytes = await reader.bytes(texturePath), dimensions = textureDimensions(textureBytes)
-  const decoded = await readPixels(textureBytes)
-  if (decoded?.width !== dimensions.width || decoded?.height !== dimensions.height) throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
-  const elements = nativeGeneratedItemElements(decoded)
-  const faces = bakeFaces({ elements, textures: { layer0: textureId(model, model.textures.layer0) } }, {}, { allowTint: true })
+  if (!model.textures.layer0||Object.keys(model.textures).some(key=>/^layer/.test(key)&&!/^layer[0-4]$/.test(key)))throw Error('NATIVE_HELD_LAYERS_UNSUPPORTED')
+  const textureLayers=new Map(),faces=[],decodedLayers=[]
+  // ItemModelGenerator emits contiguous layers 0..4, each with its own
+  // original pixel-edge spans and tint index. Do not flatten a potion bottle.
+  for(let layer=0;layer<5&&model.textures['layer'+layer];layer++){
+    const name='layer'+layer,id=textureId(model,model.textures[name]),path=resourcePath(id,'textures','.png')
+    if(reader.manifest.assets[path+'.mcmeta'])throw Error('NATIVE_HELD_TEXTURE_ANIMATION_UNSUPPORTED')
+    const bytes=await reader.bytes(path),dimensions=textureDimensions(bytes),decoded=await readPixels(bytes)
+    if(decoded?.width!==dimensions.width||decoded?.height!==dimensions.height)throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
+    textureLayers.set(path,{bytes,dimensions});decodedLayers.push(decoded)
+    if(decodedLayers.reduce((sum,row)=>sum+row.width*row.height,0)>1048576)throw Error('NATIVE_HELD_TEXTURE_LIMIT')
+    faces.push(...bakeFaces({elements:nativeGeneratedItemElements(decoded,layer),textures:{[name]:id}},{},{allowTint:true}))
+  }
+  const [texturePath,{bytes:textureBytes,dimensions}]=textureLayers.entries().next().value
+  const union={...decodedLayers[0],pixels:Uint8Array.from(decodedLayers[0].pixels)}
+  for(const decoded of decodedLayers.slice(1)){
+    if(decoded.width!==union.width||decoded.height!==union.height)throw Error('NATIVE_HELD_LAYER_DIMENSIONS_UNSUPPORTED')
+    for(let n=3;n<union.pixels.length;n+=4)union.pixels[n]=Math.max(union.pixels[n],decoded.pixels[n])
+  }
   const display = model.display[`thirdperson_${arm}hand`] ?? model.display.thirdperson_righthand ?? {}
   const firstDisplay = model.display[`firstperson_${arm}hand`] ?? model.display.firstperson_righthand ?? {}
   return { stack, arm, kind: 'native-generated-held', faces, texturePath, textureBytes, dimensions,
+    ...(decodedLayers.length>1?{textureLayers}:{}),...(nativePotionItemEligible(stack.id)?{tintColors:{0:provider.color}}:{}),
     transform: nativeHeldItemTransform(display, arm), firstPersonTransform: nativeHeldItemTransform(firstDisplay, arm, 'firstperson'),
     groundTransform:nativeHeldItemTransform(model.display?.ground??{},'right','ground'),
-    sourcePaths: [...new Set([...(provider?.sourcePaths ?? []), ...model.sourcePaths, texturePath])],
-    geometry: 'Minecraft 1.21.1 ItemModelGenerator', geoOffsetY: 0, material: 'entityCutout', alphaSilhouette: alphaSilhouette(decoded),
+    sourcePaths: [...new Set([...(provider?.sourcePaths ?? []), ...model.sourcePaths, ...textureLayers.keys()])],
+    geometry: 'Minecraft 1.21.1 ItemModelGenerator', geoOffsetY: 0, material: 'entityCutout', alphaSilhouette: alphaSilhouette(union),
     geometrySourceVerified: true, atlasUvShrinkAvailable: false, worldLightingParityVerified: false, pixelParityVerified: false }
 }
 
@@ -393,22 +408,23 @@ export function buildNativeHeldItemObject(plan, texture) {
   const textures = plan.textureLayers ? texture : new Map([[plan.texturePath, texture]])
   if (!(textures instanceof Map)) throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
   const materials = new Map(), group = new THREE.Group(); group.position.y = plan.geoOffsetY
-  const materialFor = path => {
-    if (materials.has(path)) return materials.get(path)
+  const materialFor = (path,tintIndex) => {
+    const color=plan.tintColors?.[tintIndex]??0xffffffff,key=path+':'+color
+    if (materials.has(key)) return materials.get(key)
     const value = textures.get(path), dimensions = plan.textureLayers?.get(path)?.dimensions ?? plan.dimensions
     if (!value?.isTexture || value.image?.width !== dimensions?.width || value.image?.height !== dimensions?.height) throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
     value.colorSpace = THREE.NoColorSpace; value.magFilter = THREE.NearestFilter; value.minFilter = THREE.NearestFilter
     value.generateMipmaps = false; value.flipY = true; value.needsUpdate = true
-    const material = new THREE.ShaderMaterial({ uniforms: { nativeTexture: { value } },
+    const material = new THREE.ShaderMaterial({ uniforms: { nativeTexture: { value },nativeTint:{value:new THREE.Vector3((color>>>16&255)/255,(color>>>8&255)/255,(color&255)/255)} },
     vertexShader: 'varying vec2 nativeUV; void main(){ nativeUV=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader: 'uniform sampler2D nativeTexture; varying vec2 nativeUV; void main(){ vec4 c=texture2D(nativeTexture,nativeUV); if(c.a<0.1)discard; gl_FragColor=c; }',
+    fragmentShader: 'uniform sampler2D nativeTexture; uniform vec3 nativeTint; varying vec2 nativeUV; void main(){ vec4 c=texture2D(nativeTexture,nativeUV); if(c.a<0.1)discard; gl_FragColor=vec4(c.rgb*nativeTint,c.a); }',
       side: plan.kind === 'native-block-held' ? THREE.FrontSide : THREE.DoubleSide,
       transparent: plan.material === 'entityTranslucent', depthWrite: true, toneMapped: false, forceSinglePass: true })
-    materials.set(path, material); return material
+    materials.set(key, material); return material
   }
   try {
     for (const face of plan.faces) {
-      const material = materialFor(plan.textureLayers ? resourcePath(face.texture, 'textures', '.png') : plan.texturePath)
+      const material = materialFor(plan.textureLayers ? resourcePath(face.texture, 'textures', '.png') : plan.texturePath,face.tintIndex)
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(face.position, 3))
       geometry.setAttribute('uv', new THREE.Float32BufferAttribute(face.uv, 2)); geometry.setIndex(face.indices)

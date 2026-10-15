@@ -16,6 +16,8 @@ import { viewerSourceDigest } from './viewer-build-source.mjs'
 import {loadNativeParticleCollisions} from '../host/native-particle-collisions.mjs'
 import { createNativeAgentVisualization } from '../host/native-agent-visual.mjs'
 import {loadNativeAudioPack} from '../host/native-audio-assets.mjs'
+import {loadOriginalItemColors,ORIGINAL_ITEM_COLORS_PATH} from '../src/native-viewer/native-potion-items.js'
+import {NativeAssetReader} from '../src/native-viewer/model-loader.js'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
@@ -395,6 +397,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   const entityRegistry = entityRegistrySha256 === null ? null
     : loadNativeEntityRegistry(await fs.readFile(path.join(root, 'registry/entities.tsv')), entityRegistrySha256)
   const audioPack=await loadNativeAudioPack(root,{nativeRegistrySha256:hash,entityRegistrySha256})
+  const itemColors=manifest.assets[ORIGINAL_ITEM_COLORS_PATH]
+    ?await loadOriginalItemColors(new NativeAssetReader(manifest,p=>fs.readFile(path.join(root,p)))):null
   const [bundle, consoleBundle, diagnosticsPage] = await Promise.all([
     browserBundle(path.join(SOURCE, 'world-preview.js')),
     browserBundle(path.join(SOURCE, 'native-console.js')),
@@ -421,6 +425,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       if (expectedUsername !== undefined && (!/^[A-Za-z0-9_]{1,16}$/.test(expectedUsername) || (bot.username && bot.username !== expectedUsername))) throw Error('NATIVE_WORLD_ATTACHMENT_IDENTITY_MISMATCH')
       if (getAgentStatus !== null && typeof getAgentStatus !== 'function') throw Error('AGENT_STATUS_PROVIDER_INVALID')
       if (getPresentationState !== null && typeof getPresentationState !== 'function') throw Error('PRESENTATION_PROVIDER_INVALID')
+      if(itemColors&&typeof nativeStream.configureItemRegistries==='function')nativeStream.configureItemRegistries(itemColors)
       const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry, entityRegistrySha256, simplifyNBT, now,
         particleCollisions:{available:particleCollisions.available,sourceSha256:particleCollisions.sourceSha256,reason:particleCollisions.reason},
         soundRegistry:audioPack.registry,resolveSelf:()=>bot.entity?{entityId:bot.entity.id,uuid:bot.entity.uuid,position:bot.entity.position}:null,
