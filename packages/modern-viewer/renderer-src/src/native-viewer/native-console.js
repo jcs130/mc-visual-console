@@ -1,3 +1,4 @@
+import {writeChanged,createTargetSignature} from './native-display-performance.js'
 import { mountNativeWorld } from './native-scene.js'
 import { nativeViewerUrl } from './native-url.js'
 import { createNativeInterface } from './native-ui-adapter.js'
@@ -148,6 +149,8 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       d?.coverage?.horizontalRangeReduced ? '地形因预算收缩，实际范围以上述数值为准' : '',
       d?.skinState ?? '本人模型未同步',
       d?.entities ? `周围实体：原生收到 ${d.entities.received}，已渲染 ${d.entities.rendered}` : '',
+      d?.frameGaps ? `可见帧间隔：p50 ${d.frameGaps.p50} / p95 ${d.frameGaps.p95} / p99 ${d.frameGaps.p99} / 最大 ${d.frameGaps.max} ms；>33/>50/>100 ms ${d.frameGaps.over33}/${d.frameGaps.over50}/${d.frameGaps.over100}；${d.frameGaps.sampleCount} 样本 / ${Math.round(d.frameGaps.durationMs)} ms` : '',
+      d?.selfDisplay ? `本人显示缓冲 ${d.selfDisplay.delayMs} ms${d.selfDisplay.stale?' · 采样陈旧，保持最后位置':''}` : '',
       d?.frameCost ? `帧耗时(CPU)：更新 ${d.frameCost.updateMs.toFixed(1)} / 主画面 ${d.frameCost.mainMs.toFixed(1)} / 手部 ${d.frameCost.handsMs.toFixed(1)} / 地图 ${d.frameCost.mapMs.toFixed(1)} / HUD ${d.frameCost.uiMs.toFixed(1)} ms；主画面 ${d.frameCost.mainCalls} 次绘制 / ${d.frameCost.mainTriangles} 三角形；地图读回 ${d.frameCost.mapReadback??'等待'}` : '',
       d?.heldItems ? `第三人称持物：${d.heldItems.available ? '原始模型已接入' : d.heldItems.reason || '未支持'}` : '',
       pendingMode === 'first' && d?.firstPersonItems ? `第一人称持物：${d.firstPersonItems.available ? (d.firstPersonItems.swingAnimationAvailable ? '本人挥手与持物动画' : '原始静止持物姿态') : d.firstPersonItems.reason || '未支持'}；装备切换与完整使用动画待适配` : '',
@@ -253,18 +256,18 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       },
       onActor (value, reason) { if (!disposed) ui.setActor(value, reason) },
       onMode (value) { if (!disposed) { pendingMode = value; updateDiagnosticText() } },
-      onFrame (frame) {
+      onFrame: (()=>{const signatureFor=createTargetSignature();let lastCameraText=null;return function (frame) {
         if (disposed) return
         frames++
-        if(frame.room)viewport.dataset.roomVisibility=JSON.stringify(frame.room)
-        const options=frame.entities??[],signature=JSON.stringify(options.map(e=>[e.id,e.uuid,e.name,e.rendered]))
+        if(frame.room)writeChanged(viewport.dataset,'roomVisibility',JSON.stringify(frame.room))
+        const options=frame.entities??[],signature=signatureFor(options)
         if(signature!==targetSignature){
           targetSignature=signature;const value=targetSelect.value;targetSelect.replaceChildren()
           const own=append(document,targetSelect,'option','','Agent 本人');own.value=''
           for(const row of options){const option=append(document,targetSelect,'option','',`${row.name} · #${row.id}${row.rendered?'':'（模型未适配）'}`);option.value=String(row.id);option.disabled=!row.rendered}
           targetSelect.value=value
         }
-        if(frame.camera)cameraUi.status(`${({manual:'手动环绕',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称',dungeon:'地下城'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`)
+        if(frame.camera){const text=`${({manual:'手动环绕',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称',dungeon:'地下城'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`;if(text!==lastCameraText){lastCameraText=text;cameraUi.status(text)}}
         if (sampledAt === null) sampledAt = frame.now
         if (frame.now - sampledAt >= 1000) {
           const result = quality.sample({ fps: frames * 1000 / (frame.now - sampledAt), hidden: document.hidden })
@@ -276,11 +279,11 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         }
         if (frame.now - lastUiFrameAt < 1000 / 30) return
         lastUiFrameAt = frame.now
-        label.hidden = !frame.label?.visible
+        writeChanged(label,'hidden',!frame.label?.visible)
         if (frame.label?.visible) {
-          label.textContent = frame.label.name; label.style.left = `${frame.label.x}px`; label.style.top = `${frame.label.y}px`
+          writeChanged(label,'textContent',frame.label.name); writeChanged(label.style,'left',`${frame.label.x}px`); writeChanged(label.style,'top',`${frame.label.y}px`)
         }
-      }
+      }})()
     })
     if (disposed) { sceneHost.dispose(); return { dispose, ui, quality, get sceneHost () { return sceneHost } } }
     sceneHost.setView(pendingMode)

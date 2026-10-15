@@ -1,3 +1,4 @@
+import { NativeSelfDisplayPose, NativeFrameGaps, writeChanged } from './native-display-performance.js'
 import * as THREE from 'three'
 import { nativeViewerUrl } from './native-url.js'
 import {createNativeAudio} from './native-audio.js'
@@ -47,7 +48,13 @@ let terrainRaycast=()=>[],selectedEntity=null,pointerStart=null,lastCollision=nu
 const roomVisibility=createNativeRoomVisibility()
 let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
 let observerPose=null,observerTarget=null
-let frameCost=null,lastCostAt=0
+let frameCost=null,lastCostAt=0,displayPose=null
+const selfDisplay=new NativeSelfDisplayPose(),frameGaps=new NativeFrameGaps()
+const receiveDisplay=()=>{
+  const previous=selfDisplay.resetVersion
+  selfDisplay.receive(current?.pose,performance.now(),`${epoch}:${playerUuid}:${current?.selfPlayer?.entityId}:${current?.selfPlayer?.health===0}`,current?.motion)
+  if(previous!==selfDisplay.resetVersion){director?.reset();cameraDistance=null;lastCollision=null}
+}
 const visualListeners = new Map()
 let lastInventoryOperation = null, frameEntitiesData = null, frameEntitiesCount = -1, frameEntities = []
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
@@ -61,6 +68,7 @@ const kineticClock = new NativeKineticRenderClock()
 let kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
 const kineticVisibility = () => {
   if (disposed) return
+  frameGaps.reset();if(renderer)renderer.domElement.dataset.frameGaps="null";selfDisplay.reset();displayPose=null
   if (document.hidden) {
     lastPlayerFrameTime = null
     kineticClock.pause(performance.now()); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_RENDER_CLOCK_PAUSED' }
@@ -126,6 +134,7 @@ async function start () {
   renderer.domElement.addEventListener('pointerup',selectPointer)
   const resize = () => {
     const host = viewport
+    frameGaps.reset();renderer.domElement.dataset.frameGaps="null"
     renderer.setSize(host.clientWidth, host.clientHeight)
     camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix()
     firstPersonCamera.aspect = camera.aspect; firstPersonCamera.updateProjectionMatrix()
@@ -136,12 +145,15 @@ async function start () {
     try {
       if (disposed || document.hidden) return
       const frameStarted=performance.now()
+      const gapStats=frameGaps.frame(now)
+      if(gapStats)renderer.domElement.dataset.frameGaps=JSON.stringify(gapStats)
+      displayPose=selfDisplay.sample(now)??current?.pose
       loader.animateTextures((now - textureStart) / 50)
       if (current?.pose) {
         const dt = lastPlayerFrameTime === null ? 0 : (now - lastPlayerFrameTime) / 1000
         lastPlayerFrameTime = now
         if (selfActor) {
-          selfActor.applyPose(current.pose)
+          selfActor.applyPose(displayPose)
           selfMotionState = applyNativeSelfPlayerMotion(selfActor, current, { dt, now: Date.now() })
           if (selfActor.assetInfo?.kind === 'ysm') {
             const signature = JSON.stringify([selfMotionState?.available, selfMotionState?.reason, selfMotionState?.clip, selfMotionState?.selectedNativeState,
@@ -183,16 +195,16 @@ async function start () {
       if(selfActor?.firstPersonRoot){
         selfActor.firstPersonRoot.visible=viewMode==='first'
         const hands=selfActor.firstPersonItemsState?.()
-        renderer.domElement.dataset.firstPersonHands=JSON.stringify({ rendered:viewMode==='first',available:hands?.available===true,
+        writeChanged(renderer.domElement.dataset,'firstPersonHands',JSON.stringify({ rendered:viewMode==='first',available:hands?.available===true,
           swing:hands?.swingAnimationAvailable===true,progress:hands?.swingProgress??null,
-          right:hands?.hands?.right?.visible===true,left:hands?.hands?.left?.visible===true })
+          right:hands?.hands?.right?.visible===true,left:hands?.hands?.left?.visible===true }))
         if(viewMode==='first'){
           renderer.clearDepth();renderer.autoClear=false
           try {renderer.render(firstPersonScene,firstPersonCamera)} finally {renderer.autoClear=true}
         }
       }
       const beforeMap=performance.now()
-      const mapDrawn=miniMap.render({position:current?.pose,playerUuid,entityId:current?.selfPlayer?.entityId,epoch,
+      const mapDrawn=miniMap.render({position:displayPose,playerUuid,entityId:current?.selfPlayer?.entityId,epoch,
         bounds:current?.bounds,visual:agentVisual.snapshot(),now})
       const afterMap=performance.now()
       publishFrame(now)
@@ -227,6 +239,7 @@ async function start () {
         return
       }
       if (event.kind === 'identity') {
+        frameGaps.reset();renderer.domElement.dataset.frameGaps="null"
         if (event.reset) clearScene()
         visualPort.emit('viewerSession', { mode: 'self', attached: value.confirmed === true, playerUuid: value.playerUuid,
           playerName: value.player, entityId: value.entityId, worldUuid: String(value.epoch) })
@@ -239,14 +252,14 @@ async function start () {
       }
       if (value.type === 'snapshot') {
         if (epoch !== value.epoch) { clearScene(); epoch = value.epoch }
-        current = value; pending = value; void rebuildLatest()
+        current = value; receiveDisplay(); pending = value; void rebuildLatest()
         audio.connect(true)
       } else if (value.type === 'frame' && current && value.epoch === epoch) {
         current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
-        current.presentation = value.presentation; current.entityState = value.entityState
+        current.presentation = value.presentation; current.entityState = value.entityState; receiveDisplay()
       } else if (value.type === 'motion' && current && value.epoch === epoch) {
         selfActor?.applyHandAnimation?.(value.handAnimation)
-        current.pose = value.pose; current.motion = value.motion; return
+        current.pose = value.pose; current.motion = value.motion; receiveDisplay(); return
       } else if (value.type === 'presentation' && current && value.epoch === epoch) {
         current.presentation = value.presentation; selfActor?.applyHeldItems?.(value.presentation); onState(value); return
       } else return
@@ -263,7 +276,7 @@ async function start () {
 }
 function orbitPosition () {
   if (!current?.pose) return
-  const view = playerCamera(current.pose, viewMode==='region'?'region':'third')
+  const view = playerCamera(displayPose??current.pose, viewMode==='region'?'region':'third')
   controls.target.fromArray(view.target); camera.position.fromArray(view.position); controls.update()
 }
 function setView (mode) {
@@ -276,7 +289,7 @@ function setView (mode) {
   viewport.dataset.view = mode; onMode(mode)
 }
 function updatePlayerCamera (now) {
-  observerTarget=nativeCameraTarget(current,selfActor);observerPose=current.pose
+  observerTarget=nativeCameraTarget({...current,pose:displayPose??current.pose},selfActor);observerPose=displayPose??current.pose
   if(selectedEntity){
     const entity=entityLayer.data.get(selectedEntity.id),actor=entityLayer.actors.get(selectedEntity.id)?.actor
     // Actor rebuilds are asynchronous. Keep selection through a metadata/skin
@@ -349,7 +362,7 @@ async function ensureSelfActor (self) {
   }
 }
 function publishFrame(now) {
-  const p = current?.pose
+  const p = displayPose??current?.pose
   let label = { visible: false, x: 0, y: 0, name: player }
   if (p && selfActor?.root.visible && viewMode !== 'first') {
     const point=selectedEntity?observerTarget?.position:p,height=selectedEntity?(observerTarget?.height??1.8)+.2:2.1
@@ -378,7 +391,7 @@ function publishDiagnostics() {
     kineticClock: kineticClockState,
     deviceVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeDevice).map(actor => ({ position: actor.position, stateId: actor.state.stateId, ...actor.root.userData.nativeDevice })),
     windmillVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeBearing).map(actor => ({ position: actor.position, ...actor.root.userData.nativeBearing })),
-    frameCost,skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
+    frameCost,frameGaps:frameGaps.value,selfDisplay:{delayMs:50,stale:selfDisplay.stale},skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
 function clearStatics () {
   if (!statics) return
@@ -386,6 +399,7 @@ function clearStatics () {
   statics.clear()
 }
 function clearScene () {
+  selfDisplay.reset();displayPose=null;frameGaps.reset();if(renderer)renderer.domElement.dataset.frameGaps="null"
   miniMap?.reset()
   audio?.connect(false)
   particles?.reset()

@@ -71,8 +71,9 @@ function emptyState (reason, sample = null) {
 }
 
 export function createNativePlayerMotionTracker () {
+  let resetSequence = 0
   let previous = null, state = emptyState('NATIVE_PLAYER_MOTION_WAITING')
-  const baseline = (sample, reason) => { previous = sample; state = emptyState(reason, sample); return copyState(state) }
+  const baseline = (sample, reason) => { previous = sample; state = emptyState(reason, sample); return { ...copyState(state), resetSequence } }
   return {
     record (input = {}) {
       const { epoch, tick, sampledAt, pose, ageInTicks = null, discontinuity = null } = input
@@ -80,10 +81,10 @@ export function createNativePlayerMotionTracker () {
         !pose || ![pose.x, pose.y, pose.z].every(Number.isFinite) ||
         (ageInTicks !== null && (!safeCount(ageInTicks) || ageInTicks > 2147483647)) ||
         (discontinuity !== null && !RESET_SIGNALS.has(discontinuity))) {
-        previous = null; state = emptyState('NATIVE_PLAYER_MOTION_INPUT_INVALID'); return copyState(state)
+        previous = null; state = emptyState('NATIVE_PLAYER_MOTION_INPUT_INVALID'); return { ...copyState(state), resetSequence }
       }
       const sample = { epoch, tick, sampledAt, pose: { x: pose.x, y: pose.y, z: pose.z }, ageInTicks }
-      if (discontinuity !== null) return baseline(sample, `NATIVE_PLAYER_MOTION_RESET_${discontinuity.toUpperCase()}`)
+      if (discontinuity !== null) { resetSequence++; return baseline(sample, `NATIVE_PLAYER_MOTION_RESET_${discontinuity.toUpperCase()}`) }
       if (!previous) return baseline(sample, 'NATIVE_PLAYER_MOTION_BASELINE')
       if (epoch !== previous.epoch) return baseline(sample, 'NATIVE_PLAYER_MOTION_EPOCH_CHANGED')
       if (tick !== previous.tick + 1) return baseline(sample, 'NATIVE_PLAYER_MOTION_TICK_GAP')
@@ -93,7 +94,7 @@ export function createNativePlayerMotionTracker () {
       // must explicitly signal discontinuity, instead of interpreting fast travel.
       const dx = pose.x - previous.pose.x, dz = pose.z - previous.pose.z
       const distance = F(Math.sqrt(dx * dx + dz * dz))
-      if (!Number.isFinite(distance)) { previous = null; state = emptyState('NATIVE_PLAYER_MOTION_DISTANCE_INVALID'); return copyState(state) }
+      if (!Number.isFinite(distance)) { previous = null; state = emptyState('NATIVE_PLAYER_MOTION_DISTANCE_INVALID'); return { ...copyState(state), resetSequence } }
       const target = Math.min(mul(distance, 4), 1), speedOld = state.walk?.speed ?? 0
       const speed = add(speedOld, mul(sub(target, speedOld), SMOOTHING))
       const position = add(state.walk?.position ?? 0, speed)
@@ -101,12 +102,12 @@ export function createNativePlayerMotionTracker () {
         epoch, tick, sampledAt, available: true, reason: null, walk: { speedOld, speed, position }, ageInTicks,
         animationParityVerified: false, bodyYawAvailable: false, attackAnimationAvailable: false }
       previous = sample
-      return copyState(state)
+      return { ...copyState(state), resetSequence }
     },
-    current () { return copyState(state) },
+    current () { return { ...copyState(state), resetSequence } },
     reset (reason = 'connection') {
       if (!RESET_SIGNALS.has(reason)) throw Error('NATIVE_PLAYER_MOTION_RESET_INVALID')
-      previous = null; state = emptyState(`NATIVE_PLAYER_MOTION_RESET_${reason.toUpperCase()}`); return copyState(state)
+      resetSequence++; previous = null; state = emptyState(`NATIVE_PLAYER_MOTION_RESET_${reason.toUpperCase()}`); return { ...copyState(state), resetSequence }
     }
   }
 }

@@ -7,7 +7,17 @@ export class NativeSnapshotCadence {
     this.reset()
   }
   reset () { this.dirty = true; this.center = null; this.bounds = null; this.lastBuiltAt = -Infinity }
-  invalidate () { this.dirty = true }
+  invalidate (change) {
+    const b=this.bounds
+    if(b && change?.position && ['x','y','z'].every(k=>Number.isFinite(change.position[k]))) {
+      // Block geometry/fluids read a one-block halo, block entities only centers.
+      if(['x','y','z'].some(k=>change.position[k]<b[`min${k.toUpperCase()}`]-1 || change.position[k]>b[`max${k.toUpperCase()}`]+1))return
+    } else if(b && change?.column && ['x','z'].every(k=>Number.isInteger(change.column[k]))) {
+      // Biome grid reaches +/-6 then rounds to complete quart cells (+/-9).
+      if(['x','z'].some(k=>change.column[k]*16+15<b[`min${k.toUpperCase()}`]-9 || change.column[k]*16>b[`max${k.toUpperCase()}`]+9))return
+    }
+    this.dirty = true
+  }
   observe (pose) {
     if (!pose || !['x', 'y', 'z'].every(k => Number.isFinite(pose[k]))) return
     if (!this.center || ['x', 'y', 'z'].some(k => Math.abs(pose[k] - this.center[k]) >= this.recenterDistance)) this.dirty = true

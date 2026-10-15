@@ -603,7 +603,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         }
       })
       server.requestTimeout = 10000; server.headersTimeout = 10000
-      const worldChanged = () => { cadence.invalidate() }
+      const worldChanged = change => { cadence.invalidate(change) }
       const resetPresentation = () => { gameMessages = []; currentTitle = null; currentActionbar = null }
       const reset = () => { cadence.reset(); cachedSnapshot = null; cachedTerrainSignature = null; motionTracker.reset('dimension'); resetPresentation() }
       const pose = () => { cadence.observe(world.pose) }

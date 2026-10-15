@@ -192,11 +192,11 @@ export class NativeWorldState extends EventEmitter {
           this.columns.set(columnKey(p.x, p.z), chunk)
           this.removeBlockEntities(p.x, p.z)
           for (const be of p.blockEntities || []) this.setBlockEntity({ x: p.x * 16 + be.x, y: be.y, z: p.z * 16 + be.z }, be.nbtData ?? be.nbt)
-          this.revision++; this.emit('world'); break
+          this.revision++; this.emit('world', {column:{x:p.x,z:p.z}}); break
         }
         case 'unload_chunk': {
           this.columns.delete(columnKey(p.chunkX, p.chunkZ)); this.removeBlockEntities(p.chunkX, p.chunkZ)
-          this.revision++; this.emit('world'); break
+          this.revision++; this.emit('world', {column:{x:p.chunkX,z:p.chunkZ}}); break
         }
         case 'block_change': this.changeBlock(p.location, p.type); break
         case 'multi_block_change': {
@@ -208,7 +208,7 @@ export class NativeWorldState extends EventEmitter {
           }
           break
         }
-        case 'tile_entity_data': this.setBlockEntity(p.location, p.nbtData ?? p.nbt); this.revision++; this.emit('world'); break
+        case 'tile_entity_data': this.setBlockEntity(p.location, p.nbtData ?? p.nbt); this.revision++; this.emit('world', {position:p.location}); break
         case 'update_time': this.time = { age: longNumber(p.age), day: longNumber(p.time), receivedAt: this.now() }; this.emit('time'); break
         case 'world_particles':{
           const value=nativeParticlePacket(p),at=this.now()
@@ -471,7 +471,7 @@ export class NativeWorldState extends EventEmitter {
     const old = this.stateIdAt(p)
     chunk.setBlockStateId(new Vec3(p.x - cx * 16, p.y, p.z - cz * 16), stateId)
     if (old !== stateId) this.blockEntities.delete(key(p))
-    this.revision++; this.emit('world')
+    this.revision++; if(old !== stateId)this.emit('world', {position:p})
   }
 
   setPose (pose) {
