@@ -4,6 +4,8 @@
 
 ## Shared renderer updates
 
+- Java 1.21.1 is the primary maintenance, build and acceptance target. Keep 1.20.6 as explicit compatibility coverage. Enable transport features from their validated schema and actual codec capabilities; do not disable format-compatible features solely by Java-version strings. Original assets and registries must still match the action connection exactly.
+
 - Commit reusable renderer, page, HUD and build-tool changes in this repository. Consuming projects keep their connection and gameplay adapters.
 - Synchronize tested changes to the shared `main` branch when the user requests synchronization. Reconcile concurrent branches and preserve both the 1.20.6 and native modded integrations.
 - Updating source does not update a copied deployment. Rebuild each affected asset directory with its original version and preset, record the source commit and bundle hash, and verify the files served by the consumer.

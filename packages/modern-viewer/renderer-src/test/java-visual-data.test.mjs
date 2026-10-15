@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {JavaVisualData,javaYaw,javaPitch} from '../host/java-visual-data.mjs';
-const require=createRequire(import.meta.url),mc=require('minecraft-data')('1.20.6'),Chunk=require('prismarine-chunk')('1.20.6');
+const require=createRequire(import.meta.url),mc=require('minecraft-data')('1.21.1'),Chunk=require('prismarine-chunk')('1.21.1');
 const uuid='11111111-1111-4111-8111-111111111111';
-const env={protocol:'agent-mc-visual/v1',minecraftVersion:'1.20.6',uuid,server:'example.test',epoch:'world1',sequence:1,sampledAt:100,dimension:'minecraft:overworld'};
+const env={protocol:'agent-mc-visual/v1',minecraftVersion:'1.21.1',uuid,server:'example.test',epoch:'world1',sequence:1,sampledAt:100,dimension:'minecraft:overworld'};
 const reg={...env,registry:{blocks:[{id:0,name:'minecraft:air',properties:{}},{id:1,name:'minecraft:stone',properties:{}}],biomes:[{id:0,name:'minecraft:plains'}]}};
 const decoder=()=>{const d=new JavaVisualData({uuid,server:'example.test:25565'});d.registry(reg);return d;};
 const self={id:1,uuid,name:'minecraft:player',username:'Test',position:[-.5,64,-16.5],yaw:0,pitch:45,headYaw:90,width:.6,height:1.8,eyeHeight:1.62,pose:'STANDING',velocity:[.1,0,0],onGround:true,sneaking:false,sprinting:false,burning:false,equipment:[],hurtTime:0};
@@ -28,15 +28,25 @@ test('1.21.1 uses its own copper bulb states and rejects a 1.20.6 envelope',()=>
  const c=new C({minY:-16,worldHeight:32});c.setBlockStateId({x:15,y:-1,z:0},1);
  const result=d.decodeChunk({...column(),minecraftVersion:version,sections:c.dump().toString('base64')});
  assert.equal(C.fromJson(result.chunk).getBlockStateId({x:15,y:-1,z:0}),id);
- assert.throws(()=>d.decodeChunk(column()),/VERSION_MISMATCH/);
+ assert.throws(()=>d.decodeChunk({...column(),minecraftVersion:'1.20.6'}),/VERSION_MISMATCH/);
  assert.throws(()=>new JavaVisualData({uuid,server:'example.test',minecraftVersion:'1.21.2'}),/VERSION_MISMATCH/);
 });
 test('unknown namespaced block fails instead of becoming vanilla stone',()=>{
  const d=decoder();d.registry({...reg,registry:{...reg.registry,blocks:[reg.registry.blocks[0],{id:1,name:'a_mod:stone',properties:{}}]}});
  assert.throws(()=>d.decodeChunk(column()),/UNSUPPORTED_BLOCK_STATE_1/);
 });
+
+test('an explicitly selected 1.20.6 connection still decodes its own original registry',()=>{
+ const version='1.20.6',C=require('prismarine-chunk')(version),data=require('minecraft-data')(version);
+ const d=new JavaVisualData({uuid,server:'example.test',minecraftVersion:version});
+ d.registry({...reg,minecraftVersion:version});
+ const c=new C({minY:-16,worldHeight:32});c.setBlockStateId({x:15,y:-1,z:0},1);
+ const out=d.decodeChunk({...column(),minecraftVersion:version,sections:c.dump().toString('base64')});
+ assert.equal(C.fromJson(out.chunk).getBlockStateId({x:15,y:-1,z:0}),data.blocksByName.stone.defaultState);
+ assert.throws(()=>d.decodeChunk(column()),/VERSION_MISMATCH/);
+});
 test('UUID, server, version and epoch isolate actual player streams',()=>{
- const d=decoder();for(const patch of [{uuid:'22222222-2222-4222-8222-222222222222'},{server:'other.test'},{minecraftVersion:'1.21.1'},{epoch:'world2'}])assert.throws(()=>d.decodeChunk({...column(),...patch}));
+ const d=decoder();for(const patch of [{uuid:'22222222-2222-4222-8222-222222222222'},{server:'other.test'},{minecraftVersion:'1.20.6'},{epoch:'world2'}])assert.throws(()=>d.decodeChunk({...column(),...patch}));
 });
 test('native degrees convert to Mineflayer view radians without reversing pitch',()=>{
  assert.equal(javaYaw(0),Math.PI);assert.equal(javaYaw(180),0);assert.equal(javaPitch(90),-Math.PI/2);

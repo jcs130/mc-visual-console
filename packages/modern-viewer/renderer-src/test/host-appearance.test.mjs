@@ -26,6 +26,18 @@ test('own actor and server unavailable status stay distinct from geometry suppor
   bot._client.emit('custom_payload',packet({...row,type:'remove'}));assert.equal(bridge.snapshot().length,0);bridge.dispose();
 });
 
+test('appearance reception follows the attested model format independently of the Java-version label',()=>{
+ for(const version of ['1.21.1','1.20.6','format-compatible-future']){
+  const bot=Object.assign(new EventEmitter(),{version,_client:new EventEmitter(),player:{uuid},entity:{id:7},entities:{}});
+  const bridge=createViewerAppearanceBridge(bot);
+  try{
+   bot._client.emit('custom_payload',packet(row));assert.equal(bridge.snapshot()[0].modelId,'alex');
+   bot._client.emit('custom_payload',packet({...row,modelId:'untrusted',jarSha256:'0'.repeat(64)}));
+   assert.equal(bridge.snapshot()[0].modelId,'alex');
+  }finally{bridge.dispose();}
+ }
+});
+
 test('pending model and disconnected Worker diagnostics survive without asserting renderability',()=>{
   const bot=Object.assign(new EventEmitter(),{_client:new EventEmitter(),player:{uuid},entity:{id:7},entities:{}});
   const bridge=createViewerAppearanceBridge(bot);

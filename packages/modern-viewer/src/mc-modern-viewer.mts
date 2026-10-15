@@ -20,7 +20,7 @@ import { createViewerContentBridge } from '../renderer-src/host/viewer-content.m
 import { createViewerObserverBridge } from '../renderer-src/host/viewer-observer.mjs'
 import { createViewerAgentBridge } from '../renderer-src/host/viewer-agent.mjs'
 export { createViewerAgentBridge, createViewerAgentHub, publishAgentVisualization } from '../renderer-src/host/viewer-agent.mjs'
-import { createViewerAppearanceBridge, supportsViewerAppearanceVersion } from '../renderer-src/host/viewer-appearance.mjs'
+import { createViewerAppearanceBridge } from '../renderer-src/host/viewer-appearance.mjs'
 import { serveViewerAsset } from '../renderer-src/host/viewer-asset-server.mjs'
 import { withItemVisualIdentity } from '../renderer-src/src/modern-viewer/item-profile.js'
 import { createViewerHeadTextures } from '../renderer-src/host/viewer-head-textures.mjs'
@@ -1071,12 +1071,12 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   const prismarinePublicRoot = path.join(path.dirname(require.resolve('prismarine-viewer/package.json')), 'public')
   const sessions = new Set()
   const sessionSlots = new ViewerSessionSlots(MAX_VIEWER_SESSIONS, MAX_CAPTURE_SESSIONS)
-  const contentBridge = bot.version === '1.20.6' ? createViewerContentBridge(bot) : null
-  const appearanceBridge = supportsViewerAppearanceVersion(bot.version) ? createViewerAppearanceBridge(bot) : null
+  const contentBridge = ['1.21.1','1.20.6'].includes(bot.version) ? createViewerContentBridge(bot) : null
+  const appearanceBridge = createViewerAppearanceBridge(bot)
   const headTextures = createViewerHeadTextures()
-  const observerBridge = bot.version === '1.20.6' ? createViewerObserverBridge(bot, {
+  const observerBridge = createViewerObserverBridge(bot, {
     serializeWindow: window => serializeViewerWindow(bot, window),
-  }) : null
+  })
   const agentBridge = createViewerAgentBridge(bot, { getViewerSession: () => observerBridge?.snapshot()?.viewerSession ?? null })
   const fishingOwners = createFishingBobberOwnerTracker(bot, entity => {
     for (const session of sessions) session.entityStream.queue(entity, true)
@@ -1325,11 +1325,12 @@ if (!snap?.holder) {
       }
       // Version-matched optional Paper content. These files come from the
       // rebuilt package's public/, never a different version's proxy registry.
-      if (bot.version === '1.20.6' && (/^\/(?:viewer-content\.json|particle-content\.png|text-display-font\.json|fonts\/1\.20\.6\/unifont\.zip)$/.test(rel)
-          || /^\/textures\/1\.20\.6\/font\/[a-z_]+\.png$/.test(rel)
+      const contentRel = rel.replaceAll(`/${bot.version}/`, '/VERSION/');
+      if (['1.21.1','1.20.6'].includes(bot.version) && (/^\/(?:viewer-content\.json|particle-content\.png|text-display-font\.json|fonts\/VERSION\/unifont\.zip)$/.test(contentRel)
+          || /^\/textures\/VERSION\/font\/[a-z_]+\.png$/.test(contentRel)
           || /^\/item-appearances\/(?:manifest\.json|(?:models\/[a-z][a-z0-9_]{1,47}\.json|(?:textures|icons)\/[a-z][a-z0-9_]{1,47}\.png))$/.test(rel))) {
         if (await serveViewerAsset(res, path.join(ASSET_ROOT, 'public'), rel.slice(1))) return
-        send(404, 'text/plain', 'Matching 1.20.6 content assets are missing'); return
+        send(404, 'text/plain', `Matching ${bot.version} content assets are missing`); return
       }
       // minecraft-renderer 网格化 worker 与 wasm：这些由 minecraft-renderer/dist 提供，
       // 不随 prismarine-viewer 分发。必须原样可寻址，否则客户端 new Worker('threeWorker.js'|'mesherWasm.js')

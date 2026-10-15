@@ -4,8 +4,8 @@ import {createViewerYsmMotion} from './viewer-ysm-motion.mjs';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const APPEARANCE_CHANNEL='mcagent:appearance';
 export const PAPER_YSM_JAR_SHA256='ec51cfae84d219a45fac5098a31bfe980bcb7c2d8b413e8fffbd05a411a85680';
-// The attested appearance format is shared by these Java clients. The payload
-// parser still verifies the original YSM/protocol/JAR identity independently.
+// Compatibility export for older hosts. New hosts instantiate the read-only
+// bridge and accept its attested payload format, without a Java-version gate.
 export const supportsViewerAppearanceVersion=version=>version==='1.20.6'||version==='1.21.1';
 export function parseAppearancePacket(packet) {
   if(packet?.channel!==APPEARANCE_CHANNEL || !(packet.data instanceof Uint8Array) || packet.data.length>2048)return null;

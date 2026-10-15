@@ -45,13 +45,17 @@ Earlier isolated tests photographed builtin geometry, a newly uploaded ZIP and a
 
 ### Java 1.21.1 appearance reception
 
-`supportsViewerAppearanceVersion` admits both Java 1.20.6 and 1.21.1 for the
-existing attested Paper appearance format. Hosts and explicitly enabled server
-packs must use this shared gate rather than retaining a 1.20.6-only check. The
-YSM version, protocol, original JAR hash, player UUID/entity ID, asset hashes and
-expiry checks remain independent and unchanged. A later Java or YSM version is
-not implicitly accepted. Browser geometry support still requires successful
-original asset transfer and rendering; receiving metadata alone is insufficient.
+Java 1.21.1 is the primary maintenance and acceptance target; 1.20.6 retains
+explicit compatibility coverage. Hosts and explicitly enabled server packs
+instantiate the read-only appearance and observer bridges, then validate the
+actual attested payload format instead of disabling reception by Java-version
+strings. The old `supportsViewerAppearanceVersion` export remains for older
+callers and is deprecated. YSM version, protocol, original JAR hash, player
+UUID/entity ID, asset hashes and expiry checks remain independent and unchanged.
+Own-arm observation probes the actual packet serializer rather than assuming a
+packet ID from the Java version. Original-resource rendering still requires the
+matching received registry, complete source transfer and successful rendering;
+receiving metadata alone is insufficient.
 
 ### Complex uploaded rigs
 

@@ -33,13 +33,14 @@ test('unknown/oversized item visual data is flagged; resetting drops old actions
   f.bot._client.emit('animation',{entityId:7,animation:0});f.bridge.reset();f.bridge.send(f.row);assert.equal(f.events.at(-1).value.swing,undefined);f.bridge.dispose();
 });
 
-test('own arm packets are observed without changing writes, and unrelated outgoing bytes are not parsed',()=>{
-  const f=fixture();f.bridge.dispose();f.bot.version='1.20.6';f.bot.entity=f.entity;f.bot._client.uuid=uuid;f.bot._client.state='play';
+for(const version of ['1.21.1','1.20.6','future-format-compatible'])test(`own arm packets use the ${version} serializer without changing writes or parsing unrelated bytes`,()=>{
+  const f=fixture();f.bridge.dispose();f.bot.version=version;f.bot.entity=f.entity;f.bot._client.uuid=uuid;f.bot._client.state='play';
   const serializer=new EventEmitter();let parsed=0;
   serializer.createPacketBuffer=()=>Buffer.from([0x36,0]);serializer.mainType='packet';
   serializer.proto={parsePacketBuffer(_type,bytes){parsed++;return {data:{name:'arm_animation',params:{hand:bytes[1]}}};}};
   f.bot._client.serializer=serializer;const originalWrite=()=>{};f.bot._client.write=originalWrite;
   const bridge=createViewerYsmMotion(f.bot,{now:()=>1000,binding:id=>id===7?f.row:null,emit:(name,value)=>f.events.push({name,value})});
+  assert.equal(parsed,1,'the actual codec must first round-trip its arm packet');parsed=0;
   serializer.emit('data',Buffer.from([0x06,1]));serializer.emit('data',Buffer.from([0x36,0,1]));assert.equal(parsed,0);
   serializer.emit('data',Buffer.from([0x36,1]));assert.equal(f.events.at(-1).value.swing.hand,'offhand');assert.equal(parsed,1);
   assert.equal(f.bot._client.write,originalWrite);bridge.dispose();assert.equal(serializer.listenerCount('data'),0);

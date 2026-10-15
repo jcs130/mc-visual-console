@@ -5,10 +5,11 @@ import { createHash } from 'node:crypto';
 import { Server as SocketServer } from 'socket.io';
 import { JavaVisualData } from './java-visual-data.mjs';
 import { serveViewerAsset } from './viewer-asset-server.mjs';
+import { PRIMARY_VIEWER_VERSION } from './viewer-version.mjs';
 
 /** Existing browser renderer fed by native data. rpc is injected by the body adapter;
  * tokens, screenshots and body commands never cross this read-only browser endpoint. */
-export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expectedServer,radius=2,minecraftVersion='1.20.6'}) {
+export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expectedServer,radius=2,minecraftVersion=PRIMARY_VIEWER_VERSION}) {
   if(!Number.isInteger(port)||port<0||port>65535||!Number.isInteger(radius)||radius<0||radius>4) throw Error('JAVA_VIEWER_CONFIG_INVALID');
   const root=path.resolve(assetsDir), source=JSON.parse(await readFile(path.join(root,'public/asset-source.json'),'utf8'));
   if(!['1.20.6','1.21.1'].includes(minecraftVersion)||source.minecraftVersion!==minecraftVersion) throw Error('JAVA_VIEWER_ASSET_VERSION_MISMATCH');

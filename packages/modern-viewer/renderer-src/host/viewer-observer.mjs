@@ -42,7 +42,7 @@ export function createViewerObserverBridge(bot, { now = Date.now, staleMs = 12_0
     let state; try { state = JSON.parse(packet.data.toString('utf8')); } catch { return; }
     const session = state?.viewerSession;
     if (state?.schemaVersion !== 1 || !session || !UUID.test(session.recipientUuid ?? '')
-        || session.recipientUuid.toLowerCase() !== String(bot.player?.uuid ?? bot.entity?.uuid ?? bot.uuid).toLowerCase()
+        || session.recipientUuid.toLowerCase() !== String(bot._client?.uuid ?? bot.player?.uuid ?? bot.entity?.uuid ?? bot.uuid).toLowerCase()
         || !['self', 'observer'].includes(session.mode) || typeof session.attached !== 'boolean') return;
     if (session.attached && (!UUID.test(session.playerUuid ?? '') || !UUID.test(session.worldUuid ?? '')
         || !Number.isSafeInteger(session.entityId) || !/^[A-Za-z0-9_.]{1,32}$/.test(session.playerName ?? '')

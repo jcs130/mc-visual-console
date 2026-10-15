@@ -80,9 +80,13 @@ export function createViewerYsmMotion(bot,{binding,emit,now=Date.now}={}) {
   let serializer=null,outgoing=null;
   const attachOutgoing=()=>{
     if(serializer&&outgoing)serializer.off('data',outgoing);serializer=bot._client.serializer;outgoing=null;
-    if(bot.version!=='1.20.6'||!serializer?.createPacketBuffer||!serializer.proto?.parsePacketBuffer)return;
+    if(!serializer?.createPacketBuffer||!serializer.proto?.parsePacketBuffer)return;
     try {
-      const armBytes=serializer.createPacketBuffer({name:'arm_animation',params:{hand:0}}),prefix=armBytes.subarray(0,armBytes.length-1);
+      const armBytes=serializer.createPacketBuffer({name:'arm_animation',params:{hand:0}});
+      if(!Buffer.isBuffer(armBytes)||armBytes.length<2||armBytes.length>8)return;
+      const probe=serializer.proto.parsePacketBuffer(serializer.mainType,armBytes).data;
+      if(probe.name!=='arm_animation'||probe.params?.hand!==0)return;
+      const prefix=armBytes.subarray(0,armBytes.length-1);
       outgoing=bytes=>{
         if(bot._client.state!=='play' || bytes.length!==armBytes.length || !bytes.subarray(0,prefix.length).equals(prefix))return;
         try {

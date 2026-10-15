@@ -12,7 +12,7 @@ function skinPng(){
  const header=Buffer.alloc(13);header.writeUInt32BE(64);header.writeUInt32BE(64,4);header[8]=8;header[9]=6;
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(Buffer.alloc(64*(1+64*4)))),chunk('IEND',Buffer.alloc(0))]);
 }
-async function rig({nativeSkin=false,invalidSkin=false,minecraftVersion='1.20.6'}={}) {
+async function rig({nativeSkin=false,invalidSkin=false,minecraftVersion='1.21.1'}={}) {
  const root=await mkdtemp(path.join(tmpdir(),'native-data-view-'));
  for(const route of ['','third','dungeon']){await mkdir(path.join(root,'public',route),{recursive:true});await writeFile(path.join(root,'public',route,'index.html'),'<body>WebGL</body>');}
  await writeFile(path.join(root,'public/asset-source.json'),JSON.stringify({minecraftVersion}));await writeFile(path.join(root,'public/viewer.css'),'');

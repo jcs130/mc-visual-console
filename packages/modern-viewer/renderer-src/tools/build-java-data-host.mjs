@@ -6,7 +6,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const output=process.argv[2];if(!output)throw Error('Provide an explicit java-data-viewer.mjs output path');
-const inputs=['host/java-data-viewer.mjs','host/java-visual-data.mjs','host/viewer-asset-server.mjs'];
+const inputs=['host/java-data-viewer.mjs','host/java-visual-data.mjs','host/viewer-asset-server.mjs','host/viewer-version.mjs'];
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 await build({entryPoints:[path.join(root,inputs[0])],outfile:output,bundle:true,platform:'node',format:'esm',target:'node22',packages:'external',banner:{js:'// Generated from mc-visual-console by tools/build-java-data-host.mjs. Edit the shared source.'}});
 await writeFile(output+'.provenance.json',JSON.stringify({repository:'https://github.com/jcs130/mc-visual-console',commit:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),inputs:await Promise.all(inputs.map(async file=>({file,sha256:sha(await readFile(path.join(root,file)))}))),outputSha256:sha(await readFile(output)),externalDependencies:['minecraft-data','prismarine-block','prismarine-chunk','socket.io']},null,2)+'\n');

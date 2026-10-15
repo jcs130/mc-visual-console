@@ -25,6 +25,16 @@ test('only this connection and its actual camera receive server-attested state',
     assert.ok(h.events.some(([name, value]) => name === 'containerState' && value === null));
   } finally { h.bridge.dispose(); }
 });
+
+test('the authenticated protocol UUID takes precedence over stale player caches without a Java-version gate',()=>{
+  const h=fixture();try{
+    h.bot.version='1.21.1';h.bot._client.uuid=a;h.bot.player={uuid:b};h.bot.entity={uuid:b};
+    h.bot._client.emit('camera',{cameraId:8});h.payload(h.state());
+    assert.equal(h.bridge.snapshot().viewerSession.recipientUuid,a);
+    h.payload({...h.state(),viewerSession:{...h.state().viewerSession,recipientUuid:b}});
+    assert.equal(h.bridge.snapshot().viewerSession.recipientUuid,a);
+  }finally{h.bridge.dispose();}
+});
 test('queued target switch, real close packets and respawn clear old UI', () => {
   const h = fixture(); try {
     h.bot._client.emit('camera', { cameraId: 8 }); h.payload(h.state());

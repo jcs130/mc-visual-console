@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { PRIMARY_VIEWER_VERSION } from './viewer-version.mjs';
 const require = createRequire(import.meta.url);
 const canonical = props => JSON.stringify(Object.entries(props).map(([k,v]) => [k,String(v)]).sort(([a],[b]) => a.localeCompare(b)));
 const identifier = /^minecraft:[a-z0-9_./-]+$/;
@@ -13,7 +14,7 @@ export const javaPitch = degrees => -degrees * Math.PI / 180;
 
 /** Explicit native-state to vanilla-renderer registry. Unknown mod content is never replaced. */
 export class JavaVisualData {
-  constructor({ uuid, server, skinUrl = () => null, minecraftVersion = '1.20.6' }) {
+  constructor({ uuid, server, skinUrl = () => null, minecraftVersion = PRIMARY_VIEWER_VERSION }) {
     requireValue(['1.20.6','1.21.1'].includes(minecraftVersion),'VERSION_MISMATCH');
     this.version=minecraftVersion;this.mc=require('minecraft-data')(minecraftVersion);
     this.Block=require('prismarine-block')(minecraftVersion);this.Chunk=require('prismarine-chunk')(minecraftVersion); this.uuid = uuid.toLowerCase(); this.server = server.toLowerCase().replace(/:25565$/,''); this.skinUrl = skinUrl; this.clear(); }
