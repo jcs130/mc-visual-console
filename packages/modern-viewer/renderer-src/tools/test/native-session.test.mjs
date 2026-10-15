@@ -26,6 +26,15 @@ test('identity cannot be established by a world frame or a different native regi
   assert.equal(session.receive(identity).kind, 'identity')
 })
 
+test('native particle packets are bound to the current player epoch and are never replayed',()=>{
+  const session=createNativeSession(hash);session.receive(identity);session.receive(snapshot)
+  const event={type:'world_effect',epoch:1,playerUuid:uuid,source:'received_native_packet_effect',sequence:1,observedAt:1000,tick:2,
+    effect:{kind:'particle',value:{name:'heart',count:0}}}
+  assert.equal(session.receive(event).kind,'world_effect');assert.equal(session.receive(event).kind,'ignored')
+  session.receive({...snapshot,epoch:2});assert.equal(session.receive({...event,sequence:2}).kind,'ignored')
+  assert.equal(session.receive({...event,epoch:2}).kind,'world_effect')
+})
+
 test('entity state is bound to the matched native entity registry and current player epoch', () => {
   const entityHash = 'e'.repeat(64), session = createNativeSession(hash, { entityRegistrySha256: entityHash })
   session.receive(identity)

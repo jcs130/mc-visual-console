@@ -1,18 +1,20 @@
 import * as THREE from 'three'
 import { nativeViewerUrl } from './native-url.js'
 import {createNativeAudio} from './native-audio.js'
+import {NativeParticleLayer} from './native-particles.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath } from './model-loader.js'
 import { createKineticActor } from './create-kinetics.js'
 import { WINDMILL_BEARING_ID, verifyNativeWindmillBearing } from './native-windmill-bearing.js'
 import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
-import { waterGeometry } from './native-fluid.js'
+import { nativeFluidFamily,nativeFluidGeometry } from './native-fluid.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
 import { NativeSelfPlayerController, applyNativeSelfPlayerMotion } from './native-self-player.js'
 import { playerCamera } from './player-camera.js'
 import { createNativeSession } from './native-session.js'
 import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
 import { NativeEntityLayer } from './native-entity-layer.js'
+import {loadOriginalModelLayers,ORIGINAL_MODEL_LAYERS_PATH,originalBlockModelContract} from './native-original-model-layers.js'
 import { MILLSTONE_ID, prepareNativeMillstoneModel, NativeKineticRenderClock, nativeKineticTimeStatus } from './native-millstone.js'
 import { stageNativeKineticActors } from './native-kinetic-layer.js'
 import { nativeColonyHutEligible, prepareNativeColonyHutModel } from './native-colony-huts.js'
@@ -34,9 +36,9 @@ const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
 const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
-let colormaps, textureStart = performance.now()
+let colormaps, originalModelLayers=null, vanillaRegistry=false, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
-let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap,audio
+let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap,audio,particles
 let director, cameraOptions=normalizeCameraSettings(cameraSettings??{version:1,mode:'follow'}),cameraFrame=null
 let terrainRaycast=()=>[],selectedEntity=null,pointerStart=null,lastCollision=null
 const roomVisibility=createNativeRoomVisibility()
@@ -73,6 +75,8 @@ async function start () {
     return result.arrayBuffer()
   })
   assetReader = reader
+  if(manifest.assets[ORIGINAL_MODEL_LAYERS_PATH])originalModelLayers=await loadOriginalModelLayers(reader)
+  vanillaRegistry=manifest.registryHashes['block-states.jsonl']==='55893d269459e1e05387903c77b2db877d7cece875ed31a5a6a2f965822ea546'
   audio=createNativeAudio({onChange:publishDiagnostics});void audio.load()
   const session = createNativeSession(manifest.registryHashes['block-states.jsonl'], { entityRegistrySha256: manifest.registryHashes['entities.tsv'] ?? null })
   loader = new NativeModelLoader(reader)
@@ -96,6 +100,7 @@ async function start () {
     onActor(actor, status); publishDiagnostics()
   } })
   entityLayer = new NativeEntityLayer(reader,{onChange:publishDiagnostics});worldRoot.add(entityLayer.root)
+  particles=new NativeParticleLayer(reader,{onChange:publishDiagnostics});worldRoot.add(particles.root)
   scene.add(new THREE.AmbientLight(0xffffff, 1.1))
   const light = new THREE.DirectionalLight(0xffffff, 2.2); light.position.set(35, 70, 15); scene.add(light)
   camera = new THREE.PerspectiveCamera(70, 1, 0.05, 150)
@@ -140,6 +145,7 @@ async function start () {
         entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{...current.selfPlayer,position:current.pose},camera)
         updatePlayerCamera(now)
         audio.frame(camera,entityLayer.data,current?.selfPlayer?{...current.selfPlayer,position:current.pose}:null)
+        particles.frame(Date.now(),current?.motion,camera,current)
         roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,height:observerTarget?.height??1.8,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
         if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
@@ -186,7 +192,7 @@ async function start () {
       const event = session.receive(JSON.parse(message.data)), value = event.value
       if (event.kind === 'ignored') return
       if(event.kind==='entity_collect'){void entityLayer.collect(value);audio.collect(value);return}
-      if(event.kind==='world_effect'){audio.event(value);return}
+      if(event.kind==='world_effect'){if(value.effect.kind==='particle')void particles.event(value,current?.motion);else audio.event(value);return}
       if (event.kind === 'agent_visual') {
         visualPort.emit(value.event, value.value)
         const operation = value.value?.input?.operations?.findLast(row => row.kind === 'inventory' && row.windowId === 0)
@@ -336,8 +342,8 @@ function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
     drawn: drawn + [...actors.values()].filter(actor => !actor.staticBodyRenderedSeparately && actor.root.visible).length,
     issues: [...unknown, ...(actors.size && !kineticClockState.available ? [kineticClockState.reason] : []),
-      ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
-    appearance: selfController?.appearance(),
+      ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[]),...(particles?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
+    appearance: selfController?.appearance(),particles:particles?.diagnostics(),
     audio:audio?.state(),
     selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture, selectionSource: selfActor.assetInfo.selectionSource,
       support: selfActor.assetInfo.support ?? null, notice: selfActor.assetInfo.notice, motion: selfMotionState ?? selfActor.root.userData.motion ?? null } : null,
@@ -356,6 +362,7 @@ function clearStatics () {
 function clearScene () {
   miniMap?.reset()
   audio?.connect(false)
+  particles?.reset()
   generation++; pending = null; current = null; lastGroupSignature = null; clearStatics()
   for (const actor of actors.values()) removeActor(actor)
   actors.clear()
@@ -396,14 +403,16 @@ async function template (state, variants) {
         blockEntityRendererEmpty: true, blueprintPreviewAvailable: false, pixelParityVerified: false }
       model.updateMatrixWorld(true); return model
     }
-    // The exact empty-board entity guard is checked per position before this
-    // shared template is used. Other entity-backed blocks remain unsupported.
+    // BlockEntity presence does not replace the ordinary MODEL render path.
+    // Additional renderers are tracked separately from the original base.
     if (state.name === WINDMILL_BEARING_ID) verifyNativeWindmillBearing(assetReader, state)
-    if ((state.hasBlockEntity && ![CUTTING_BOARD_ID, WINDMILL_BEARING_ID].includes(state.name)) || state.renderShape !== 'MODEL') throw Error('原生实体方块渲染未适配')
+    const contract=originalBlockModelContract(state,originalModelLayers,{vanillaOnly:vanillaRegistry})
+    if(!contract.renderBase)throw Error(contract.issue)
     const model = await loader.models(variants, { allowTint: true })
     if(disposed){loader.releaseModel(model);throw Error('NATIVE_SCENE_DISPOSED')}
     let faces = 0; model.traverse(part => { if (part.isMesh) faces++ })
     if (!faces) throw Error('原生模型无可绘制面')
+    if(![CUTTING_BOARD_ID,WINDMILL_BEARING_ID].includes(state.name))model.userData.nativeBaseIssue=contract.issue
     model.updateMatrixWorld(true)
     return model
   })())
@@ -423,6 +432,7 @@ async function rebuildLatest () {
         isCurrent:()=>run===generation&&!disposed})
       if (!staged.current) continue
       const nextIssues = staged.issues, nextStaticIssues = []
+      let fluidStateAt=null
       if (signature !== lastGroupSignature) {
         const next = new THREE.Group(), tintCache = new Map(); let count = 0
         let workStarted = performance.now()
@@ -435,13 +445,15 @@ async function rebuildLatest () {
           }
           const state = definitions.get(group.stateId)
           if (['create:shaft', 'create:hand_crank'].includes(state.name)) continue
-          if (state.name === 'minecraft:water') {
-            const result = await waterMeshes(snapshot, group, definitions)
+          if (nativeFluidFamily(state)) {
+            fluidStateAt??=fluidStateReader(snapshot,definitions)
+            const result = await fluidMeshes(snapshot, group, definitions,fluidStateAt)
             if (run !== generation) { for (const mesh of result.meshes) mesh.geometry.dispose(); break }
             for (const mesh of result.meshes) next.add(mesh)
-            count += result.count; nextStaticIssues.push(...result.issues); continue
+            nextStaticIssues.push(...result.issues)
+            if(state.renderShape==='INVISIBLE'){count+=result.count;continue}
           }
-          if (state.fluid && !state.fluid.empty) nextStaticIssues.push(`${state.name}：${state.fluid.name === 'minecraft:water' || state.fluid.name === 'minecraft:flowing_water' ? '原生含水方块的液体面未适配' : '原生液体渲染提供器未适配'}`)
+          else if (state.fluid && !state.fluid.empty) nextStaticIssues.push(`${state.name}：原生液体渲染提供器未适配 (${state.fluid.name})`)
           try {
             const positions = []
             for (let i = 0; i < group.positions.length; i += 3) {
@@ -467,6 +479,7 @@ async function rebuildLatest () {
             }
             for (const subgroup of subgroups.values()) {
               const model = await template(state, subgroup.variants)
+              if(model.userData.nativeBaseIssue)nextStaticIssues.push(`${state.name}：${model.userData.nativeBaseIssue}`)
               if (run !== generation) break
               const instanceCount = subgroup.positions.length / 3
               const meshes = []
@@ -511,15 +524,18 @@ async function rebuildLatest () {
   } catch (error) { fail(error) } finally { rebuilding = false }
 }
 
-async function waterMeshes (snapshot, group, definitions) {
-  const neighbors = new Map(), data = new Map(), issues = new Set()
+function fluidStateReader(snapshot,definitions){
+  const neighbors = new Map()
   for (let i = 0; i < (snapshot.neighbors || []).length; i += 4) neighbors.set(`${snapshot.neighbors[i]},${snapshot.neighbors[i + 1]},${snapshot.neighbors[i + 2]}`, definitions.get(snapshot.neighbors[i + 3]))
-  const get = p => { const state = neighbors.get(pointKey(p)); if (!state) throw Error('NATIVE_FLUID_NEIGHBOR_NOT_RECEIVED'); return state }
+  return p=>{const state=neighbors.get(pointKey(p));if(!state)throw Error('NATIVE_FLUID_NEIGHBOR_NOT_RECEIVED');return state}
+}
+async function fluidMeshes (snapshot, group, definitions,get) {
+  const data = new Map(), issues = new Set()
   let count = 0
   for (let i = 0; i < group.positions.length; i += 3) {
     const p = { x: group.positions[i], y: group.positions[i + 1], z: group.positions[i + 2] }
     try {
-      const result = waterGeometry(p, get), color = new THREE.Color().setHex(blendedBiomeColor(snapshot, p, 'water', colormaps))
+      const result = nativeFluidGeometry(p, get), color = new THREE.Color().setHex(result.family==='water'?blendedBiomeColor(snapshot, p, 'water', colormaps):0xffffff)
       for (const quad of result.quads) {
         if (!data.has(quad.texture)) data.set(quad.texture, { positions: [], colors: [], uv: [], indices: [] })
         const batch = data.get(quad.texture), base = batch.positions.length / 3
@@ -532,7 +548,7 @@ async function waterMeshes (snapshot, group, definitions) {
         if (quad.backwards) batch.indices.push(base, base + 2, base + 1, base, base + 3, base + 2)
       }
       count++
-    } catch (error) { issues.add(`minecraft:water：${error.message}`) }
+    } catch (error) { issues.add(`${definitions.get(group.stateId)?.name}：${error.message}`) }
   }
   const meshes = []
   try {
@@ -554,7 +570,7 @@ function fail (error) {
 }
 function dispose () {
   if (disposed) return
-  disposed = true; audio?.dispose();miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
+  disposed = true; audio?.dispose();particles?.dispose();miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
   renderer?.domElement.removeEventListener('pointerdown',manualCameraInput,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
   renderer?.domElement.removeEventListener('pointerdown',rememberPointer);renderer?.domElement.removeEventListener('pointerup',selectPointer)

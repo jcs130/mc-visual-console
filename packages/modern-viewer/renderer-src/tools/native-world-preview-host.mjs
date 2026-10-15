@@ -13,6 +13,7 @@ import { projectNativePlayerRenderState } from '../src/native-viewer/native-play
 import { renderViewerPage, VIEWER_CSS } from '../src/viewer-page.mjs'
 import { nativePreviewAccess } from './native-preview-access.mjs'
 import { viewerSourceDigest } from './viewer-build-source.mjs'
+import {loadNativeParticleCollisions} from '../host/native-particle-collisions.mjs'
 import { createNativeAgentVisualization } from '../host/native-agent-visual.mjs'
 import {loadNativeAudioPack} from '../host/native-audio-assets.mjs'
 
@@ -388,7 +389,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   if (manifest.minecraftVersion !== '1.21.1' || manifest.assetIntegrityVerified !== true || !manifest.assets || !manifest.registryHashes) throw Error('NATIVE_WORLD_ASSETS_INVALID')
   const hash = manifest.registryHashes['block-states.jsonl']
   if (!SHA256.test(hash || '')) throw Error('NATIVE_WORLD_REGISTRY_HASH_INVALID')
-  const states = loadNativeStateRegistry(await fs.readFile(path.join(root, 'registry/block-states.jsonl')), hash)
+  const rawStates = loadNativeStateRegistry(await fs.readFile(path.join(root, 'registry/block-states.jsonl')), hash)
+  const particleCollisions=await loadNativeParticleCollisions(root,rawStates,hash),states=particleCollisions.states
   const entityRegistrySha256 = manifest.registryHashes['entities.tsv'] ?? null
   const entityRegistry = entityRegistrySha256 === null ? null
     : loadNativeEntityRegistry(await fs.readFile(path.join(root, 'registry/entities.tsv')), entityRegistrySha256)
@@ -420,6 +422,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       if (getAgentStatus !== null && typeof getAgentStatus !== 'function') throw Error('AGENT_STATUS_PROVIDER_INVALID')
       if (getPresentationState !== null && typeof getPresentationState !== 'function') throw Error('PRESENTATION_PROVIDER_INVALID')
       const world = new NativeWorldState({ states, registrySha256: hash, entityRegistry, entityRegistrySha256, simplifyNBT, now,
+        particleCollisions:{available:particleCollisions.available,sourceSha256:particleCollisions.sourceSha256,reason:particleCollisions.reason},
         soundRegistry:audioPack.registry,resolveSelf:()=>bot.entity?{entityId:bot.entity.id,uuid:bot.entity.uuid,position:bot.entity.position}:null,
         resolveItemStack:nativeStream.resolveItemStack??null,
         resolveEffect:nativeStream.resolveEffect??null,
@@ -503,7 +506,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         if (Buffer.byteLength(JSON.stringify(value)) > MAX_PRESENTATION_BYTES) return unavailable('PRESENTATION_TOO_LARGE')
         return value
       }
-      const status = () => ({ schemaVersion: 1, mode: sourceMode, readOnly: true, build: buildInfo, identity: identity(),
+      const status = () => {
+        // Report the same entity volume sent to attached viewers. Off-screen
+        // entities may exceed the snapshot budget without affecting this view.
+        const entityState = world.entitySnapshot(cachedSnapshot?.bounds)
+        return { schemaVersion: 1, mode: sourceMode, readOnly: true, build: buildInfo, identity: identity(),
         selfPlayer: selfPlayer(), presentation: presentation(),
         connection: { ended: connectionEnded, playerEntityAvailable: Boolean(bot.entity) },
         viewer: { available: !closed && !world.error, closed, state: world.error || closed ? 'unavailable' : world.dimension && world.pose ? 'snapshot' : 'waiting',
@@ -511,10 +518,12 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           packetSequence: world.lastSequence, packetCount: world.packetCount, loadedColumns: world.columns.size,
           terrain: { coverage: cachedSnapshot?.viewCoverage ?? null, bounds: cachedSnapshot?.bounds ?? null,
             snapshotBuildCount, snapshotBuildMs, minimumIntervalMs: cadence.minimumIntervalMs, recenterDistance: cadence.recenterDistance },
-          entityDataAvailable: world.entitySnapshot().available, entityDataReason: world.entitySnapshot().reason ?? null,
+          entityDataAvailable: entityState.available, entityDataReason: entityState.reason ?? null,
+          entityDataScope: cachedSnapshot?.bounds ? 'current_view_bounds' : 'tracked_connection_entities',
           entityRegistrySha256,
           entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false },
-        agent: injectedAgentStatus(getAgentStatus, now) })
+        agent: injectedAgentStatus(getAgentStatus, now) }
+      }
       const headers = type => ({ 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': CSP })
       const server = http.createServer(async (request, response) => {
         try {

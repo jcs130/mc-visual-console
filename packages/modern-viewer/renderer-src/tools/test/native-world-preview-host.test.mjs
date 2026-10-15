@@ -473,6 +473,32 @@ test('a second viewer reuses coherent terrain; movement outside the anchor gets 
   assert.equal(shifted.selfPlayer.uuid, bot._client.uuid)
 })
 
+test('entity health follows the served view bounds instead of an oversized off-screen collection', async t => {
+  const { bot, host, nativeStream } = attachment(t)
+  const entity = playerEntity(bot); bot.registry.dimensionsArray[0].height = 128
+  ownPlayerInfo(bot)
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 1, name: 'login', params: { worldState: { dimension: 0 } } })
+  host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight })
+  const reads = []
+  host.world.entitySnapshot = bounds => {
+    reads.push(bounds)
+    return bounds ? { available: true, entities: [] }
+      : { available: false, reason: 'NATIVE_ENTITY_SNAPSHOT_BUDGET_EXCEEDED', entities: [] }
+  }
+  assert.equal(host.status().viewer.entityDataScope, 'tracked_connection_entities')
+  assert.equal(host.status().viewer.entityDataAvailable, false)
+  await host.listen(); const stream = await events(host); t.after(() => stream.close())
+  const snapshot = await untilEvent(stream, e => e.type === 'snapshot')
+  assert.equal(snapshot.entityState.available, true)
+  reads.length = 0
+  const status = host.status()
+  assert.equal(reads.length, 1, 'one coherent entity result supplies availability and reason')
+  assert.deepEqual(reads[0], snapshot.bounds)
+  assert.equal(status.viewer.entityDataScope, 'current_view_bounds')
+  assert.equal(status.viewer.entityDataAvailable, true)
+  assert.equal(status.viewer.entityDataReason, null)
+})
+
 test('only consecutive ticks from the supplied body send private motion; teleport clears the old walk phase', async t => {
   let clock = 1000
   const { bot, host, nativeStream } = attachment(t, { now: () => clock })

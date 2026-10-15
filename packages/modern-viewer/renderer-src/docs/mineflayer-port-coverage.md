@@ -2,6 +2,50 @@
 
 ## Implementation follow-up, 2026-10-15
 
+The requested scope is **all capabilities for which the action connection can
+provide data**, not a list of common mobs or common UI operations. A missing
+renderer, filtered packet, metadata decoder or adapter is implementation work;
+it is not a Mineflayer limitation. The original 1.21.1 census is 130 entity
+types, 109 particle types, 44 block-entity types and 25 menu types. Modded
+registries are a separate, additional scope.
+
+The new offline `ExportVanillaModelLayers.java` invokes the original
+`LayerDefinitions.createRoots()` and `LayerDefinition.bakeRoot()` for every
+entry: 213 layers, 1,762 cubes, 10,552 original quads. It includes all wood and
+boat keys, geometry dilation/mirroring, named hierarchy, pivots, ZYX rotations,
+scales, normals and UVs. It exports all four registries and all 44 original
+block-entity renderer registrations with their exact valid block sets. Two
+separate JVM exports produce byte-identical canonical data. No client instance,
+world, account, listener or GPU is started. This proves original geometry and
+registration coverage, **not complete actor appearance or animation**.
+
+`native-original-model-layers.js` consumes that checked data and bakes every
+original layer in Three.js. The scene no longer rejects ordinary MODEL blocks
+merely because they contain a block entity. All 20 original types without an
+additional renderer (23 block IDs, including bee nests and all command-block
+variants) use the actual original blockstate/model/texture path. Other MODEL
+devices retain their original base and an explicit additional-renderer issue;
+ENTITYBLOCK_ANIMATED devices still require their own renderer. Registry or mod
+differences do not inherit a vanilla completeness claim.
+
+The remaining actor, animation, equipment, particle, hand, world-environment
+and UI rows below remain open until their actual original implementations and
+same-player browser observations pass. Exported layers are available inputs for
+those ports; no missing type is silently classified as out of scope.
+
+The same original `LiquidBlockRenderer` path now handles **all 9,246 nonempty
+fluid states in the exported vanilla registry**, spanning 344 block IDs:
+source/flowing water and lava, bubble columns and all waterlogged states. The
+ordinary block mesh remains alongside its fluid mesh. Fluid identity, heights,
+neighbor occlusion, original still/flow/overlay sprites and animation metadata
+are preserved; lava uses white tint and a solid chunk material, water uses the
+actual biome tint and translucent material. One received-neighbor index is
+shared across a rebuild. Unknown modded overlay providers and unreceived
+neighbors remain explicit errors. Atlas shrink/lightmap/full Java scene parity
+are still unverified, not inferred from this geometry port. The reference is
+the locked 1.21.1 `LiquidBlockRenderer` (gfu) `tesselate`, `getHeight` and
+`calculateAverageHeight`, plus `FlowingFluid.getFlow`.
+
 The baseline matrix below is retained as the audit input. Subsequent native work restores the six original camera modes and short shots; actual displayed-root following; original dropped-item models, count stacking/bob/spin and collect events; fourteen original common hostile/golem models with walking/head/received swing/hurt/death/fuse animation; native entity pick/list/follow/return; original dungeon floor-mask cutaway/observer rotation/zoom; and the shared quality controls. Collision uses indexed original terrain triangles, not replacement cubes. Particle/projectile/audio gaps in the matrix remain implementation work. Original lighting, special equipment/poses and complete Java scene parity are still unverified; the strict complete flags stay false. Offline regression and original asset checks are recorded separately from live browser acceptance.
 
 Audit date: 2026-10-15. This is a source audit of shared renderer `main` at `2dc7ac3507260342cb9224558c892adb2148d92a`, independent core/framework `main` at `7d456b660b6576a9bf429ae23a421b78aa28cb1c`, and the thin plugin at `0f507b767216f640d82e4bde497366c10f3bdbbd`. Those are the synchronized inputs checked before implementation. Statements about missing native support below describe that baseline; subsequent changes need their own verification. No game connection, server change, model request or runtime inspection was used for this audit.

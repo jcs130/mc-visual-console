@@ -2,11 +2,11 @@
 // Native fluid and occlusion metadata are exported from the real modpack.
 // Unknown/dynamic neighbor shapes are errors, never assumed solid/air.
 const f = Math.fround
-const DELTA = f(0.001), WATER = new Set(['minecraft:water', 'minecraft:flowing_water'])
+const DELTA = f(0.001), WATER = new Set(['minecraft:water', 'minecraft:flowing_water']), LAVA = new Set(['minecraft:lava','minecraft:flowing_lava'])
 const dirs = { down: [0, -1, 0], up: [0, 1, 0], north: [0, 0, -1], south: [0, 0, 1], west: [-1, 0, 0], east: [1, 0, 0] }
 const opposite = { down: 'up', up: 'down', north: 'south', south: 'north', west: 'east', east: 'west' }
 const at = (p, delta) => ({ x: p.x + delta[0], y: p.y + delta[1], z: p.z + delta[2] })
-const same = state => state.fluid && WATER.has(state.fluid.name)
+export const nativeFluidFamily=state=>state?.fluid?.empty===false?(WATER.has(state.fluid.name)?'water':LAVA.has(state.fluid.name)?'lava':null):null
 const bitBuffer = new DataView(new ArrayBuffer(8))
 const bits = number => { bitBuffer.setFloat64(0, number); return bitBuffer.getBigInt64(0) }
 const double = number => { bitBuffer.setBigInt64(0, number); return bitBuffer.getFloat64(0) }
@@ -74,7 +74,7 @@ export function faceOccluded (state, direction, height) {
 
 function solidRender (state) { return state.canOcclude && boxesCover(shapeBoxes(state), [0, 0, 0], [1, 1, 1]) }
 
-export function waterGeometry (position, getState, { shrink = 0 } = {}) {
+export function nativeFluidGeometry (position, getState, { shrink = 0 } = {}) {
   const get = p => {
     const s = getState(p)
     if (!s || !s.fluid || !['solid', 'blocksMotion', 'canOcclude', 'dynamicShape'].every(k => typeof s[k] === 'boolean') ||
@@ -82,7 +82,8 @@ export function waterGeometry (position, getState, { shrink = 0 } = {}) {
     return s
   }
   const state = get(position)
-  if (!same(state)) throw Error('NATIVE_FLUID_TYPE_UNSUPPORTED')
+  const family=nativeFluidFamily(state),same=value=>family!==null&&nativeFluidFamily(value)===family
+  if (!family) throw Error('NATIVE_FLUID_TYPE_UNSUPPORTED')
   if (!Number.isFinite(shrink) || shrink < 0 || shrink > 1) throw Error('NATIVE_FLUID_SHRINK_INVALID')
   const height = p => {
     const s = get(p)
@@ -119,10 +120,10 @@ export function waterGeometry (position, getState, { shrink = 0 } = {}) {
   const quad = (face, vertices, uv, texture, backwards = false, shade = 1) => quads.push({ face, vertices, uv, texture: `minecraft:block/${texture}`, backwards, shade })
   if (!same(above) && !faceOccluded(above, 'up', Math.min(nw, ne, sw, se))) {
     nw = f(nw - DELTA); ne = f(ne - DELTA); sw = f(sw - DELTA); se = f(se - DELTA)
-    let uv, texture = 'water_still'
+    let uv, texture = `${family}_still`
     if (flowX === 0 && flowZ === 0) uv = [0, 0, 0, 1, 1, 1, 1, 0]
     else {
-      texture = 'water_flow'
+      texture = `${family}_flow`
       const angle = f(f(nativeAtan2(flowZ, flowX)) - f(Math.PI / 2)), factor = f(10430.378)
       const a = f(sin[Math.trunc(f(angle * factor)) & 65535] * 0.25)
       const b = f(sin[Math.trunc(f(f(angle * factor) + 16384)) & 65535] * 0.25)
@@ -134,7 +135,7 @@ export function waterGeometry (position, getState, { shrink = 0 } = {}) {
     for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) { const s = get(at(position, [x, 1, z])); if (!same(s) && !solidRender(s)) backwards = true }
     quad('up', [0, nw, 0, 0, sw, 1, 1, se, 1, 1, ne, 0], uv, texture, backwards)
   }
-  if (bottom) quad('down', [0, minY, 1, 0, minY, 0, 1, minY, 0, 1, minY, 1], [0, 1, 0, 0, 1, 0, 1, 1], 'water_still', false, 0.5)
+  if (bottom) quad('down', [0, minY, 1, 0, minY, 0, 1, minY, 0, 1, minY, 1], [0, 1, 0, 0, 1, 0, 1, 1], `${family}_still`, false, 0.5)
   const sides = {
     north: { a: nw, b: ne, x1: 0, x2: 1, z1: DELTA, z2: DELTA },
     south: { a: se, b: sw, x1: 1, x2: 0, z1: f(1 - DELTA), z2: f(1 - DELTA) },
@@ -146,9 +147,16 @@ export function waterGeometry (position, getState, { shrink = 0 } = {}) {
     if (!visible(name) || faceOccluded(neighbor, name, Math.max(c.a, c.b))) continue
     // Vanilla chooses the original overlay for half-transparent blocks/leaves.
     // Additional NeoForge fluid overlays need their own registered provider.
-    if (!neighbor.name.startsWith('minecraft:')) throw Error(`NATIVE_FLUID_OVERLAY_PROVIDER_UNSUPPORTED:${neighbor.name}`)
-    const overlay = neighbor.name.startsWith('minecraft:') && (neighbor.name.endsWith('_leaves') || ['minecraft:glass', 'minecraft:tinted_glass'].includes(neighbor.name) || neighbor.name.endsWith('_stained_glass'))
-    quad(name, [c.x1, c.a, c.z1, c.x2, c.b, c.z2, c.x2, minY, c.z2, c.x1, minY, c.z1], [0, f(f(1 - c.a) / 2), 0.5, f(f(1 - c.b) / 2), 0.5, 0.5, 0, 0.5], overlay ? 'water_overlay' : 'water_flow', !overlay, ['north', 'south'].includes(name) ? 0.8 : 0.6)
+    if (family==='water'&&!neighbor.name.startsWith('minecraft:')) throw Error(`NATIVE_FLUID_OVERLAY_PROVIDER_UNSUPPORTED:${neighbor.name}`)
+    const overlay = family==='water' && (neighbor.name.endsWith('_leaves') || ['minecraft:glass', 'minecraft:tinted_glass'].includes(neighbor.name) || neighbor.name.endsWith('_stained_glass'))
+    quad(name, [c.x1, c.a, c.z1, c.x2, c.b, c.z2, c.x2, minY, c.z2, c.x1, minY, c.z1], [0, f(f(1 - c.a) / 2), 0.5, f(f(1 - c.b) / 2), 0.5, 0.5, 0, 0.5], overlay ? 'water_overlay' : `${family}_flow`, !overlay, ['north', 'south'].includes(name) ? 0.8 : 0.6)
   }
-  return { quads, corners: { nw, ne, sw, se }, flow: { x: flowX, z: flowZ }, atlasShrinkVerified: false }
+  return { quads, corners: { nw, ne, sw, se }, flow: { x: flowX, z: flowZ }, family, tint:family==='water'?'biome_water':'original_white', atlasShrinkVerified: false,lightmapParityVerified:false }
+}
+
+// Compatibility API. Both families use the original LiquidBlockRenderer
+// algorithm, but this existing water-only entry keeps its original contract.
+export function waterGeometry(position,getState,options){
+  if(nativeFluidFamily(getState(position))!=='water')throw Error('NATIVE_FLUID_TYPE_UNSUPPORTED')
+  return nativeFluidGeometry(position,getState,options)
 }

@@ -6,6 +6,7 @@ import { Vec3 } from 'vec3'
 import { CUTTING_BOARD_ID, cuttingBoardContent } from '../src/native-viewer/cutting-board.js'
 import { createNativeEntityMotion } from '../src/native-viewer/native-entity-motion.js'
 import {viewerSoundPacket,viewerSoundStopPacket} from '../host/viewer-sound-packets.mjs'
+import {nativeParticlePacket} from '../src/native-viewer/native-particle-state.js'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 // Leave room for the same-player presentation in the host's 2 MiB SSE event.
@@ -138,7 +139,7 @@ export function nativeChunk (options, states, biomeCount) {
 // Receives only already-verified native packets from the action bot's own
 // connection. Never queries disk worlds, generates chunks or decodes proxy IDs.
 export class NativeWorldState extends EventEmitter {
-  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveEffect = null, resolveSelf = null, soundRegistry = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
+  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveEffect = null, resolveSelf = null, soundRegistry = null, particleCollisions = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
     super()
     this.states = states; this.registrySha256 = registrySha256
     this.resolveDimension = resolveDimension; this.simplifyNBT = simplifyNBT; this.makeChunk = makeChunk || (options => nativeChunk(options, this.states, this.biomes.size)); this.now = now
@@ -151,6 +152,7 @@ export class NativeWorldState extends EventEmitter {
     if(resolveEffect!==null&&typeof resolveEffect!=='function')throw Error('NATIVE_EFFECT_RESOLVER_INVALID')
     this.resolveEffect=resolveEffect
     this.resolveSelf=resolveSelf;this.soundRegistry=soundRegistry??{sounds:{}};this.effectWindow={at:0,count:0}
+    this.particleCollisions=particleCollisions;this.particleWindow={at:0,count:0}
     if (entityRegistry !== null && (!(entityRegistry instanceof Map) || !/^[a-f0-9]{64}$/.test(entityRegistrySha256 || ''))) throw Error('NATIVE_ENTITY_REGISTRY_CONFIG_INVALID')
     this.entities = new Map(); this.entityMotions = new Map(); this.entityRevision = 0; this.entityError = null; this.entityErrorDetails = null
     this.entityDataBytes = 0; this.entityEntrySizes = new Map(); this.entityCollections = new Map(); this.entitySnapshotCache = null
@@ -206,6 +208,12 @@ export class NativeWorldState extends EventEmitter {
         }
         case 'tile_entity_data': this.setBlockEntity(p.location, p.nbtData ?? p.nbt); this.revision++; this.emit('world'); break
         case 'update_time': this.time = { age: longNumber(p.age), day: longNumber(p.time), receivedAt: this.now() }; this.emit('time'); break
+        case 'world_particles':{
+          const value=nativeParticlePacket(p),at=this.now()
+          if(at-this.particleWindow.at>=1000)this.particleWindow={at,count:0}
+          if(value&&++this.particleWindow.count<=64)this.emit('effect',{kind:'particle',value,sequence:body.sequence,observedAt:at})
+          break
+        }
         case 'sound_effect': case 'named_sound_effect': case 'entity_sound_effect': case 'stop_sound': {
           const at=this.now(),stop=body.name==='stop_sound'
           if(at-this.effectWindow.at>=1000)this.effectWindow={at,count:0}
@@ -568,6 +576,7 @@ export class NativeWorldState extends EventEmitter {
     return { type: 'snapshot', schemaVersion: 1, mode: 'live_same_player_connection', minecraftVersion: '1.21.1', registrySha256: this.registrySha256,
       epoch: this.epoch, revision: this.revision, packetSequence: this.lastSequence, dimension: this.dimension, pose: this.pose, time: this.time, bounds,
       states: [...definitions.values()], groups: [...groups].map(([stateId, positions]) => ({ stateId, positions })), kinetic, cuttingBoards, missingColumns: [...missingColumns],
+      particleCollisions:this.particleCollisions,
       entityState: this.entitySnapshot(bounds),
       neighbors, biomeSeed: this.biomeSeed, biomeGrid, biomes: [...usedBiomes].map(id => this.biomes.get(id)).filter(Boolean),
       viewCoverage: { source: 'received_native_chunks', policy: 'complete_bounded_volume', receivedColumns, missingColumns: [...missingColumns],

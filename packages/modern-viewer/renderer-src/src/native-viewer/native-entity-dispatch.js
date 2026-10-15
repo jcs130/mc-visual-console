@@ -12,6 +12,7 @@ import { createNativeProjectileActor,nativeProjectileType } from './native-proje
 import { createNativeHostileActor } from './native-hostile-actors.js'
 import { NATIVE_HOSTILE_TYPES,nativeHostileType,nativeHostileState } from './native-living-state.js'
 import { nativeHostileModelDefinition } from './native-hostile-models.js'
+import {loadOriginalModelLayers,createOriginalModelLayer,ORIGINAL_MODEL_LAYERS_PATH} from './native-original-model-layers.js'
 
 // Locked vanilla classes: fwm/fvd/fuz/fxa/fwz/fxi/fxv, fwu/fuf, glk,
 // gly/gjw/gju/gmh/gmm/gne and original saddle/fur/profession layers.
@@ -104,6 +105,7 @@ export async function createNativeEntityActor(reader,entity,{registries,loadText
   if(entity?.name===WANDSCAPE_NPC)return createNativeWandscapeActor(reader,entity,{loadTexture})
   if(['create:contraption','create:stationary_contraption'].includes(entity?.name))return createNativeContraptionActor(reader,entity,{loadTexture})
   const state=nativeEntityRenderState(entity,{registries}),leaf=state.name.split(':')[1],height=leaf==='villager'?64:32
+  const original=reader.manifest.assets[ORIGINAL_MODEL_LAYERS_PATH]?await loadOriginalModelLayers(reader):null
   const root=new THREE.Group(),orientation=new THREE.Group(),content=new THREE.Group();root.add(orientation);orientation.add(content);content.position.y=-1.501;orientation.scale.set(-1,-1,1)
   const resources=[],models=[],layers=[],sourcePaths=[]
   async function layer(kind,path,options={}){
@@ -116,9 +118,11 @@ export async function createNativeEntityActor(reader,entity,{registries,loadText
     tex.flipY=true;tex.colorSpace=THREE.SRGBColorSpace;tex.magFilter=THREE.NearestFilter;tex.minFilter=THREE.NearestFilter;tex.generateMipmaps=false;tex.needsUpdate=true
     const material=new THREE.MeshLambertMaterial({map:tex,side:THREE.DoubleSide,alphaTest:options.transparent?0:.1,transparent:options.transparent===true,depthWrite:true});resources.push(material)
     if(options.color)material.color.setRGB(...options.color)
-    const model=createNativeModelPart(nativeEntityModelDefinition(state.name,kind),material,[64,height]);models.push(model);content.add(model.root)
-    const heads=new THREE.Group(),body=new THREE.Group();model.root.add(heads,body)
-    for(const bone of [...model.root.children])if(bone!==heads&&bone!==body)(['head','beak','red_thing'].includes(bone.name)?heads:body).add(bone)
+    const key=`${state.name}#${['base','biome','profession','level'].includes(kind)?'main':kind}`
+    const model=original?createOriginalModelLayer(original,key,material):createNativeModelPart(nativeEntityModelDefinition(state.name,kind),material,[64,height]);models.push(model);content.add(model.root)
+    const owner=original?model.bones.get('root'):model.root
+    const heads=new THREE.Group(),body=new THREE.Group();owner.add(heads,body)
+    for(const bone of [...owner.children])if(bone!==heads&&bone!==body)(['head','beak','red_thing'].includes(bone.name)?heads:body).add(bone)
     layers.push({kind,model,heads,body,material,hatVisible:options.hatVisible??true});sourcePaths.push(path)
     return model
   }
@@ -140,7 +144,8 @@ export async function createNativeEntityActor(reader,entity,{registries,loadText
       }
     }
     let disposed=false
-    const assetInfo={type:state.name,clientJarSha256:ENTITY_MODEL_CLIENT_SHA256,sourcePaths,geometrySource:'Minecraft_1.21.1_original_ModelPart_layers',metadataDefaultsSource:state.defaultsSource,animationParityVerified:false,completeEntityParityVerified:false}
+    if(original)sourcePaths.push(ORIGINAL_MODEL_LAYERS_PATH)
+    const assetInfo={type:state.name,clientJarSha256:ENTITY_MODEL_CLIENT_SHA256,sourcePaths,geometrySource:original?'original_LayerDefinition_bakeRoot':'Minecraft_1.21.1_original_ModelPart_layers',metadataDefaultsSource:state.defaultsSource,animationParityVerified:false,completeEntityParityVerified:false}
     const actor={root,assetInfo,update(next,now=Date.now()){
       if(disposed)throw Error('NATIVE_ENTITY_ACTOR_DISPOSED')
       if(next.entityId!==entity.entityId||next.uuid!==entity.uuid||next.name!==entity.name)throw Error('NATIVE_ENTITY_ACTOR_IDENTITY_MISMATCH')
