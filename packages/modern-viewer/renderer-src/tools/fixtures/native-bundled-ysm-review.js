@@ -16,8 +16,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.outputCo
 renderer.setPixelRatio(1); renderer.setSize(720, 640); document.querySelector('main').append(renderer.domElement)
 const status = document.querySelector('output'), selector = document.querySelector('select'), heading = document.querySelector('#heading'), time = document.querySelector('#time')
 let start = performance.now(), selected = 'walk', epoch = 1
-selector.onchange = () => { selected = selector.value; start = performance.now(); epoch++ }
-heading.onchange = () => { epoch++; start = performance.now() }
+selector.onchange = () => { selected = selector.value; start = performance.now(); epoch++; frame() }
+heading.onchange = () => { epoch++; start = performance.now(); frame() }
 function frame() {
   const age = Number(time.value), now = 10000 + age * 1000, yaw = Number(heading.value)
   const self = { uuid, entityId: 42, health: selected === 'death' ? 0 : 20, onGround: !['swim', 'swim_stand', 'jump'].includes(selected),

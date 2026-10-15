@@ -110,8 +110,9 @@ export class NativeSelfPlayerController {
   clear (reason = null, keepSelection = false) {
     ++this.revision; this.key = null; this.actor?.dispose(); this.actor = null
     // Scene epochs/respawns/disconnects retire model ownership, not the user's
-    // account-scoped preference. The next UUID is independently restored.
-    if (!keepSelection) this.lastInput = null
+    // account-scoped preference. A full connection clear restores it afresh;
+    // same-lifecycle error cleanup keeps the fallback and avoids retry loops.
+    if (!keepSelection) { this.lastInput = null; this.selectionUuid = null }
     this.notify(null, reason)
   }
   dispose () { if (this.disposed) return; this.disposed = true; this.clear() }

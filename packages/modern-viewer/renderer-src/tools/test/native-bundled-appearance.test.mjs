@@ -130,6 +130,37 @@ test('explicit corrupt bundled appearance reports unavailable and restores actua
   controller.dispose()
 })
 
+test('transient bundled failure retries saved choice only after full same-account connection clear', async t => {
+  const f = await fixture(t), bundle = await loadBundledAppearances(f.file)
+  const reader = new BundledAppearanceReader(bundle.metadata, async p => bundle.read(p))
+  let attempts = 0
+  const controller = new NativeSelfPlayerController({ manifest: {} }, { bundledAppearanceReader: reader,
+    minecraftFactory: async (_r, options) => {
+      if (options.bundledAppearance) {
+        attempts++
+        if (attempts === 1) throw Error('BUNDLED_ASSET_TRANSIENT_FETCH_FAILURE')
+        return fake({ uuid: options.uuid, source: 'plugin_bundled' })
+      }
+      return fake({ path: 'vanilla.png', sha256: 'original' })
+    } })
+  await controller.update(self(UUID), UUID)
+  controller.selectAppearance('bundled:test'); await settle()
+  assert.equal(attempts, 1); assert.equal(controller.appearance().selected, 'server')
+  assert.equal(controller.selections.get(UUID), 'bundled:test')
+  await controller.update(self(UUID), UUID)
+  controller.clear('same_lifecycle_render_error', true)
+  await controller.update(self(UUID), UUID)
+  assert.equal(attempts, 1, 'same-lifecycle fallback must not repeatedly retry')
+  controller.clear('connection_ended')
+  await controller.update(self(UUID), UUID)
+  assert.equal(attempts, 2); assert.equal(controller.appearance().selected, 'bundled:test')
+  assert.equal(controller.actor.assetInfo.source, 'plugin_bundled')
+  controller.selectAppearance('server'); await settle(); controller.clear('connection_ended')
+  await controller.update(self(UUID), UUID)
+  assert.equal(attempts, 2); assert.equal(controller.appearance().selected, 'server', 'explicit server choice still wins')
+  controller.dispose()
+})
+
 test('a successful explicit slim choice remains Web-only and rejects a foreign actor binding', async t => {
   const f = await fixture(t), bundle = await loadBundledAppearances(f.file)
   const reader = new BundledAppearanceReader(bundle.metadata, async p => bundle.read(p))
