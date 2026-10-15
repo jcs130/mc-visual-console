@@ -28,22 +28,22 @@
 
 Files: `src/native-viewer/native-console.js`, `src/modern-viewer/viewer-layout.js`, `src/modern-viewer/chat-history.js`, `src/modern-viewer/agent-view-gallery.js`, `tools/minecraft-viewer-chat.js`, their tests (all under `packages/modern-viewer/renderer-src`).
 
-- [ ] Add a failing native-console test for a single docked toolbar, history, photo entry, hidden dungeon controls and disposal.
-- [ ] Reuse `installViewerLayout({document,window})` and its `adopt()/dispose()` lifecycle; register native map/activity/status IDs with the same visibility settings.
-- [ ] Extract the existing bounded chat UI into `installChatHistory({socket,document,window})`; keep the legacy build shim and feed native `presentation.gameMessages` once per sequence/identity/epoch.
-- [ ] Reuse `installAgentViewGallery({document,window})`; show the host's explicit unavailable response when it has no captured images.
-- [ ] Run targeted Node tests, full renderer tests and original pack verification before committing.
+- [x] Add a failing native-console test for a single docked toolbar, history, photo entry, hidden dungeon controls and disposal.
+- [x] Reuse `installViewerLayout({document,window})` and its `adopt()/dispose()` lifecycle; register native map/activity/status IDs with the same visibility settings.
+- [x] Extract the existing bounded chat UI into `installChatHistory({socket,document,window})`; keep the legacy build shim and feed native `presentation.gameMessages` once per sequence/identity/epoch.
+- [x] Reuse `installAgentViewGallery({document,window})`; show the host's explicit unavailable response when it has no captured images.
+- [x] Run targeted Node tests, full renderer tests and original pack verification before committing.
 
 ### Task 2: Checked consumer synchronization and isolation
 
-- [ ] Fetch main again, reconcile concurrent work and push the tested shared renderer normally.
-- [ ] Refresh affected canonical generated adapters and explicit release inputs, preserving all core/autonomy improvements already on main.
-- [ ] Verify core source/build/types and isolated packed consumer; update canonical runtime and thin-plugin source pins if changed.
-- [ ] Add a plugin boundary regression proving no private host imports or source patching; run its SDK tests, Ruff and official release structure check.
+- [x] Fetch main again, reconcile concurrent work and push the tested shared renderer normally.
+- [x] Refresh affected canonical generated adapters and explicit release inputs, preserving all core/autonomy improvements already on main.
+- [x] Verify core source/build/types and isolated packed consumer; update canonical runtime and thin-plugin source pins if changed.
+- [x] Add a plugin boundary regression proving no private host imports or source patching; run its SDK tests, Ruff and official release structure check.
 
 ### Task 3: Deployment and visual acceptance
 
-- [ ] Record protected Neko tracked-file hashes and the four protected process identities before handover.
-- [ ] Prepare the checked build while the old runtime runs; use only the exact owned executor's normal stop/drain/start/resume flow.
-- [ ] Verify served build hashes, third/first/dungeon views and docked controls in the existing browser tab.
-- [ ] Compare Neko tracked-file hashes and protected process creation times; report remaining capability/rendering gaps without claiming full parity or successful long survival.
+- [x] Record protected Neko tracked-file hashes and the four protected process identities before handover.
+- [x] Prepare the checked build while the old runtime runs; use only the exact owned executor's normal stop/drain/start/resume flow.
+- [x] Verify served build hashes, third/first/dungeon views and docked controls in the existing browser tab.
+- [x] Compare Neko tracked-file hashes and protected process creation times; report remaining capability/rendering gaps without claiming full parity or successful long survival.

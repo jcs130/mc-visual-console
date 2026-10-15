@@ -44,3 +44,41 @@ upstream Java/appearance/observer tests passed. The original vanilla 1.21.1,
 Java 1.21.1 and Java 1.20.6 packs passed every recorded file hash. Both Java
 client bundles were rebuilt from the shared source. These are source/build
 checks; consumer deployment and live acceptance are recorded separately.
+
+## Consumer acceptance
+
+The checked native source `4b59ce79` is deployed with core 0.5.2
+(`3f7ec0c`), autonomy 0.1.46 (`54af304`) and thin plugin 0.5.29 (`44cfa8e`).
+The served source fingerprint is
+`072c75ac207604e4488f98e16eb749f2f24e52acef4b2616e34bbc14688947b5`;
+the served console bundle is
+`5da6f382f73a4694bef927876d991cec901f8fbf864691740e0477c924171402`.
+It matches offline preparation in the consumer's working directory (esbuild's
+emitted source labels also depend on the working directory).
+
+The actual browser showed a single shared toolbar, docked native map and
+activity inspector, real inventory icons, first-person hand/item rendering,
+third-person following and the dungeon camera controls. Saved overhead camera
+preferences were another cause of the reference difference; normal following
+was restored. The activity visibility toggle and history open/close were checked.
+Skills and mana remained hidden on the vanilla connection. Opening the gallery
+returned the explicit unavailable-capture explanation. Browser warning/error
+records were empty during these checks. This does not establish every entity,
+animation, frame-rate target, Java pixel parity or live Qiandengji extension.
+
+Core tests: 814 passed, including the rebuilt optional viewer. Both an isolated
+viewer-enabled tarball and the exact committed engine-only tarball passed
+source/runtime/declaration and disconnected SDK checks with network denied.
+Autonomy source and isolated wheel: 409 tests each. Thin adapter: 58 Python and
+4 browser-data tests, Ruff and official Release/Market structure checks passed.
+The plugin archive contained 3,370 files, one autonomy 0.1.46 distribution and
+no private runtime paths or copied host source. No release tag or Market
+publication was performed.
+
+Before and after normal executor stop/drain/start, all 5,273 tracked Neko files
+had identical hashes and its Git tree stayed clean. The existing Neko main,
+plugin manager, Qwen and Minecraft server process creation identities stayed
+unchanged. Only the owned executor was replaced after an empty, known queue.
+No main program/SDK source patch was made. The live session resumed; long-term
+autonomous survival remains unaccepted, including its low-health/poor-food
+planning observations, independently of these display and isolation checks.
