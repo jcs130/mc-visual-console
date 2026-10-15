@@ -41,24 +41,33 @@ export class NativeStaticStage {
   }
 }
 
-// The actual scene orchestration: one active job and one latest pending snapshot.
+// One coherent active build finishes; only the latest pending snapshot is retained.
+// Same-epoch arrivals must not starve commits. Epoch/session reset still retires work.
+const terrainCoverage = snapshot => ({ epoch:snapshot.epoch,bounds:snapshot.bounds?Object.fromEntries(['minX','maxX','minY','maxY','minZ','maxZ'].map(key=>[key,snapshot.bounds[key]])):null,
+  missingColumns:Array.isArray(snapshot.missingColumns)?snapshot.missingColumns.length:null,
+  receivedColumns:snapshot.viewCoverage?.receivedColumns?.length??null,
+  renderBlocks:snapshot.viewCoverage?.renderBlocks??null,
+  horizontalRangeReduced:snapshot.viewCoverage?.horizontalRangeReduced??null })
 export class NativeTerrainQueue {
-  constructor () { this.revision=0;this.pending=null;this.key=null;this.running=false;this.stats={requested:0,committed:0,retiredWorkCount:0,discardedBuildMs:0,lastBuildMs:0} }
+  constructor () { this.revision=0;this.pending=null;this.key=null;this.running=false;this.epoch=null;this.received=null;this.committedCoverage=null;this.committedAt=null;this.stats={requested:0,committed:0,retiredWorkCount:0,discardedBuildMs:0,lastBuildMs:0} }
   request(snapshot) {
+    if(this.epoch!==snapshot.epoch){this.reset();this.epoch=snapshot.epoch}
+    this.received=terrainCoverage(snapshot)
     const key=typeof snapshot.terrainSignature==='string'&&/^[a-f0-9]{64}$/.test(snapshot.terrainSignature)
       ?snapshot.epoch+':'+snapshot.terrainSignature:JSON.stringify([snapshot.epoch,snapshot.bounds,snapshot.states,nativeStaticSignature(snapshot),snapshot.kinetic,snapshot.missingColumns])
     if(key===this.key)return false
-    this.key=key;this.pending=snapshot;this.revision++;this.stats.requested++;return true
+    this.key=key;this.pending=snapshot;this.stats.requested++;return true
   }
-  reset(){this.revision++;this.pending=null;this.key=null}
+  reset(){this.revision++;this.pending=null;this.key=null;this.epoch=null;this.received=null;this.committedCoverage=null;this.committedAt=null}
+  diagnostics(now=performance.now()){return {...this.stats,building:this.running,pending:!!this.pending,received:this.received,committedCoverage:this.committedCoverage,commitAgeMs:this.committedAt===null?null:Math.round(Math.max(0,now-this.committedAt))}}
   async run(build,now=()=>performance.now()){
     if(this.running)return
     this.running=true
     try{while(this.pending){
       const snapshot=this.pending,revision=this.revision,started=now();this.pending=null
       const isCurrent=()=>revision===this.revision
-      try{await build(snapshot,isCurrent);if(isCurrent())this.stats.committed++}
-      catch(error){if(!isNativeRebuildRetired(error))throw error}
+      try{await build(snapshot,isCurrent);if(isCurrent()){this.stats.committed++;this.committedCoverage=terrainCoverage(snapshot);this.committedAt=now()}}
+      catch(error){if(!isNativeRebuildRetired(error)){this.reset();throw error}}
       finally{const elapsed=now()-started;this.stats.lastBuildMs=elapsed;if(!isCurrent()){this.stats.retiredWorkCount++;this.stats.discardedBuildMs+=elapsed}}
     }}finally{this.running=false}
   }

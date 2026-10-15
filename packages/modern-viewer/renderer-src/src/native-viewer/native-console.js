@@ -130,6 +130,9 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5,preference:sceneSettings.quality })
   const updateDiagnosticText = () => {
     const d = lastDiagnostics
+    // Small terrain-only contract for the existing page, never chat/config/player data.
+    writeChanged(viewport.dataset,'terrainProgress',JSON.stringify(d?.terrainWork??null))
+    const boundsText=b=>b?`X[${b.minX},${b.maxX}] Y[${b.minY},${b.maxY}] Z[${b.minZ},${b.maxZ}]`:'尚无'
     appearanceUi.update(d?.appearance ? { ...d.appearance, subject: identity?.player || '当前观战人物' } : null)
     ysmNotice.hidden = d?.selfModel?.kind !== 'ysm'
     if (!ysmNotice.hidden) {
@@ -145,7 +148,10 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     const presentation = ui.getState().presentation
     diagnostics.textContent = [identity ? `玩家：${identity.player} (${identity.playerUuid || 'UUID未同步'})` : '玩家身份未同步',
       d ? `原生模型：${d.drawn}/${d.total}；缺列 ${d.missingColumns ?? '未同步'}` : '原生模型数据未同步',
-      d?.bounds ? `地形范围：${d.bounds.maxX - d.bounds.minX + 1}×${d.bounds.maxZ - d.bounds.minZ + 1} 格，高度 ${d.bounds.minY}–${d.bounds.maxY}；只显示本人收到的区块` : '',
+      d?.bounds ? `已接收地形范围：${d.bounds.maxX - d.bounds.minX + 1}×${d.bounds.maxZ - d.bounds.minZ + 1} 格，高度 ${d.bounds.minY}–${d.bounds.maxY}；只显示本人收到的区块` : '',
+      d?.terrainWork ? `地形接收：${boundsText(d.terrainWork.received?.bounds)}；缺列 ${d.terrainWork.received?.missingColumns??'未知'}` : '',
+      d?.terrainWork ? `地形已提交：${boundsText(d.terrainWork.committedCoverage?.bounds)}；缺列 ${d.terrainWork.committedCoverage?.missingColumns??'未知'}；提交距今 ${d.terrainWork.commitAgeMs??'尚无'} ms` : '',
+      d?.terrainWork ? `地形任务：请求 ${d.terrainWork.requested} / 提交 ${d.terrainWork.committed} / 取消 ${d.terrainWork.retiredWorkCount}；丢弃工作 ${Math.round(d.terrainWork.discardedBuildMs)} ms${d.terrainWork.building?'；构建中':''}${d.terrainWork.pending?'；有最新待处理':''}` : '',
       d?.coverage?.horizontalRangeReduced ? '地形因预算收缩，实际范围以上述数值为准' : '',
       d?.skinState ?? '本人模型未同步',
       d?.selfModel?.motion ? `人物动作：${d.selfModel.motion.clip ?? '等待'} · ${d.selfModel.motion.source ?? 'native'}${d.selfModel.motion.reason ? ' · '+d.selfModel.motion.reason : ''}` : '',

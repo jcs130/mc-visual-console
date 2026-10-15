@@ -182,3 +182,32 @@ test('native console exposes all original camera modes and shots without a body 
   callbacks.onCameraManual();assert.equal(settings.at(-1).mode,'manual')
   console.dispose();assert.equal(document.querySelector('.viewer-camera-settings'),null)
 })
+
+
+test('ordinary console exposes distinct received and committed terrain coverage without private payloads', async () => {
+  const { document, window } = fullShell(); let callbacks
+  window.location.pathname = '/3dview/'
+  const console = await bootNativeConsole({ document, window, startStatus: () => () => {}, mount: async options => {
+    callbacks = options
+    return { renderer: { setPixelRatio () {} }, setView () {}, dispose () {} }
+  } })
+  const bounds = minX => ({ minX, maxX: minX + 64, minY: 25, maxY: 73, minZ: 298, maxZ: 362 })
+  const terrainWork = { requested: 12, committed: 3, retiredWorkCount: 1, discardedBuildMs: 8.4, lastBuildMs: 200,
+    building: true, pending: true, received: { epoch: 1, bounds: bounds(20), missingColumns: 0 },
+    committedCoverage: { epoch: 1, bounds: bounds(0), missingColumns: 2 }, commitAgeMs: 250, phases: { terrainMs: 200 } }
+  callbacks.onDiagnostics({ drawn: 24, total: 38, bounds: bounds(20), missingColumns: 0, terrainWork,
+    privateChat: 'fixture-private-chat', config: { token: 'fixture-private-token' } })
+  const viewport = document.querySelector('.native-console-viewport')
+  assert.deepEqual(JSON.parse(viewport.dataset.terrainProgress), terrainWork)
+  assert.ok(viewport.dataset.terrainProgress.length < 1000)
+  assert.doesNotMatch(viewport.dataset.terrainProgress, /fixture-private/)
+  assert.match(document.body.textContent, /地形接收：X\[20,84\].*缺列 0/)
+  assert.match(document.body.textContent, /地形已提交：X\[0,64\].*缺列 2.*250 ms/)
+  assert.match(document.body.textContent, /请求 12 \/ 提交 3 \/ 取消 1；丢弃工作 8 ms；构建中；有最新待处理/)
+  callbacks.onDiagnostics({ drawn: 0, total: 0, terrainWork: { ...terrainWork, building: false, pending: false,
+    received: null, committedCoverage: null, commitAgeMs: null } })
+  assert.equal(JSON.parse(viewport.dataset.terrainProgress).committedCoverage, null)
+  assert.match(document.body.textContent, /地形已提交：尚无/)
+  assert.doesNotMatch(document.body.textContent, /地形已提交：X\[0,64\]/)
+  console.dispose()
+})

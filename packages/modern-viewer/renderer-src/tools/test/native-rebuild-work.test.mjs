@@ -43,7 +43,7 @@ test('a static stage keeps the complete scene until commit and frees only owned 
   assert.deepEqual(active.children, [replacement]); assert.equal(oldDisposed, 1)
 })
 
-test('production terrain queue retires A, coalesces B into C and preserves complete active scene',async()=>{
+test('production terrain queue finishes coherent A, coalesces B into C and preserves complete active scene',async()=>{
  const queue=new NativeTerrainQueue(),active=new THREE.Group(),old=new THREE.Group();active.add(old)
  const snapshot=id=>({epoch:1,groups:[id],kinetic:[]}),commits=[],disposed=[];let release
  const gate=new Promise(resolve=>release=resolve)
@@ -54,7 +54,7 @@ test('production terrain queue retires A, coalesces B into C and preserves compl
  })
  queue.request(snapshot('B'));queue.request(snapshot('C'));assert.equal(queue.request(snapshot('C')),false)
  assert.deepEqual(active.children,[old]);release();await running
- assert.deepEqual(commits,['C']);assert.deepEqual(disposed,['A']);assert.equal(queue.stats.retiredWorkCount,1)
+ assert.deepEqual(commits,['A','C']);assert.deepEqual(disposed,['A']);assert.equal(queue.stats.retiredWorkCount,0)
  queue.request(snapshot('D'));const later=queue.run(async(_,isCurrent)=>{queue.reset();assert.throws(()=>new NativeStaticStage().commit(active,isCurrent),isNativeRebuildRetired)})
  await later;assert.equal(active.children.length,1);assert.equal(queue.running,false)
 })
@@ -85,7 +85,55 @@ test('actual scene rebuild preserves crank history and defers live updates throu
  crank.tick();const continued={...crank.motion};queue.request(snapshot('B',[node(0,0)]));queue.request(snapshot('C',[node(0,64),node(2)]))
  release();await active
  assert.equal(actors.get('0,0,0'),crank);assert.equal(crank.motion.angle,continued.angle);assert.equal(crank.motion.velocity,continued.velocity);assert.equal(crank.motion.tick,continued.tick);assert.equal(crank.motion.speed,64)
- assert.deepEqual(commits,['initial','unrelated','C']);assert.equal(disposed.get(crank),undefined);assert.equal(disposed.get(removed),1)
- const canceled=created.find(a=>a.position.x===1);assert.equal(disposed.get(canceled),1);assert.equal(actors.has('1,0,0'),false)
+ assert.deepEqual(commits,['initial','unrelated','A','C']);assert.equal(disposed.get(crank),undefined);assert.equal(disposed.get(removed),1)
+ const replaced=created.find(a=>a.position.x===1);assert.equal(disposed.get(replaced),1);assert.equal(actors.has('1,0,0'),false)
  queue.request(snapshot('removed',[]));await run();assert.equal(disposed.get(crank),1);assert.equal(disposed.get(created.find(a=>a.position.x===2)),1)
+})
+
+
+test('continuous moving snapshots make bounded coherent progress through real budget checkpoints',async()=>{
+ const queue=new NativeTerrainQueue(),active=new THREE.Group(),commits=[],owned=[],inputs=[]
+ let time=0,turn=0,latestX=0
+ const snapshot=(id)=>{const x=id/2;return {epoch:1,biomeSeed:String(id),bounds:{minX:x-32,maxX:x+32,minY:0,maxY:48,minZ:-32,maxZ:32},groups:[0,1,2,3].map(stateId=>({stateId,positions:[x,stateId,0]})),states:[{stateId:id}],missingColumns:[String(id)],viewCoverage:{receivedColumns:['0,0'],renderBlocks:4,horizontalRangeReduced:false}}}
+ const request=id=>{const value=snapshot(id);inputs.push([value,structuredClone(value)]);latestX=id/2;queue.request(value)}
+ request(0)
+ await queue.run(async(value,isCurrent)=>{
+  const stage=new NativeStaticStage(),old=[...active.children]
+  const work=createNativeRebuildWork({isCurrent,now:()=>time,yieldTask:async()=>{
+   turn++;time+=16
+   if(turn<=20){request(turn);if(turn%3===0){request(turn-.2);request(turn)}}
+   assert.deepEqual(active.children,old,'yield exposes only previous complete scene')
+  }})
+  try{
+   for(const group of value.groups){const mesh=new THREE.Group();mesh.userData.group=structuredClone(group);mesh.dispose=()=>mesh.userData.disposals=(mesh.userData.disposals??0)+1;owned.push(mesh);stage.add(mesh);time+=5;await work.checkpoint()}
+   stage.commit(active,isCurrent)
+   assert.deepEqual(active.children.map(m=>m.userData.group),value.groups,'complete source positions/IDs are committed together')
+   assert.ok(latestX>=value.bounds.minX&&latestX<=value.bounds.maxX,'current moving player remains in committed coverage for this slow-build fixture')
+   commits.push({turn,x:value.bounds.minX,missing:[...value.missingColumns]})
+  }finally{stage.dispose()}
+ },()=>time)
+ assert.deepEqual(commits.map(c=>c.turn),[4,8,12,16,20,24]);assert.ok(commits.slice(1).every((c,i)=>c.x>commits[i].x))
+ assert.equal(queue.stats.retiredWorkCount,0);assert.equal(queue.stats.committed,6)
+ const diagnostics=queue.diagnostics(time+25);assert.equal(diagnostics.commitAgeMs,25);assert.equal(diagnostics.received.missingColumns,1);assert.equal(diagnostics.committedCoverage.missingColumns,1)
+ for(const[value,original]of inputs)assert.deepEqual(value,original,'source/unknown columns are never rewritten')
+ for(const mesh of owned)assert.equal(mesh.userData.disposals??0,active.children.includes(mesh)?0:1)
+})
+
+test('epoch replacement, reset/disposal and errors strictly invalidate active work and its diagnostics',async()=>{
+ for(const reason of ['epoch','dispose','error']){
+  const queue=new NativeTerrainQueue(),active=new THREE.Group(),disposed=[],committed=[];let time=0,changed=false
+  const snapshot=epoch=>({epoch,bounds:{minX:epoch,maxX:epoch+64},groups:[],missingColumns:[]})
+  queue.request(snapshot(1))
+  const running=queue.run(async(value,isCurrent)=>{
+   const stage=new NativeStaticStage(),mesh=new THREE.Group();mesh.dispose=()=>disposed.push(value.epoch);stage.add(mesh)
+   const work=createNativeRebuildWork({isCurrent,now:()=>time,yieldTask:async()=>{
+    if(!changed){changed=true;if(reason==='epoch')queue.request(snapshot(2));else if(reason==='dispose')queue.reset();else throw Error('fixture-build-error')}
+   }})
+   try{time+=5;await work.checkpoint();stage.commit(active,isCurrent);committed.push(value.epoch)}finally{stage.dispose()}
+  },()=>time)
+  if(reason==='error')await assert.rejects(running,/fixture-build-error/);else await running
+  assert.deepEqual(disposed,[1]);assert.deepEqual(committed,reason==='epoch'?[2]:[])
+  const d=queue.diagnostics(time);assert.equal(d.building,false);assert.equal(d.pending,false);assert.equal(d.committedCoverage?.epoch??null,reason==='epoch'?2:null)
+  if(reason!=='epoch')assert.equal(d.received,null)
+ }
 })
