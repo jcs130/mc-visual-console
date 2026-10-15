@@ -180,7 +180,6 @@ function cortiInstallPanels(socket) {
       getWorld: () => rendererReady ? globalThis.world : null,
       getState: () => ({ entity: cortiPanelAvatar?.entity, connected: socket.connected,
         dimension: npcWorldContext.dimension ?? cortiPanelMap?.dimension }),
-      getSight: () => perceptionGrid,
       visible: () => viewerLayout.visible('minimap'),
     });
     globalThis.__mcSceneMinimap = cortiSceneMap;

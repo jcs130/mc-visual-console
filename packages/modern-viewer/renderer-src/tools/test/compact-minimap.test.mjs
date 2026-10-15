@@ -107,3 +107,10 @@ test('live-avatar following cannot overwrite the minimap camera during its offsc
   assert.deepEqual(h.world.cameraWorldPos,{x:8,y:64,z:8});
   h.world.render();assert.equal(followed,1,'the ordinary live camera still follows normally');
 });
+
+test('underground coordinates keep a clearly labelled surface map without clipping away solid terrain',async t=>{
+  const h=fixture(t);h.state.entity.pos.y=-31;h.map.draw();await settle();
+  assert.equal(h.root.querySelector('strong').textContent,'地表地图');
+  assert.equal(h.map.diagnostics().layer,null);assert.equal(h.caption.textContent,'8, -31, 8');
+  assert.match(h.caption.title,/地表俯视，坐标高度为本人高度/);
+});

@@ -213,8 +213,7 @@ export function drawSceneMap(ctx, frame, self, entities, registry={},risk=[]) {
   return groups;
 }
 
-/** A navigation inset, using original terrain already received by this viewer.
- * Surface/slice selection is separate from the Agent's perception and memory. */
+/** A surface navigation inset using original terrain already received by the viewer. */
 export function drawCompactMap(ctx, frame, self) {
   const size=ctx.canvas.width,pos=self.pos??self.position;
   const spec=mapSpec(pos,frame.spec.span,size),scale=size/spec.span;
@@ -236,13 +235,13 @@ export function drawCompactMap(ctx, frame, self) {
   return {terrainOffset:offset,center:spec.center};
 }
 
-export function installSceneMinimap({document,window,root,getWorld,getState,getSight=()=>null,visible=()=>true}) {
+export function installSceneMinimap({document,window,root,getWorld,getState,visible=()=>true}) {
   const canvas=root?.querySelector('canvas');if(!canvas)return null;
   canvas.width=256;canvas.height=256;canvas.setAttribute('aria-label','北向俯视地形与本人朝向');
   const ctx=canvas.getContext('2d'),terrain=new MinimapTerrain(document,256);
   root.classList.add('corti-scene-minimap','corti-compact-minimap');root.dataset.mapStyle='compact';
   const header=document.createElement('div');header.className='corti-map-header';
-  const title=document.createElement('strong');title.textContent='小地图';
+  const title=document.createElement('strong');title.textContent='地表地图';
   const north=document.createElement('span');north.textContent='北 ↑';
   const out=document.createElement('button'),inside=document.createElement('button');
   out.type=inside.type='button';
@@ -271,7 +270,7 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getS
     if(!pending&&now>=next&&(moved||now-last>=1500)){
       const start=performance.now();
       try {
-        const spec={...mapSpec(pos,span,canvas.width),layer:mapLayer(getSight(),self)};
+        const spec=mapSpec(pos,span,canvas.width);
         const capture=terrain.capture(getWorld(),spec,{asyncRead:true});
         const captured=performance.now();
         root.dataset.mapCaptureMs=(captured-start).toFixed(1);
@@ -288,7 +287,7 @@ export function installSceneMinimap({document,window,root,getWorld,getState,getS
     if(frame)drawCompactMap(ctx,frame,self);
     if(caption){
       caption.textContent=frame?`${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)}`:failures?'地图暂不可用':'地图同步中';
-      caption.title=`${dimensionLabel(state.dimension)} · ${span}×${span} 格 · ${frame?.spec.layer?'当前高度':'俯视地形'} · 斜纹为未加载区域`;
+      caption.title=`${dimensionLabel(state.dimension)} · ${span}×${span} 格 · 地表俯视，坐标高度为本人高度 · 斜纹为未加载区域`;
     }
     root.dataset.mapSource=frame?'loaded-scene':'unavailable';
   }
