@@ -5,6 +5,7 @@ import {verifyAssetPack} from '../../../../../tools/prepare-viewer-assets.mjs';
 import {verifyViewerContentAssets} from '../viewer-content-assets.mjs';
 import {loadViewerContentAssets} from '../../src/modern-viewer/server-particles.js';
 import {loadTextDisplayFont} from '../../src/modern-viewer/text-display-font.js';
+import {viewerVersionTexture} from '../../host/viewer-version.mjs';
 
 test('exact 1.21.1 map/frame/particle inputs bind their original client and official mappings',async()=>{
   const {directory,manifest}=await verifyAssetPack('java-1.21.1');
@@ -17,6 +18,8 @@ test('exact 1.21.1 map/frame/particle inputs bind their original client and offi
   assert.equal(verified.javaFramePixelParityVerified,false);
   await assert.rejects(verifyViewerContentAssets(directory,content.clientJarSha256,{version:'1.20.6'}),/mismatch/);
   for(const p of ['public/viewer-content.json','public/particle-content.png'])assert.ok(manifest.files[p]);
+  assert.equal(viewerVersionTexture('textures/1.16.4/entity/horse/horse_skeleton.png','1.21.1'),'textures/1.21.1/entity/horse/horse_skeleton.png');
+  assert.ok(manifest.files['public/textures/1.21.1/entity/horse/horse_skeleton.png']);
 });
 
 test('browser content loading accepts the matching 1.21.1 manifest and refuses cross-version resources',async()=>{
