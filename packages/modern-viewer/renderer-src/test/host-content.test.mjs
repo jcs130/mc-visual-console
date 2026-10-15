@@ -33,6 +33,35 @@ test('native protocol 766 dust transition float bytes survive the decoder field-
   assert.equal(event.speed,0);assert.equal(event.exact,true);assert.deepEqual(event.position,{x:1.25,y:66,z:-2.5});
 });
 
+test('1.21.1 own-connection map, frame and transition packets retain native IDs and replay coverage',()=>{
+  const data=minecraftData('1.21.1');
+  const root=createRequire(new URL('../../../../package.json',import.meta.url));
+  const mfRequire=createRequire(root.resolve('mineflayer'));
+  const {createSerializer,createDeserializer}=mfRequire('minecraft-protocol');
+  const serializer=createSerializer({state:'play',version:'1.21.1',isServer:true});
+  const parser=createDeserializer({state:'play',version:'1.21.1',isServer:false});
+  const protocol=new EventEmitter(),bot=Object.assign(new EventEmitter(),{version:'1.21.1',registry:data,_client:protocol,entities:{},entity:{position:{x:0,y:64,z:0}}});
+  const bridge=createViewerContentBridge(bot,{schedule:()=>1,unschedule:()=>{}}),events=[];
+  bridge.subscribe((name,value)=>events.push({name,value}));
+  const forward=(name,params)=>protocol.emit(name,parser.parsePacketBuffer(serializer.createPacketBuffer({name,params})).data.params);
+  const floats=[.25,.5,.75,1,0,.125,1.5],order=transitionFieldOrder(data.protocol).split(',');
+  const raw={...particle('dust_color_transition'),y:64};raw.particle.data=Object.fromEntries(order.map((key,i)=>[key,floats[i]]));
+  forward('world_particles',raw);bridge.flush();
+  const dust=events.find(e=>e.name==='particleBatch').value.events[0];
+  assert.deepEqual(dust.colorEnd,[1,0,.125]);assert.equal(dust.size,1.5);
+  forward('map',{itemDamage:725,scale:1,locked:false,icons:[],columns:2,rows:1,x:5,y:6,data:Buffer.from([4,7])});
+  forward('spawn_entity',{entityId:22,objectUUID:'12345678-1234-1234-1234-123456789abc',type:data.entitiesByName.item_frame.id,x:1,y:64,z:1,pitch:0,yaw:0,headPitch:0,objectData:3,velocity:{x:0,y:0,z:0}});
+  protocol.emit('entity_metadata',{entityId:22,metadata:[{key:8,value:{itemId:data.itemsByName.filled_map.id,components:[{type:'map_id',data:725}]}},{key:9,value:3}]});
+  assert.equal(events.find(e=>e.name==='mapFrame').value.mapId,725);
+  const replay=[];bridge.subscribe((name,value)=>replay.push({name,value}));
+  const map=replay.find(e=>e.name==='mapPixels').value;
+  assert.deepEqual(Array.from(map.data.slice(6*128+5,6*128+7)),[4,7]);
+  assert.equal(map.coverage[(6*128+5)>>3] & (1<<((6*128+5)&7)),32);
+  assert.equal(map.coverage[0],0,'unobserved pixels remain unknown');
+  bridge.dispose();assert.deepEqual(protocol.eventNames(),[]);
+  assert.throws(()=>createViewerContentBridge({...bot,version:'1.21.4'}),/version_unsupported/);
+});
+
 test('dust rejects missing/invalid data and unknown transition schemas; directional count zero is preserved',()=>{
   assert.equal(viewerParticlePacket({...particle(),particle:{type:'dust'}}),null);
   const p=particle();p.particle.data.scale=NaN;assert.equal(viewerParticlePacket(p),null);
@@ -138,11 +167,11 @@ test('raw frame metadata updates map component, rotation and invisibility; remov
   s.bridge.dispose();
 });
 
-test('map and frame caches are bounded; obsolete versions are rejected instead of interpreted with 1.20.6 IDs',()=>{
+test('map and frame caches are bounded; unsupported versions are rejected instead of guessing registry IDs',()=>{
   const s=setup();for(let i=0;i<100;i++)s.protocol.emit('map',{itemDamage:i,scale:0,columns:0});
   for(let i=0;i<200;i++)s.protocol.emit('spawn_entity',{entityId:i,objectUUID:'frame-'+i,type:registry.entitiesByName.item_frame.id,objectData:3,x:0,y:64,z:0});
   assert.equal(s.bridge.stats().maps,64);assert.equal(s.bridge.stats().frames,128);s.bridge.dispose();
-  assert.throws(()=>createViewerContentBridge({...s.bot,version:'1.21.1'}),/requires_1.20.6/);
+  assert.throws(()=>createViewerContentBridge({...s.bot,version:'1.21.4'}),/version_unsupported/);
 });
 
 test('a stalled Socket.IO viewer retains bounded map identities, resends latest pixels, and never replays stale particles',()=>{

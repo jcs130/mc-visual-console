@@ -3,17 +3,32 @@
   "id": "java-1.21.1",
   "kind": "java",
   "minecraftVersion": "1.21.1",
-  "scope": "Exact vanilla 1.21.1 block states, original textures/models, item icons, paintings and default Chinese font inputs for the Mineflayer browser renderer; custom server resource packs and whole-scene Java pixel parity are not verified.",
+  "scope": "Exact vanilla 1.21.1 block states, original textures/models, item icons, paintings and default Chinese font inputs for the Mineflayer browser renderer; custom server resource packs and whole-scene Java pixel parity are not verified. Includes original map palette, frame models and particle sprites; map decorations and complete Java scene parity remain unverified.",
   "source": {
     "clientJarSha256": "499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99",
     "exporter": "packages/modern-viewer/renderer-src/tools/export-minecraft-viewer-assets.py",
     "textDisplayFont": {
       "assetIndexSha1": "e5cb391af96038a8af638bf7cc7f2be44bc4b843",
       "exporter": "packages/modern-viewer/renderer-src/tools/export-text-display-font.py"
+    },
+    "viewerContent": {
+      "schemaVersion": 1,
+      "manifestSha256": "74196bbd631bde37c4548508bd5a036e4283cc092f950e8015d1a53976e2bed3",
+      "particleAtlasSha256": "e7eda4d74d77d471be3e198b39fc493729b90bcdbe8451a7e7fb5eec51b4abf2",
+      "capabilities": {
+        "serverParticleProtocol": true,
+        "mapPixels": true,
+        "itemFrameMaps": true,
+        "heldMapPreview": true,
+        "mapDecorations": false
+      },
+      "nativeParticlePhysicsParityVerified": false,
+      "javaFramePixelParityVerified": false,
+      "mappingsSha256": "140c47931cccc8fc9e4c22d7603e2d714d1a953a146f51ea7397d95c955536ec"
     }
   },
-  "fileCount": 5400,
-  "bytes": 23947677,
+  "fileCount": 5404,
+  "bytes": 23964396,
   "files": {
     "public/asset-source.json": {
       "sha256": "eec3c67f6515b90f82a049cbef8426c6e2dc41dd8d9008cf05049c2b4a3ef9eb",
@@ -7059,6 +7074,10 @@
       "sha256": "92f05ed54dcb84eb34fd6ab6aefa82fdc07bcad8f9831e60e03855463471d4d6",
       "bytes": 508
     },
+    "public/particle-content.png": {
+      "sha256": "e7eda4d74d77d471be3e198b39fc493729b90bcdbe8451a7e7fb5eec51b4abf2",
+      "bytes": 1084
+    },
     "public/text-display-font.json": {
       "sha256": "bdc8fa642455555058c00778cd6a81ea0b0e7b27ccf6b146a29fc332c710c837",
       "bytes": 10503
@@ -11939,6 +11958,10 @@
       "sha256": "822fe8a84f05772343e1186ddfa5cf1f5152e83fcb188214032c8d76e4ce7456",
       "bytes": 561
     },
+    "public/textures/1.21.1/entity/glow_squid.png": {
+      "sha256": "a5b837dc765b92865b6a90617329b872497648c7f503a760ebe6f6df7f86ab15",
+      "bytes": 709
+    },
     "public/textures/1.21.1/entity/goat/goat.png": {
       "sha256": "9ea8a5129b13f9a275975004cf8a3a392600c7f2a8232a6731c53a7ad42eb231",
       "bytes": 1044
@@ -12782,6 +12805,10 @@
     "public/textures/1.21.1/entity/spider_eyes.png": {
       "sha256": "f3127b6ba40f01e1734be57c481d23d42591bc16b09355cdb11bfb8f655a2464",
       "bytes": 132
+    },
+    "public/textures/1.21.1/entity/squid.png": {
+      "sha256": "f470d0ac2ebbb38861855f1cf40f799138bb2f6c495c53c8d6edfc569944c1ae",
+      "bytes": 408
     },
     "public/textures/1.21.1/entity/squid/glow_squid.png": {
       "sha256": "a5b837dc765b92865b6a90617329b872497648c7f503a760ebe6f6df7f86ab15",
@@ -21586,6 +21613,10 @@
     "public/textures/1.21.1/trims/models/armor/wild_redstone.png": {
       "sha256": "cdf6ca4653cda5b0b733fdb3c0fc325021708f65d65a7ff8c41a025b998cab8b",
       "bytes": 380
+    },
+    "public/viewer-content.json": {
+      "sha256": "74196bbd631bde37c4548508bd5a036e4283cc092f950e8015d1a53976e2bed3",
+      "bytes": 14518
     },
     "render-assets/blockStatesModels.json": {
       "sha256": "30edd808abea4a4e1216b234b62943f9cf0173b716b3c9ae36bf52ac4971f395",
