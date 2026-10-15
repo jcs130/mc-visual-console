@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {NativeSelfDisplayPose,NativeFrameGaps,writeChanged,createTargetSignature} from '../../src/native-viewer/native-display-performance.js'
+import {nativeCameraTarget} from '../../src/native-viewer/native-camera.js'
 import {createNativePlayerMotionTracker} from '../../src/native-viewer/native-player-motion.js'
 const pose=(x=0,yaw=0)=>({x,y:64,z:0,yaw,pitch:0,eyeHeight:1.62})
 test('50ms observed display produces intermediate 60Hz poses without modifying raw inputs or extrapolating',()=>{
@@ -38,4 +39,13 @@ test('unchanged diagnostics cause zero writes; target arrays serialize only on i
  let reads=0;const row={id:1,uuid:'a',get name(){reads++;return 'name'},rendered:true},rows=[row],sig=createTargetSignature()
  for(let i=0;i<1000;i++)sig(rows)
  assert.equal(reads,1);sig([{...row,name:'new'}]);assert.equal(reads,2)
+})
+
+test('self camera target uses the same interpolated position and shortest yaw through a lifecycle reset',()=>{
+ const d=new NativeSelfDisplayPose(),selfPlayer={uuid:'self',entityId:1},raw={pose:pose(1),selfPlayer,epoch:1}
+ const before=structuredClone(raw);d.receive(pose(),0,'self:1',{resetSequence:0});d.receive(raw.pose,50,'self:1',{resetSequence:0})
+ const display=d.sample(75),actor={root:{position:display}},target=nativeCameraTarget({...raw,pose:display},actor)
+ assert.deepEqual(target.position,{x:.5,y:64,z:0});assert.equal(target.yaw,display.yaw);assert.deepEqual(raw,before)
+ d.receive(pose(3),80,'self:1',{resetSequence:1});const reset=d.sample(80)
+ assert.equal(reset.x,3);assert.equal(nativeCameraTarget({...raw,pose:reset},{root:{position:reset}}).position.x,3)
 })
