@@ -41,3 +41,12 @@ sampling remain enabled. Active obstruction transparency costs two additional
 surface passes; software-rendered headless timings do not establish desktop GPU
 frame rates. No extra game account, world mutation or model request is needed
 for visual verification.
+
+The exact-resource native console attaches the same obstruction passes to its
+received terrain root. Native instanced blocks share the original instance
+matrices, colours, morph texture and geometry; replacement buffers/counts are
+synchronized without taking ownership. Rebuild/unload releases only overlay
+materials. First-person/disabled views clear the reveal and hide both passes.
+This compatibility path is covered by the instanced-terrain ownership regression;
+the controlled compositing fixture above is separate from complete native-scene
+or Java appearance acceptance.

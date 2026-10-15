@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { RoomFloorMask } from '../modern-viewer/room-floor-mask.js'
 import { createCutawayUniforms,patchCutawayMaterial,setRoomFloorMask,roomRevealRadius,advanceReveal } from '../modern-viewer/room-visibility.js'
+import {createObserverTransparency} from '../modern-viewer/observer-transparency.js'
 
 export function nativeReceivedRoomCache(snapshot) {
   const states=new Map(snapshot.states.map(s=>[s.stateId,s])),blocks=new Map(),b=snapshot.bounds,columns=new Set(snapshot.viewCoverage?.receivedColumns??[])
@@ -19,12 +20,13 @@ export function nativeReceivedRoomCache(snapshot) {
 }
 export function createNativeRoomVisibility() {
   const uniforms=createCutawayUniforms(),ray=new THREE.Raycaster(),target=new THREE.Vector3(),direction=new THREE.Vector3()
-  let cache=null,mask=null,last=0,reveal=0,status={active:false,reason:'waiting'},lastFrame=null
+  let cache=null,mask=null,last=0,reveal=0,status={active:false,reason:'waiting'},lastFrame=null,transparency=null
   return {uniforms,patch(material){return patchCutawayMaterial(material,uniforms)},
-    stage(snapshot){cache=nativeReceivedRoomCache(snapshot);mask=new RoomFloorMask(cache);last=0},
+    attach(scene){transparency?.dispose();transparency=createObserverTransparency({scene},uniforms)},
+    stage(snapshot){cache=nativeReceivedRoomCache(snapshot);mask=new RoomFloorMask(cache);last=0;transparency?.update()},
     update({camera,pose,mode,height=1.8,enabled=true,raycast,now}){
       const dt=lastFrame===null?0:now-lastFrame;lastFrame=now
-      if(!cache||!pose||mode!=='dungeon'||!enabled){status={active:false,reason:enabled?'view':'disabled'};uniforms.u_lanternCutawayEnabled.value=0;return status}
+      if(!cache||!pose||mode!=='dungeon'||!enabled){status={active:false,reason:enabled?'view':'disabled'};uniforms.u_lanternCutawayEnabled.value=0;uniforms.u_lanternReveal.value=0;transparency?.sync();return status}
       target.set(pose.x,pose.y+1,pose.z)
       const clearance=Math.max(1,Math.min(8,Math.ceil(height)))
       if(mask.clearance!==clearance){mask=new RoomFloorMask(cache,{clearance});last=0}
@@ -41,6 +43,7 @@ export function createNativeRoomVisibility() {
       reveal=advanceReveal(reveal,status.active,dt)
       uniforms.u_lanternCutawayEnabled.value=reveal>0?(status.covered?2:3):0;uniforms.u_lanternReveal.value=reveal
       uniforms.u_lanternCutawayCamera.value.copy(camera.position);uniforms.u_lanternCutawayTarget.value.copy(target)
+      transparency?.sync()
       return status
-    },reset(){cache=null;mask=null;last=0;lastFrame=null;reveal=0;uniforms.u_lanternCutawayEnabled.value=0},dispose(){uniforms.u_lanternRoomMask.value.dispose()}}
+    },reset(){cache=null;mask=null;last=0;lastFrame=null;reveal=0;uniforms.u_lanternCutawayEnabled.value=0;uniforms.u_lanternReveal.value=0;transparency?.update()},dispose(){transparency?.dispose();uniforms.u_lanternRoomMask.value.dispose()}}
 }

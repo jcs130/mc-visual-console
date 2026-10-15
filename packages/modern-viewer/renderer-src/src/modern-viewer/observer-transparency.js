@@ -43,6 +43,11 @@ export function createObserverTransparency(world, uniforms) {
     // and Tier A/B/C draw implementations. Do not copy their geometry arrays.
     mesh.onAfterRender = source.onAfterRender;
     mesh.onBeforeRender = source.onBeforeRender;
+    if (source.isInstancedMesh) {
+      mesh.instanceMatrix = source.instanceMatrix;
+      mesh.instanceColor = source.instanceColor;
+      mesh.morphTexture = source.morphTexture;
+    }
     world.scene.add(mesh);
     return mesh;
   }
@@ -50,6 +55,14 @@ export function createObserverTransparency(world, uniforms) {
     const { source } = record;
     for (const mesh of [record.depth, record.colour]) {
       mesh.geometry = source.geometry;
+      if (source.isInstancedMesh) {
+        mesh.count = source.count;
+        mesh.instanceMatrix = source.instanceMatrix;
+        mesh.instanceColor = source.instanceColor;
+        mesh.morphTexture = source.morphTexture;
+        mesh.boundingBox = source.boundingBox;
+        mesh.boundingSphere = source.boundingSphere;
+      }
       mesh.matrix.copy(source.matrixWorld);
       mesh.matrixWorld.copy(source.matrixWorld);
       mesh.matrixWorldNeedsUpdate = false;

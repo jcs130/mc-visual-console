@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Scene, Mesh, BoxGeometry, ShaderMaterial, EqualDepth, MeshBasicMaterial, ShaderLib } from 'three';
+import { Scene, Mesh, InstancedMesh, InstancedBufferAttribute, BoxGeometry, ShaderMaterial, EqualDepth, MeshBasicMaterial, ShaderLib, PerspectiveCamera } from 'three';
 import { createCutawayUniforms, patchCutawayMaterial, OBSTRUCTION_OPACITY } from '../../src/modern-viewer/room-visibility.js';
 import { createObserverTransparency } from '../../src/modern-viewer/observer-transparency.js';
+import {createNativeRoomVisibility} from '../../src/native-viewer/native-room-visibility.js';
 
 function fixture() {
   const uniforms=createCutawayUniforms();uniforms.u_lanternReveal.value=1;
@@ -55,4 +56,21 @@ test('standard decorations use a separate pass uniform while sky and unpatched a
   material.onBeforeCompile(shader,{});assert.equal(shader.uniforms.u_lanternTransparencyPass.value,1);assert.equal(uniforms.u_lanternTransparencyPass.value,0);
   assert.equal(sky.material.userData.lanternVisibilityVersion,undefined);
   layer.dispose();
+});
+
+test('native instanced terrain shares its actual instance buffers across both obstruction passes',()=>{
+  const scene=new Scene(),room=createNativeRoomVisibility();room.attach(scene);
+  const source=new InstancedMesh(new BoxGeometry(),new MeshBasicMaterial(),2);room.patch(source.material);scene.add(source);
+  source.instanceColor=new InstancedBufferAttribute(new Float32Array([1,0,0,0,1,0]),3);
+  let disposed=0;source.geometry.addEventListener('dispose',()=>disposed++);
+  const snapshot={states:[],groups:[],revision:1,bounds:{minX:0,minY:63,minZ:0,maxX:15,maxY:68,maxZ:15},viewCoverage:{receivedColumns:['0,0']}};
+  room.stage(snapshot);room.uniforms.u_lanternReveal.value=1;
+  const overlays=scene.children.filter(mesh=>mesh.userData.lanternTransparencyOverlay);
+  assert.equal(overlays.length,2);
+  for(const mesh of overlays){assert.equal(mesh.instanceMatrix,source.instanceMatrix);assert.equal(mesh.instanceColor,source.instanceColor);assert.equal(mesh.geometry,source.geometry)}
+  source.count=1;source.instanceColor=new InstancedBufferAttribute(new Float32Array([0,0,1]),3);
+  room.update({camera:new PerspectiveCamera(),pose:{x:.5,y:64,z:.5},mode:'first',now:1});
+  for(const mesh of overlays){assert.equal(mesh.count,1);assert.equal(mesh.instanceColor,source.instanceColor);assert.equal(mesh.visible,false)}
+  source.removeFromParent();room.reset();assert.equal(scene.children.length,0);assert.equal(disposed,0);
+  room.dispose();assert.equal(disposed,0);
 });

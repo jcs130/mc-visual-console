@@ -89,6 +89,7 @@ async function start () {
   }
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#111820')
   worldRoot = new THREE.Group(); statics = new THREE.Group(); worldRoot.add(statics); scene.add(worldRoot)
+  roomVisibility.attach(worldRoot)
   selfController = new NativeSelfPlayerController(reader, { onChange (actor, status) {
     selfActor = actor; skinState = status
     selfMotionState = null; selfMotionSignature = null; lastPlayerFrameTime = null
