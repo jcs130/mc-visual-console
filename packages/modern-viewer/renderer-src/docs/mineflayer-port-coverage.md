@@ -9,6 +9,11 @@ it is not a Mineflayer limitation. The original 1.21.1 census is 130 entity
 types, 109 particle types, 44 block-entity types and 25 menu types. Modded
 registries are a separate, additional scope.
 
+The [complete registry work list](vanilla-1.21.1-feature-matrix.md) retains every
+one of those 308 entries and checks it against the locked source and actual
+dispatch tables. Registered partial paths and missing implementations remain
+distinct; neither is a complete-rendering claim.
+
 The new offline `ExportVanillaModelLayers.java` invokes the original
 `LayerDefinitions.createRoots()` and `LayerDefinition.bakeRoot()` for every
 entry: 213 layers, 1,762 cubes, 10,552 original quads. It includes all wood and
