@@ -558,6 +558,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
               value.ready = value.ok && Boolean(world.pose && world.dimension && world.columns.size)
             }
             bytes = Buffer.from(JSON.stringify(value)); type = 'application/json; charset=utf-8'
+          } else if (requestPath === 'agent-views') {
+            // This read-only transport does not manufacture photographs or
+            // infer model delivery from its continuous spectator stream.
+            bytes = Buffer.from(JSON.stringify({ schema: 'mc-agent-views/v1', available: false,
+              reason: 'AGENT_CAPTURE_PROVIDER_NOT_ATTACHED', images: [] })); type = 'application/json; charset=utf-8'
           } else if (scopedPages.has(requestPath)) { bytes = scopedPages.get(requestPath); type = 'text/html; charset=utf-8' }
           else if (['diagnostics', 'diagnostics/'].includes(requestPath)) { bytes = diagnosticBytes; type = 'text/html; charset=utf-8' }
           else if (requestPath === 'viewer.css') { bytes = viewerCss; type = 'text/css; charset=utf-8' }

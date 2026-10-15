@@ -72,14 +72,14 @@ export function installViewerLayout({document, window, photo = false, overlay = 
     move(document.querySelector('.corti-view-switch'), views);
     move(document.querySelector('.dungeon-camera-controls'), camera);
     move(document.querySelector('.viewer-camera-settings'), camera);
-    for (const selector of ['.corti-chat', '#corti-inventory-toggle', '#corti-night-vision-toggle',
+    for (const selector of ['.corti-chat', '.native-agent-status', '.native-console-diagnostics', '.native-target-panel', '#corti-inventory-toggle', '#corti-night-vision-toggle',
         '#corti-sound-toggle', '#corti-music-toggle', '.viewer-audio-controls', '.viewer-quality-settings', '.viewer-appearance-settings', '.viewer-play-controls', '.viewer-agent-views']) move(document.querySelector(selector), tools);
     // Re-append the persistent controls after late-created chat/camera modules.
     if (tools.lastElementChild !== settings) { tools.append(clean, settings); }
     // Inputs and transient messages have independent viewport anchors. A live
     // chat row must never reflow the input panel or scroll it with the rail.
-    for (const id of ['corti-minimap', 'corti-scoreboard', 'corti-effects', 'corti-content-status', 'corti-held-map']) move(document.getElementById(id), left);
-    for (const id of ['corti-skills', 'agent-intent', 'agent-route-map', 'agent-presentation']) move(document.getElementById(id), right);
+    for (const id of ['corti-minimap', 'native-terrain-map', 'corti-scoreboard', 'corti-effects', 'corti-content-status', 'corti-held-map']) move(document.getElementById(id), left);
+    for (const id of ['corti-skills', 'agent-intent', 'agent-route-map', 'agent-presentation', 'native-live-inspector']) move(document.getElementById(id), right);
   }
   listen(clean, 'click', () => { layout.clean = !layout.clean; apply(); });
   listen(window, 'keydown', e => {

@@ -11,6 +11,9 @@ import { installSceneSettings } from '../modern-viewer/scene-settings.js'
 import { loadSceneSettings,sceneColourFilter } from '../modern-viewer/scene-quality.js'
 import { installDungeonObserverControls } from '../modern-viewer/dungeon-observer-controls.js'
 import {createNativeViewerBuildGuard} from './native-viewer-build.js'
+import { installViewerLayout } from '../modern-viewer/viewer-layout.js'
+import { installChatHistory } from '../modern-viewer/chat-history.js'
+import { installAgentViewGallery } from '../modern-viewer/agent-view-gallery.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
@@ -34,6 +37,21 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const buildChanged=createNativeViewerBuildGuard(q('meta[name="native-viewer-build"]')?.content,()=>window.location.reload())
   const listeners = [], listen = (target, event, callback) => { target?.addEventListener(event, callback); listeners.push([target, event, callback]) }
   let disposed = false, identity = null, sceneHost = null, latestState = null, lastDiagnostics = null
+  let messageSubject = null, lastMessageSequence = 0
+  const chatUi = installChatHistory({ document, window })
+  const galleryUi = installAgentViewGallery({ document, window })
+  const layoutUi = installViewerLayout({ document, window })
+  const resetMessages = () => { chatUi?.reset(); messageSubject = null; lastMessageSequence = 0 }
+  const updateMessages = state => {
+    const presentation = state?.presentation, uuid = identity?.playerUuid?.toLowerCase()
+    if (!uuid || presentation?.playerUuid?.toLowerCase() !== uuid || presentation.available !== true) { resetMessages(); return }
+    const subject = `${uuid}:${state.epoch}`
+    if (subject !== messageSubject) { resetMessages(); messageSubject = subject }
+    for (const row of presentation.gameMessages ?? []) {
+      if (!Number.isSafeInteger(row.seq) || row.seq <= lastMessageSequence) continue
+      lastMessageSequence = row.seq; chatUi?.receive(row)
+    }
+  }
   const appearanceUi = installAppearanceSettings({ document, window, onChange: id => sceneHost?.selectAppearance?.(id) })
   let sceneSettings=loadSceneSettings(window.localStorage),quality
   const sceneUi=installSceneSettings({document,window,settings:sceneSettings,onChange:value=>{
@@ -50,9 +68,10 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const viewport = el('viewer-canvas') ?? append(document, document.body, 'div', 'native-console-viewport')
   viewport.id = 'viewer-canvas'; viewport.setAttribute('aria-label', '同一 Agent 本人及原生世界')
   const targets=append(document,document.body,'details','native-target-panel');append(document,targets,'summary','','观察目标')
-  const targetSelect=append(document,targets,'select','');targetSelect.setAttribute('aria-label','观战跟随目标')
-  const targetSelf=append(document,targets,'button','','回到 Agent 本人');targetSelf.type='button'
-  const targetInfo=append(document,targets,'output','','点击画面中的实体或从列表选择，只切换观战镜头')
+  const targetBody=append(document,targets,'div','native-toolbar-panel')
+  const targetSelect=append(document,targetBody,'select','');targetSelect.setAttribute('aria-label','观战跟随目标')
+  const targetSelf=append(document,targetBody,'button','','回到 Agent 本人');targetSelf.type='button'
+  const targetInfo=append(document,targetBody,'output','','点击画面中的实体或从列表选择，只切换观战镜头')
   listen(targetSelect,'change',()=>sceneHost?.selectTarget?.(targetSelect.value===''?null:Number(targetSelect.value)))
   listen(targetSelf,'click',()=>sceneHost?.selectTarget?.(null))
   let targetSignature='',dungeonUi=null,dungeonPose={yaw:Math.PI*.75,pitch:-.82,distance:16}
@@ -62,25 +81,32 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const label = append(document, viewport, 'div', 'native-player-label'); label.hidden = true
   const ysmNotice = append(document, viewport, 'div', 'native-ysm-preview-notice'); ysmNotice.hidden = true
   const boot = q('.boot') ?? append(document, document.body, 'div', 'boot', '正在载入原生世界…')
-  const stateBar = append(document, document.body, 'aside', 'native-agent-status')
+  const stateBar = append(document, document.body, 'details', 'native-agent-status')
   stateBar.setAttribute('aria-label', '实际 Agent 状态')
+  append(document, stateBar, 'summary', '', '运行详情')
+  const stateBody = append(document, stateBar, 'div', 'native-toolbar-panel')
   for (const [id, heading] of [['agent-name','玩家'],['agent-mode','状态'],['agent-goal','目标'],
     ['agent-action','动作'],['agent-receipt','回执'],['agent-receipt-at','回执时间'],['agent-decision-at','决策时间'],['agent-notice','']]) {
-    const row = append(document, stateBar, 'span', 'native-agent-field')
+    const row = append(document, stateBody, 'span', 'native-agent-field')
     if (heading) append(document, row, 'small', '', `${heading} `)
     const value = append(document, row, 'span', '', '未同步'); value.id = id
   }
   const details = append(document, document.body, 'details', 'native-console-diagnostics')
   append(document, details, 'summary', '', '原生支持状态')
-  const diagnostics = append(document, details, 'pre', '')
-  const diagnosticLink = append(document, details, 'a', '', '打开原生诊断页'); diagnosticLink.href = nativeViewerUrl('diagnostics', document.baseURI || 'http://localhost/')
+  const diagnosticBody = append(document, details, 'div', 'native-toolbar-panel')
+  const diagnostics = append(document, diagnosticBody, 'pre', '')
+  const diagnosticLink = append(document, diagnosticBody, 'a', '', '打开原生诊断页'); diagnosticLink.href = nativeViewerUrl('diagnostics', document.baseURI || 'http://localhost/')
   const style = append(document, document.head, 'style', '')
   style.textContent = `
     .native-console-viewport{position:absolute;inset:0;overflow:hidden}
     .native-player-label{position:absolute;z-index:2;padding:2px 7px;color:white;background:#0009;transform:translate(-50%,-100%);pointer-events:none}
     .native-ysm-preview-notice{position:absolute;z-index:3;bottom:14px;left:14px;padding:5px 9px;color:#e1ebed;background:#11242ce8;border:1px solid #aec3b4;border-radius:5px;font:11px/1.4 system-ui;pointer-events:none}
-    .native-agent-status{position:fixed;z-index:7;top:54px;left:50%;transform:translateX(-50%);max-width:min(640px,calc(100vw - 32px));display:flex;flex-wrap:wrap;gap:3px 12px;padding:5px 9px;background:var(--mc-viewer-ui-bg,#11242cdb);border:1px solid var(--mc-viewer-ui-border,#aec3b4);border-radius:7px;font:11px/1.5 system-ui}
-    .native-agent-field{overflow-wrap:anywhere}.native-agent-field small{color:#aebfc1}
+    .native-agent-status{position:fixed;z-index:7;top:54px;right:14px;max-width:min(640px,calc(100vw - 32px));padding:5px 9px;background:var(--mc-viewer-ui-bg,#11242cdb);border:1px solid var(--mc-viewer-ui-border,#aec3b4);border-radius:7px;font:11px/1.5 system-ui}
+    .native-agent-field{display:block;overflow-wrap:anywhere}.native-agent-field small{color:#aebfc1}
+    .viewer-toolbar .native-agent-status,.viewer-toolbar .native-console-diagnostics,.viewer-toolbar .native-target-panel{position:static;inset:auto;transform:none;padding:0;border:0;background:none}
+    .viewer-toolbar .native-agent-status[open],.viewer-toolbar .native-console-diagnostics[open],.viewer-toolbar .native-target-panel[open]{position:relative}
+    .viewer-toolbar .native-toolbar-panel{position:fixed;top:58px;right:12px;box-sizing:border-box;width:min(480px,calc(100vw - 24px));max-height:65vh;overflow:auto;padding:14px;background:var(--viewer-surface,#11242cf5);border:1px solid var(--viewer-line,#aec3b4);border-radius:8px;white-space:normal;color:#dce9e5;font:12px/1.6 system-ui}
+    .native-agent-status summary,.native-console-diagnostics summary{cursor:pointer}
     .native-agent-field:has(#agent-goal){flex-basis:100%}.native-agent-field:has(#agent-notice:empty){display:none}
     .native-console-diagnostics{position:fixed;z-index:7;bottom:58px;right:14px;max-width:min(430px,85vw);padding:4px 8px;background:#11242ce8;border:1px solid #aec3b4;border-radius:7px;font:11px/1.4 system-ui}
     .native-console-diagnostics pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:35vh;overflow:auto}.native-console-diagnostics a{color:#afe2ff}
@@ -183,7 +209,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     onView: view => { if (!disposed) renderAgentStatus(view, el) } })
   const dispose = () => {
     if (disposed) return
-    disposed = true; stopStatus(); appearanceUi.dispose(); cameraUi.dispose(); sceneUi.dispose(); dungeonUi?.dispose();targets.remove();activityUi.dispose(); ui.dispose(); sceneHost?.dispose()
+    disposed = true; stopStatus(); layoutUi.dispose(); chatUi?.dispose(); galleryUi.dispose(); appearanceUi.dispose(); cameraUi.dispose(); sceneUi.dispose(); dungeonUi?.dispose();targets.remove();activityUi.dispose(); ui.dispose(); sceneHost?.dispose()
     for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     label.remove(); ysmNotice.remove(); stateBar.remove(); details.remove(); style.remove()
   }
@@ -194,7 +220,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       onBuild:buildChanged,
       cameraSettings,onCameraManual:mode=>mode&&cameraUi.select?cameraUi.select(mode):cameraUi.manual(),
       onSelection:value=>{targetSelect.value=value?String(value.entityId):'';targetInfo.textContent=value?`${value.name} · #${value.entityId}${Number.isFinite(value.health)?' · 生命 '+value.health:''}`:'正在跟随 Agent 本人'},
-      onIdentity (value) { if (disposed) return; identity = value; ui.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },
+      onIdentity (value) { if (disposed) return; resetMessages(); identity = value; ui.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },
       onState (value) {
         if (disposed) return
         if (value?.type === 'presentation') {
@@ -202,11 +228,13 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         } else if (['fishingCatch','inventoryPreview','entityDamage','combatFeedback'].includes(value?.type)) ui.event(value)
         else { latestState = value; ui.update(value) }
         activityUi.update(latestState, { iconRevision: ui.getState().iconRevision })
+        updateMessages(latestState)
         updateDiagnosticText()
       },
       onUnavailable (reason) {
         if (disposed) return
         lastDiagnostics = null; appearanceUi.update(null)
+        resetMessages()
         label.hidden = true; ui.reset(); activityUi.reset(); boot.classList.add('is-compact','is-error'); boot.textContent = `原生画面不可用：${reason}`
         updateDiagnosticText()
         ysmNotice.hidden = true
@@ -251,6 +279,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     })
     if (disposed) { sceneHost.dispose(); return { dispose, ui, quality, get sceneHost () { return sceneHost } } }
     sceneHost.setView(pendingMode)
+    switchView(pendingMode); layoutUi.adopt()
     sceneHost.setSceneSettings?.(sceneSettings)
     if (sceneHost.actor) ui.setActor(sceneHost.actor)
     if (sceneHost.assetReader) {

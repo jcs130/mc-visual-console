@@ -8,6 +8,7 @@ const UUID = 'e371227c-09fa-3722-84f4-f3228a552c3c'
 function fullShell () {
   const document = shell(), window = new Element('window', document)
   window.devicePixelRatio = 2; window.location = { pathname: '/third/' }
+  window.MutationObserver = class { observe () {} disconnect () {} }
   window.history = { replaceState (_state, _name, path) { window.path = path } }
   const nav = document.createElement('nav'); nav.className = 'corti-view-switch'; document.body.append(nav)
   for (const mode of ['first','third','dungeon']) {
@@ -30,6 +31,34 @@ test('all original view routes select the actual native first/third/dungeon came
   assert.equal(consoleViewMode('/dungeon/'), 'dungeon')
   assert.equal(consoleViewMode('/', 'third'), 'third')
   assert.equal(consoleViewMode('/dungeon/', '__VIEW_MODE__'), 'dungeon')
+})
+
+test('native entry reuses the shared docked toolbar and clears its history on epoch changes', async () => {
+  const { document, window } = fullShell(); let callbacks
+  const console = await bootNativeConsole({ document, window, startStatus: () => () => {}, mount: async options => {
+    callbacks = options
+    options.onIdentity({ confirmed: true, player: 'Alice', playerUuid: UUID })
+    return { renderer: { setPixelRatio () {} }, setView () {}, dispose () {} }
+  } })
+  assert.equal(document.body.dataset.viewerLayout, 'docked')
+  assert.equal(document.querySelectorAll('.viewer-toolbar').length, 1)
+  assert.equal(document.getElementById('corti-inventory-toggle').parentNode.className, 'viewer-toolbar-tools')
+  assert.ok(document.querySelector('.viewer-agent-views'))
+  const chat = document.querySelector('.corti-chat')
+  assert.equal(chat.parentNode.className, 'viewer-toolbar-tools')
+  const message = { seq: 1, kind: 'chat', text: '<b>actual message</b>', observedAt: Date.now() }
+  callbacks.onState({ type: 'snapshot', epoch: 1, presentation: { ...presentation(), gameMessages: [message] } })
+  callbacks.onState({ type: 'snapshot', epoch: 1, presentation: { ...presentation(), gameMessages: [message] } })
+  chat.querySelector('.corti-chat-toggle').dispatch('click')
+  assert.equal(document.querySelectorAll('.corti-chat-message').length, 1)
+  assert.match(chat.textContent, /<b>actual message<\/b>/)
+  callbacks.onState({ type: 'snapshot', epoch: 2, presentation: presentation() })
+  assert.equal(document.querySelectorAll('.corti-chat-message').length, 0)
+  assert.equal(document.querySelector('.dungeon-camera-controls').hidden, true)
+  console.dispose()
+  assert.equal(document.querySelector('.viewer-toolbar'), null)
+  assert.equal(document.querySelector('.corti-chat'), null)
+  assert.equal(document.querySelector('.viewer-agent-views'), null)
 })
 
 test('console exposes build refresh before native registry decoding and keeps the current route',async()=>{

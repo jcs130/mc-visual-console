@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createContext, runInContext } from 'node:vm';
 import { shell } from './fixtures/native-console-dom.mjs';
+import { installChatHistory } from '../../src/modern-viewer/chat-history.js';
 
 const chatSource = readFileSync(new URL('../minecraft-viewer-chat.js',import.meta.url),'utf8');
 const eventsSource = readFileSync(new URL('../minecraft-viewer-events.js',import.meta.url),'utf8');
@@ -10,7 +11,7 @@ function browser(search = '') {
   const document = shell(), handlers = new Map(), timers = new Map(); let index = 0;
   for (const node of document.querySelectorAll('div')) node.style.setProperty = () => {};
   const bars = document.createElement('div'); bars.id = 'corti-boss-bars'; document.body.append(bars);
-  const context = createContext({ document, URLSearchParams, location: { search }, Date,
+  const context = createContext({ document, installChatHistory, URLSearchParams, location: { search }, Date,
     performance: { now: () => Date.now() },
     socket: { on(name,fn) { const list = handlers.get(name) ?? []; list.push(fn); handlers.set(name,list); } },
     setTimeout: fn => { const id = ++index; timers.set(id,fn); return id; }, clearTimeout: id => timers.delete(id),

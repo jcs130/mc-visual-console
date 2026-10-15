@@ -18,6 +18,7 @@ import { installSceneSettings } from './scene-settings.js';
 import { CameraDirector, loadCameraSettings, cameraCollisionDistance } from './camera-director.js';
 import { installCameraSettings } from './camera-settings.js';
 import { installAgentViewGallery } from './agent-view-gallery.js';
+import { installChatHistory } from './chat-history.js';
 import { installViewerControlClient } from './viewer-control-client.js';
 import { ensureManualControlUi } from './manual-control-ui.js';
 import { installAgentVisualization } from "./agent-visual-overlay.js";

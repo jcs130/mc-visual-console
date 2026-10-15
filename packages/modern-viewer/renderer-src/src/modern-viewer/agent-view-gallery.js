@@ -37,10 +37,10 @@ export function installAgentViewGallery({document,window,hidden=false}){
   async function refresh(){
     if(disposed||!root.open||controller)return;
     controller=new AbortController();
-    try{const response=await window.fetch('/agent-views',{signal:controller.signal,cache:'no-store'});
+    try{const response=await window.fetch(new URL('agent-views',document.baseURI||window.location?.href||'http://localhost/').href,{signal:controller.signal,cache:'no-store'});
       if(!response.ok)throw Error(response.status===404?'当前运行版本尚未提供照片记录':'照片记录暂时不可用');
-      rows=normalizeAgentViews(await response.json());
-      status.textContent=rows.length?'':'这次连接还没有拍摄记录。';
+      const payload=await response.json();rows=normalizeAgentViews(payload);
+      status.textContent=payload.available===false?'此连接尚未接入 Agent 拍照记录；观战画面不会自动拍照或调用模型。':rows.length?'':'这次连接还没有拍摄记录。';
       const next=JSON.stringify(rows);if(next!==signature){signature=next;strip.replaceChildren();
         for(const row of rows){const button=make('button',strip);button.type='button';button.dataset.viewId=row.id;
           button.setAttribute('aria-label',`查看 ${new Date(row.capturedAt).toLocaleTimeString('zh-CN')} 的照片`);

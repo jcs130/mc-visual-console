@@ -19,8 +19,10 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
     if(value!==undefined)element.textContent=value
     parent.append(element);return element
   }
-  const root=add(document.body,'aside','native-live-inspector')
+  const root=add(document.body,'details','native-live-inspector')
+  root.id='native-live-inspector'
   root.setAttribute('aria-label','游戏操作与任务进程')
+  add(root,'summary','native-inspector-heading','游戏过程')
   const status=add(root,'div','native-inspector-status','等待本人操作数据')
   const panes=new Map()
   for(const [key,title]of [['events','操作过程'],['items','物品收支'],['recipes','合成与材料'],['merchant','交易报价'],
@@ -33,6 +35,7 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
   style.textContent=`
     .native-live-inspector{position:fixed;z-index:6;top:176px;right:14px;width:min(320px,calc(100vw - 28px));max-height:65vh;overflow:auto;color:#e8eeeb;background:var(--mc-viewer-ui-bg,#11242ce8);border:1px solid var(--mc-viewer-ui-border,#aec3b4);border-radius:8px;font:12px/1.5 system-ui;backdrop-filter:blur(8px)}
     .native-inspector-status{padding:8px 10px;color:#afc9c6;border-bottom:1px solid #b9d0c52b}
+    .native-inspector-heading{cursor:pointer;font-weight:600;padding:4px 0}
     .native-inspector-pane>summary{cursor:pointer;padding:7px 10px;font-weight:600}.native-inspector-pane[open]>summary{background:#a6cbb912}
     .native-inspector-body{padding:0 10px 8px}.native-inspector-row{padding:5px 0;border-bottom:1px solid #a6cbb918;overflow-wrap:anywhere}
     .native-inspector-row small{display:block;color:#a9bdb9;font-size:10px}.native-inspector-note{color:#a9bdb9;margin:5px 0;font-size:11px}

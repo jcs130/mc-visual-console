@@ -630,6 +630,8 @@ test('full original shell modes and diagnostic page coexist with native bundles,
   assert.match((await request(host, 'diagnostics')).body, /src="\/client\.js"/)
   assert.equal((await request(host, 'index.js')).body, (await request(host, 'native-console.js')).body)
   assert.equal((await request(host, 'third/', { method: 'POST' })).status, 405)
+  const photographs = JSON.parse((await request(host, 'agent-views')).body)
+  assert.deepEqual(photographs, { schema: 'mc-agent-views/v1', available: false, reason: 'AGENT_CAPTURE_PROVIDER_NOT_ATTACHED', images: [] })
   assert.equal((await request(host, assetPath)).body, assetBytes.toString())
   assert.equal((await request(host, 'assets/test/models/unsupported.json')).status, 404)
   assert.equal((await request(host, 'registry/block-states.jsonl')).status, 404)
