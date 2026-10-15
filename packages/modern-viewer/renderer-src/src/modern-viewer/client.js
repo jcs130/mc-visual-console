@@ -161,8 +161,8 @@ const queryValue = (name) => (pageQuery.has(name) ? pageQuery.get(name) : module
 const isPhotoView = queryValue("photo") === "1";
 const isObsOverlay = !isPhotoView && (queryValue("obs") === "1" || queryValue("overlay") === "1"
   || window.location.pathname.startsWith("/obs/"));
-const viewMode = isObsOverlay ? "first" : window.location.pathname.startsWith("/dungeon")
-  ? "dungeon"
+const viewMode = isObsOverlay ? "first" : window.location.pathname.startsWith("/3dview")
+  ? "3dview"
   : window.location.pathname.startsWith("/third")
     ? "third"
     : "first";
@@ -196,7 +196,7 @@ function resetObsHands() {
   if (typeof cortiWeaponSwings !== 'undefined') { cortiWeaponSwings.left = null; cortiWeaponSwings.right = null; }
 }
 const isFreeOrbitView = viewMode === "third";
-const isDungeonView = viewMode === "dungeon";
+const isDungeonView = viewMode === "3dview";
 const usesWorldAvatar = !isFirstPersonView;
 const firstPersonFov = clampQueryNumber(queryValue("fov"), 30, 140, isObsOverlay ? 70 : 120);
 const thirdPersonFov = clampQueryNumber(queryValue("fov"), 30, 140, isPhotoView ? 120 : 75);
@@ -1074,7 +1074,7 @@ async function initializeRenderer(version) {
       isFreeOrbitView
         ? `Three.js r184 · WebGL2 · ${mesherLabel}｜拖拽环绕视角`
         : isDungeonView
-          ? `Three.js r184 · WebGL2 · ${mesherLabel}｜地牢 2.5D · FOV ${dungeonFov}°`
+          ? `Three.js r184 · WebGL2 · ${mesherLabel}｜3D观战 · FOV ${dungeonFov}°`
           : `Three.js r184 · WebGL2 · ${mesherLabel}｜第一人称 FOV ${firstPersonFov}°`,
       false,
       true,
@@ -2250,7 +2250,7 @@ function installDungeonCameraControls() {
   const canvas = document.getElementById("viewer-canvas");
   if (!canvas) return;
   canvas.tabIndex = 0;
-  canvas.setAttribute("aria-label", "地牢 2.5D 视角；悬停识别对象，接管后点击地面移动，右键或长按目标选择详情、走近、攻击或使用，滚轮缩放");
+  canvas.setAttribute("aria-label", "3D观战 视角；悬停识别对象，接管后点击地面移动，右键或长按目标选择详情、走近、攻击或使用，滚轮缩放");
   canvas.style.touchAction = "none";
   dungeonObserverControls?.dispose();
   dungeonObserverControls = installDungeonObserverControls({
@@ -4289,7 +4289,7 @@ function mountSelectedPlayerModel({ id, signature, entity, sceneEntity, nativeRo
       playerModelLastAppliedAt = Date.now();
       playerModelLastError = null;
       publishPlayerModelDataset();
-      postPlayerModelResult("applied", "第三人称与地牢视角已换用完整骨骼模型");
+      postPlayerModelResult("applied", "第三人称与3D观战视角已换用完整骨骼模型");
       return true;
     },
   }).then((result) => {
@@ -5445,14 +5445,14 @@ function updateManualHelp() {
   if (!help) return;
   if (manualControlActive) {
     help.textContent = isDungeonView
-      ? `地牢接管${manualControlPhase === "attacking" ? " · 正在攻击" : manualControlPhase === "navigating" ? " · 正在移动" : manualControlPhase === "interacting" ? " · 正在交互" : ""}：点击地面移动｜右键目标选择操作｜悬停识别目标｜滚轮缩放｜WASD/左摇杆移动｜X 停｜Y/Esc 交还`
+      ? `3D观战接管${manualControlPhase === "attacking" ? " · 正在攻击" : manualControlPhase === "navigating" ? " · 正在移动" : manualControlPhase === "interacting" ? " · 正在交互" : ""}：点击地面移动｜右键目标选择操作｜悬停识别目标｜滚轮缩放｜WASD/左摇杆移动｜X 停｜Y/Esc 交还`
       : isFreeOrbitView
         ? "人工接管：WASD/左摇杆移动｜拖拽/右摇杆转镜头｜点地寻路｜A/空格跳｜X 停｜Y/Esc 交还"
         : `人工接管：单击画面锁定鼠标｜鼠标环顾｜WASD 移动｜空格跳跃｜Shift 疾跑｜Ctrl 潜行｜Esc 退出鼠标并停止｜Y 交还 Agent｜FOV ${firstPersonFov}°`;
     return;
   }
   help.textContent = isDungeonView
-    ? `地牢 2.5D：固定斜角跟随｜滚轮 ${DUNGEON_MIN_DISTANCE}–${DUNGEON_MAX_DISTANCE} 格｜悬停显示可交互图标｜右键/长按目标选择详情、走近、攻击或使用｜接管后点地移动`
+    ? `3D观战：固定斜角跟随｜滚轮 ${DUNGEON_MIN_DISTANCE}–${DUNGEON_MAX_DISTANCE} 格｜悬停显示可交互图标｜右键/长按目标选择详情、走近、攻击或使用｜接管后点地移动`
     : isFreeOrbitView
       ? `单击 NPC 打开角色档案｜左拖旋转｜Shift/右拖平移｜滚轮 ${minimumThirdPersonOrbitDistance()}–${maximumOrbitDistance} 格｜WASD 平移观察镜头｜空格上升｜Ctrl 下降｜双击复位（不会控制角色）`
       : `第一人称同步角色真实视线 · FOV ${firstPersonFov}° · 接管后单击画面进入标准 PC 鼠标视角`;

@@ -30,7 +30,7 @@ test('host serves generated fishing and audio mounts, camera pages and CSS', asy
     assert.ok(html.endsWith(frame + script + '</body>'));
     assert.ok(!html.includes('legacy'));
     assert.equal(await viewerPageHtml(root, 'third', legacy), '<body data-view-mode="third">third</body>');
-    assert.ok((await viewerPageHtml(root, 'dungeon', legacy)).includes('data-view-mode="dungeon"'));
+    assert.ok((await viewerPageHtml(root, '3dview', legacy)).includes('data-view-mode="3dview"'));
     assert.equal(await viewerPageCss(root, '.legacy{}', '.speech{}'), '.viewer-fishing-catch{color:gold}.speech{}');
     await writeFile(path.join(root, 'public', 'index.html'), html);
     assert.equal(await viewerPageHtml(root, 'first', legacy, frame, script), html);
@@ -39,7 +39,7 @@ test('host serves generated fishing and audio mounts, camera pages and CSS', asy
 
 test('host keeps legacy packages usable and validates byte range boundaries', async () => {
   await temporary(async root => {
-    assert.equal(await viewerPageHtml(root, 'dungeon', legacy), '<body data-view-mode="dungeon">legacy</body>');
+    assert.equal(await viewerPageHtml(root, '3dview', legacy), '<body data-view-mode="3dview">legacy</body>');
     assert.equal(await viewerPageCss(root, '.legacy{}', '.speech{}'), '.legacy{}');
   });
   assert.deepEqual(viewerByteRange('bytes=2-5', 10), { start: 2, end: 5 });

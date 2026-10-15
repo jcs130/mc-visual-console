@@ -49,3 +49,13 @@ test('self camera target uses the same interpolated position and shortest yaw th
  d.receive(pose(3),80,'self:1',{resetSequence:1});const reset=d.sample(80)
  assert.equal(reset.x,3);assert.equal(nativeCameraTarget({...raw,pose:reset},{root:{position:reset}}).position.x,3)
 })
+
+test('late publications retain visible-session spikes with bounded sixty-second histograms',()=>{
+ const g=new NativeFrameGaps();let t=0;g.frame(t);g.frame(t+=200)
+ for(let i=0;i<5000;i++)g.frame(t+=16)
+ assert.equal(g.value.max,16);assert.equal(g.value.session.max,200);assert.equal(g.value.session.over100,1)
+ assert.equal(g.value.window60.max,16);assert.ok(g.value.window60.durationMs<=60016)
+ const session={...g.session};g.frame(t+50000,false);g.frame(t+100000);g.frame(t+101000)
+ assert.equal(g.session.sampleCount,session.sampleCount+1);assert.equal(g.session.durationMs,session.durationMs+1000)
+ assert.equal(g.buckets.length,61);g.reset();assert.equal(g.session.sampleCount,0)
+})

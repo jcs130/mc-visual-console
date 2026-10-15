@@ -30,7 +30,7 @@ node tools/prepare-viewer-assets.mjs java-1.20.6 "<output-dir>"
 
 构建默认使用通用模式，适合 Neko 等其他宿主。千灯纪的技能视觉映射和公会看板显示用 `--preset=qiandengji` 显式开启；此选项不启用参考包内的命名 NPC 身份或本地剧情。服务端机制和 Agent 决策仍在独立 World 中。
 
-1.20.6 的第三人称和 2.5D 画面只在检测到视线或顶层遮挡时开启透视／切面；无遮挡时恢复完整地形，不再常驻人物周围的透视圈。离开遮挡沿用连续采样确认，避免边缘来回闪烁。
+1.20.6 的第三人称和 3D观战画面只在检测到视线或顶层遮挡时开启透视／切面；无遮挡时恢复完整地形，不再常驻人物周围的透视圈。离开遮挡沿用连续采样确认，避免边缘来回闪烁。
 
 2026-10-10：玩家与 NPC 头顶气泡已接入同连接原版 TextDisplay，包含匹配 1.20.6 的中文原字库、跟随、更新和清理。远端电脑需更新 content 桥并重建实际网页资源；[更新步骤与支持范围](packages/modern-viewer/renderer-src/docs/text-display-bubbles.md)。无需重启 Minecraft 服务器。
 
@@ -53,7 +53,7 @@ My Agent World 的实验接入复用原 `page-template.html`、`viewer.css`、�
 | 路径 | 当前作用 |
 | --- | --- |
 | `/`、`/third/` | 原完整页面的第一人称、第三人称跟随 |
-| `/dungeon/` | 同一原完整页面的地下城 2.5D 跟随相机；遮挡、切面与点击操控尚未接入 |
+| `/3dview/` | 同一原完整页面的3D观战 跟随相机；遮挡、切面与点击操控尚未接入 |
 | `/diagnostics` | 独立原生模型、身份、注册表与缺口检查页 |
 | `/events`、`/status.json`、`/healthz` | 同账号 SSE、只读状态、连接与原生流健康 |
 
@@ -78,7 +78,7 @@ My Agent World 的实验接入复用原 `page-template.html`、`viewer.css`、�
 
 ## 在另一个项目复用
 
-从 [`renderer-src/README.md`](packages/modern-viewer/renderer-src/README.md) 开始：宿主提供静态文件和 Socket.IO 数据桥接，前端通过 [`SOCKET_PROTOCOL.md`](packages/modern-viewer/renderer-src/SOCKET_PROTOCOL.md) 接收 Mineflayer 状态。第一人称、第三人称和地下城 2.5D 共用同一套资源。
+从 [`renderer-src/README.md`](packages/modern-viewer/renderer-src/README.md) 开始：宿主提供静态文件和 Socket.IO 数据桥接，前端通过 [`SOCKET_PROTOCOL.md`](packages/modern-viewer/renderer-src/SOCKET_PROTOCOL.md) 接收 Mineflayer 状态。第一人称、第三人称和3D观战 共用同一套资源。
 
 Neko 接入与更新检查见 [Neko 复用说明](docs/NEKO-INTEGRATION.md)。
 

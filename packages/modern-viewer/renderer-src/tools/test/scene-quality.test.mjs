@@ -16,10 +16,10 @@ test('corrupt preferences and URL values cannot inject arbitrary renderer flags'
 test('only confirmed first-person survival/adventure with a ready camera section may cull', () => {
   const safe={gameMode:'survival',view:'first',sectionReady:true};
   for(const gameMode of ['survival','adventure'])assert.equal(resolveSceneQuality(settings(),{...safe,gameMode}).smartCull,true);
-  for(const extra of [{gameMode:'spectator'},{gameMode:'creative'},{gameMode:null},{view:'third'},{view:'dungeon'},{overlay:true},{sectionReady:false}])
+  for(const extra of [{gameMode:'spectator'},{gameMode:'creative'},{gameMode:null},{view:'third'},{view:'3dview'},{overlay:true},{sectionReady:false}])
     assert.equal(resolveSceneQuality(settings(),{...safe,...extra}).smartCull,false,JSON.stringify(extra));
   assert.equal(resolveSceneQuality(settings({occlusion:false}),safe).smartCull,false);
-  for(const view of ['third','dungeon']) assert.equal(resolveSceneQuality(settings(),{...safe,view,observerCullReady:true}).smartCull,true);
+  for(const view of ['third','3dview']) assert.equal(resolveSceneQuality(settings(),{...safe,view,observerCullReady:true}).smartCull,true);
   assert.equal(resolveSceneQuality(settings(),{...safe,view:'third',gameMode:null,observerCullReady:true}).smartCull,true,
     'observer graph follows the camera even when the body stream omits game mode');
 });

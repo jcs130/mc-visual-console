@@ -1,4 +1,4 @@
-const modes={first:'第一人称',third:'第三人称',dungeon:'地下城视角',overview:'俯视图'};
+const modes={first:'第一人称',third:'第三人称','3dview':'3D观战',overview:'俯视图'};
 const deliveries={captured:'拍摄完成', 'tool-result':'已生成工具结果', 'host-event':'已交给宿主', failed:'交给宿主失败',discarded:'连接变化，已弃用'};
 export function normalizeAgentViews(payload){
   if(payload?.schema!=='mc-agent-views/v1'||!Array.isArray(payload.images))return [];

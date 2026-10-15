@@ -90,7 +90,7 @@ function injectedPresentation (provider, uuid) {
     const ownSelf = copy.self && copy.self.playerUuid === uuid ? Object.fromEntries(
       ['health', 'maxHealth', 'absorption', 'armor', 'food', 'saturation', 'oxygen', 'airSupply', 'maxAirSupply',
         'inWater', 'experienceLevel', 'experienceProgress', 'experiencePoints', 'equipment', 'mainArm', 'usingItem',
-        'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'handAnimation', 'pose', 'ysm', 'motion']
+        'bodyYaw', 'headYaw', 'sprinting', 'climbing', 'flying', 'vehicleType', 'extraAction', 'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'handAnimation', 'pose', 'ysm', 'motion']
         .filter(key => Object.hasOwn(copy.self, key)).map(key => [key, key === 'ysm' ? projectNativeYsmState(copy.self.ysm, uuid)
           : key === 'motion' ? projectNativePlayerRenderState(copy.self.motion, uuid) : copy.self[key]])) : null
     const effects=Array.isArray(copy.effects)?copy.effects.slice(0,32).flatMap(row=>
@@ -341,11 +341,15 @@ export function parseNativeWorldPreviewArguments (args) {
 
 // A write returning false still queues its bytes. Stop until drain rather than
 // accumulating more frames behind a slow browser.
+const encodedEvents = new WeakSet()
+export function encodeNativeWorldEvent (message) {
+  const text=JSON.stringify(message)
+  if(Buffer.byteLength(text)>MAX_EVENT_BYTES)throw Error('NATIVE_WORLD_HTTP_MESSAGE_TOO_LARGE')
+  const encoded=Object.freeze({text:`data: ${text}\n\n`});encodedEvents.add(encoded);return encoded
+}
 export function sendNativeWorldEvent (client, message) {
   if (client.blocked || client.response.destroyed) return false
-  const text = JSON.stringify(message)
-  if (Buffer.byteLength(text) > MAX_EVENT_BYTES) throw Error('NATIVE_WORLD_HTTP_MESSAGE_TOO_LARGE')
-  client.blocked = !client.response.write(`data: ${text}\n\n`)
+  client.blocked = !client.response.write((encodedEvents.has(message)?message:encodeNativeWorldEvent(message)).text)
   return true
 }
 
@@ -418,7 +422,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   const appearanceBuildSha256 = createHash('sha256').update(buildInfo.assetManifestSha256).update(bundledAppearances.sha256).digest('hex')
   const viewerBuild=nativeViewerBuildSignature(buildInfo.buildSource.sourceSha256,appearanceBuildSha256)
   buildInfo.viewerBuild=viewerBuild
-  const pages = new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['dungeon/', 'dungeon'], ['dungeon', 'dungeon']]
+  const pages = new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['3dview/', '3dview'], ['3dview', '3dview']]
     .map(([route, mode]) => [route, Buffer.from(withNativeViewerBuild(renderViewerPage(mode),viewerBuild))]))
   const diagnosticBytes=Buffer.from(withNativeViewerBuild(diagnosticsPage.toString(),viewerBuild))
   return {
@@ -426,7 +430,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
     attach ({ bot, nativeStream, simplifyNBT, resolveDimension, expectedUsername, getAgentStatus = null, getPresentationState = null, logger = console, now = Date.now,
       sourceMode = 'live_same_player_connection', basePath = '/' }) {
       if (!['live_same_player_connection', 'numen_server_body'].includes(sourceMode)) throw Error('NATIVE_WORLD_SOURCE_INVALID')
-      const scopedPages = basePath === '/' ? pages : new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['dungeon/', 'dungeon'], ['dungeon', 'dungeon']]
+      const scopedPages = basePath === '/' ? pages : new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['3dview/', '3dview'], ['3dview', '3dview']]
         .map(([route, mode]) => [route, Buffer.from(withNativeViewerBuild(renderViewerPage(mode, { basePath }),viewerBuild))]))
       // Mineflayer 4.37.1 fills bot.username in its login plugin. Attach before
       // that packet using the caller's createBot username, then verify it.
@@ -450,7 +454,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       const agentVisual = createNativeAgentVisualization(bot, { getAgentStatus, now })
       let closed = false, closing = null, listening = null, currentPort = port, connectionEnded = false, identityConfirmed = Boolean(bot.username)
       const cadence = new NativeSnapshotCadence()
-      let cachedSnapshot = null, cachedTerrainSignature = null, snapshotBuildCount = 0, snapshotBuildMs = null
+      let cachedSnapshot = null, cachedTerrainSignature = null, snapshotBuildCount = 0, snapshotBuildMs = null, terrainSignatureMs = null, wireEncodeMs = null
       const motionTracker = createNativePlayerMotionTracker()
       let physicsTickCount = 0
       let receivedProfile = null, messageSequence = 0, gameMessages = [], currentTitle = null, currentActionbar = null
@@ -537,7 +541,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           reason: world.error || (closed ? 'NATIVE_WORLD_HOST_CLOSED' : null), registrySha256: hash, epoch: world.epoch,
           packetSequence: world.lastSequence, packetCount: world.packetCount, loadedColumns: world.columns.size,
           terrain: { coverage: cachedSnapshot?.viewCoverage ?? null, bounds: cachedSnapshot?.bounds ?? null,
-            snapshotBuildCount, snapshotBuildMs, minimumIntervalMs: cadence.minimumIntervalMs, recenterDistance: cadence.recenterDistance },
+            snapshotBuildCount, snapshotBuildMs, terrainSignatureMs, wireEncodeMs, scan: world.snapshotTiming, budgetEncodeMs: world.snapshotEncodeMs, minimumIntervalMs: cadence.minimumIntervalMs, recenterDistance: cadence.recenterDistance },
           entityDataAvailable: entityState.available, entityDataReason: entityState.reason ?? null,
           entityDataScope: cachedSnapshot?.bounds ? 'current_view_bounds' : 'tracked_connection_entities',
           entityRegistrySha256,
@@ -549,7 +553,12 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         try {
           if (!access.allowsRequest(request, currentPort)) { response.writeHead(403); response.end(); return }
           if (request.method !== 'GET') { response.writeHead(405, { Allow: 'GET' }); response.end(); return }
-          const requestPath = decodeURIComponent(new URL(request.url, `http://127.0.0.1:${currentPort}`).pathname).slice(1)
+          let requestPath = decodeURIComponent(new URL(request.url, `http://127.0.0.1:${currentPort}`).pathname).slice(1)
+          if (requestPath === 'dungeon' || requestPath.startsWith('dungeon/')) {
+            const suffix = requestPath.slice('dungeon'.length);
+            response.writeHead(308, { Location: basePath + '3dview' + (suffix || '/') + new URL(request.url, 'http://localhost').search }); response.end(); return
+          }
+          if (/^(third|3dview)\/.+/.test(requestPath)) requestPath=requestPath.replace(/^(third|3dview)\//,'')
           if (requestPath === 'events') {
             if (clients.size >= 4) { response.writeHead(429); response.end(); return }
             response.writeHead(200, { ...headers('text/event-stream'), 'X-Accel-Buffering': 'no' })
@@ -622,16 +631,18 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const currentPose = playerPose(player)
         const value = { type: 'motion', epoch: world.epoch, playerUuid: player.uuid, pose: currentPose, motion,
           handAnimation: nativeStream.handState?.() ?? null }
+        const encoded=encodeNativeWorldEvent(value)
         for (const client of clients) {
           if (client.blocked || client.needsSnapshot) continue
           if (!sendIdentity(client) || client.blocked) continue
-          sendNativeWorldEvent(client, value)
+          sendNativeWorldEvent(client, encoded)
         }
       }
       const unavailable = reason => {
         cachedSnapshot = null; cachedTerrainSignature = null; cadence.reset(); motionTracker.reset('connection'); resetPresentation()
         for (const client of clients) client.needsSnapshot = true
-        for (const client of clients) sendNativeWorldEvent(client, { type: 'unavailable', reason })
+        const encoded=encodeNativeWorldEvent({type:'unavailable',reason})
+        for (const client of clients) sendNativeWorldEvent(client, encoded)
         logger?.error?.('NATIVE_WORLD_UNAVAILABLE ' + reason)
       }
       const error = error => world.unavailable(error)
@@ -676,21 +687,24 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const player = selfPlayer()
         if (!player) return
         const value = { type: 'presentation', epoch: world.epoch, playerUuid: player.uuid, presentation: presentation(player) }
-        for (const client of clients) if (!client.needsSnapshot) sendNativeWorldEvent(client, value)
+        const encoded=encodeNativeWorldEvent(value)
+        for (const client of clients) if (!client.needsSnapshot) sendNativeWorldEvent(client, encoded)
       }
       const collected=value=>{
         const player=selfPlayer()
         if(!player||closed||connectionEnded||world.error)return
         const target=value.collectorEntityId===player.entityId?{x:player.position.x,y:player.position.y+player.eyeHeight/2,z:player.position.z}:null
         const message={type:'entity_collect',epoch:world.epoch,playerUuid:player.uuid,source:'received_native_collect_packet',...value,target,tick:physicsTickCount}
-        for(const client of clients)if(!client.needsSnapshot)sendNativeWorldEvent(client,message)
+        const encoded=encodeNativeWorldEvent(message)
+        for(const client of clients)if(!client.needsSnapshot)sendNativeWorldEvent(client,encoded)
       }
       const effect=value=>{
         const player=selfPlayer()
         if(!player||closed||connectionEnded||world.error)return
         const message={type:'world_effect',epoch:world.epoch,playerUuid:player.uuid,source:'received_native_packet_effect',
           effect:{kind:value.kind,value:value.value},sequence:value.sequence,observedAt:value.observedAt,tick:physicsTickCount}
-        for(const client of clients)if(!client.needsSnapshot)sendNativeWorldEvent(client,message)
+        const encoded=encodeNativeWorldEvent(message)
+        for(const client of clients)if(!client.needsSnapshot)sendNativeWorldEvent(client,encoded)
       }
       world.on('world', worldChanged); world.on('reset', reset); world.on('pose', pose); world.on('unavailable', unavailable)
       world.on('collect',collected)
@@ -702,40 +716,55 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       bot.on('messagestr', message); bot.on('title', title); bot.on('title_times', titleTimes); bot.on('title_clear', titleClear)
       bot._client.on('player_info', playerInfo)
       nativeStream.events.on('presentation', presentationChanged)
-      const timer = setInterval(() => {
-        if (closed || !clients.size) return
+      let scanning=false
+      const timer = setInterval(async () => {
+        if (closed || !clients.size || scanning) return
         try {
           // A blocked browser must not cause repeated world scans. Its next
           // drain requests one current snapshot instead of replaying old frames.
           for (const client of clients) if (client.blocked) client.missedWorld ||= cadence.dirty
           if (![...clients].some(client => !client.blocked)) return
-          const player = selfPlayer()
-          const ownPresentation = presentation(player)
+          let player = selfPlayer()
+          let ownPresentation = presentation(player)
           let snapshot = null
           const startedAt = performance.now()
           if (cadence.required(world.pose, startedAt, !cachedSnapshot && [...clients].some(c => !c.blocked && c.needsSnapshot))) {
-            snapshot = world.snapshot()
+            scanning=true
+            try { snapshot = await world.snapshotAsync() } finally { scanning=false }
+            if(closed || !snapshot)return
+            player=selfPlayer();ownPresentation=presentation(player)
             snapshotBuildMs = Math.round((performance.now() - startedAt) * 100) / 100; snapshotBuildCount++
             cachedSnapshot = snapshot.type === 'snapshot' ? snapshot : null
             cadence.completed(world.pose, startedAt, snapshot.type === 'snapshot', snapshot.bounds)
             if(snapshot.type==='snapshot'){
+              const signatureStarted=performance.now()
               const signature=createHash('sha256').update(nativeTerrainSignature(snapshot)).digest('hex')
+              terrainSignatureMs=performance.now()-signatureStarted
+              snapshot.terrainSignature=signature
               if(signature===cachedTerrainSignature)snapshot=null
               cachedTerrainSignature=signature
             }else cachedTerrainSignature=null
           }
+          const terrainValue=snapshot || cachedSnapshot
+          const common={pose:playerPose(player),time:world.time,motion:{...motionTracker.current(),epoch:world.epoch},selfPlayer:player,presentation:ownPresentation}
+          const wireStarted=performance.now()
+          const terrainMessage=terrainValue?{...terrainValue,mode:sourceMode,entityState:injectTrackedMaidPresentation(world.entitySnapshot(terrainValue.bounds),ownPresentation,world.dimension?.name,player?.uuid),...common}:null
+          const frameMessage={type:world.error?'unavailable':'frame',reason:world.error,epoch:world.epoch,...common,entityState:injectTrackedMaidPresentation(world.entitySnapshot(cachedSnapshot?.bounds),ownPresentation,world.dimension?.name,player?.uuid),packetSequence:world.lastSequence}
+          const encodedTerrain=terrainMessage&&(snapshot||[...clients].some(c=>!c.blocked&&c.needsSnapshot))?encodeNativeWorldEvent(terrainMessage):null
+          const encodedFrame=encodeNativeWorldEvent(frameMessage)
+          wireEncodeMs=performance.now()-wireStarted
           for (const client of clients) {
             if (client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
             if (!sendIdentity(client) || client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
             if (snapshot || client.needsSnapshot) {
               const value = snapshot || cachedSnapshot
-              if (value && sendNativeWorldEvent(client, { ...value, mode: sourceMode, entityState: injectTrackedMaidPresentation(world.entitySnapshot(value.bounds), ownPresentation, world.dimension?.name, player?.uuid), pose: playerPose(player), time: world.time, motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation })) {
+              if (value && sendNativeWorldEvent(client, encodedTerrain)) {
                 client.needsSnapshot = false
                 if (value.type === 'snapshot' && !client.stopVisual) client.stopVisual = agentVisual.subscribe(value => {
                   if (!world.error && !connectionEnded && !client.needsSnapshot) sendNativeWorldEvent(client, { type: 'agent_visual', epoch: world.epoch, ...value })
                 })
               }
-            } else sendNativeWorldEvent(client, { type: world.error ? 'unavailable' : 'frame', reason: world.error, epoch: world.epoch, pose: playerPose(player), motion: { ...motionTracker.current(), epoch: world.epoch }, selfPlayer: player, presentation: ownPresentation, entityState: injectTrackedMaidPresentation(world.entitySnapshot(cachedSnapshot?.bounds), ownPresentation, world.dimension?.name, player?.uuid), time: world.time, packetSequence: world.lastSequence })
+            } else sendNativeWorldEvent(client, encodedFrame)
           }
         } catch (error) { world.unavailable(error) }
       }, 200)

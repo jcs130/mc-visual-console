@@ -25,21 +25,39 @@ export class NativeSelfDisplayPose {
   }
 }
 
-// Fixed visible RAF window, nearest-rank percentiles; hidden time never enters.
+// Keep the historical 240-gap API plus bounded visible-time session/60s evidence.
+// Histograms use 1ms upper-edge bins (1000+ is overflow); counts/max are exact.
+const emptyGaps = () => ({ sampleCount:0,durationMs:0,max:null,over33:0,over50:0,over100:0 })
+const addGap = (row, gap) => { row.sampleCount++;row.durationMs+=gap;row.max=Math.max(row.max??0,gap);for(const n of [33,50,100])if(gap>n)row['over'+n]++ }
 export class NativeFrameGaps {
   constructor () { this.values=new Float64Array(240);this.reset() }
-  reset () { this.count=0;this.index=0;this.previous=null;this.publishedAt=null;this.value=null }
+  reset () { this.resetWindow();this.session=emptyGaps();this.buckets=Array.from({length:61},()=>({second:-1,hist:new Uint32Array(1002),stats:emptyGaps()})) }
+  resetWindow () { this.count=0;this.index=0;this.previous=null;this.publishedAt=null;this.value=null }
   frame (now, visible=true) {
-    if(!visible || !Number.isFinite(now)){this.reset();return null}
-    if(this.previous!==null && now<this.previous)this.reset()
-    if(this.previous!==null){this.values[this.index]=now-this.previous;this.index=(this.index+1)%240;this.count=Math.min(240,this.count+1)}
+    if(!visible || !Number.isFinite(now)){this.resetWindow();return null}
+    if(this.previous!==null && now<this.previous)this.resetWindow()
+    if(this.previous!==null){
+      const gap=now-this.previous;this.values[this.index]=gap;this.index=(this.index+1)%240;this.count=Math.min(240,this.count+1)
+      addGap(this.session,gap)
+      const second=Math.floor(this.session.durationMs/1000),bucket=this.buckets[second%61]
+      if(bucket.second!==second){bucket.second=second;bucket.hist.fill(0);bucket.stats=emptyGaps()}
+      addGap(bucket.stats,gap);bucket.hist[Math.min(1001,Math.ceil(gap))]++
+    }
     this.previous=now
     if(this.publishedAt===null){this.publishedAt=now;return null}
     if(now-this.publishedAt<1000)return null
     this.publishedAt=now
     const sorted=Array.from(this.values.subarray(0,this.count)).sort((a,b)=>a-b),p=q=>sorted[Math.max(0,Math.ceil(sorted.length*q)-1)]??null
+    const window60=emptyGaps(),hist=new Float64Array(1002),second=Math.floor(this.session.durationMs/1000)
+    for(const bucket of this.buckets)if(bucket.second>=Math.max(0,second-59)&&bucket.second<=second){
+      for(const key of ['sampleCount','durationMs','over33','over50','over100'])window60[key]+=bucket.stats[key]
+      if(bucket.stats.max!==null)window60.max=Math.max(window60.max??0,bucket.stats.max)
+      for(let i=0;i<hist.length;i++)hist[i]+=bucket.hist[i]
+    }
+    const percentile=q=>{let count=0;for(let i=0;i<hist.length;i++){count+=hist[i];if(count>=Math.ceil(window60.sampleCount*q))return i===1001?null:i}return null}
     this.value={sampleCount:this.count,durationMs:sorted.reduce((a,b)=>a+b,0),p50:p(.5),p95:p(.95),p99:p(.99),max:sorted.at(-1)??null,
-      over33:sorted.filter(v=>v>33).length,over50:sorted.filter(v=>v>50).length,over100:sorted.filter(v=>v>100).length}
+      over33:sorted.filter(v=>v>33).length,over50:sorted.filter(v=>v>50).length,over100:sorted.filter(v=>v>100).length,
+      session:{...this.session},window60:{...window60,p50:percentile(.5),p95:percentile(.95),p99:percentile(.99),bucketMs:1000,percentileResolutionMs:1,overflowCount:hist[1001]}}
     return this.value
   }
 }

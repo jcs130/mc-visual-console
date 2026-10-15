@@ -584,8 +584,8 @@ test('missing, cleared or replaced cutting-board data cannot reuse an old empty 
   assert.deepEqual(world.snapshot({ halfExtent: 1, below: 0, above: 0 }).cuttingBoards, [])
 })
 
-const groupPoints = snapshot => snapshot.groups.flatMap(group => Array.from({ length: group.positions.length / 3 }, (_, i) =>
-  ({ x: group.positions[i * 3], y: group.positions[i * 3 + 1], z: group.positions[i * 3 + 2], stateId: group.stateId })))
+function groupPoints(snapshot) { return snapshot.groups.flatMap(group => Array.from({ length: group.positions.length / 3 }, (_, i) =>
+  ({ x: group.positions[i * 3], y: group.positions[i * 3 + 1], z: group.positions[i * 3 + 2], stateId: group.stateId }))) }
 
 test('a rooftop default view includes actual ground, a farther building, native biomes and block-entity state', () => {
   const { world, packet, chunk } = worldFixture()
@@ -741,4 +741,23 @@ test('a native definition that cannot fit even the minimum volume fails explicit
   assert.equal(world.error, null) // The received native world is valid; only this bounded view cannot be encoded.
   assert.equal(world.states.get(70001).properties.original_mod_input.length, 1600 * 1024)
   assert.equal(world.columns.size, 1)
+})
+
+test('cooperative snapshot is byte-equivalent and retires local changes/unload/teleport/reset', async()=>{
+ const {world,packet,chunk}=worldFixture();packet('map_chunk',{x:0,z:0,chunkData:chunk.dump()});world.setPose({...pose,x:3,z:3})
+ const options={halfExtent:4,below:3,above:3},sync=world.snapshot(options)
+ let yields=0
+ assert.deepEqual(await world.snapshotAsync(options,{budgetMs:0,yieldTask:async()=>{yields++}}),sync);assert.ok(yields>0)
+ for(const change of [()=>packet('block_change',{location:{x:3,y:64,z:3},type:70001}),()=>packet('unload_chunk',{chunkX:0,chunkZ:0}),()=>world.setPose({...pose,x:100}),()=>packet('respawn',{worldState:{dimension:3}})]){
+   world.setPose({...pose,x:3,z:3});let changed=false
+   assert.equal(await world.snapshotAsync(options,{budgetMs:0,yieldTask:async()=>{if(!changed){changed=true;change()}}}),null)
+   assert.equal(world.listenerCount('world'),0)
+ }
+})
+test('unrelated remote changes and ordinary pose motion do not starve a coherent scan',async()=>{
+ const {world,packet,chunk}=worldFixture();packet('map_chunk',{x:0,z:0,chunkData:chunk.dump()});world.setPose({...pose,x:3,z:3})
+ const result=await world.snapshotAsync({halfExtent:4,below:3,above:3},{budgetMs:0,yieldTask:async()=>{
+   world.emit('world',{column:{x:100,z:100}});world.setPose({...pose,x:3.1,z:3})
+ }})
+ assert.equal(result.type,'snapshot');assert.equal(world.listenerCount('world'),0)
 })

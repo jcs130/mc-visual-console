@@ -353,8 +353,8 @@ to{opacity:0}
 .corti-view-switch:hover,.corti-view-switch:focus-within{opacity:1}
 .corti-view-switch a{padding:4px 7px;border-radius:5px;color:#dce8e5;font:12px/1.2 system-ui;text-decoration:none;white-space:nowrap}
 .corti-view-switch a:hover,.corti-view-switch a:focus-visible{background:#ffffff25;outline:none}
-body[data-view-mode="first"] .corti-view-switch a[data-view="first"],body[data-view-mode="third"] .corti-view-switch a[data-view="third"],body[data-view-mode="dungeon"] .corti-view-switch a[data-view="dungeon"]{background:#8acbb34d;color:#f5fff6;font-weight:700}
-body[data-view-mode="third"] .corti-crosshair,body[data-view-mode="dungeon"] .corti-crosshair{display:none}
+body[data-view-mode="first"] .corti-view-switch a[data-view="first"],body[data-view-mode="third"] .corti-view-switch a[data-view="third"],body[data-view-mode="3dview"] .corti-view-switch a[data-view="3dview"]{background:#8acbb34d;color:#f5fff6;font-weight:700}
+body[data-view-mode="third"] .corti-crosshair,body[data-view-mode="3dview"] .corti-crosshair{display:none}
 .corti-skills{top:56px}
 
 .boot.is-compact:not(.is-error){display:none}

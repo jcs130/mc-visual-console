@@ -37,10 +37,10 @@ test('HUD refuses a different account and never substitutes fake full health or 
 })
 test('native dungeon camera preserves original console angles, follows received player and does not alter pose', () => {
   const pose = { x: -432, y: 66, z: 400, yaw: 1, pitch: 0.2 }
-  const before = { ...pose }, camera = playerCamera(pose, 'dungeon')
+  const before = { ...pose }, camera = playerCamera(pose, '3dview')
   assert.deepEqual(pose, before); assert.deepEqual(camera.target, [-432, 67, 400])
   assert.ok(Math.abs(Math.hypot(...camera.position.map((v, i) => v - camera.target[i])) - 16) < 1e-9)
-  const next = playerCamera({ ...pose, x: pose.x + 3, z: pose.z - 2, yaw: -2 }, 'dungeon')
+  const next = playerCamera({ ...pose, x: pose.x + 3, z: pose.z - 2, yaw: -2 }, '3dview')
   assert.ok(Math.abs(next.position[0] - camera.position[0] - 3) < 1e-9)
   assert.ok(Math.abs(next.position[2] - camera.position[2] + 2) < 1e-9)
 })

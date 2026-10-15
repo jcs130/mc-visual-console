@@ -38,7 +38,7 @@ test('room masks use only received native solid/air state and unknown volume nev
   const visibility=createNativeRoomVisibility(),camera=new THREE.PerspectiveCamera(48,1,.05,100)
   camera.position.set(5,74,5);camera.lookAt(1,65,1);camera.updateMatrixWorld(true)
   visibility.stage(s)
-  const status=visibility.update({camera,pose:{x:1,y:64,z:1},mode:'dungeon',raycast:()=>[],now:100})
+  const status=visibility.update({camera,pose:{x:1,y:64,z:1},mode:'3dview',raycast:()=>[],now:100})
   assert.equal(status.covered,true);assert.equal(status.active,true);assert.ok(status.openCells>0)
   visibility.update({camera,pose:{x:1,y:64,z:1},mode:'first',raycast:()=>[],now:200})
   assert.equal(visibility.uniforms.u_lanternCutawayEnabled.value,0);visibility.dispose()

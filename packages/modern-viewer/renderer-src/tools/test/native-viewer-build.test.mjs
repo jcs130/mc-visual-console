@@ -5,7 +5,7 @@ import {nativeViewerBuildSignature,withNativeViewerBuild,createNativeViewerBuild
 const source='a'.repeat(64),manifest='b'.repeat(64),build=nativeViewerBuildSignature(source,manifest)
 
 test('all native routes bind the loaded page to the exact renderer and asset pair',()=>{
-  for(const mode of ['first','third','dungeon'])for(const basePath of ['/','/native/']){
+  for(const mode of ['first','third','3dview'])for(const basePath of ['/','/native/']){
     const html=withNativeViewerBuild(renderViewerPage(mode,{basePath}),build)
     assert(html.includes('<meta name="native-viewer-build" content="'+build+'">'))
     assert(html.includes('href="'+basePath+'third/"'))

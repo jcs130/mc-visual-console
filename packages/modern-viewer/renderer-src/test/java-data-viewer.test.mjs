@@ -14,7 +14,7 @@ function skinPng(){
 }
 async function rig({nativeSkin=false,invalidSkin=false,minecraftVersion='1.21.1'}={}) {
  const root=await mkdtemp(path.join(tmpdir(),'native-data-view-'));
- for(const route of ['','third','dungeon']){await mkdir(path.join(root,'public',route),{recursive:true});await writeFile(path.join(root,'public',route,'index.html'),'<body>WebGL</body>');}
+ for(const route of ['','third','3dview']){await mkdir(path.join(root,'public',route),{recursive:true});await writeFile(path.join(root,'public',route,'index.html'),'<body>WebGL</body>');}
  await writeFile(path.join(root,'public/asset-source.json'),JSON.stringify({minecraftVersion}));await writeFile(path.join(root,'public/viewer.css'),'');
  await mkdir(path.join(root,`public/textures/${minecraftVersion}/entity/player/slim`),{recursive:true});await writeFile(path.join(root,`public/textures/${minecraftVersion}/entity/player/slim/efe.png`),Buffer.from('fixture-resource'));
  let sequence=0,fail=false;const methods=[];

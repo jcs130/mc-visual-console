@@ -1,6 +1,6 @@
 // Mineflayer look angles use yaw=0 toward -Z and positive pitch toward +Y.
 // These cameras observe the action player's received pose; they never move it.
-export const VIEW_MODES = ['third', 'first', 'region', 'dungeon']
+export const VIEW_MODES = ['third', 'first', 'region', '3dview']
 export function playerCamera (pose, mode = 'third') {
   if (!VIEW_MODES.includes(mode)) throw Error('NATIVE_PLAYER_CAMERA_MODE_INVALID')
   if (!pose || !['x', 'y', 'z', 'yaw', 'pitch'].every(key => Number.isFinite(pose[key]))) throw Error('NATIVE_PLAYER_CAMERA_POSE_INVALID')
@@ -16,7 +16,7 @@ export function playerCamera (pose, mode = 'third') {
   // Original console's dungeon camera defaults (client.js): yaw 3π/4,
   // pitch -0.82, distance 16, perspective FOV 48. Only received terrain is
   // visible; this spectator camera neither moves nor changes the player.
-  if (mode === 'dungeon') {
+  if (mode === '3dview') {
     const angle = Math.PI * 0.75, elevation = -0.82, distance = 16
     return { position: [x + Math.sin(angle) * Math.cos(elevation) * distance,
       y + 1 - Math.sin(elevation) * distance, z + Math.cos(angle) * Math.cos(elevation) * distance], target, showSelf: true }

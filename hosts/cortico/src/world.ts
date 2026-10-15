@@ -98,7 +98,7 @@ export class McvisualWorld implements World {
       links: [
         {
           label: '开放画面页',
-          href: `${trimSlashes(cfg.viewerBase)}/dungeon/`,
+          href: `${trimSlashes(cfg.viewerBase)}/3dview/`,
           inheritTheme: true,
         },
       ],

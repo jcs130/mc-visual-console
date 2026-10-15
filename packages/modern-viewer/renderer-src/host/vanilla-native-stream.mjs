@@ -34,9 +34,12 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
   const hands = observeVanillaHands(bot);
   const menus = observeVanillaMenus(bot, { onChange: () => events.emit('presentation') });
   const activity = observeVanillaActivity(bot, { onChange: () => events.emit('presentation') });
-  let sequence = 0, closed = false;
+  let sequence = 0, closed = false, abilities = null;
   const receive = (params, meta) => {
-    if (closed || meta.state !== 'play' || !PACKETS.has(meta.name)) return;
+    if (closed || meta.state !== 'play') return;
+    if (['login','respawn'].includes(meta.name)) abilities = null;
+    if (meta.name === 'abilities') abilities = Number.isInteger(params.flags) ? { playerUuid: bot._client.uuid, flying: !!(params.flags & 2) } : null;
+    if (!PACKETS.has(meta.name)) return;
     if (bot.version !== version) { events.emit('unavailable', Error('VANILLA_STREAM_VERSION_MISMATCH')); return; }
     events.emit('packet', { name: meta.name, params, sequence: ++sequence, registrySha256 });
   };
@@ -52,11 +55,11 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
     return typeof name==='string'?`minecraft:${name.replace(/[A-Z]/g,(c,i)=>(i?'_':'')+c.toLowerCase())}`:null;
   };
   return { events, resolveItemStack, resolveEffect, configureItemRegistries:data=>configureVanillaItemRegistries(bot.registry,data),
-    handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
+    selfState: () => abilities, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
 }
 
 /** Vanilla inventory only. Mod/proxy connections must use their native adapter. */
-export function vanillaPlayerPresentation(bot, hands = null, menuState = null) {
+export function vanillaPlayerPresentation(bot, hands = null, menuState = null, ownState = null) {
   const uuid = bot._client?.uuid;
   if (bot.version !== '1.21.1' || !uuid || !Array.isArray(bot.inventory?.slots)) return null;
   const componentFailures = [];
@@ -81,15 +84,35 @@ export function vanillaPlayerPresentation(bot, hands = null, menuState = null) {
         ?[{name:'minecraft:'+name.replace(/[A-Z]/g,(letter,index)=>(index?'_':'')+letter.toLowerCase()),amplifier:effect.amplifier,duration:effect.duration}]:[];
     }),
     bossBars:Array.from(bot.bossBars??[]).slice(0,8).map(bar=>({uuid:bar.entityUUID,title:String(bar.title??'').slice(0,200),health:bar.health,color:bar.color,dividers:bar.dividers})),
-    ...(hands?.playerUuid === uuid.toLowerCase() ? { self: { playerUuid: uuid.toLowerCase(), mainArm: hands.mainArm,
+    self: { playerUuid: uuid.toLowerCase(),
+      ...vanillaOwnPlayerState(bot, ownState),
+      ...(hands?.playerUuid === uuid.toLowerCase() ? { mainArm: hands.mainArm,
       maxHealth: vanillaAttributeValue(bot,'max_health'), armor: vanillaAttributeValue(bot,'armor'),
       attributeSource: 'same_player_vanilla_registry_and_attribute_packets',
       usingItem: hands.usingItem, spinAttack: hands.spinAttack, crouching: hands.crouching, swinging: !!hands.swing,
       attackAnim: hands.swing ? Math.max(0, Math.min(1, (hands.sampledAt - hands.swing.startedAt) / (hands.swing.durationTicks * 50))) : 0,
-      handAnimation: hands } } : {}),
+      handAnimation: hands } : {}) },
     inventory: { playerUuid: uuid, windowId: 0, selectedHotbarSlot: bot.quickBarSlot,
       inventoryStart: 9, hotbarStart: 36, offhandSlot: 45, slots,
       carried: bot.inventory.selectedItem ? vanillaItemStack(bot.inventory.selectedItem, bot.registry).item : null },
     nativeState: { available: true, source: 'same_player_vanilla_inventory',
       componentsAvailable: componentFailures.length === 0, componentFailures } };
+}
+
+// Values exposed by this very Mineflayer entity/connection; absence stays unknown.
+export function vanillaOwnPlayerState(bot, ownState = null) {
+  const entity=bot.entity, uuid=bot._client?.uuid;
+  if(!entity || !uuid || (entity.uuid && entity.uuid.toLowerCase()!==uuid.toLowerCase()))return {};
+  const state={}, flags=entity.metadata?.[0], pose=entity.metadata?.[6];
+  if(Number.isInteger(flags)){state.sprinting=!!(flags&8);state.crouching=!!(flags&2);state.fallFlying=!!(flags&128)}
+  if(Number.isInteger(pose))state.pose=pose;
+  for(const key of ['bodyYaw','headYaw'])if(Number.isFinite(entity[key]))state[key]=entity[key];
+  if(typeof entity.isClimbing==='boolean')state.climbing=entity.isClimbing;
+  if(ownState?.playerUuid===uuid && typeof ownState.flying==='boolean')state.flying=ownState.flying;
+  if(bot.vehicle===null)state.isPassenger=false;
+  else if(bot.vehicle && Number.isInteger(bot.vehicle.id)){
+    state.isPassenger=true;
+    if(typeof bot.vehicle.name==='string'&&/^[a-z_]+$/.test(bot.vehicle.name))state.vehicleType='minecraft:'+bot.vehicle.name;
+  }
+  return state;
 }

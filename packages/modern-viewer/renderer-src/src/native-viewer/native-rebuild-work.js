@@ -40,3 +40,26 @@ export class NativeStaticStage {
     for (const mesh of [...this.root.children]) target.add(mesh)
   }
 }
+
+// The actual scene orchestration: one active job and one latest pending snapshot.
+export class NativeTerrainQueue {
+  constructor () { this.revision=0;this.pending=null;this.key=null;this.running=false;this.stats={requested:0,committed:0,retiredWorkCount:0,discardedBuildMs:0,lastBuildMs:0} }
+  request(snapshot) {
+    const key=typeof snapshot.terrainSignature==='string'&&/^[a-f0-9]{64}$/.test(snapshot.terrainSignature)
+      ?snapshot.epoch+':'+snapshot.terrainSignature:JSON.stringify([snapshot.epoch,snapshot.bounds,snapshot.states,nativeStaticSignature(snapshot),snapshot.kinetic,snapshot.missingColumns])
+    if(key===this.key)return false
+    this.key=key;this.pending=snapshot;this.revision++;this.stats.requested++;return true
+  }
+  reset(){this.revision++;this.pending=null;this.key=null}
+  async run(build,now=()=>performance.now()){
+    if(this.running)return
+    this.running=true
+    try{while(this.pending){
+      const snapshot=this.pending,revision=this.revision,started=now();this.pending=null
+      const isCurrent=()=>revision===this.revision
+      try{await build(snapshot,isCurrent);if(isCurrent())this.stats.committed++}
+      catch(error){if(!isNativeRebuildRetired(error))throw error}
+      finally{const elapsed=now()-started;this.stats.lastBuildMs=elapsed;if(!isCurrent()){this.stats.retiredWorkCount++;this.stats.discardedBuildMs+=elapsed}}
+    }}finally{this.running=false}
+  }
+}

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
-import { createNativeRebuildWork, NativeStaticStage, isNativeRebuildRetired, nativeStaticSignature } from '../../src/native-viewer/native-rebuild-work.js'
+import { NativeTerrainQueue, createNativeRebuildWork, NativeStaticStage, isNativeRebuildRetired, nativeStaticSignature } from '../../src/native-viewer/native-rebuild-work.js'
 
 test('terrain signature includes biome grid origin, dimensions and world clamp even if quart IDs repeat', () => {
   const snapshot = { groups: [], neighbors: [], biomeSeed: '1', biomes: [], biomeGrid: { x: 0, y: 0, z: 0, width: 1, height: 1, depth: 1, worldMinY: -16, worldMaxY: 79, ids: [1] } }
@@ -41,4 +41,20 @@ test('a static stage keeps the complete scene until commit and frees only owned 
   const ready = new NativeStaticStage(), replacement = new THREE.Group(); ready.add(replacement)
   ready.commit(active, () => true); ready.dispose()
   assert.deepEqual(active.children, [replacement]); assert.equal(oldDisposed, 1)
+})
+
+test('production terrain queue retires A, coalesces B into C and preserves complete active scene',async()=>{
+ const queue=new NativeTerrainQueue(),active=new THREE.Group(),old=new THREE.Group();active.add(old)
+ const snapshot=id=>({epoch:1,groups:[id],kinetic:[]}),commits=[],disposed=[];let release
+ const gate=new Promise(resolve=>release=resolve)
+ queue.request(snapshot('A'))
+ const running=queue.run(async(value,isCurrent)=>{
+   const id=value.groups[0],stage=new NativeStaticStage(),mesh=new THREE.Group();mesh.dispose=()=>disposed.push(id);stage.add(mesh)
+   try {if(id==='A')await gate;stage.commit(active,isCurrent);commits.push(id)}finally{stage.dispose()}
+ })
+ queue.request(snapshot('B'));queue.request(snapshot('C'));assert.equal(queue.request(snapshot('C')),false)
+ assert.deepEqual(active.children,[old]);release();await running
+ assert.deepEqual(commits,['C']);assert.deepEqual(disposed,['A']);assert.equal(queue.stats.retiredWorkCount,1)
+ queue.request(snapshot('D'));const later=queue.run(async(_,isCurrent)=>{queue.reset();assert.throws(()=>new NativeStaticStage().commit(active,isCurrent),isNativeRebuildRetired)})
+ await later;assert.equal(active.children.length,1);assert.equal(queue.running,false)
 })

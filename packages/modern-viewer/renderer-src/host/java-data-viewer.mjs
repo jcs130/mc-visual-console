@@ -14,7 +14,7 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
   const root=path.resolve(assetsDir), source=JSON.parse(await readFile(path.join(root,'public/asset-source.json'),'utf8'));
   if(!['1.20.6','1.21.1'].includes(minecraftVersion)||source.minecraftVersion!==minecraftVersion) throw Error('JAVA_VIEWER_ASSET_VERSION_MISMATCH');
   const notice='<div role="status" style="position:fixed;bottom:54px;left:12px;z-index:99999;background:#13242fe8;color:white;padding:8px;max-width:430px;font:13px sans-serif">原生数据预览 · 已接入地形与本人移动。其他实体、容器、YSM、模组材质与光影尚未接入；界面空槽不代表实际背包为空。</div>';
-  const pages=new Map(await Promise.all(['','third/','dungeon/'].map(async route=>[route,(await readFile(path.join(root,'public',route,'index.html'),'utf8')).replace('</body>',notice+'</body>')])));
+  const pages=new Map(await Promise.all(['','third/','3dview/'].map(async route=>[route,(await readFile(path.join(root,'public',route,'index.html'),'utf8')).replace('</body>',notice+'</body>')])));
   const css=await readFile(path.join(root,'public/viewer.css'));
   const skins=new Map(),skinBytes=new Map();
   const data=new JavaVisualData({uuid,server:expectedServer,minecraftVersion,skinUrl:resource=>skins.get(resource)??null});
@@ -56,7 +56,9 @@ export async function createJavaDataViewer({port,assetsDir,rpc,uuid,server:expec
   const http=createServer(async(req,res)=>{
     if(!allowed(req)||req.method!=='GET'){res.writeHead(403).end();return;}
     try {
-      const route=new URL(req.url,'http://127.0.0.1').pathname.slice(1);
+      let route=new URL(req.url,'http://127.0.0.1').pathname.slice(1);
+      if(route==='dungeon'||route.startsWith('dungeon/')){res.writeHead(308,{Location:'/3dview'+(route.slice(7)||'/')+new URL(req.url,'http://localhost').search}).end();return;}
+      if(/^(third|3dview)\/.+/.test(route))route=route.replace(/^(third|3dview)\//,'');
       res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
       if(pages.has(route)){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(pages.get(route));return;}
       if(route==='viewer.css'){res.setHeader('Content-Type','text/css; charset=utf-8');res.end(css);return;}

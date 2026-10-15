@@ -11,7 +11,7 @@ test('a scoped Numen page and all feed/resource URLs stay on the selected body',
   const page = renderViewerPage('third', { basePath })
   assert.ok(page.includes(`<base href="${basePath}">`))
   assert.ok(page.includes(`src="${basePath}index.js"`))
-  assert.ok(page.includes(`href="${basePath}dungeon/"`))
+  assert.ok(page.includes(`href="${basePath}3dview/"`))
   assert.ok(!page.includes('src="/index.js"'))
   for (const resource of ['events', '/status.json', 'assets/mod/textures/a.png']) assert.equal(nativeViewerUrl(resource, base), base + resource.replace(/^\//, ''))
   assert.throws(() => renderViewerPage('first', { basePath: '/"><script>/' }))

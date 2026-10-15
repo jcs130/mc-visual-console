@@ -6,7 +6,7 @@ import os from 'node:os'
 import http from 'node:http'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, sendNativeWorldEvent, createNativePlayerPresentation, injectTrackedMaidPresentation } from '../native-world-preview-host.mjs'
+import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, encodeNativeWorldEvent, sendNativeWorldEvent, createNativePlayerPresentation, injectTrackedMaidPresentation } from '../native-world-preview-host.mjs'
 import { createNativeSession } from '../../src/native-viewer/native-session.js'
 import { NATIVE_YSM_SOURCE, NATIVE_YSM_JAR_SHA256 } from '../../src/native-viewer/native-ysm-state.js'
 
@@ -352,7 +352,7 @@ test('served HTML and SSE identity bind the same checked renderer and asset mani
   const signature=build.viewerBuild
   assert.match(signature,/^[a-f0-9]{64}:[a-f0-9]{64}$/)
   assert.equal(signature.split(':')[0],build.buildSource.sourceSha256)
-  for(const route of ['','third/','dungeon/','diagnostics/']){
+  for(const route of ['','third/','3dview/','diagnostics/']){
     const page=await request(host,route)
     assert.equal(page.status,200);assert(page.body.includes('name="native-viewer-build" content="'+signature+'"'))
   }
@@ -646,7 +646,7 @@ test('all HTTP routes reject foreign Host/Origin and non-GET requests before rea
 test('full original shell modes and diagnostic page coexist with native bundles, exact hashed assets and read-only CSP', async t => {
   const { host } = attachment(t)
   await host.listen()
-  for (const route of ['', 'third/', 'dungeon/', 'viewer.css', 'index.js', 'native-console.js', 'diagnostics', 'client.js', 'manifest.json', assetPath]) {
+  for (const route of ['', 'third/', '3dview/', 'viewer.css', 'index.js', 'native-console.js', 'diagnostics', 'client.js', 'manifest.json', assetPath]) {
     const response = await request(host, route)
     assert.equal(response.status, 200)
     assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/)
@@ -655,7 +655,7 @@ test('full original shell modes and diagnostic page coexist with native bundles,
     assert.equal(response.headers['x-content-type-options'], 'nosniff')
     assert.equal(response.headers['cache-control'], 'no-store')
   }
-  for (const [route, mode] of [['', 'first'], ['third/', 'third'], ['dungeon/', 'dungeon']]) {
+  for (const [route, mode] of [['', 'first'], ['third/', 'third'], ['3dview/', '3dview']]) {
     const response = await request(host, route)
     assert.match(response.body, new RegExp(`data-view-mode="${mode}"`))
     assert.match(response.body, /src="\/index\.js"/)
@@ -903,4 +903,28 @@ test('tampered native registry prevents preparation before any bot can be attach
   await fs.writeFile(registryPath, Buffer.from('changed'))
   try { await assert.rejects(prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0 }), /REGISTRY_HASH_MISMATCH/) }
   finally { await fs.writeFile(registryPath, original) }
+})
+
+test('legacy 3D view URLs redirect once, preserving query and asset suffix',async t=>{
+ const {host}=attachment(t);await host.listen()
+ for(const [old,next] of [['dungeon?obs=1','/3dview/?obs=1'],['dungeon/?photo=1','/3dview/?photo=1'],['dungeon/index.js?x=1','/3dview/index.js?x=1']]){
+  const response=await request(host,old);assert.equal(response.status,308);assert.equal(response.headers.location,next)
+ }
+ assert.equal((await request(host,'3dview/index.js?x=1')).status,200)
+ const page=await request(host,'3dview/?photo=1');assert.equal(page.status,200);assert.match(page.body,/3D观战/);assert.doesNotMatch(page.body,/href="[^"]*dungeon/)
+})
+
+test('one encoded event is shared byte-for-byte with independent backpressure and exact UTF8 budget',()=>{
+ let reads=0;const message={type:'frame',get text(){reads++;return '观战'}}
+ const encoded=encodeNativeWorldEvent(message),writes=[]
+ const first={response:{write:text=>{writes.push(text);return false}},blocked:false},second={response:{write:text=>{writes.push(text);return true}},blocked:false}
+ assert.equal(sendNativeWorldEvent(first,encoded),true);assert.equal(sendNativeWorldEvent(second,encoded),true);assert.equal(reads,1);assert.equal(writes[0],writes[1]);assert.equal(sendNativeWorldEvent(first,encoded),false)
+ assert.throws(()=>encodeNativeWorldEvent({text:'界'.repeat(1024*1024)}),/MESSAGE_TOO_LARGE/)
+})
+test('actual own-player metadata survives the injected presentation boundary only for the same identity',t=>{
+ const fields={bodyYaw:.3,headYaw:1,sprinting:true,climbing:false,flying:true,isPassenger:true,vehicleType:'minecraft:pig',pose:3,extraAction:2}
+ const {host,bot}=attachment(t,{getPresentationState:()=>({schemaVersion:1,playerUuid:bot._client.uuid,self:{playerUuid:bot._client.uuid,...fields}})})
+ playerEntity(bot)
+ const self=host.status().presentation.self
+ for(const [key,value]of Object.entries(fields))assert.equal(self[key],value,key)
 })

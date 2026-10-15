@@ -124,3 +124,13 @@ test('vanilla inventory belongs to this body and does not invent item components
   assert.equal(vanillaPlayerPresentation({ ...bot, version: '1.20.6' }), null);
   assert.equal(vanillaPlayerPresentation({ ...bot, _client: {} }), null);
 });
+
+test('own player presentation forwards supplied metadata without inventing absent movement states',()=>{
+ const bot={version:'1.21.1',_client:{uuid:'own'},inventory:{slots:[]},entity:{uuid:'own',metadata:{0:8,6:3},bodyYaw:.2,headYaw:.8,isClimbing:true},vehicle:{id:3,name:'pig'}}
+ const self=vanillaPlayerPresentation(bot,null,null,{playerUuid:'own',flying:true}).self
+ assert.equal(self.sprinting,true);assert.equal(self.pose,3);assert.equal(self.bodyYaw,.2);assert.equal(self.headYaw,.8);assert.equal(self.climbing,true);assert.equal(self.flying,true);assert.equal(self.vehicleType,'minecraft:pig')
+ bot.entity={uuid:'own',metadata:{}};delete bot.vehicle
+ const reset=vanillaPlayerPresentation(bot).self
+ for(const key of ['sprinting','pose','bodyYaw','headYaw','climbing','flying','isPassenger','vehicleType'])assert.equal(Object.hasOwn(reset,key),false,key)
+ bot.entity.uuid='other';assert.equal(vanillaPlayerPresentation(bot).self.sprinting,undefined)
+})

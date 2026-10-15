@@ -19,9 +19,9 @@ import {createNativeDeathUi} from './native-death-ui.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
-const MODES = Object.freeze({ first: 'first', third: 'third', dungeon: 'dungeon' })
+const MODES = Object.freeze({ first: 'first', third: 'third', '3dview': '3dview', dungeon: '3dview' })
 export function consoleViewMode (path = '/', selected) {
-  return MODES[selected] ?? (path.startsWith('/dungeon') ? 'dungeon' : path.startsWith('/third') ? 'third' : 'first')
+  return MODES[selected] ?? (path.startsWith('/3dview') ? '3dview' : path.startsWith('/third') ? 'third' : 'first')
 }
 
 function append (document, parent, tag, className, text) {
@@ -158,7 +158,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       ...Object.entries((pendingMode === 'first' ? d?.firstPersonItems : d?.heldItems)?.hands ?? {}).map(([arm, hand]) =>
         `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}`),
       presentation.available ? '背包/菜单/技能：同一玩家原生状态；原生物品图标已接入，未支持的专用模型/组件及装备明确标注' : `展示数据：${presentation.reason}`,
-      pendingMode === 'dungeon' ? '地下城2.5D跟随相机；原遮挡切面、旋转、缩放已接入' : '',
+      pendingMode === '3dview' ? '3D观战跟随相机；原遮挡切面、旋转、缩放已接入' : '',
       '小地图：本人原场景与移动轨迹；第三人称已接入原运镜设置', d?.audio?.available?'声音：原始资源与本人实际事件；观战配乐为本机选择':'声音：'+(d?.audio?.reason??'等待原版音效包'), '完整场景一致性尚未验收',
       ...(d?.issues ?? []).slice(0, 16)].filter(Boolean).join('\n')
   }
@@ -200,7 +200,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current')
     }
     const crosshair = q('.corti-crosshair'); if (crosshair) crosshair.hidden = mode !== 'first'
-    const dungeonNav=q('.dungeon-camera-controls');if(dungeonNav)dungeonNav.hidden=mode!=='dungeon'
+    const dungeonNav=q('.dungeon-camera-controls');if(dungeonNav)dungeonNav.hidden=mode!=='3dview'
     updateDiagnosticText()
   }
   for (const link of document.querySelectorAll('[data-view]')) listen(link, 'click', event => {
@@ -268,14 +268,14 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
           for(const row of options){const option=append(document,targetSelect,'option','',`${row.name} · #${row.id}${row.rendered?'':'（模型未适配）'}`);option.value=String(row.id);option.disabled=!row.rendered}
           targetSelect.value=value
         }
-        if(frame.camera){const text=`${({manual:'手动环绕',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称',dungeon:'地下城'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`;if(text!==lastCameraText){lastCameraText=text;cameraUi.status(text)}}
+        if(frame.camera){const text=`${({manual:'手动环绕',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称','3dview':'3D观战'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`;if(text!==lastCameraText){lastCameraText=text;cameraUi.status(text)}}
         if (sampledAt === null) sampledAt = frame.now
         if (frame.now - sampledAt >= 1000) {
           const result = quality.sample({ fps: frames * 1000 / (frame.now - sampledAt), hidden: document.hidden })
           if (result.changed) sceneHost?.renderer?.setPixelRatio(result.pixelRatio)
           viewport.dataset.qualityMode = result.mode; viewport.dataset.fps = String(result.lastFps ?? '')
           if(sceneHost?.renderer?.domElement)sceneHost.renderer.domElement.style.filter=sceneColourFilter({},sceneSettings)
-          sceneUi.status(`${({high:'精细',balanced:'均衡',performance:'省电'})[result.mode]??result.mode} · ${Math.round(result.lastFps??0)} FPS${pendingMode==='dungeon'?' · '+(frame.room?.active?'遮挡切面已展开':'地形正常显示'):''}`)
+          sceneUi.status(`${({high:'精细',balanced:'均衡',performance:'省电'})[result.mode]??result.mode} · ${Math.round(result.lastFps??0)} FPS${pendingMode==='3dview'?' · '+(frame.room?.active?'遮挡切面已展开':'地形正常显示'):''}`)
           frames = 0; sampledAt = frame.now
         }
         if (frame.now - lastUiFrameAt < 1000 / 30) return

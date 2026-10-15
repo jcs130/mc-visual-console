@@ -11,7 +11,7 @@ function fullShell () {
   window.MutationObserver = class { observe () {} disconnect () {} }
   window.history = { replaceState (_state, _name, path) { window.path = path } }
   const nav = document.createElement('nav'); nav.className = 'corti-view-switch'; document.body.append(nav)
-  for (const mode of ['first','third','dungeon']) {
+  for (const mode of ['first','third','3dview']) {
     const link = document.createElement('a'); link.setAttribute('data-view', mode)
     link.setAttribute('href', mode === 'first' ? '/' : `/${mode}/`); nav.append(link)
   }
@@ -28,9 +28,9 @@ const presentation = () => ({ schemaVersion: 1, playerUuid: UUID, available: tru
 test('all original view routes select the actual native first/third/dungeon camera', () => {
   assert.equal(consoleViewMode('/'), 'first')
   assert.equal(consoleViewMode('/third/'), 'third')
-  assert.equal(consoleViewMode('/dungeon/'), 'dungeon')
+  assert.equal(consoleViewMode('/3dview/'), '3dview')
   assert.equal(consoleViewMode('/', 'third'), 'third')
-  assert.equal(consoleViewMode('/dungeon/', '__VIEW_MODE__'), 'dungeon')
+  assert.equal(consoleViewMode('/3dview/', '__VIEW_MODE__'), '3dview')
 })
 
 test('native entry reuses the shared docked toolbar and clears its history on epoch changes', async () => {
@@ -123,8 +123,8 @@ test('full shell boots exactly one scene, reuses native UI and disposes resource
   assert.match(ysmNotice.textContent, /装备与第一人称未适配/); assert.doesNotMatch(ysmNotice.textContent, /当前动作未同步/)
   callbacks.onDiagnostics({ drawn: 3, total: 5, selfModel: null, issues: [] })
   assert.equal(ysmNotice.hidden, true)
-  const dungeon = document.querySelectorAll('[data-view]').find(link => link.dataset.view === 'dungeon')
-  dungeon.dispatch('click', { preventDefault () {} }); assert.equal(views.at(-1), 'dungeon'); assert.equal(window.path, '/dungeon/')
+  const dungeon = document.querySelectorAll('[data-view]').find(link => link.dataset.view === '3dview')
+  dungeon.dispatch('click', { preventDefault () {} }); assert.equal(views.at(-1), '3dview'); assert.equal(window.path, '/3dview/')
   document.dispatch('keydown', { code: 'F5', preventDefault () {} }); assert.equal(views.at(-1), 'first')
   callbacks.onFrame({ now: 0, label: { visible: true, x: 120, y: 100, name: 'MawExplorer' } })
   assert.equal(document.querySelector('.native-player-label').textContent, 'MawExplorer')

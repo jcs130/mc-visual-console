@@ -28,7 +28,7 @@ export function createNativeRoomVisibility() {
     stage(snapshot){cache=nativeReceivedRoomCache(snapshot);mask=new RoomFloorMask(cache);last=0;transparency?.update()},
     update({camera,pose,mode,height=1.8,enabled=true,raycast,now}){
       const dt=lastFrame===null?0:now-lastFrame;lastFrame=now
-      if(!cache||!pose||mode!=='dungeon'||!enabled){status={active:false,reason:enabled?'view':'disabled'};uniforms.u_lanternCutawayEnabled.value=0;uniforms.u_lanternReveal.value=0;transparency?.sync();return status}
+      if(!cache||!pose||mode!=='3dview'||!enabled){status={active:false,reason:enabled?'view':'disabled'};uniforms.u_lanternCutawayEnabled.value=0;uniforms.u_lanternReveal.value=0;transparency?.sync();return status}
       target.set(pose.x,pose.y+1,pose.z)
       const clearance=Math.max(1,Math.min(8,Math.ceil(height)))
       if(mask.clearance!==clearance){mask=new RoomFloorMask(cache,{clearance});last=0}

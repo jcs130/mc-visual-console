@@ -111,7 +111,7 @@ describe('Minecraft 画面 World', () => {
     expect(decl.panels?.map((p) => p.id)).toEqual(['scene', 'control']);
     expect(decl.panels?.[0].getMethods).toEqual(['state', 'health']);
     expect(decl.panels?.[1].getMethods).toBeUndefined();
-    expect(decl.links?.[0].href).toBe('http://127.0.0.1:7800/dungeon/');
+    expect(decl.links?.[0].href).toBe('http://127.0.0.1:7800/3dview/');
     expect(decl.links?.[0].inheritTheme).toBe(true);
     // 灯不超过 7 个
     expect((decl.lamps ?? []).length).toBeLessThanOrEqual(7);

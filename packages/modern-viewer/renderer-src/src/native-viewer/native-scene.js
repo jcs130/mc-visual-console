@@ -10,7 +10,7 @@ import { WINDMILL_BEARING_ID, verifyNativeWindmillBearing } from './native-windm
 import { createNativeEnvironment, modelOffset } from './native-environment.js'
 import { nativeFluidFamily } from './native-fluid.js'
 import { buildNativeFluidMeshes, createNativeFluidStateReader } from './native-fluid-meshes.js'
-import { createNativeRebuildWork, NativeStaticStage, disposeNativeStaticMeshes, isNativeRebuildRetired, nativeStaticSignature } from './native-rebuild-work.js'
+import { NativeTerrainQueue, createNativeRebuildWork, NativeStaticStage, disposeNativeStaticMeshes, isNativeRebuildRetired, nativeStaticSignature } from './native-rebuild-work.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
 import { NativeSelfPlayerController, applyNativeSelfPlayerMotion } from './native-self-player.js'
 import {BundledAppearanceReader} from './native-bundled-appearance.js'
@@ -37,9 +37,9 @@ import { nativeStaticBatches } from './native-static-batch.js'
 export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{}, onState=()=>{},onBuild=()=>false,
   onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{},cameraSettings,onCameraManual=()=>{},onSelection=()=>{},
   defaultAppearance='server', selectionStorage, selectionScope} = {}) {
-if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
+if (!viewport?.append || !['third', 'first', 'region', '3dview'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
 const pointKey = p => `${p.x},${p.y},${p.z}`
-let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
+let renderer, loader, events, current, epoch = null, player = null, generation = 0
 const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 const staticBatches=new Map()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
@@ -52,6 +52,8 @@ const roomVisibility=createNativeRoomVisibility()
 let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
 let observerPose=null,observerTarget=null
 let frameCost=null,lastCostAt=0,displayPose=null
+const terrainQueue=new NativeTerrainQueue(),terrainPhases={signatureMs:0,environmentMs:0,commitMs:0,indexMs:0,firstRenderMs:null}
+let firstTerrainRender=false
 const selfDisplay=new NativeSelfDisplayPose(),frameGaps=new NativeFrameGaps()
 const receiveDisplay=()=>{
   const previous=selfDisplay.resetVersion
@@ -196,7 +198,9 @@ async function start () {
       }
       const beforeRender=performance.now()
       renderer.render(scene, camera)
-      const afterRender=performance.now(),mainDraw={...renderer.info.render}
+      const afterRender=performance.now()
+      if(firstTerrainRender){terrainPhases.firstRenderMs=afterRender-beforeRender;firstTerrainRender=false}
+      const mainDraw={...renderer.info.render}
       if(selfActor?.firstPersonRoot){
         selfActor.firstPersonRoot.visible=viewMode==='first'
         const hands=selfActor.firstPersonItemsState?.()
@@ -257,7 +261,7 @@ async function start () {
       }
       if (value.type === 'snapshot') {
         if (epoch !== value.epoch) { clearScene(); epoch = value.epoch }
-        current = value; receiveDisplay(); pending = value; void rebuildLatest()
+        current = value; receiveDisplay(); terrainQueue.request(value); void rebuildLatest()
         audio.connect(true)
       } else if (value.type === 'frame' && current && value.epoch === epoch) {
         current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
@@ -287,11 +291,11 @@ function orbitPosition () {
   controls.target.fromArray(view.target); camera.position.fromArray(view.position); controls.update()
 }
 function setView (mode) {
-  if (!['third', 'first', 'region', 'dungeon'].includes(mode) || disposed) return
+  if (!['third', 'first', 'region', '3dview'].includes(mode) || disposed) return
   viewMode = mode; cameraDistance = null; cameraCollisionAt = 0
   if(mode==='first'&&selectedEntity)selectTarget(null)
   director?.reset();cameraFrame=null
-  camera.fov = mode === 'dungeon' ? 48 : 70; camera.updateProjectionMatrix()
+  camera.fov = mode === '3dview' ? 48 : 70; camera.updateProjectionMatrix()
   controls.enabled = mode === 'region'||mode==='third'&&cameraOptions.mode==='manual'; if (controls.enabled) orbitPosition()
   viewport.dataset.view = mode; onMode(mode)
 }
@@ -323,7 +327,7 @@ function updatePlayerCamera (now) {
     if(pose){camera.position.copy(pose.position);camera.lookAt(pose.focus.x,pose.focus.y,pose.focus.z);camera.fov=pose.fov;camera.updateProjectionMatrix();cameraDistance=pose.distance;cameraFrame=pose;return}
   }
   const view = playerCamera(observerPose, viewMode)
-  if(viewMode==='dungeon'){
+  if(viewMode==='3dview'){
     const {yaw,pitch,distance}=dungeonCamera,p=observerPose
     view.position=[p.x+Math.sin(yaw)*Math.cos(pitch)*distance,p.y+1-Math.sin(pitch)*distance,p.z+Math.cos(yaw)*Math.cos(pitch)*distance]
   }
@@ -398,7 +402,7 @@ function publishDiagnostics() {
     kineticClock: kineticClockState,
     deviceVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeDevice).map(actor => ({ position: actor.position, stateId: actor.state.stateId, ...actor.root.userData.nativeDevice })),
     windmillVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeBearing).map(actor => ({ position: actor.position, ...actor.root.userData.nativeBearing })),
-    frameCost,frameGaps:frameGaps.value,selfDisplay:{delayMs:50,stale:selfDisplay.stale},skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
+    terrainWork:{...terrainQueue.stats,phases:{...terrainPhases}},frameCost,frameGaps:frameGaps.value,selfDisplay:{delayMs:50,stale:selfDisplay.stale},skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
 function clearStatics () {
   if (!statics) return
@@ -409,7 +413,7 @@ function clearScene () {
   miniMap?.reset()
   audio?.connect(false)
   particles?.reset()
-  generation++; pending = null; current = null; lastGroupSignature = null; clearStatics()
+  generation++; terrainQueue.reset(); current = null; lastGroupSignature = null; clearStatics()
   for (const actor of actors.values()) removeActor(actor)
   actors.clear()
   entityLayer?.reset()
@@ -465,24 +469,27 @@ async function template (state, variants) {
   return templates.get(key)
 }
 async function rebuildLatest () {
-  if (rebuilding) return
-  rebuilding = true
   try {
-    while (pending) {
-      const snapshot = pending, run = generation; pending = null
+    await terrainQueue.run(async (snapshot, terrainCurrent) => {
+      const run=generation, stagedActors=new Map()
+      const isCurrent=()=>run===generation&&!disposed&&terrainCurrent()
       try {
       const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
       const cuttingBoards = new Map((snapshot.cuttingBoards || []).map(board => [pointKey(board.position), board]))
+      const signatureStarted=performance.now()
       const signature = nativeStaticSignature(snapshot)
-      const staged = await stageNativeKineticActors({nodes:snapshot.kinetic,definitions,actors,
-        createActor:(state,position)=>createKineticActor(loader,state,position),attach:actor=>worldRoot.add(actor.root),remove:removeActor,
-        isCurrent:()=>run===generation&&!disposed})
-      if (!staged.current) continue
+      terrainPhases.signatureMs=performance.now()-signatureStarted
+      const staged = await stageNativeKineticActors({nodes:snapshot.kinetic,definitions,actors:stagedActors,
+        createActor:(state,position)=>createKineticActor(loader,state,position),attach:()=>{},remove:actor=>actor.dispose?.(),
+        isCurrent})
+      if (!staged.current) return
       const nextIssues = staged.issues, nextStaticIssues = []
       let fluidStateAt=null
       if (signature !== lastGroupSignature) {
+        const environmentStarted=performance.now()
         const next = new NativeStaticStage(), environment = createNativeEnvironment(snapshot, colormaps), tintColor = new THREE.Color()
-        const work = createNativeRebuildWork({ isCurrent: () => run === generation && !disposed })
+        terrainPhases.environmentMs=performance.now()-environmentStarted
+        const work = createNativeRebuildWork({ isCurrent })
         let count = 0
         try {
         for (const group of snapshot.groups) {
@@ -561,22 +568,31 @@ async function rebuildLatest () {
             nextStaticIssues.push(`${state.name}：${error.message}`)
           }
         }
-        next.commit(statics, () => run === generation && !disposed)
+        const commitStarted=performance.now()
+        next.commit(statics, isCurrent)
+        terrainPhases.commitMs=performance.now()-commitStarted
+        const indexStarted=performance.now()
         terrainRaycast=createNativeTerrainRaycast(statics);lastCollision=null
+        terrainPhases.indexMs=performance.now()-indexStarted;firstTerrainRender=true
         drawn = count; lastGroupSignature = signature; staticIssues = nextStaticIssues
         } finally { next.dispose(); environment.clear() }
       }
       // Received bounds/states/columns can change without mesh arrays changing.
       // The room cache must use this snapshot, independently of mesh rebuilding.
+      if(!isCurrent())return
+      for(const actor of actors.values())removeActor(actor)
+      actors.clear()
+      for(const [key,actor] of stagedActors){worldRoot.add(actor.root);actors.set(key,actor)}
+      stagedActors.clear()
       roomVisibility.stage(snapshot)
       unknown = [...nextIssues, ...staticIssues]
-      if (run !== generation) continue
-      if (!current) continue
+      if (!isCurrent()) return
+      if (!current) return
       publishDiagnostics()
       if (camera.position.lengthSq() === 0 && viewMode === 'region') orbitPosition()
-      } catch (error) { if (run === generation && !disposed && !isNativeRebuildRetired(error)) throw error }
-    }
-  } catch (error) { fail(error) } finally { rebuilding = false }
+      } finally { for(const actor of stagedActors.values())actor.dispose?.() }
+    })
+  } catch (error) { fail(error) }
 }
 
 function fail (error) {

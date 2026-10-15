@@ -6,7 +6,7 @@ import test from 'node:test';
 import { renderViewerPage, VIEWER_CSS, writeViewerPages } from '../src/viewer-page.mjs';
 
 test('all camera modes mount the same survival and interaction HUD without a deployment dependency', () => {
-  for (const mode of ['first', 'third', 'dungeon']) {
+  for (const mode of ['first', 'third', '3dview']) {
     const html = renderViewerPage(mode);
     assert.ok(html.includes(`data-view-mode="${mode}"`));
     assert.ok(!html.includes('__VIEW_MODE__'));
@@ -32,7 +32,7 @@ test('page export is repeatable and preserves other generated assets', async () 
     await writeFile(join(output, 'public', 'asset-marker.json'), '{"keep":true}');
     await writeViewerPages(output);
     assert.equal(await readFile(join(output, 'public', 'asset-marker.json'), 'utf8'), '{"keep":true}');
-    for (const [mode, route] of [['first', ''], ['third', 'third'], ['dungeon', 'dungeon']]) {
+    for (const [mode, route] of [['first', ''], ['third', 'third'], ['3dview', '3dview']]) {
       assert.equal(await readFile(join(output, 'public', route, 'index.html'), 'utf8'), renderViewerPage(mode));
     }
     assert.equal(await readFile(join(output, 'public', 'viewer.css'), 'utf8'), VIEWER_CSS);
@@ -42,9 +42,9 @@ test('page export is repeatable and preserves other generated assets', async () 
 });
 
 test('nested camera pages resolve mesher workers and entity textures at the asset root', () => {
-  for (const route of ['/', '/third/', '/dungeon/', '/photo/']) {
+  for (const route of ['/', '/third/', '/3dview/', '/photo/']) {
     const pageUrl = new URL(route, 'https://viewer.example');
-    const html = renderViewerPage(route === '/dungeon/' ? 'dungeon' : route === '/third/' ? 'third' : 'first');
+    const html = renderViewerPage(route === '/3dview/' ? '3dview' : route === '/third/' ? 'third' : 'first');
     const base = html.match(/<base\s+href="([^"]+)"/)[1];
     const documentBase = new URL(base, pageUrl);
     for (const relative of ['mesher.js', 'textures/entity/zombie/zombie.png']) {

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { NativeSnapshotCadence } from './native-snapshot-cadence.mjs'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import chunkFactory from 'prismarine-chunk'
@@ -483,7 +484,33 @@ export class NativeWorldState extends EventEmitter {
 
   // Bounded received-chunk volume, clearly reported to the UI. All block IDs
   // and positions are native; only actual registry air is absent from groups.
-  snapshot ({ halfExtent = 32, below = 24, above = 24 } = {}) {
+  snapshot (options = {}) {
+    const job=this.snapshotJob(options);let step;do { step=job.next() } while(!step.done);return step.value
+  }
+
+  async snapshotAsync (options = {}, { budgetMs=4, yieldTask=()=>new Promise(resolve=>setImmediate(resolve)), now=()=>performance.now() } = {}) {
+    if(!this.pose || !this.dimension || this.error)return this.snapshot(options)
+    const epoch=this.epoch, center={...this.pose}, guard=new NativeSnapshotCadence()
+    guard.completed(center,now(),true,viewBounds(center,this.dimension,options.halfExtent??32,options.below??24,options.above??24))
+    const changed=change=>guard.invalidate(change)
+    this.on('world',changed)
+    const valid=()=>{guard.observe(this.pose);return !this.error&&this.epoch===epoch&&!guard.dirty}
+    const job=this.snapshotJob(options);let slice=now(),step
+    const timing={slices:0,maxSliceMs:0,totalWorkMs:0,retired:false}
+    try {
+      for(;;){
+        if(!valid()){timing.retired=true;return null}
+        step=job.next()
+        if(step.done || now()-slice>=budgetMs){
+          const elapsed=now()-slice;timing.maxSliceMs=Math.max(timing.maxSliceMs,elapsed);timing.totalWorkMs+=elapsed;timing.slices++
+          if(step.done)return valid()?step.value:null
+          await yieldTask();slice=now()
+        }
+      }
+    } finally { job.return();this.off('world',changed);this.snapshotTiming=timing }
+  }
+
+  * snapshotJob ({ halfExtent = 32, below = 24, above = 24 } = {}) {
     if (this.error) return { type: 'unavailable', reason: this.error, epoch: this.epoch }
     if (!this.pose || !this.dimension) return { type: 'waiting', epoch: this.epoch, reason: 'waiting_for_native_world_and_player' }
     if (![halfExtent, below, above].every(Number.isInteger) || halfExtent < 1 || halfExtent > 32 || below < 0 || above < 0 || below + above > 96) throw Error('NATIVE_WORLD_VIEW_BOUNDS_INVALID')
@@ -496,12 +523,16 @@ export class NativeWorldState extends EventEmitter {
       if (volume(haloBounds(bounds, this.dimension)) > SNAPSHOT_LIMITS.maxScanVoxels) {
         clippedBy.add('scan_budget'); selectedExtent--; continue
       }
-      const snapshot = this.#snapshotVolume(bounds)
+      const snapshot = yield* this.#snapshotVolume(bounds)
       scanWork += snapshot.viewCoverage.scannedVoxels
       snapshot.viewCoverage = { ...snapshot.viewCoverage, requestedBounds, clippedBy: [...clippedBy],
         horizontalRangeReduced: selectedExtent !== halfExtent, verticalRangeLimited: bounds.minY > this.dimension.minY || bounds.maxY < this.dimension.minY + this.dimension.height - 1,
         limits: SNAPSHOT_LIMITS, scanWorkVoxels: scanWork }
+      yield
+      const encodeStarted=performance.now()
       const bytes = Buffer.byteLength(JSON.stringify(snapshot))
+      this.snapshotEncodeMs=performance.now()-encodeStarted
+      yield
       const renderCount = snapshot.viewCoverage.renderBlocks
       if (renderCount <= SNAPSHOT_LIMITS.maxRenderBlocks && bytes <= SNAPSHOT_LIMITS.maxSnapshotBytes) return snapshot
       if (renderCount > SNAPSHOT_LIMITS.maxRenderBlocks) clippedBy.add('render_budget')
@@ -515,7 +546,7 @@ export class NativeWorldState extends EventEmitter {
     }
   }
 
-  #snapshotVolume (bounds) {
+  * #snapshotVolume (bounds) {
     const groups = new Map(), definitions = new Map(), kinetic = [], cuttingBoards = [], missingColumns = new Set(), receivedColumns = []
     const neighbors = [], halo = haloBounds(bounds, this.dimension)
     const haloWidth = halo.maxX - halo.minX + 1, haloDepth = halo.maxZ - halo.minZ + 1, haloLayer = haloWidth * haloDepth
@@ -552,9 +583,11 @@ export class NativeWorldState extends EventEmitter {
     biomeGrid.ids = []
     const usedBiomes = new Set()
     for (let y = biomeGrid.y; y < biomeGrid.y + biomeGrid.height; y++) for (let z = biomeGrid.z; z < biomeGrid.z + biomeGrid.depth; z++) for (let x = biomeGrid.x; x < biomeGrid.x + biomeGrid.width; x++) {
+      if(x===biomeGrid.x)yield
       const id = this.biomeIdAtQuart(x, y, z); biomeGrid.ids.push(id); if (id !== null) usedBiomes.add(id)
     }
     for (let y = bounds.minY; y <= bounds.maxY; y++) for (let z = bounds.minZ; z <= bounds.maxZ; z++) for (let x = bounds.minX; x <= bounds.maxX; x++) {
+      if(x===bounds.minX)yield
       const p = { x, y, z }, state = stateAt(x,y,z)
       if (!state) continue
       const id=state.stateId
@@ -588,6 +621,7 @@ export class NativeWorldState extends EventEmitter {
     // that their currently unsupported rendering provider is implemented.
     let neighborIndex = 0
     for (let y = halo.minY; y <= halo.maxY; y++) for (let z = halo.minZ; z <= halo.maxZ; z++) for (let x = halo.minX; x <= halo.maxX; x++, neighborIndex++) {
+      if(x===halo.minX)yield
       if (!fluidNeighbors[neighborIndex]) continue
       const state=stateAt(x,y,z);if(!state)continue
       const id=state.stateId

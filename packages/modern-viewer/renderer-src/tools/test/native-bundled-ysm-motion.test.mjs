@@ -159,3 +159,24 @@ test('host bundled default and stored explicit choice survive reload only within
   const f = create(); await f.update(original,uuid); f.selectAppearance('server'); f.dispose()
   const g = create('server-a','bundled:yui-ysm'); await g.update(original,uuid); assert.equal(g.appearanceId,'server'); g.dispose()
 })
+
+
+test('received own-player swimming pose survives absent optional metadata and preserves freshness checks', { skip: !catalog }, async () => {
+  const { vanillaPlayerPresentation } = await import('../../host/vanilla-native-stream.mjs')
+  const { actor } = await originals()
+  const bot = {version:'1.21.1',_client:{uuid},inventory:{slots:[]},entity:{uuid,metadata:{0:16,6:3}}}
+  try {
+    const received = vanillaPlayerPresentation(bot).self
+    assert.equal(received.pose,3)
+    for(const key of ['climbing','flying','bodyYaw','headYaw']) assert.equal(Object.hasOwn(received,key),false)
+    const f=frame(1000,{...received,onGround:false,inWater:true})
+    assert.equal(applyNativeSelfPlayerMotion(actor,f,{now:1000}).clip,'swim')
+    // Current water occupancy alone is not a received swimming pose.
+    bot.entity.metadata={0:0,6:0}
+    const standing=frame(1100,{...vanillaPlayerPresentation(bot).self,onGround:true,inWater:true})
+    assert.equal(applyNativeSelfPlayerMotion(actor,standing,{now:1100}).clip,'idle')
+    assert.match(applyNativeSelfPlayerMotion(actor,f,{now:3000}).reason,/STALE/)
+    const reset=frame(3100,{...received,onGround:false,inWater:true}); reset.motion.epoch=0
+    assert.match(applyNativeSelfPlayerMotion(actor,reset,{now:3100}).reason,/PHYSICS/)
+  } finally {actor.dispose()}
+})
