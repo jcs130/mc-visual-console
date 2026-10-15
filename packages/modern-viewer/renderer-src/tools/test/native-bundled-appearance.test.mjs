@@ -195,7 +195,7 @@ test('original YUI PNG and all seven files construct authentic slim and scaled Y
   assert.equal(actor.assetInfo.license.type, 'Custom'); assert.equal(actor.assetInfo.source, 'plugin_bundled')
   assert.equal(actor.assetInfo.boneCount, 49); assert.equal(actor.assetInfo.cubeCount, 168)
   assert.deepEqual(actor.root.scale.toArray(), [.9, .9, .9]); assert.equal(actor.assetInfo.authors[0].name, 'jcs130')
-  assert.equal(actor.assetInfo.firstPersonRenderingAvailable, false); assert.equal(actor.assetInfo.completeEntityParityVerified, false)
+  assert.equal(actor.assetInfo.firstPersonRenderingAvailable, true); assert.equal(actor.assetInfo.completeEntityParityVerified, false)
   actor.dispose()
   const observed = self(UUID)
   let ready

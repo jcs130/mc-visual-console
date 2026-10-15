@@ -39,7 +39,8 @@ test('actual bundled actor accepts ordinary Mineflayer state, cardinal heading a
     mirror.root.updateMatrixWorld(true)
     assert.ok(new THREE.Vector3(0, 0, -1).transformDirection(mirror.nodes.get(actor.model.bones.get('AllBody')).matrixWorld).z > 0)
     assert.equal(actor.assetInfo.completeEntityParityVerified, false)
-    assert.equal(actor.firstPersonItemsState().reason, 'BUNDLED_YSM_FIRST_PERSON_NATIVE_ARM_BAKE_UNVERIFIED')
+    assert.equal(actor.firstPersonItemsState().reason, 'NATIVE_HELD_INVENTORY_UNAVAILABLE')
+    assert.equal(actor.firstPersonItemsState().nativeBasisVerified, false)
   } finally { actor.dispose() }
 })
 

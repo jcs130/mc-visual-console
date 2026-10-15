@@ -55,7 +55,7 @@ export function nativeFirstPersonConsumeMatrix(remainingTicks,durationTicks,arm=
   return matrix.multiply(new THREE.Matrix4().makeTranslation(mul(side,.56),F(-.52),F(-.72)))
 }
 
-export function nativeFirstPersonEmptyArmMatrix(progress, arm = 'right') {
+export function nativeFirstPersonPlayerArmMatrix(progress, arm = 'right') {
   if (!Number.isFinite(progress) || progress < 0 || progress > 1 || !['left','right'].includes(arm)) throw Error('NATIVE_FIRST_PERSON_SWING_INVALID')
   const side = arm === 'right' ? 1 : -1, p = F(progress), root = F(Math.sqrt(p)), a = nativePlayerSin(mul(root, PI))
   const matrix = new THREE.Matrix4().makeTranslation(mul(side, add(.64000005, mul(-.3,a))),
@@ -64,8 +64,12 @@ export function nativeFirstPersonEmptyArmMatrix(progress, arm = 'right') {
   matrix.multiply(new THREE.Matrix4().makeTranslation(-side, F(3.6), F(3.5)))
   rot(matrix,'Z',mul(side,120)); rot(matrix,'X',200); rot(matrix,'Y',mul(side,-135))
   matrix.multiply(new THREE.Matrix4().makeTranslation(mul(side,5.6),0,0))
+  return matrix
+}
+
+export function nativeFirstPersonEmptyArmMatrix(progress, arm = 'right') {
   // Convert original skinview arm pixels back to Java ModelPart coordinates.
-  return matrix.multiply(new THREE.Matrix4().makeScale(1/16,-1/16,-1/16))
+  return nativeFirstPersonPlayerArmMatrix(progress, arm).multiply(new THREE.Matrix4().makeScale(1/16,-1/16,-1/16))
 }
 
 // Same locked client fvx=HumanoidModel.setupAttackAnimation (406–435).

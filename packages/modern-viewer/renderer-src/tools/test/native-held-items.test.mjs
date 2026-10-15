@@ -14,17 +14,21 @@ import { selectNativeHeldItems, nativeHeldItemTransform, nativeHeldArmMountMatri
   nativeFirstPersonIdleMountMatrix, nativeFirstPersonSilhouetteProjection, NativeHeldItems, HELD_ITEM_CLIENT_SHA256, ARS_OPEN_MODEL_SHA256 } from '../../src/native-viewer/native-held-items.js'
 
 const uuid = 'e371227c-09fa-3722-84f4-f3228a552c3c'
+const firstOnlyOptions = firstPersonOnly => firstPersonOnly ? { firstPersonOnly, playerObject: undefined,
+  firstPersonArms: new Map(['left', 'right'].map(arm => [arm, new THREE.Group()])) } : {}
 
-test('observed same-body vanilla swing animates first-person original item while moving, then expires', async () => {
+for (const firstPersonOnly of [false, true]) test(`observed same-body swing animates original item while moving, then expires (first only: ${firstPersonOnly})`, async () => {
   let time = 1050
   const held = new NativeHeldItems(staticReader().reader, { uuid, playerObject: new PlayerObject(), now: () => time,
-    readPixels: async () => pixels(), loadHeldTexture: async () => new THREE.Texture({ width:16,height:16 }) })
+    readPixels: async () => pixels(), loadHeldTexture: async () => new THREE.Texture({ width:16,height:16 }), ...firstOnlyOptions(firstPersonOnly) })
   held.setFirstPersonViewport({ fov:70,aspect:16/9,near:.05,far:150 })
   const animation = { source:'same_player_vanilla_hand_packets',playerUuid:uuid,entityId:7,sampledAt:1050,
     mainArm:'right',usingItem:false,spinAttack:false,swing:{startedAt:1000,durationTicks:6,sequence:1,hand:'mainhand'} }
   held.apply(frame(raw(), { entityId:7, velocity:{x:.1,y:0,z:0}, swinging:true, attackAnim:.16, handAnimation:animation }))
   await until(() => held.state().hands.right.status !== 'loading')
   assert.equal(held.firstPersonState().available, true)
+  assert.equal(!!held.hands.get('right').object, !firstPersonOnly)
+  assert.equal(!!held.hands.get('right').mount, !firstPersonOnly)
   const a = held.hands.get('right').firstMount.matrix.clone()
   time = 1150; held.frame(time)
   assert.notDeepEqual(held.hands.get('right').firstMount.matrix.elements, a.elements)
@@ -44,12 +48,12 @@ test('known empty main hand renders the original player arm without borrowing an
   held.dispose()
 })
 
-test('a matched actual food use animates the original held geometry and clears on a changed stack or expired evidence',async()=>{
+for (const firstPersonOnly of [false, true]) test(`matched actual food use animates held geometry and clears on changed stack or expired evidence (first only: ${firstPersonOnly})`,async()=>{
   const fixture=staticReader();let time=1400
   fixture.reader.manifest.sources=[{name:'minecraft-1.21.1-client.jar',sha256:HELD_ITEM_CLIENT_SHA256}]
   extendStaticFixture(fixture,'assets/minecraft/models/item/apple.json',{parent:'minecraft:item/generated',textures:{layer0:'minecraft:item/apple'}})
   extendStaticFixture(fixture,'assets/minecraft/textures/item/apple.png',png())
-  const held=new NativeHeldItems(fixture.reader,{uuid,playerObject:new PlayerObject(),now:()=>time,readPixels:async()=>pixels(),loadHeldTexture:async()=>new THREE.Texture({width:16,height:16})})
+  const held=new NativeHeldItems(fixture.reader,{uuid,playerObject:new PlayerObject(),now:()=>time,readPixels:async()=>pixels(),loadHeldTexture:async()=>new THREE.Texture({width:16,height:16}),...firstOnlyOptions(firstPersonOnly)})
   held.setFirstPersonViewport({fov:70,aspect:16/9,near:.05,far:150})
   const handAnimation={source:'same_player_vanilla_hand_packets',playerUuid:uuid,entityId:7,sampledAt:1400,mainArm:'right',usingItem:true,spinAttack:false,swing:null,
     use:{source:'observed_use_packet_vanilla_duration',hand:'mainhand',name:'minecraft:apple',kind:'eat',durationTicks:32,startedAt:1000}}

@@ -471,15 +471,23 @@ async function loadTexture(bytes) {
 }
 
 export class NativeHeldItems {
-  constructor(reader, { uuid, playerObject, slim = false, readPixels, loadHeldTexture = loadTexture, onChange = () => {}, now = Date.now } = {}) {
+  constructor(reader, { uuid, playerObject, slim = false, readPixels, loadHeldTexture = loadTexture, onChange = () => {}, now = Date.now,
+    firstPersonOnly = false, firstPersonArms, emptyArmMatrix = nativeFirstPersonEmptyArmMatrix } = {}) {
     this.reader = reader; this.uuid = normalizeUuid(uuid); this.player = playerObject; this.slim = slim
-    if (!playerObject?.skin?.rightArm?.isObject3D || !playerObject?.skin?.leftArm?.isObject3D) throw Error('NATIVE_HELD_PLAYER_MODEL_INVALID')
+    if (!firstPersonOnly && (!playerObject?.skin?.rightArm?.isObject3D || !playerObject?.skin?.leftArm?.isObject3D)) throw Error('NATIVE_HELD_PLAYER_MODEL_INVALID')
+    if (firstPersonOnly && !['right', 'left'].every(arm => firstPersonArms?.get(arm)?.isObject3D)) throw Error('NATIVE_HELD_PLAYER_MODEL_INVALID')
+    this.firstPersonOnly = firstPersonOnly; this.emptyArmMatrix = emptyArmMatrix
     this.readPixels = readPixels; this.loadTexture = loadHeldTexture; this.onChange = onChange; this.disposed = false
     this.hands = new Map(); this.selection = null; this.reason = 'NATIVE_HELD_INVENTORY_UNAVAILABLE'; this.firstViewport = null
     this.firstPersonRoot = new THREE.Group(); this.firstPersonRoot.name = 'native-own-first-person-items'
     this.firstPersonRoot.visible = false; this.firstPersonRoot.userData.playerUuid = this.uuid
     this.now = now; this.emptyArms = new Map()
     for (const arm of ['right','left']) {
+      if (firstPersonOnly) {
+        const mount = firstPersonArms.get(arm)
+        mount.matrixAutoUpdate = false; mount.visible = false
+        this.firstPersonRoot.add(mount); this.emptyArms.set(arm, mount); continue
+      }
       const original = this.player.skin[`${arm}Arm`], clone = new THREE.Group(), mount = new THREE.Group()
       clone.position.copy(original.position)
       for (const part of original.children) clone.add(part.clone())
@@ -541,6 +549,7 @@ export class NativeHeldItems {
     try { this.selection = selectNativeHeldItems(frame, this.uuid); this.reason = null } catch (error) {
       this.selection = null; this.reason = error.message
       for (const arm of ['right', 'left']) this.retire(arm)
+      this.refreshPose()
       this.onChange(this.state()); return this.state()
     }
     for (const arm of ['right', 'left']) {
@@ -578,13 +587,14 @@ export class NativeHeldItems {
         if (!current()) return
       }
       const input = plan.textureLayers ? textures : textures.get(plan.texturePath)
-      object = buildNativeHeldItemObject(plan, input)
+      if (!this.firstPersonOnly) object = buildNativeHeldItemObject(plan, input)
       firstObject = buildNativeHeldItemObject(plan, input)
-      const mount = new THREE.Group(); mount.name = `native-held-${arm}`; mount.matrixAutoUpdate = false; mount.add(object)
+      let mount
+      if (object) { mount = new THREE.Group(); mount.name = `native-held-${arm}`; mount.matrixAutoUpdate = false; mount.add(object) }
       const firstMount = new THREE.Group(); firstMount.name = `native-first-held-${arm}`; firstMount.matrixAutoUpdate = false; firstMount.add(firstObject)
       firstMount.matrix.copy(nativeFirstPersonIdleMountMatrix({ arm, transform: plan.firstPersonTransform }))
       this.firstPersonRoot.add(firstMount)
-      this.player.skin[`${arm}Arm`].add(mount)
+      if (mount) this.player.skin[`${arm}Arm`].add(mount)
       Object.assign(entry, { plan, textures, object, mount, firstObject, firstMount, status: 'ready', reason: null })
       retained = true
       this.refreshPose(); this.onChange(this.state())
@@ -619,14 +629,16 @@ export class NativeHeldItems {
     for (const [arm, mount] of this.emptyArms) {
       const motion = nativeHandAnimation(this.selection?.self, arm, time)
       mount.visible = !!(motion && this.selection.mainArm === arm && this.hands.get(arm)?.status === 'empty')
-      if (mount.visible) { mount.matrix.copy(nativeFirstPersonEmptyArmMatrix(motion.progress, arm)); mount.matrixWorldNeedsUpdate = true }
+      if (mount.visible) { mount.matrix.copy(this.emptyArmMatrix(motion.progress, arm)); mount.matrixWorldNeedsUpdate = true }
     }
-    for (const [arm, entry] of this.hands) if (entry.mount) {
+    for (const [arm, entry] of this.hands) if (entry.firstMount) {
       const poseReason = thirdPersonPoseReason(this.selection?.self, time)
-      entry.mount.visible = !poseReason
       entry.reason = poseReason
-      entry.mount.matrix.copy(nativeHeldArmMountMatrix({ arm, slim: this.slim,
-        rotation: this.player.skin[`${arm}Arm`].rotation, transform: entry.plan.transform })); entry.mount.matrixWorldNeedsUpdate = true
+      if (entry.mount) {
+        entry.mount.visible = !poseReason
+        entry.mount.matrix.copy(nativeHeldArmMountMatrix({ arm, slim: this.slim,
+          rotation: this.player.skin[`${arm}Arm`].rotation, transform: entry.plan.transform })); entry.mount.matrixWorldNeedsUpdate = true
+      }
       const projectionKey = JSON.stringify(this.firstViewport)
       if (entry.firstProjectionKey !== projectionKey) {
         entry.firstProjection = nativeFirstPersonSilhouetteProjection(entry.plan, this.firstViewport, arm)
