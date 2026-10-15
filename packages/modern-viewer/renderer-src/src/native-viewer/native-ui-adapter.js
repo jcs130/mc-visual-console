@@ -7,6 +7,8 @@ import { nativeSoulSlabAnimationStyle, NATIVE_SOUL_SLAB_KEYFRAMES } from './nati
 import { nativeClientSourceVerified } from './native-client-source.js'
 import { createNativeSurvivalUi } from './native-survival-ui.js'
 import { NATIVE_VANILLA_GUIS, standardVanillaMenuLayout, vanillaMenuPropertyLabels } from './native-vanilla-menus.js'
+import { NATIVE_CRAFTER_GUI, crafterMenuLayout, nativeCrafterState } from './native-crafter-menu.js'
+export { NATIVE_CRAFTER_GUI, nativeCrafterState } from './native-crafter-menu.js'
 export { NATIVE_VANILLA_GUIS } from './native-vanilla-menus.js'
 import { NATIVE_CURIOS_GUI, NATIVE_DOMUM_GUIS, nativeCuriosMenuLayout, nativeDomumMenuLayout,
   nativeCoordinateMenuLayout } from './native-mod-menus.js'
@@ -208,6 +210,9 @@ export function nativeSlotRows (rows) {
 export function nativeVanillaMenuLayout(menu, expectedUuid) {
   return standardVanillaMenuLayout(menu, expectedUuid, nativeSlotRows(menu?.slots))
 }
+export function nativeCrafterMenuLayout(menu, expectedUuid) {
+  return crafterMenuLayout(menu, expectedUuid, nativeSlotRows(menu?.slots))
+}
 
 export function nativePresentationView (value, expectedUuid) {
   const expected = uuid(expectedUuid)
@@ -241,6 +246,7 @@ export class NativeUiAssets {
     this.reader = reader; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.urls = new Map(); this.pending = new Map(); this.errors = new Map(); this.disposed = false
     this.craftingReason = 'NATIVE_CRAFTING_GUI_LOADING'
+    this.crafterReason = 'NATIVE_CRAFTER_GUI_LOADING'; this.crafterStateReason = 'NATIVE_CRAFTER_GUI_LOADING'
     this.cookingPotReason = 'NATIVE_COOKING_POT_GUI_LOADING'; this.cookingPotPlaceholderReason = 'NATIVE_COOKING_POT_GUI_LOADING'
     this.chestReason = 'NATIVE_CHEST_GUI_LOADING'; this.furnaceReasons = new Map(); this.furnaceProgressReasons = new Map()
     this.standardReasons = new Map(Object.keys(NATIVE_VANILLA_GUIS).map(type => [type, 'NATIVE_VANILLA_GUI_LOADING']))
@@ -275,6 +281,9 @@ export class NativeUiAssets {
     await Promise.all([
       ...Object.entries(NATIVE_VANILLA_GUIS).map(([type, info]) => prepare(info, 'VANILLA').then(reason => { this.standardReasons.set(type, reason) })),
       prepare(NATIVE_CRAFTING_GUI, 'CRAFTING').then(reason => { this.craftingReason = reason }),
+      prepare(NATIVE_CRAFTER_GUI, 'CRAFTER').then(reason => { this.crafterReason = reason }),
+      Promise.all(['disabled','powered','unpowered'].map(key => prepare({ ...NATIVE_CRAFTER_GUI, ...NATIVE_CRAFTER_GUI[key] }, 'CRAFTER')))
+        .then(reasons => { this.crafterStateReason = reasons.find(Boolean) ?? null }),
       prepare(NATIVE_CHEST_GUI, 'CHEST').then(reason => { this.chestReason = reason }),
       Promise.all([NATIVE_CURIOS_GUI, NATIVE_CURIOS_GUI.inventory].map(info => prepare(info, 'CURIOS')))
         .then(reasons => { this.curiosReason = reasons.find(Boolean) ?? null }),
@@ -568,6 +577,9 @@ export function createNativeInterface ({ document = globalThis.document,
           kind = 'crafting'
           layout = { info: NATIVE_CRAFTING_GUI, width: 176, height: 166, slots: nativeCraftingMenuLayout(window, expectedUuid) }
           reason = assets ? assets.craftingReason : 'NATIVE_CRAFTING_GUI_LOADING'
+        } else if (window.menuType === 'minecraft:crafter_3x3') {
+          kind = 'crafter'; layout = nativeCrafterMenuLayout(window, expectedUuid)
+          reason = assets ? assets.crafterReason : 'NATIVE_CRAFTER_GUI_LOADING'
         } else if (/^minecraft:generic_9x[1-6]$/.test(window.menuType)) {
           kind = 'chest'; layout = nativeChestMenuLayout(window, expectedUuid)
           reason = assets ? assets.chestReason : 'NATIVE_CHEST_GUI_LOADING'
@@ -622,7 +634,13 @@ export function createNativeInterface ({ document = globalThis.document,
           preview ??= previewFactory({ THREE, document, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason })
           preview.attach(host)
         }
-        let progress = null, cookingPot = null
+        let progress = null, cookingPot = null, crafter = null
+        if (kind === 'crafter') {
+          crafter = nativeCrafterState(window, expectedUuid)
+          if (crafter.available && assets.crafterStateReason) crafter = { available: false, reason: assets.crafterStateReason }
+          panel.dataset.crafterState = crafter.available ? 'available' : 'unknown'
+          if (!crafter.available) panel.dataset.crafterReason = crafter.reason
+        }
         if (kind === 'furnace') {
           progress = nativeFurnaceProgress(window, expectedUuid)
           const spriteReason = assets.furnaceProgressReasons.get(window.menuType)
@@ -662,6 +680,9 @@ export function createNativeInterface ({ document = globalThis.document,
           // 32px image 2px inside this 36px div, so place the div one GUI pixel back.
           const itemSlot = slot(panel, row, x - 1 + (layout.offsetX ?? 0), y - 1 + (layout.offsetY ?? 0), `原生${slotRoleName(role)}槽 ${row.slot}`)
           itemSlot.dataset.nativeSlotX = String(x); itemSlot.dataset.nativeSlotY = String(y); itemSlot.dataset.slotRole = role
+          if (crafter?.available && crafter.disabledSlots.includes(row.slot)) {
+            itemSlot.dataset.disabled = 'true'; itemSlot.title += ' · 服务端已禁用'; itemSlot.setAttribute('aria-label', itemSlot.title)
+          }
           if (typeof window.mayPickup?.[row.slot] === 'boolean') itemSlot.dataset.mayPickup = String(window.mayPickup[row.slot])
           if (kind === 'cooking-pot' && row.slot === 7 && row.item === null) {
             const placeholder = assets.urls.get(NATIVE_COOKING_POT_GUI.emptyContainer.path)
@@ -685,8 +706,16 @@ export function createNativeInterface ({ document = globalThis.document,
             itemSlot.setAttribute('aria-label', itemSlot.title)
           }
         }
+        if (crafter?.available) {
+          panel.dataset.powered = String(crafter.powered)
+          blit(assets.urls.get(crafter.redstone.path), 16, 16, crafter.redstone, 'native-crafter-redstone')
+          for (const crop of crafter.disabled) {
+            blit(assets.urls.get(crop.path), 18, 18, crop, 'native-crafter-disabled-slot')
+          }
+        }
         body.append(panel)
         const label = kind === 'crafting' ? '原版 3×3 工作台与玩家背包布局'
+          : kind === 'crafter' ? '原版合成器 9 个输入、玩家背包与产物预览布局'
           : kind === 'standard' ? `原版${language.menu({ menuType: window.menuType })}与玩家背包布局`
           : kind === 'chest' ? `原版 9×${layout.rowsCount} 容器与玩家背包布局`
           : kind === 'curios' ? `Curios 原背包与饰品槽布局${layout.page !== null ? ` · 第 ${layout.page + 1}/${layout.totalPages} 页` : ' · 分页状态未同步'}`
@@ -694,6 +723,7 @@ export function createNativeInterface ({ document = globalThis.document,
           : kind === 'cooking-pot' ? 'Farmer’s Delight 原 3×2 原料、熟食缓冲、容器、成品与玩家背包布局' : '原版炉输入、燃料、结果与玩家背包布局'
         const missing = kind === 'curios' ? '配方书、饰品按钮与原生标题未接入'
           : kind === 'domum' ? `${layout.previewReason ? '分组/款式预览未同步' : '已显示原始分组/款式预览第一页'}；其他滚动页与原生标题未接入`
+            : kind === 'crafter' ? `禁用槽位与红石状态${crafter.available ? `来自本人窗口数据（${crafter.powered ? '已供电' : '未供电'}）` : `未知（${crafter.reason}）`}；产物槽是配方预览；切换槽位请在游戏中完成`
             : kind === 'standard' ? '按钮与专用预览尚未接入；窗口操作请在游戏中完成'
             : kind === 'chest' ? '原生标题未接入' : '配方书与原生标题未接入'
         const progressText = progress ? `；${progress.available ? '火焰与烧炼进度来自本人原生 dataValues'

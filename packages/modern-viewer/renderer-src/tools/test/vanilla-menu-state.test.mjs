@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { observeVanillaMenus } from '../../host/vanilla-menu-state.mjs'
 import { vanillaPlayerPresentation } from '../../host/vanilla-native-stream.mjs'
-import { nativeCraftingMenuLayout, nativeFurnaceProgress } from '../../src/native-viewer/native-ui-adapter.js'
+import { nativeCraftingMenuLayout, nativeFurnaceProgress, nativeCrafterMenuLayout, nativeCrafterState } from '../../src/native-viewer/native-ui-adapter.js'
 import { AgentVisualState } from '../../src/modern-viewer/agent-visual-state.js'
 import { createNativeAgentVisualization } from '../../host/native-agent-visual.mjs'
 
@@ -55,6 +55,20 @@ test('non-furnace data exposes only received bounded properties and clears reuse
   packet(bot,'open_window',{windowId:1})
   packet(bot,'window_items',{windowId:1,stateId:0,items:Array(39).fill(null)})
   assert.deepEqual(menus.snapshot().properties,[]);menus.close()
+})
+test('crafter wire properties bind to the same complete window and never reuse an old disabled mask',()=>{
+  const bot=fixture('minecraft:crafter_3x3',46),menus=observeVanillaMenus(bot)
+  packet(bot,'window_items',{windowId:1,stateId:12,items:Array(46).fill(null)})
+  bot.currentWindow.slots[45]={name:'stick',count:4,components:[],removedComponents:[]}
+  for(let property=0;property<10;property++)packet(bot,'craft_progress_bar',{windowId:1,property,value:[0,8,9].includes(property)?1:0})
+  packet(bot,'craft_progress_bar',{windowId:2,property:9,value:0})
+  const menu=vanillaPlayerPresentation(bot,null,menus.snapshot()).nativeMenu
+  assert.equal(nativeCrafterMenuLayout(menu,uuid).slots[45].row.item.name,'minecraft:stick')
+  assert.deepEqual(nativeCrafterState(menu,uuid).disabledSlots,[0,8]);assert.equal(nativeCrafterState(menu,uuid).powered,true)
+  packet(bot,'close_window',{windowId:1});packet(bot,'open_window',{windowId:1})
+  packet(bot,'window_items',{windowId:1,stateId:0,items:Array(46).fill(null)})
+  assert.equal(nativeCrafterState(vanillaPlayerPresentation(bot,null,menus.snapshot()).nativeMenu,uuid).available,false)
+  menus.close();assert.equal(bot._client.listenerCount('packet'),0)
 })
 test('real slot clicks keep window identity through SSE and shared visual-state normalization', () => {
   const bot=fixture(),frames=[],bridge=createNativeAgentVisualization(bot,{timers:false})

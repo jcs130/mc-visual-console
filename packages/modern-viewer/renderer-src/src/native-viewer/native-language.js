@@ -50,6 +50,7 @@ const MENU_NAMES = Object.freeze({
   'minecraft:merchant': '交易', 'minecraft:stonecutter': '切石机', 'minecraft:cartography_table': '制图台',
   'minecraft:smithing': '锻造台', 'minecraft:grindstone': '砂轮', 'minecraft:loom': '织布机',
   'minecraft:beacon': '信标', 'minecraft:shulker_box': '潜影盒', 'minecraft:generic_3x3': '发射器／投掷器',
+  'minecraft:crafter_3x3': '合成器',
   'farmersdelight:cooking_pot': '农夫乐事 · 烹饪锅', 'curios:curios_container': '饰品栏',
   'domum_ornamentum:architectscutter': '建筑切割台', 'domum_ornamentum:architects_cutter': '建筑切割台'
 })

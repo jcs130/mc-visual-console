@@ -33,6 +33,17 @@ and UI rows below remain open until their actual original implementations and
 same-player browser observations pass. Exported layers are available inputs for
 those ports; no missing type is silently classified as out of scope.
 
+The original CrafterMenu/CrafterScreen is also ported. Its 46 actual slot indices
+retain nine inputs, 36 player slots and the final recipe-preview slot 45, which
+is not an acquired item. All nine disabled-slot bits and the redstone data slot
+use received same-player window properties and the original PNG sprites. Every
+one of the 512 disable masks and both power states is checked. Missing properties
+display unknown, and stale overlays disappear. The offline browser exercises
+powered, unpowered and missing-state transitions. This extends the audited GUI
+background/layout paths to 24 of the 25 vanilla menu types; the lectern book
+screen remains open, along with other menus' dedicated controls/previews and
+matched Java pixel parity. Read-only Web display does not dispatch menu clicks.
+
 The complete original `ThrownItemRenderer` family is now dispatched: egg,
 ender pearl, experience bottle, potion, snowball, eye of ender, fireball and
 small fireball. It uses the actual component-bearing Slot, the verified original
