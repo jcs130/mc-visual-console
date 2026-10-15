@@ -12,7 +12,7 @@ export function installAppearanceSettings({ document, window, onChange, hidden =
   const label = make('label', panel, '模型与配色'), select = make('select', label);
   select.setAttribute('aria-label', '人物模型与配色');
   const restore = make('button', panel, '恢复服务器外观'); restore.type = 'button';
-  make('small', panel, '只影响本页中的当前人物，不修改服务器外观。刷新、断线或切换玩家后恢复跟随服务器。');
+  make('small', panel, '只影响观战外观，不修改服务器外观。原生页面按玩家保留选择，可随时恢复跟随服务器。');
   const status = make('output', panel); status.setAttribute('aria-live', 'polite');
   const compatibility=make('small',panel);compatibility.hidden=true;
   let snapshot = null, signature = '', disposed = false;

@@ -92,16 +92,17 @@ export function paperYsmItemCategory(item) {
   if(/_(sword|pickaxe|shovel|hoe|axe)$/.test(name))return name.split('_').at(-1);
   return ({trident:'spear',splash_potion:'throwable_potion',lingering_potion:'throwable_potion',potion:'drink',milk_bucket:'drink',honey_bottle:'drink',goat_horn:'toot_horn'})[name]??name;
 }
-function selectArmClip(definition, kind, hand, item) {
+function selectArmClip(definition, kind, hand, item, categoryOverride) {
   const names=definition?.animations??{}, id=item?.name?.includes(':')?item.name:'minecraft:'+item?.name;
   const prefix=kind==='swing' && hand==='mainhand'?'swing':kind+'_'+hand;
-  const category=paperYsmItemCategory(item);
+  const category=categoryOverride??paperYsmItemCategory(item);
   // Exact ID takes priority over built-in item categories, then generic hold.
   return [prefix+'$'+id,prefix+':'+category,prefix].find(name=>Object.hasOwn(names,name));
 }
 export class PaperYsmAnimation {
-  constructor(model,main,{arm=null,extra=null,controllers=[]}={}) {
+  constructor(model,main,{arm=null,extra=null,controllers=[],selectBase=null,lookBone='Head'}={}) {
     this.model=model;this.main=main;this.arm=arm;this.extra=extra;this.controllers=controllers;
+    this.selectBase=selectBase;this.lookBone=lookBone;
     this.compiled=new Map();this.layers=new Map();this.variables=Object.create(null);this.selected=[];this.errors=[];this.start=null;
   }
   clip(def,name){let map=this.compiled.get(def);if(!map){map=new Map();this.compiled.set(def,map);}if(!map.has(name))map.set(name,compilePaperYsmClip(def,name,this.model.bones));return map.get(name);}
@@ -112,11 +113,12 @@ export class PaperYsmAnimation {
     this.moving = speed > (this.moving ? 0.03 : 0.08);
     const inhibited=m.bodyState?.source==='server' && m.bodyState.canAct===false;
     const downed=inhibited && m.bodyState.pose==='downed';
-    const sleeping=!inhibited && pose==='sleeping', restricted=inhibited||sleeping;
+    const sleeping=!inhibited && pose==='sleeping', restricted=inhibited||sleeping||pose==='dying';
     let base=pose==='sleeping'?'sleep':pose==='dying'?'death':pose==='spin_attack'?'riptide':pose==='fall_flying'?'elytra_fly':
       pose==='swimming'?'swim':m.flying===true?'fly':m.inWater===true&&m.onGround===false?
         (speed>.2?'swim':this.main.animations?.swim_stand?'swim_stand':'swim'):
         m.onGround===false?'jump':m.crouching===true?(this.moving?'sneak':'sneaking'):this.moving?(m.sprinting===true?'run':'walk'):'idle';
+    if(this.selectBase)base=this.selectBase(m,base);
     if(inhibited){base=downed&&this.main.animations?.downed?'downed':'idle';this.waterTransition=null;this.layers.clear();}
     // appearanceMotion stores Java pitch degrees (positive down). YSM's
     // head_pitch query is positive up, as is legacy Mineflayer pitch in radians.
@@ -152,7 +154,7 @@ export class PaperYsmAnimation {
       const item=equipment[index],hold=item?selectArmClip(this.arm,'hold',hand,item):Object.hasOwn(this.arm?.animations??{},'hold_'+hand+':empty')?'hold_'+hand+':empty':null;
       if(hold)layer('hold'+index,this.arm,hold,{loop:true,token:JSON.stringify(item??null)});
       if(m.usingItem===true && (m.activeHand??'mainhand')===hand) {
-        const condition=selectArmClip(this.arm,'use',hand,item);
+        const condition=selectArmClip(this.arm,'use',hand,item,m.useKind);
         layer('use'+index,condition?this.arm:this.main,condition??'use_'+hand,{loop:true});
       }
       const swing=m.swing;
@@ -174,7 +176,7 @@ export class PaperYsmAnimation {
     for(let n=0;n<8;n++)if(this.main.animations?.['parallel'+n])layer('parallel'+n,this.main,'parallel'+n,{loop:true,additiveRotation:true});
     // The native Head bone also follows the actual look direction, even when
     // the authored animation has no head channel.
-    const head=this.model.bones.get('Head');if(head && !restricted){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
+    const head=this.model.bones.get(this.lookBone);if(head && !restricted){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
     for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
     if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
     return {base:downed?'downed':base,canAct:!inhibited,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};

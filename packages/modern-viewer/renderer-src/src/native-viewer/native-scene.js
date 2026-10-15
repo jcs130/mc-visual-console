@@ -35,7 +35,8 @@ import { nativeStaticBatches } from './native-static-batch.js'
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
 export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{}, onState=()=>{},onBuild=()=>false,
-  onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{},cameraSettings,onCameraManual=()=>{},onSelection=()=>{}} = {}) {
+  onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{},cameraSettings,onCameraManual=()=>{},onSelection=()=>{},
+  defaultAppearance='server', selectionStorage, selectionScope} = {}) {
 if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
 const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
@@ -105,7 +106,9 @@ async function start () {
   worldRoot = new THREE.Group(); statics = new THREE.Group(); worldRoot.add(statics); scene.add(worldRoot)
   roomVisibility.attach(worldRoot)
   const bundledAppearanceReader=await BundledAppearanceReader.load(nativeViewerUrl('api/bundled-appearances'))
-  selfController = new NativeSelfPlayerController(reader, { bundledAppearanceReader, onChange (actor, status) {
+  if(selectionStorage===undefined){try{selectionStorage=window.localStorage}catch{selectionStorage=null}}
+  selfController = new NativeSelfPlayerController(reader, { bundledAppearanceReader, defaultAppearance, selectionStorage,
+    selectionScope: selectionScope ?? nativeViewerUrl('manifest.json'), onChange (actor, status) {
     selfActor = actor; skinState = status
     selfMotionState = null; selfMotionSignature = null; lastPlayerFrameTime = null
     if (actor) {
@@ -261,6 +264,8 @@ async function start () {
         current.presentation = value.presentation; current.entityState = value.entityState; receiveDisplay()
       } else if (value.type === 'motion' && current && value.epoch === epoch) {
         selfActor?.applyHandAnimation?.(value.handAnimation)
+        if(current.presentation?.self && value.handAnimation?.playerUuid===playerUuid && value.handAnimation.entityId===current.selfPlayer?.entityId)
+          current.presentation.self.handAnimation=value.handAnimation
         current.pose = value.pose; current.motion = value.motion; receiveDisplay(); return
       } else if (value.type === 'presentation' && current && value.epoch === epoch) {
         current.presentation = value.presentation; selfActor?.applyHeldItems?.(value.presentation); onState(value); return

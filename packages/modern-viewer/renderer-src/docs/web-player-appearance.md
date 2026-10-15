@@ -2,12 +2,15 @@
 
 在画面右上方打开 **人物模型**，选择当前观战人物的模型和配色。默认 **跟随服务器**；点击 **恢复服务器外观** 会使用服务器最近一次同步的外观。
 
-选择只影响本页。它不修改服务器角色、其他玩家看到的外观、游戏状态或 Agent 行为；不发送游戏命令。刷新页面、断线、切换玩家或连接 epoch 后恢复默认。服务器外观在本页替换期间继续更新。
+选择只影响 Web 观战。它不修改服务器角色、其他玩家看到的外观、游戏状态或 Agent 行为；不发送游戏命令。原生页面按素材清单 URL 与玩家 UUID 保存明确选择，刷新、断线及同一账号重生后恢复该账号的选择；存储被禁用时在当前页面内保留。不同账号独立选择。Paper 页面仍使用临时选择。服务器外观在本页替换期间继续更新。
 
 ## 可选资源
 
 - Paper / Socket.IO 页面：已收到并通过宿主校验的公开 YSM 原始模型与贴图，另有明确标注的「原版玩家皮肤（Web）」选项。资源缓存过期会显示原因并恢复服务器外观。
 - 原生 1.21.1 页面：部署素材清单中已锁定的 YSM 2.6.5 原始 Alex / gsl、Steve / tartaric_acid、Default Boy / blue、Default Boy / red。只有版本、来源与逐文件 SHA 匹配的模型才出现在列表中；加载时继续校验实际字节。
+- 自带原始模型目录：宿主提供通过逐文件 SHA 校验的 catalog 后，可选择其 YUI / `neko_yui` 2.4.1。其客户端外观适配读取本人普通 Mineflayer 的 pose、50ms physics、velocity、inWater、health 和 handAnimation，复用已有 YSM 动画层；不伪造官方 Mod motion。朝向缺少独立 bodyYaw 时明确使用本人 look yaw。跑步、攀爬、骑乘、飞行及额外动作只有实际字段存在时选择；健康下降驱动受伤动作并标注来源。原图、骨骼及 UV 保留，逐骨骼合批降低网格数量，不宣称 FPS 或 Java 像素一致性。
+
+`bootNativeConsole`、`mountNativeWorld` 和 `NativeSelfPlayerController` 接受 `defaultAppearance`、`selectionStorage`、`selectionScope`。默认外观仍为 `server`；薄宿主可提供 `bundled:yui-ysm` 默认值，已保存的明确选择（包括 `server`）优先。存储只包含选择 ID，不含动作、账号名称或凭据。模型资源按 actor 生命周期释放，偏好按账号隔离。
 
 没有恢复旧 VRM 下拉菜单：旧构建关闭它时，相应资源并未随部署包提供。本功能复用现有 YSM 渲染器，不增加任意文件上传、下载或私有 `.ysm` 解密入口。人物朝向、运动、隐身及身份绑定仍来自同一玩家；不适配的动画、装备和第一人称能力仍沿用现有提示，完整 Java 渲染一致性不因外观选择而变为已验收。
 

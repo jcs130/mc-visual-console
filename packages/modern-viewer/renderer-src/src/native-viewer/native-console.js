@@ -33,7 +33,7 @@ function append (document, parent, tag, className, text) {
 
 export async function bootNativeConsole ({ document = globalThis.document, window = globalThis.window,
   mount = mountNativeWorld, fetchStatus = signal => fetch(nativeViewerUrl('status.json'), { cache: 'no-store', credentials: 'same-origin', signal }),
-  startStatus = startAgentStatusPolling, createInterface = createNativeInterface } = {}) {
+  startStatus = startAgentStatusPolling, createInterface = createNativeInterface, defaultAppearance = 'server', selectionStorage, selectionScope } = {}) {
   if (!document?.body || !window) throw Error('NATIVE_CONSOLE_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   const buildChanged=createNativeViewerBuildGuard(q('meta[name="native-viewer-build"]')?.content,()=>window.location.reload())
@@ -148,6 +148,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       d?.bounds ? `地形范围：${d.bounds.maxX - d.bounds.minX + 1}×${d.bounds.maxZ - d.bounds.minZ + 1} 格，高度 ${d.bounds.minY}–${d.bounds.maxY}；只显示本人收到的区块` : '',
       d?.coverage?.horizontalRangeReduced ? '地形因预算收缩，实际范围以上述数值为准' : '',
       d?.skinState ?? '本人模型未同步',
+      d?.selfModel?.motion ? `人物动作：${d.selfModel.motion.clip ?? '等待'} · ${d.selfModel.motion.source ?? 'native'}${d.selfModel.motion.reason ? ' · '+d.selfModel.motion.reason : ''}` : '',
       d?.entities ? `周围实体：原生收到 ${d.entities.received}，已渲染 ${d.entities.rendered}` : '',
       d?.frameGaps ? `可见帧间隔：p50 ${d.frameGaps.p50} / p95 ${d.frameGaps.p95} / p99 ${d.frameGaps.p99} / 最大 ${d.frameGaps.max} ms；>33/>50/>100 ms ${d.frameGaps.over33}/${d.frameGaps.over50}/${d.frameGaps.over100}；${d.frameGaps.sampleCount} 样本 / ${Math.round(d.frameGaps.durationMs)} ms` : '',
       d?.selfDisplay ? `本人显示缓冲 ${d.selfDisplay.delayMs} ms${d.selfDisplay.stale?' · 采样陈旧，保持最后位置':''}` : '',
@@ -223,7 +224,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   listen(window, 'pagehide', dispose)
   ui.reset(); switchView(pendingMode)
   try {
-    sceneHost = await mount({ viewport, mode: pendingMode,
+    sceneHost = await mount({ viewport, mode: pendingMode, defaultAppearance, selectionStorage, selectionScope,
       onBuild:buildChanged,
       cameraSettings,onCameraManual:mode=>mode&&cameraUi.select?cameraUi.select(mode):cameraUi.manual(),
       onSelection:value=>{targetSelect.value=value?String(value.entityId):'';targetInfo.textContent=value?`${value.name} · #${value.entityId}${Number.isFinite(value.health)?' · 生命 '+value.health:''}`:'正在跟随 Agent 本人'},

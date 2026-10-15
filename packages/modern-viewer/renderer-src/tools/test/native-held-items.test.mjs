@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto'
 import { deflateSync } from 'node:zlib'
 import * as THREE from 'three'
 import { PlayerObject } from 'skinview3d/libs/model.js'
+import { BundledYsmHeldItems } from '../../src/native-viewer/native-bundled-ysm-items.js'
+import { paperYsmItemMount } from '../../src/modern-viewer/paper-ysm-items.js'
 import { NativeAssetReader } from '../../src/native-viewer/model-loader.js'
 import { ARS_ITEM_SOURCE_HASHES, ARS_ITEM_ASSET_HASHES, ARS_BOOK_TEXTURE_HASHES } from '../../src/native-viewer/native-ars-item-icons.js'
 import { nativeHumanoidWalkAngles, renderNativePlayerMotion } from '../../src/native-viewer/native-player-motion.js'
@@ -493,4 +495,34 @@ test('empty, unsupported and loading hands cannot claim held rendering available
   assert.match(held.state().reason, /PROVIDER_UNVERIFIED/); assert.equal(held.firstPersonState().available, false)
   held.apply(frame()); assert.equal(held.state().available, false); assert.equal(held.state().reason, 'NATIVE_HELD_ITEMS_LOADING')
   held.dispose()
+})
+
+test('bundled original YSM uses exact hand locators, native item geometry and reviewed item mount', async () => {
+  const model = { bones: new Map(['RightHandLocator', 'LeftHandLocator'].map(name => [name, new THREE.Group()])) }
+  const held = new BundledYsmHeldItems(staticReader().reader, model, uuid, async () => new THREE.Texture({ width: 16, height: 16 }), { readPixels: async () => pixels() })
+  held.setVisible(true)
+  held.apply(frame()); await until(() => held.state().hands.right.status !== 'loading')
+  assert.equal(held.state().available, true, JSON.stringify(held.state()))
+  const row = held.hands.get('right')
+  assert.equal(row.mount.parent, model.bones.get('RightHandLocator'))
+  const expected = paperYsmItemMount({ rotation: [0, -90, 55], translation: [0, 4, .5], scale: [.85, .85, .85] }, 'right')
+  for(let n=0;n<16;n++) assert.ok(Math.abs(row.mount.matrix.elements[n]-expected.elements[n])<1e-7)
+  held.setVisible(false); assert.equal(held.state().available,false); assert.equal(row.mount.visible,false)
+  held.setVisible(true)
+  let geometries = 0, textures = 0
+  row.object.traverse(o => o.geometry?.addEventListener('dispose', () => geometries++))
+  for(const t of row.textures.values()) t.addEventListener('dispose', () => textures++)
+  held.apply({ ...frame(), playerUuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' })
+  assert.equal(row.mount.parent, null); assert.ok(geometries > 0); assert.equal(textures, 1)
+  assert.equal(held.state().available, false); held.dispose(); held.dispose(); assert.equal(textures, 1)
+})
+
+test('cancelled bundled held-item decode frees late resources and never attaches to a retired actor', async () => {
+  let release, started = false, disposals = 0
+  const model = { bones: new Map(['RightHandLocator', 'LeftHandLocator'].map(name => [name, new THREE.Group()])) }
+  const held = new BundledYsmHeldItems(staticReader().reader, model, uuid, () => new Promise(resolve => {
+    started = true; release = () => { const t = new THREE.Texture({ width: 16, height: 16 }); t.addEventListener('dispose', () => disposals++); resolve(t) }
+  }), { readPixels: async () => pixels() })
+  held.apply(frame()); await until(() => started); held.dispose(); release(); await until(() => disposals === 1)
+  assert.equal(model.bones.get('RightHandLocator').children.length, 0); assert.equal(held.hands.size, 0)
 })

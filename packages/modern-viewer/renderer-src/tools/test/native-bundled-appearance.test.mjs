@@ -108,7 +108,11 @@ test('default stays server; explicit choice binds actual UUID; account/reset/swi
   assert.equal(stale.disposed, 1); assert.equal(controller.appearance().selected, 'server')
   controller.selectAppearance('bundled:test'); controller.clear('disconnect')
   const disconnected = pending[1](); await settle(); assert.equal(disconnected.disposed, 1)
-  assert.equal(controller.actor, null); assert.equal(controller.appearance().selected, 'server')
+  assert.equal(controller.actor, null); assert.equal(controller.appearance().selected, 'bundled:test')
+  const reconnect = controller.update(self(OTHER), OTHER); pending[2](); await reconnect
+  assert.equal(controller.appearance().selected, 'bundled:test', 'the same account restores its own explicit choice after reconnect')
+  const previousAccount = controller.update(self(UUID), UUID); pending[3](); await previousAccount
+  assert.equal(controller.appearance().selected, 'bundled:test', 'each previously selected account restores only its own choice')
   controller.dispose()
 })
 

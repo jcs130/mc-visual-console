@@ -24,12 +24,22 @@ export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Dat
 // checked with the same production controller used by the scene.
 export class NativeSelfPlayerController {
   constructor (reader, { minecraftFactory = createNativePlayerActor, ysmFactory = createNativeYsmPlayerActor,
-    bundledYsmFactory = createNativeBundledYsmPlayerActor, bundledAppearanceReader = null, onChange = () => {} } = {}) {
+    bundledYsmFactory = createNativeBundledYsmPlayerActor, bundledAppearanceReader = null, onChange = () => {},
+    defaultAppearance = 'server', selectionStorage = null, selectionScope = 'page' } = {}) {
     this.reader = reader; this.minecraftFactory = minecraftFactory; this.ysmFactory = ysmFactory; this.onChange = onChange
     this.bundledAppearanceReader = bundledAppearanceReader; this.bundledYsmFactory = bundledYsmFactory
     this.ysmAssetsPresent = nativeYsmSourcePresent(reader.manifest)
     this.actor = null; this.key = null; this.revision = 0; this.disposed = false
     this.appearanceId = 'server'; this.lastInput = null; this.status = '等待当前观战玩家'
+    this.defaultAppearance = defaultAppearance; this.selectionStorage = selectionStorage; this.selectionScope = selectionScope
+    this.selectionUuid = null; this.selections = new Map()
+  }
+  selectionKey(uuid) { return `native-appearance/v1:${encodeURIComponent(this.selectionScope)}:${uuid}` }
+  restoredSelection(uuid) {
+    let id = this.selections.get(uuid)
+    try { id ??= this.selectionStorage?.getItem(this.selectionKey(uuid)) } catch {}
+    id ??= this.defaultAppearance
+    return nativeAppearanceChoices(this.reader.manifest, this.bundledAppearanceReader).some(row => row.id === id) ? id : 'server'
   }
   notify (actor, status) { this.status = status; this.onChange(actor, status) }
   appearance () {
@@ -43,6 +53,10 @@ export class NativeSelfPlayerController {
       return false
     }
     this.appearanceId = id
+    if (this.selectionUuid) {
+      this.selections.set(this.selectionUuid, id)
+      try { this.selectionStorage?.setItem(this.selectionKey(this.selectionUuid), id) } catch {}
+    }
     // An explicit repeat selection allows retry after a load error.
     this.key = null
     void this.update(...this.lastInput)
@@ -50,8 +64,9 @@ export class NativeSelfPlayerController {
   }
   async update (self, playerUuid, ysm = self?.ysm) {
     if (this.disposed) return null
-    if (this.lastInput && this.lastInput[1] !== playerUuid) this.appearanceId = 'server'
     try { assertNativeAppearanceIdentity(self, playerUuid) } catch (error) { this.clear(error.message); return null }
+    playerUuid = playerUuid.toLowerCase()
+    if (this.selectionUuid !== playerUuid) { this.appearanceId = this.restoredSelection(playerUuid); this.selectionUuid = playerUuid }
     this.lastInput = [self, playerUuid, ysm]
     let binding
     try { binding = this.appearanceId === 'server'
@@ -94,7 +109,9 @@ export class NativeSelfPlayerController {
   }
   clear (reason = null, keepSelection = false) {
     ++this.revision; this.key = null; this.actor?.dispose(); this.actor = null
-    if (!keepSelection) { this.lastInput = null; this.appearanceId = 'server' }
+    // Scene epochs/respawns/disconnects retire model ownership, not the user's
+    // account-scoped preference. The next UUID is independently restored.
+    if (!keepSelection) this.lastInput = null
     this.notify(null, reason)
   }
   dispose () { if (this.disposed) return; this.disposed = true; this.clear() }
