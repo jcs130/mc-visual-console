@@ -51,10 +51,10 @@ export class TextDisplayFont {
   dispose() {this.bitmaps.clear();this.cache.clear();this.hex='';this.offsets=new Uint32Array(0);}
 }
 
-export async function loadTextDisplayFont({fetcher=fetch,createImage=()=>new Image()}={}) {
+export async function loadTextDisplayFont({fetcher=fetch,createImage=()=>new Image(),minecraftVersion='1.20.6'}={}) {
   const response=await fetcher('/text-display-font.json');if(!response.ok)throw Error('text_display_font_missing');
   const spec=await response.json();
-  if(spec.schemaVersion!==1||spec.minecraftVersion!=='1.20.6'||spec.uniform!==false||spec.jp!==false
+  if(!['1.20.6','1.21.1'].includes(minecraftVersion)||spec.schemaVersion!==1||spec.minecraftVersion!==minecraftVersion||spec.uniform!==false||spec.jp!==false
       ||!Array.isArray(spec.providers)||spec.providers.length>16)throw Error('text_display_font_version');
   const font=new TextDisplayFont();
   try {
@@ -62,11 +62,12 @@ export async function loadTextDisplayFont({fetcher=fetch,createImage=()=>new Ima
       if(provider.type==='space') {
         for(const [character,advance] of Object.entries(provider.advances))font.bitmaps.set(character,{mask:new Uint8Array(),width:0,height:0,resolution:1,top:0,advance,shadow:1});
       } else if(provider.type==='bitmap') {
-        if(!/^\/textures\/1\.20\.6\/font\/[a-z_]+\.png$/.test(provider.url))throw Error('font_bitmap_path');
+        const prefix=`/textures/${minecraftVersion}/font/`;
+        if(typeof provider.url!=='string'||!provider.url.startsWith(prefix)||!/^[a-z_]+\.png$/.test(provider.url.slice(prefix.length)))throw Error('font_bitmap_path');
         const image=createImage();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('font_bitmap_missing'));image.src=provider.url;});
         font.addBitmap(provider,image);
       } else if(provider.type==='unihex') {
-        if(provider.url!=='/fonts/1.20.6/unifont.zip'||!/^unifont_all_no_pua-[\d.]+\.hex$/.test(provider.entry))throw Error('font_hex_path');
+        if(provider.url!==`/fonts/${minecraftVersion}/unifont.zip`||!/^unifont_all_no_pua-[\d.]+\.hex$/.test(provider.entry))throw Error('font_hex_path');
         const file=await fetcher(provider.url);if(!file.ok)throw Error('font_hex_missing');
         const data=new Uint8Array(await file.arrayBuffer());if(data.length>2_000_000)throw Error('font_zip_budget');
         const entries=unzipSync(data,{filter:entry=>entry.name===provider.entry&&entry.originalSize<=9_000_000});

@@ -86,12 +86,13 @@ export class ServerParticles {
     firstScenePosition:this.entries.length?[...this.cloud.geometry.attributes.position.array.slice(0,3)]:null};}
 }
 
-export async function loadViewerContentAssets(fetcher=fetch) {
+export async function loadViewerContentAssets(fetcher=fetch,{minecraftVersion='1.20.6',loadTexture=url=>new TextureLoader().loadAsync(url)}={}) {
   const [response,source]=await Promise.all([fetcher('/viewer-content.json'),fetcher('/asset-source.json')]);
   if(!response.ok || !source.ok) throw Error('viewer_content_assets_missing');
   const [assets,manifest]=await Promise.all([response.json(),source.json()]);
-  if(assets.schemaVersion!==1 || assets.minecraftVersion!=='1.20.6' || assets.clientJarSha256!==manifest.clientJarSha256
+  if(!['1.20.6','1.21.1'].includes(minecraftVersion)||assets.schemaVersion!==1 || assets.minecraftVersion!==minecraftVersion
+      ||manifest.minecraftVersion!==minecraftVersion||assets.clientJarSha256!==manifest.clientJarSha256
       || !Array.isArray(assets.mapColors) || assets.mapColors.length!==62 || !assets.particleSprites) throw Error('viewer_content_assets_mismatch');
-  const texture=await new TextureLoader().loadAsync('/particle-content.png');
+  const texture=await loadTexture('/particle-content.png');
   return { assets, texture };
 }

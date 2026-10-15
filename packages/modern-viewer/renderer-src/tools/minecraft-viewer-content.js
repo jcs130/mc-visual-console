@@ -5,12 +5,13 @@ import {loadTextDisplayFont} from './text-display-font.js';
 import {PaperYsmPlayers} from './paper-ysm.js';
 import {installAppearanceSettings} from './appearance-settings.js';
 import paperYsmItemModels from 'mc-assets/dist/blockStatesModels.json';
+const cortiContentMinecraftVersion = '1.20.6';
 
 const cortiNativeParticles = new ServerParticles();
 const cortiMapPhotos = new MapPhotos();
 const cortiTextDisplays = new TextDisplays();
 let cortiTextDisplayError = null;
-if (typeof isObsOverlay === 'undefined' || !isObsOverlay) loadTextDisplayFont().then(font=>{if(cortiContentDisposed){font.dispose();return;}cortiTextDisplays.setFont(font);})
+if (typeof isObsOverlay === 'undefined' || !isObsOverlay) loadTextDisplayFont({minecraftVersion:cortiContentMinecraftVersion}).then(font=>{if(cortiContentDisposed){font.dispose();return;}cortiTextDisplays.setFont(font);})
   .catch(error=>{cortiTextDisplayError=String(error.message);});
 let cortiContentEpoch = null;
 let cortiContentDisposed = false;
@@ -89,7 +90,7 @@ socket.on('textDisplay', event => cortiTextDisplays.handle(event));
 const cortiAppearanceClear=()=>{cortiAppearances.clear();cortiYsmPlayers.clear();};
 socket.on('disconnect', () => {cortiContentClear();cortiAppearanceClear();});
 socket.on('viewerReset', () => {cortiContentClear();cortiAppearanceClear();});
-loadViewerContentAssets().then(({assets,texture})=>{
+loadViewerContentAssets(fetch,{minecraftVersion:cortiContentMinecraftVersion}).then(({assets,texture})=>{
   if(cortiContentDisposed){texture.dispose();return;}
   cortiNativeParticles.setAssets(assets,texture);cortiMapPhotos.setAssets(assets);
 }).catch(error=>{cortiContentError=String(error.message);});

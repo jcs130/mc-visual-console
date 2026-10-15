@@ -77,7 +77,9 @@ export class MapPhotos {
     const getMaterial=key=>{
       const path=spec.textures[key.replace(/^#/,'')];if(!/^block\/[a-z_]+$/.test(path??''))throw Error('frame_texture_invalid');
       if(textures.has(path))return textures.get(path);
-      const texture=loader.load('/textures/1.20.6/'+path+'.png');texture.magFilter=texture.minFilter=NearestFilter;texture.generateMipmaps=false;texture.colorSpace=SRGBColorSpace;
+      const version=this.assets.minecraftVersion;
+      if(!['1.20.6','1.21.1'].includes(version))throw Error('frame_version_unsupported');
+      const texture=loader.load(`/textures/${version}/`+path+'.png');texture.magFilter=texture.minFilter=NearestFilter;texture.generateMipmaps=false;texture.colorSpace=SRGBColorSpace;
       const material=new MeshBasicMaterial({map:texture,toneMapped:false});resources.push(texture,material);textures.set(path,material);return material;
     };
     for(const e of spec.elements) {
