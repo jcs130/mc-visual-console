@@ -20,7 +20,7 @@ import { createViewerContentBridge } from '../renderer-src/host/viewer-content.m
 import { createViewerObserverBridge } from '../renderer-src/host/viewer-observer.mjs'
 import { createViewerAgentBridge } from '../renderer-src/host/viewer-agent.mjs'
 export { createViewerAgentBridge, createViewerAgentHub, publishAgentVisualization } from '../renderer-src/host/viewer-agent.mjs'
-import { createViewerAppearanceBridge } from '../renderer-src/host/viewer-appearance.mjs'
+import { createViewerAppearanceBridge, supportsViewerAppearanceVersion } from '../renderer-src/host/viewer-appearance.mjs'
 import { serveViewerAsset } from '../renderer-src/host/viewer-asset-server.mjs'
 import { withItemVisualIdentity } from '../renderer-src/src/modern-viewer/item-profile.js'
 import { createViewerHeadTextures } from '../renderer-src/host/viewer-head-textures.mjs'
@@ -1072,7 +1072,7 @@ function startServer(bot, port, firstPersonFov, dashboardOrigin, publicOrigin, c
   const sessions = new Set()
   const sessionSlots = new ViewerSessionSlots(MAX_VIEWER_SESSIONS, MAX_CAPTURE_SESSIONS)
   const contentBridge = bot.version === '1.20.6' ? createViewerContentBridge(bot) : null
-  const appearanceBridge = bot.version === '1.20.6' ? createViewerAppearanceBridge(bot) : null
+  const appearanceBridge = supportsViewerAppearanceVersion(bot.version) ? createViewerAppearanceBridge(bot) : null
   const headTextures = createViewerHeadTextures()
   const observerBridge = bot.version === '1.20.6' ? createViewerObserverBridge(bot, {
     serializeWindow: window => serializeViewerWindow(bot, window),

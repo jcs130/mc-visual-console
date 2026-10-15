@@ -43,6 +43,16 @@ Earlier isolated tests photographed builtin geometry, a newly uploaded ZIP and a
 
 ## Updating a consumer
 
+### Java 1.21.1 appearance reception
+
+`supportsViewerAppearanceVersion` admits both Java 1.20.6 and 1.21.1 for the
+existing attested Paper appearance format. Hosts and explicitly enabled server
+packs must use this shared gate rather than retaining a 1.20.6-only check. The
+YSM version, protocol, original JAR hash, player UUID/entity ID, asset hashes and
+expiry checks remain independent and unchanged. A later Java or YSM version is
+not implicitly accepted. Browser geometry support still requires successful
+original asset transfer and rendering; receiving metadata alone is insufficient.
+
 ### Complex uploaded rigs
 
 Uploaded Paper YSM models opt into a bounded 512-bone, 256-cubes-per-bone and 2048-total-cube profile. The shared native Bedrock engine retains its previous defaults for other integrations. Signed cube extents are preserved for YSM outline geometry rather than normalized, removed or replaced. Preflight cube limits apply before allocating face geometries.
