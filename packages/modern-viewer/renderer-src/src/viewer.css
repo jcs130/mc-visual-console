@@ -624,3 +624,13 @@ body[data-viewer-layout=docked] .corti-boss-bars{top:var(--viewer-top);width:min
   #agent-operations .agent-control-keys span:last-child{grid-column:auto}
   .corti-event-feed{left:168px;right:8px;bottom:136px;width:auto;max-height:170px;transform:none}
 }
+
+/* A small navigation map; leave the game view as the main surface. */
+#corti-minimap.corti-compact-minimap{width:180px!important;max-width:100%!important;padding:6px;align-self:flex-start}
+#corti-minimap.corti-compact-minimap canvas{display:block;width:100%;height:auto;aspect-ratio:1;border-radius:3px;box-sizing:border-box}
+.corti-compact-minimap .corti-map-header{flex-wrap:nowrap;gap:5px;margin-bottom:5px;font-size:11px}
+.corti-compact-minimap .corti-map-header strong{flex:1;min-width:0}
+.corti-compact-minimap .corti-map-header button{width:20px;height:20px;font-size:14px;line-height:18px}
+.corti-compact-minimap .corti-map-caption{text-align:center;font:10px/1.5 monospace;margin-top:4px}
+@media(max-width:900px){#corti-minimap.corti-compact-minimap{width:160px!important}}
+@media(max-width:520px){#corti-minimap.corti-compact-minimap{width:128px!important}.corti-compact-minimap .corti-map-header{gap:3px;font-size:10px}.corti-compact-minimap .corti-map-header button{width:18px;height:18px}.corti-compact-minimap .corti-map-caption{font-size:9px}}

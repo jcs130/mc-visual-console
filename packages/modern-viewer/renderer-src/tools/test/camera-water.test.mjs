@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {Scene,PerspectiveCamera,Color,Fog,Vector3} from 'three';
+import {Scene,PerspectiveCamera,OrthographicCamera,Color,Fog,Vector3} from 'three';
 import {cameraWaterDepth,CameraWaterTransition,installCameraWater} from '../../src/modern-viewer/camera-water.js';
 const air={name:'air'},water={name:'water',getProperties:()=>({level:0})};
 test('eye height, partial flowing water, stacked water and missing geometry determine medium',()=>{
@@ -31,4 +31,15 @@ test('floating-origin observer eye above water stays clear while the actor is sw
   assert.equal(world.cameraMedium.submerged,true);assert.ok(scene.fog.far<6);
   const client=readFileSync(new URL('../../src/modern-viewer/client.js',import.meta.url),'utf8');
   assert.match(client,/reactive.inWater = false/);assert.match(client,/installCameraWater\(globalThis.world/);
+});
+
+test('an offscreen terrain camera does not change the live water transition or its diagnostics',()=>{
+  const scene=new Scene(),camera=new PerspectiveCamera();scene.add(camera);camera.position.set(0,64.5,0);
+  const world={scene,camera,sceneOrigin:{toWorldX:x=>x,toWorldY:y=>y,toWorldZ:z=>z},
+    playerStateReactive:{waterBreathing:false},skyboxRenderer:{}};
+  let now=100;const transition=installCameraWater(world,()=>water,()=>now);
+  scene.onBeforeRender(null,scene,camera);const medium=world.cameraMedium,at=transition.at;
+  const inset=new OrthographicCamera();inset.userData.offscreenTerrain=true;inset.position.y=328;
+  now+=500;scene.onBeforeRender(null,scene,inset);
+  assert.equal(world.cameraMedium,medium);assert.equal(transition.at,at);assert.equal(transition.submerged,true);
 });

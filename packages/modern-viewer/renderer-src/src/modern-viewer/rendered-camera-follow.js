@@ -12,7 +12,9 @@ export function renderedEntityPosition(world, id) {
 export function installRenderedCameraFollow(world, update) {
   const original=world.render;
   function render(...args) {
-    update();
+    // Inset/overview passes supply their own camera pose and shader origin.
+    // Following the live avatar here would replace that pose before drawing.
+    if(world.camera?.userData?.offscreenTerrain!==true)update();
     return original.apply(this,args);
   }
   world.render=render;

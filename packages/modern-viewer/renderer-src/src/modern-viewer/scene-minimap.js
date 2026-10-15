@@ -1,7 +1,7 @@
 import { WebGLRenderTarget, Vector4, SRGBColorSpace } from 'three';
 import { overviewCamera, overviewCoverage } from './overview-capture.js';
-import { TerrainMemory, visibleEntity, hearingHint, eyeOf } from './perception-view.js';
-import { VisibleMotion, focusEntities, drawRisk } from './perception-risk.js';
+import { eyeOf } from './perception-view.js';
+import { drawRisk } from './perception-risk.js';
 
 const nameOf = entity => String(entity?.name ?? '').replace(/^minecraft:/, '').toLowerCase();
 const conditional = new Set(['enderman', 'spider', 'bee', 'wolf', 'polar_bear', 'piglin', 'zombified_piglin', 'iron_golem', 'dolphin', 'panda', 'llama', 'trader_llama', 'goat']);
@@ -66,6 +66,21 @@ export function mapPixel(position, spec, size=spec.width) {
 // Mineflayer yaw: zero looks north (-Z), positive turns west (-X).
 export function mapHeading(yaw) { return [-Math.sin(yaw), -Math.cos(yaw)]; }
 
+/** Keep the renderer's original terrain buffers/section meshes and lights.
+ * Actor models, labels, particles and observer-only overlays stay in the main view. */
+export function mapTerrainRoots(world) {
+  const manager=world.chunkMeshManager;if(!manager)return null;
+  const roots=new Set();
+  const keep=object=>{
+    for(let node=object;node&&node!==world.scene;node=node.parent)if(node.isObject3D)roots.add(node);
+  };
+  for(const buffer of [manager.globalLegacyBuffer,manager.globalLegacyBlendBuffer,manager.globalBlockBuffer])keep(buffer?.mesh);
+  for(const section of Object.values(manager.sectionObjects??{})){
+    keep(section);keep(section.mesh);keep(section.shaderMesh);keep(section.blendMesh);
+  }
+  return roots;
+}
+
 /** A small offscreen terrain pass. Reuses the main scene/meshes/texture atlas;
  * no second world, chunk subscription, PNG encoding or visible camera switch. */
 export class MinimapTerrain {
@@ -91,7 +106,10 @@ export class MinimapTerrain {
       scissor:renderer.getScissor(new Vector4()),scissorTest:renderer.getScissorTest(),
       autoClear:renderer.autoClear,hand:config?.showHand,entityRender:world.entities?.render,onRender:world.onRender};
     let camera;
-    const detached=[...Object.values(world.entities?.entities??{}),world.entities?.playerEntity].filter(object=>object?.parent).map(object=>({object,parent:object.parent,index:object.parent.children.indexOf(object)}));
+    const terrainRoots=mapTerrainRoots(world);
+    const extras=terrainRoots?[...(world.scene.children??[])].filter(object=>!object.isLight&&!terrainRoots.has(object)):[];
+    const detached=[...new Set([...Object.values(world.entities?.entities??{}),world.entities?.playerEntity,...extras])]
+      .filter(object=>object?.parent).map(object=>({object,parent:object.parent,index:object.parent.children.indexOf(object)}));
     try {
       for(const {object,parent} of detached)parent.remove(object);
       // Terrain shaders already subtract cameraWorldPos, while ordinary scene
@@ -195,100 +213,92 @@ export function drawSceneMap(ctx, frame, self, entities, registry={},risk=[]) {
   return groups;
 }
 
-export function installSceneMinimap({document,window,root,getWorld,getState,getEntities,getRegistry=()=>({}),getSight=()=>null,visible=()=>true}) {
+/** A navigation inset, using original terrain already received by this viewer.
+ * Surface/slice selection is separate from the Agent's perception and memory. */
+export function drawCompactMap(ctx, frame, self) {
+  const size=ctx.canvas.width,pos=self.pos??self.position;
+  const spec=mapSpec(pos,frame.spec.span,size),scale=size/spec.span;
+  const offset=[(frame.spec.center[0]-pos.x)*scale,(frame.spec.center[1]-pos.z)*scale];
+  const hatch=rects=>{
+    ctx.save();ctx.beginPath();for(const rect of rects)ctx.rect(...rect);ctx.clip();
+    ctx.fillStyle='#26343b';ctx.fillRect(0,0,size,size);ctx.strokeStyle='#42525b';ctx.lineWidth=1;
+    for(let x=-size;x<size;x+=18){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x+size,size);ctx.stroke();}
+    ctx.restore();
+  };
+  ctx.clearRect(0,0,size,size);hatch([[0,0,size,size]]);
+  ctx.drawImage(frame.canvas,...offset,size,size);
+  const missing=frame.coverage.missing;
+  if(missing.length)hatch(missing.map(([x,z])=>[...mapPixel({x,z},spec,size),16*scale,16*scale]));
+  const [dx,dz]=mapHeading(Number(self.yaw)||0);
+  ctx.save();ctx.translate(size/2,size/2);ctx.rotate(Math.atan2(dx,-dz));
+  ctx.strokeStyle='#123643';ctx.fillStyle='#fff7d5';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(7,8);ctx.lineTo(0,4);ctx.lineTo(-7,8);ctx.closePath();ctx.stroke();ctx.fill();ctx.restore();
+  return {terrainOffset:offset,center:spec.center};
+}
+
+export function installSceneMinimap({document,window,root,getWorld,getState,getSight=()=>null,visible=()=>true}) {
   const canvas=root?.querySelector('canvas');if(!canvas)return null;
-  canvas.width=384;canvas.height=384;
-  const ctx=canvas.getContext('2d'),terrain=new MinimapTerrain(document),memory=new TerrainMemory(document),motion=new VisibleMotion();
-  root.classList.add('corti-scene-minimap');
+  canvas.width=256;canvas.height=256;canvas.setAttribute('aria-label','北向俯视地形与本人朝向');
+  const ctx=canvas.getContext('2d'),terrain=new MinimapTerrain(document,256);
+  root.classList.add('corti-scene-minimap','corti-compact-minimap');root.dataset.mapStyle='compact';
   const header=document.createElement('div');header.className='corti-map-header';
-  const title=document.createElement('strong');title.textContent='周边地形';
+  const title=document.createElement('strong');title.textContent='小地图';
   const north=document.createElement('span');north.textContent='北 ↑';
   const out=document.createElement('button'),inside=document.createElement('button');
+  out.type=inside.type='button';
   out.textContent='−';out.title='看得更远';out.setAttribute('aria-label','扩大地图范围');
   inside.textContent='＋';inside.title='放大附近';inside.setAttribute('aria-label','缩小地图范围');
   header.append(title,north,out,inside);root.prepend(header);
-  const mode=document.createElement('select');mode.className='corti-map-mode';mode.setAttribute('aria-label','地图关注模式');
-  for(const [value,label] of [['peaceful','和平'],['explore','探索'],['combat','战斗']]){const option=document.createElement('option');option.value=value;option.textContent=label;mode.append(option);}mode.value='explore';
-  header.replaceChild(mode,title);
-  const risk=document.createElement('button');risk.className='corti-map-risk';risk.textContent='风险';risk.title='显示可见威胁的短时移动估计；非攻击范围或概率。';risk.setAttribute('aria-pressed','false');header.append(risk);
-  let riskOn=false;
-  const onRisk=()=>{riskOn=!riskOn;risk.setAttribute('aria-pressed',String(riskOn));draw();};risk.addEventListener('click',onRisk);
-  const onMode=()=>{riskOn=mode.value==='combat';risk.setAttribute('aria-pressed',String(riskOn));draw();};mode.addEventListener('change',onMode);
-  const legend=document.createElement('div');legend.className='corti-map-legend';
-  for(const kind of ['player','npc','neutral','hostile','danger','unknown']){
-    const item=document.createElement('span'),symbol=document.createElement('b');symbol.textContent=MAP_KINDS[kind].symbol;
-    symbol.style.color=MAP_KINDS[kind].color;item.append(symbol,MAP_KINDS[kind].label);legend.append(item);
-  }
-  root.append(legend);
-  const sounds=document.createElement('div');sounds.className='corti-map-hearing';sounds.hidden=true;root.append(sounds);
-  const detail=document.createElement('div');detail.className='corti-map-detail';detail.textContent='鼠标移到标记查看详情';root.append(detail);
   const caption=root.querySelector('[data-map-caption]');
-  let span=48,frame=null,groups=[],last=0,next=0,dimension=null,disposed=false,hover=null,renderMs=0,failures=0,hints=[],generation=0,pending=null;
-  const summary=()=>{
-    const selected=hover&&groups.find(g=>Math.hypot(g.x-hover[0],g.y-hover[1])<20);
-    if(selected){
-      const rows=selected.members.map(m=>{
-        const pos=m.entity.pos??m.entity.position, identity=m.entity.username||m.entity.identityName;
-        return `${MAP_KINDS[m.kind].label}${identity?' · '+identity:''} · 高差 ${m.deltaY===null?'未知':Math.round(m.deltaY)+' 格'} · 坐标 ${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)} · ${m.reason}`;
-      });
-      detail.textContent=rows[0]+(rows.length>1?` · 共 ${rows.length} 个`: '');detail.title=rows.join('\n');
-    }else{detail.textContent=frame?(riskOn?'风险为估计 · 攻击／视野范围未知':`${span} 格 · 灰色未知 · 斜纹未更新`):'等待地形同步';detail.title='仅显示自身视线内的实体。历史地形未实时更新，刷新页面后重新探索；敌对种类不代表正在攻击你，玩家不默认当队友。风险云来自两次可见位置的1秒匀速外推，不是攻击范围、概率或寻路结果。';}
+  let span=48,frame=null,last=0,next=0,binding=null,disposed=false,renderMs=0,failures=0,generation=0,pending=null;
+  const clear=()=>{frame=null;ctx.clearRect(0,0,canvas.width,canvas.height);root.dataset.mapSource='unavailable';};
+  function reset(){generation++;clear();binding=null;last=0;next=0;failures=0;delete root.dataset.mapReason;if(caption)caption.textContent='地图同步中';}
+  const failed=(error,job)=>{
+    if(disposed||job!==generation)return;
+    failures++;root.dataset.mapReason=String(error?.message??'地形暂不可用').slice(0,120);
+    if(!frame||performance.now()-last>5000)clear();
+    next=Math.max(next,performance.now()+1500);
   };
-  function reset(){generation++;frame=null;groups=[];hover=null;dimension=null;last=0;next=0;hints=[];memory.clear();motion.clear();ctx.clearRect(0,0,canvas.width,canvas.height);if(caption)caption.textContent='等待地图同步';sounds.hidden=true;summary();}
   function draw(now=performance.now()) {
     if(disposed)return;
     const state=getState(),self=state?.entity,pos=self?.pos??self?.position;
-    if(!state?.connected||!pos){if(frame)reset();return;}
-    if(state.dimension!==dimension){reset();dimension=state.dimension;}
+    if(!state?.connected||!pos||![pos.x,pos.y,pos.z].every(Number.isFinite)){if(frame||binding!==null)reset();return;}
+    const key=JSON.stringify([state.dimension??null,self.uuid??null,self.id??null]);
+    if(key!==binding){reset();binding=key;}
     if(document.hidden || !visible() || !root.getClientRects().length)return;
+    if(frame&&now-last>5000)clear();
     const moved=!frame||Math.hypot(pos.x-frame.spec.center[0],pos.z-frame.spec.center[1])>span*.12;
     if(!pending&&now>=next&&(moved||now-last>=1500)){
       const start=performance.now();
       try {
-        const spec={...mapSpec(pos,span),layer:mapLayer(getSight(),self)};
-        const sight=getSight(),pinned=sight.snapshot?.()??sight;
-        let capture;
-        try{capture=terrain.capture(getWorld(),spec,{asyncRead:true});}catch(error){pinned.release?.();throw error;}
+        const spec={...mapSpec(pos,span,canvas.width),layer:mapLayer(getSight(),self)};
+        const capture=terrain.capture(getWorld(),spec,{asyncRead:true});
         const captured=performance.now();
         root.dataset.mapCaptureMs=(captured-start).toFixed(1);
-        const job=generation,observer={...self,pos:{...pos},position:{...pos}};
-        pending=Promise.resolve(capture).then(image=>memory.applyBudgeted(image,pinned,observer,{
-          // Visibility/history work may lag behind the live 3D view. Do not
-          // spend three milliseconds inside every animation-frame callback.
-          budgetMs:1,
-          yieldFrame:()=>new Promise(resolve=>window.requestIdleCallback
-            ?window.requestIdleCallback(resolve,{timeout:100})
-            :window.setTimeout(resolve,0)),
-          valid:()=>!disposed&&job===generation
-        })).then(masked=>{
-          if(!masked||disposed||job!==generation)return;
-          frame=masked;last=performance.now();failures=0;
-          root.dataset.mapMaskMs=masked.workMs.toFixed(1);
-          root.dataset.mapSliceMs=masked.maxSliceMs.toFixed(1);
-        }).catch(()=>{failures++;}).finally(()=>{pinned.release?.();pending=null;});
+        const job=generation;
+        pending=Promise.resolve(capture).then(image=>{
+          if(disposed||job!==generation)return;
+          frame=image;last=performance.now();failures=0;delete root.dataset.mapReason;draw();
+        }).catch(error=>failed(error,job)).finally(()=>{pending=null;});
       }
-      catch{failures++;if(!frame||now-last>5000){frame=null;groups=[];ctx.clearRect(0,0,canvas.width,canvas.height);}}
+      catch(error){failed(error,generation);}
       renderMs=performance.now()-start;
-      next=now+Math.max(750,Math.min(5000,renderMs*24));
+      next=Math.max(next,now+Math.max(750,Math.min(5000,renderMs*24)));
     }
-    const observable=getEntities().filter(entity=>mapEntityKind(entity,getRegistry())&&visibleEntity(getSight(),self,entity));
-    const focused=focusEntities(observable,mode.value,self,entity=>mapEntityKind(entity,getRegistry()));
-    const predictions=motion.sample(observable,now);
-    if(frame)groups=drawSceneMap(ctx,frame,self,focused,getRegistry(),riskOn?predictions:[]);
-    hints=hints.filter(h=>h.expiresAt>Date.now());sounds.hidden=!hints.length;
-    sounds.textContent=hints.slice(-2).map(h=>`${h.direction} · ${h.distance} · ${h.kind}`).join('；');sounds.title='声响发生时的方位；近处约4格内，中距离约4–12格，远处约12格外。身份和精确位置未确认。';
-    if(caption)caption.textContent=`${dimensionLabel(dimension)}${frame?.spec.layer?'·当前高度剖层':''} · ${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)}${frame?'':' · 未加载'}`;
-    root.dataset.mapSource=frame?'loaded-scene':'unavailable';summary();
+    if(frame)drawCompactMap(ctx,frame,self);
+    if(caption){
+      caption.textContent=frame?`${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)}`:failures?'地图暂不可用':'地图同步中';
+      caption.title=`${dimensionLabel(state.dimension)} · ${span}×${span} 格 · ${frame?.spec.layer?'当前高度':'俯视地形'} · 斜纹为未加载区域`;
+    }
+    root.dataset.mapSource=frame?'loaded-scene':'unavailable';
   }
-  const ranges=[24,48,96,192];
-  function zoom(direction){generation++;span=ranges[Math.max(0,Math.min(ranges.length-1,ranges.indexOf(span)+direction))];frame=null;last=0;next=0;draw();}
+  const ranges=[24,48,96];
+  function zoom(direction){span=ranges[Math.max(0,Math.min(ranges.length-1,ranges.indexOf(span)+direction))];reset();draw();}
   const onOut=()=>zoom(1),onIn=()=>zoom(-1);
-  const onMove=event=>{const box=canvas.getBoundingClientRect();hover=[(event.clientX-box.left)*canvas.width/box.width,(event.clientY-box.top)*canvas.height/box.height];summary();};
-  const onLeave=()=>{hover=null;summary();};
-  out.addEventListener('click',onOut);inside.addEventListener('click',onIn);canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerleave',onLeave);
+  out.addEventListener('click',onOut);inside.addEventListener('click',onIn);
   const timer=window.setInterval(()=>draw(),150);
-  return {draw,reset,clearHearing(){hints=[];},setMode(value){if(['peaceful','explore','combat'].includes(value)){mode.value=value;onMode();}},
-    hear(event){const hint=hearingHint(event,getState()?.entity);if(hint){hints=hints.filter(h=>h.kind!==hint.kind||h.direction!==hint.direction);hints.push(hint);hints=hints.slice(-6);}},
-    diagnostics:()=>({source:frame?'loaded-scene':'unavailable',mode:mode.value,span,renderMs,failures,perception:frame?.perception,markers:groups.reduce((sum,g)=>sum+g.members.length,0)}),
-    dispose(){disposed=true;window.clearInterval(timer);terrain.dispose();memory.clear();motion.clear();header.remove();legend.remove();detail.remove();sounds.remove();risk.removeEventListener('click',onRisk);mode.removeEventListener('change',onMode);out.removeEventListener('click',onOut);inside.removeEventListener('click',onIn);canvas.removeEventListener('pointermove',onMove);canvas.removeEventListener('pointerleave',onLeave);}};
+  return {draw,reset,
+    diagnostics:()=>({source:frame?'loaded-scene':'unavailable',style:'compact',span,renderMs,failures,
+      coverage:frame?.coverage??null,layer:frame?.spec.layer??null,markers:frame?1:0}),
+    dispose(){if(disposed)return;disposed=true;generation++;window.clearInterval(timer);terrain.dispose();header.remove();out.removeEventListener('click',onOut);inside.removeEventListener('click',onIn);}};
 }

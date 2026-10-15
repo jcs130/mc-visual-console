@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Vector3} from 'three';
-import {mapEntityKind,mapHeading,mapPixel,mapSpec,mapLayer,mapClusters,MinimapTerrain} from '../../src/modern-viewer/scene-minimap.js';
+import {Vector3,Scene,Group,Mesh,BoxGeometry,MeshBasicMaterial,AmbientLight} from 'three';
+import {mapEntityKind,mapHeading,mapPixel,mapSpec,mapLayer,mapClusters,MinimapTerrain,mapTerrainRoots} from '../../src/modern-viewer/scene-minimap.js';
 import {overviewSpec,overviewRegions,overviewRegionLabels,overviewLabelLayout} from '../../src/modern-viewer/overview-capture.js';
 
 test('species, relationships and aggression are separate; scenery is not an NPC',()=>{
@@ -80,4 +80,24 @@ test('asynchronous map readback restores the live scene before waiting and propa
   finish();assert.equal((await pending).spec,spec);
   const failed=terrain.capture(world,spec,{asyncRead:true});reject(Error('GPU unavailable'));await assert.rejects(failed,/GPU unavailable/);
   assert.equal(world.camera,camera);terrain.dispose();
+});
+
+test('the map keeps original terrain references and restores excluded labels and actors after a draw failure',()=>{
+  const scene=new Scene(),parent=new Group(),ground=new Mesh(new BoxGeometry(),new MeshBasicMaterial());
+  parent.add(ground);const actor=new Group(),label=new Group(),light=new AmbientLight();scene.add(actor,parent,label,light);
+  const originalChildren=[...scene.children];
+  const origin={x:0,y:0,z:0,update(){},toSceneX:x=>x,toSceneY:y=>y,toSceneZ:z=>z};
+  const renderer={render(){},autoClear:true,getRenderTarget:()=>null,setRenderTarget(){},getViewport:v=>v,getScissor:v=>v,
+    getScissorTest:()=>false,setScissor(){},setViewport(){},setScissorTest(){},readRenderTargetPixels(){throw Error('read failure');}};
+  const world={renderer,scene,sceneOrigin:origin,camera:{},cameraWorldPos:{x:8,y:64,z:8},finishedChunks:{'0,0':true},
+    worldSizeParams:{minY:-64,worldHeight:384},reactiveDebugParams:{smartCull:true},
+    chunkMeshManager:{globalLegacyBuffer:{mesh:ground},sectionObjects:{}},render(){
+      assert.deepEqual(scene.children,[parent,light]);assert.equal(ground.parent,parent);
+    }};
+  assert.ok(mapTerrainRoots(world).has(parent));assert.ok(!mapTerrainRoots(world).has(actor));
+  const document={createElement(){return {getContext:()=>({createImageData:()=>({data:new Uint8Array(16)})})};}};
+  const terrain=new MinimapTerrain(document,2);
+  assert.throws(()=>terrain.capture(world,mapSpec({x:8,z:8},16,2)),/read failure/);
+  assert.deepEqual(scene.children,originalChildren);assert.equal(ground.parent,parent);
+  terrain.dispose();ground.geometry.dispose();ground.material.dispose();
 });

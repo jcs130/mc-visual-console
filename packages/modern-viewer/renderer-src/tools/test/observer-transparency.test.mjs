@@ -46,6 +46,23 @@ test('movement, rebasing, zero reveal and unload reuse or remove overlays withou
   assert.equal(scene.children.length,0);assert.equal(geometryDisposed,0);layer.dispose();
 });
 
+test('offscreen terrain keeps original opaque surfaces and restores live translucency on success and failure',()=>{
+  const {scene,uniforms,layer,material}=fixture();uniforms.u_lanternCutawayEnabled.value=2;layer.update();
+  const overlays=scene.children.filter(mesh=>mesh.userData.lanternTransparencyOverlay);
+  assert.equal(overlays.length,2);
+  for(const fail of [false,true]){
+    let draws=0;
+    const draw=()=>{draws++;assert.equal(uniforms.u_lanternReveal.value,0);assert.equal(uniforms.u_lanternCutawayEnabled.value,0);
+      assert.ok(overlays.every(mesh=>!mesh.visible));assert.equal(material.transparent,false);
+      if(fail)throw Error('draw failed');return 'original terrain';};
+    if(fail)assert.throws(()=>layer.withOpaqueTerrain(draw),/draw failed/);
+    else assert.equal(layer.withOpaqueTerrain(draw),'original terrain');
+    assert.equal(draws,1);assert.equal(uniforms.u_lanternReveal.value,1);assert.equal(uniforms.u_lanternCutawayEnabled.value,2);
+    assert.ok(overlays.every(mesh=>mesh.visible));assert.equal(uniforms.u_lanternObstructionOpacity.value,.35);
+  }
+  layer.dispose();
+});
+
 test('standard decorations use a separate pass uniform while sky and unpatched actors are untouched',()=>{
   const scene=new Scene(),uniforms=createCutawayUniforms();uniforms.u_lanternReveal.value=1;
   const decoration=new Mesh(new BoxGeometry(),new MeshBasicMaterial());patchCutawayMaterial(decoration.material,uniforms);scene.add(decoration);

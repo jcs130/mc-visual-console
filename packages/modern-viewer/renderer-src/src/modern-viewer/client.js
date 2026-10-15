@@ -2298,11 +2298,21 @@ function installDungeonOcclusion() {
   refreshDungeonCutawayMaterials();
   observerTransparency ??= createObserverTransparency(globalThis.world, dungeonVisibilityUniforms);
   observerTransparency.update();
+  const renderer=globalThis.world?.renderer;
+  if(renderer){
+    const draw=renderer.render;
+    renderer.render=function(scene,camera,...args){
+      const render=()=>draw.call(this,scene,camera,...args);
+      return scene===globalThis.world?.scene&&camera.userData?.offscreenTerrain===true
+        ?observerTransparency.withOpaqueTerrain(render):render();
+    };
+  }
   const scene = globalThis.world?.scene;
   if (scene) {
     const previous = scene.onBeforeRender;
     scene.onBeforeRender = function (...args) {
       previous?.apply(this, args);
+      if(args[2]?.userData?.offscreenTerrain===true)return;
       updateDungeonVisibilityFrame();
       observerTransparency?.sync();
     };

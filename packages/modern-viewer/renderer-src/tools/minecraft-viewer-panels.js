@@ -180,14 +180,10 @@ function cortiInstallPanels(socket) {
       getWorld: () => rendererReady ? globalThis.world : null,
       getState: () => ({ entity: cortiPanelAvatar?.entity, connected: socket.connected,
         dimension: npcWorldContext.dimension ?? cortiPanelMap?.dimension }),
-      getEntities: () => [...entityCache.values()], getRegistry: () => globalThis.mcData?.entitiesByName ?? {},
       getSight: () => perceptionGrid,
       visible: () => viewerLayout.visible('minimap'),
     });
     globalThis.__mcSceneMinimap = cortiSceneMap;
-    socket.on('worldSound', event => cortiSceneMap?.hear(event));
-    socket.on('worldSoundStop', () => cortiSceneMap?.clearHearing());
-    socket.on('perceptionFocus', event => cortiSceneMap?.setMode(event?.mode));
   }
   if (!document.getElementById('corti-menu-layout-style')) {
     const style = document.createElement('style');

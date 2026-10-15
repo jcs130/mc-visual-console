@@ -42,6 +42,7 @@ export function installCameraWater(world, blockAt, now = () => performance.now()
   world.scene.onBeforeRender = function (...args) {
     previous?.apply(this, args);
     const camera = args[2] ?? world.camera;
+    if (camera.userData?.offscreenTerrain === true) return;
     camera.getWorldPosition(cameraPosition);
     const position = {
       x: world.sceneOrigin.toWorldX(cameraPosition.x),

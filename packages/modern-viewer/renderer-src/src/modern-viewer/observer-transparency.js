@@ -75,6 +75,17 @@ export function createObserverTransparency(world, uniforms) {
   }
   return {
     diagnostics,
+    withOpaqueTerrain(draw) {
+      const reveal=uniforms.u_lanternReveal.value,enabled=uniforms.u_lanternCutawayEnabled.value;
+      try {
+        uniforms.u_lanternReveal.value=0;uniforms.u_lanternCutawayEnabled.value=0;
+        for(const record of records.values())sync(record);
+        return draw();
+      } finally {
+        uniforms.u_lanternReveal.value=reveal;uniforms.u_lanternCutawayEnabled.value=enabled;
+        for(const record of records.values())sync(record);
+      }
+    },
     update() {
       const active = new Set();
       function visit(node) {

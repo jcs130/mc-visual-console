@@ -84,6 +84,7 @@ export function overviewCamera(spec, origin, minY, maxY) {
   if (![minY, maxY].every(Number.isFinite) || maxY <= minY) throw new Error('world vertical bounds unavailable');
   const camera = new OrthographicCamera(-spec.span / 2, spec.span / 2,
     (spec.bounds.maxZ - spec.bounds.minZ) / 2, -(spec.bounds.maxZ - spec.bounds.minZ) / 2, .1, maxY - minY + 32);
+  camera.userData.offscreenTerrain = true;
   const at = [spec.center[0], maxY + 8, spec.center[1]];
   camera.position.set(origin.toSceneX(at[0]), origin.toSceneY(at[1]), origin.toSceneZ(at[2]));
   camera.up.set(0, 0, -1);
