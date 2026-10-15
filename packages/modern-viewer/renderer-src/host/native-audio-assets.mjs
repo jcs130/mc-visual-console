@@ -34,7 +34,15 @@ export async function loadNativeAudioPack(assetRoot,{nativeRegistrySha256=null,e
       files[name]={...row}
     }
     const numericRegistryAvailable=nativeRegistrySha256===VANILLA_AUDIO_NATIVE_REGISTRIES.blocks&&entityRegistrySha256===VANILLA_AUDIO_NATIVE_REGISTRIES.entities
-    const metadata={available:true,...NATIVE_AUDIO_PROVENANCE,definitions,files,numericRegistryAvailable,
+    // The matching client's exported SoundTypes supply local hit/step/break
+    // events. Unknown or modded registries must not borrow vanilla sound types.
+    let blocks=null,blockSoundsReason=null
+    if(numericRegistryAvailable)try{
+      const raw=await readFile(path.join(root,'block-sounds.json'))
+      if(hash('sha256',raw)!=='d43dc9e7862aac8acdf4d0723379dbb387b1e457a9ce4ca954a9100d7e0a2b80')throw Error('NATIVE_AUDIO_BLOCK_TYPES_INTEGRITY_MISMATCH')
+      blocks=JSON.parse(raw).blocks
+    }catch(e){blockSoundsReason=e.code==='ENOENT'?'NATIVE_AUDIO_BLOCK_TYPES_MISSING':e.message}
+    const metadata={available:true,...NATIVE_AUDIO_PROVENANCE,definitions,files,numericRegistryAvailable,blocks,blockSoundsReason,
       source:'verified_original_launcher_assets',randomSource:'Minecraft_1.21.1_LegacyRandomSource',completeAudioParityVerified:false}
     return {available:true,registry:numericRegistryAvailable?registry:{sounds:{}},metadata,async read(name){
       if(!Object.hasOwn(files,name))throw Error('NATIVE_AUDIO_FILE_NOT_EXPORTED')

@@ -4,8 +4,12 @@ The observer plays the action player's received sound packets. It does not send
 game messages, create another bot, call a model or synthesize voice. Effects and
 music default **off**; opening the page does not create an AudioContext. The
 preview plays the original UI click only in that browser. The separate playlist
-button chooses one original `music.game` track for the observer, not a claim that
-the server is playing music.
+button starts a continuous original `music.game` playlist for the observer, not
+a claim that the server is playing music. Tracks remain compressed; they continue
+after a short 2–8 second gap. Loading errors back off for 30 seconds. Disconnect,
+mute and page disposal cancel scheduled playback. The viewer remembers local
+enable/volume choices, but restores them only after a browser gesture. The panel
+separately counts effects and music, and exposes the last failed sound and reason.
 
 ## Original inputs and preparation
 
@@ -55,5 +59,12 @@ missing mod sounds remain unavailable. A missing audio pack disables audio alone
 
 Web Audio/HRTF is not OpenAL scene parity. Full engine timing, streaming, missing
 mod sounds and unreceived client ambience remain separate limitations.
+For the matched vanilla registries, original client SoundTypes also supply the
+body's observed digging hits, confirmed digging completions and grounded
+footsteps. Actual sent slot clicks/attacks supply local click/swing sounds, never
+assumed task success. Retained activity is not replayed on joining a view;
+stale/unknown surfaces and mod registries do not produce substitute sounds.
+The listener follows the action body, so an elevated 2.5D camera cannot mute its
+nearby sounds. This is still partial client sound-engine coverage.
 `completeAudioParityVerified` stays false. HTTP success and an offline decoder
 double are not real browser playback acceptance.

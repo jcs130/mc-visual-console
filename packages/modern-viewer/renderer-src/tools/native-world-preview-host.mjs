@@ -473,6 +473,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           yaw: finiteNumber(entity.yaw), pitch: finiteNumber(entity.pitch), eyeHeight: finiteNumber(entity.eyeHeight),
           health: finiteNumber(bot.health), maxHealth: maximumHealth(entity), food: finiteNumber(bot.food),
           onGround: typeof entity.onGround === 'boolean' ? entity.onGround : null,
+          surfaceBlock: audioPack.metadata.blocks ? states.get(world.stateIdAt({x:Math.floor(entity.position.x),y:Math.floor(entity.position.y-.2),z:Math.floor(entity.position.z)}))?.name ?? null : null,
           sneaking: typeof entity.crouching === 'boolean' ? entity.crouching : null, velocity: vector(entity.velocity), skin,
           ...(Object.hasOwn(nativeSelf ?? {}, 'ysm') ? { ysm: nativeSelf.ysm } : {}) }
       }

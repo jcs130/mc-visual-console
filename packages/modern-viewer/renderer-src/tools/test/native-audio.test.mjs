@@ -7,17 +7,18 @@ import {NativeSoundRandom,selectNativeSound} from '../../src/native-viewer/nativ
 globalThis.document={baseURI:'http://viewer.test/body/'}
 globalThis.crypto??=webcrypto
 const flush=async()=>{for(let i=0;i<16;i++)await new Promise(r=>setImmediate(r))}
+const until=async condition=>{const deadline=Date.now()+2000;while(!condition()&&Date.now()<deadline)await new Promise(r=>setTimeout(r,1));assert.ok(condition(),'audio work reaches its observed terminal state')}
 const digest=(kind,bytes)=>createHash(kind).update(bytes).digest('hex')
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r});return{promise,resolve}}
-function fixture({gate=null,tamper=false,stream=false}={}){
+function fixture({gate=null,tamper=false,stream=false,storage=null,schedule=undefined,cancelSchedule=undefined}={}){
   // Decoder double, explicitly not an original OGG or a playback acceptance.
-  const bytes=Buffer.from('offline audio transport fixture'),sources=[],panners=[],gains=[],requests=[],media=[]
+  const bytes=Buffer.from('offline audio transport fixture'),sources=[],panners=[],gains=[],requests=[],media=[],listeners=[]
   const metadata={available:true,minecraftVersion:'1.21.1',source:'verified_original_launcher_assets',
     definitions:Object.fromEntries(['block.test','music.game','ui.button.click'].map(n=>[n,{sounds:[{name:'test',stream:stream&&n==='music.game'}]}])) ,
     files:{'test.ogg':{bytes:bytes.length,sha1:digest('sha1',bytes),sha256:digest('sha256',bytes)}}}
   let contexts=0,decoded=0
-  const audio=createNativeAudio({mediaFactory:()=>{const n={async play(){this.played=true},pause(){this.paused=true}};media.push(n);return n},contextFactory:()=>{contexts++;return{state:'suspended',destination:{},
-    listener:{setPosition(){},setOrientation(){}},async resume(){this.state='running'},async close(){this.state='closed'},
+  const audio=createNativeAudio({storage,schedule,cancelSchedule,mediaFactory:()=>{const n={async play(){this.played=true},pause(){this.paused=true}};media.push(n);return n},contextFactory:()=>{contexts++;const listener={setPosition(...p){this.position=p},setOrientation(){}};listeners.push(listener);return{state:'suspended',destination:{},
+    listener,async resume(){this.state='running'},async close(){this.state='closed'},
     createGain(){const n={gain:{value:1},connect(){},disconnect(){}};gains.push(n);return n},
     createPanner(){const n={connect(){},disconnect(){},setPosition(...p){this.position=p}};panners.push(n);return n},
     createBufferSource(){const n={playbackRate:{value:1},connect(){},disconnect(){},start(){this.started=true},stop(){this.stopped=true}};sources.push(n);return n},
@@ -31,7 +32,7 @@ function fixture({gate=null,tamper=false,stream=false}={}){
   const event=(sequence=1,extra={})=>audio.event({epoch:1,sequence,observedAt:Date.now(),effect:{kind:'sound',
     value:{name:'block.test',category:'blocks',volume:.7,pitch:1,seed:'0',position:{x:1,y:64,z:3},...extra}}})
   const stop=(sequence=2,filter={})=>audio.event({epoch:1,sequence,observedAt:Date.now(),effect:{kind:'sound_stop',value:filter}})
-  return{audio,event,stop,sources,panners,gains,requests,media,contexts:()=>contexts,decoded:()=>decoded}
+  return{audio,event,stop,sources,panners,gains,requests,media,listeners,contexts:()=>contexts,decoded:()=>decoded}
 }
 test('seeded variants preserve Java Random draws and nested references rather than flattening weights',()=>{
   const r=new NativeSoundRandom(0);assert.deepEqual(Array.from({length:5},()=>r.nextInt(1000)),[360,948,29,447,515])
@@ -89,4 +90,35 @@ test('entity audio follows only the original entity identity and stops on ID reu
   assert.deepEqual(f.panners[0].position,[2,64,4])
   f.audio.frame(camera,new Map([[7,{uuid:'replacement',position:{x:3,y:64,z:4}}]]))
   assert.equal(f.sources[0].stopped,true);f.audio.dispose()
+})
+test('saved viewer audio survives a page reload but never creates a context without a gesture',async()=>{
+  const values=new Map(),storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v)}
+  const first=fixture({storage});await first.audio.load();first.audio.connect(true)
+  await first.audio.toggle('effects');first.audio.setVolume('master',.31);first.audio.dispose()
+  const next=fixture({storage});await next.audio.load();next.audio.connect(true)
+  assert.equal(next.audio.state().soundEnabled,true);assert.equal(next.audio.state().volumes.master,.31)
+  assert.equal(next.contexts(),0)
+  await next.audio.activate();next.event();await until(()=>next.sources.length>0||next.audio.state().failed>0);assert.equal(next.sources[0].started,true)
+  await next.audio.toggle('effects');next.audio.dispose()
+  const muted=fixture({storage});await muted.audio.load();assert.equal(muted.audio.state().soundEnabled,false);muted.audio.dispose()
+})
+test('spectator playlist continues after a track and cancels scheduled work on disconnect or mute',async()=>{
+  const timers=new Map();let id=0
+  const f=fixture({stream:true,schedule:(fn,ms)=>{timers.set(++id,{fn,ms});return id},cancelSchedule:id=>timers.delete(id)})
+  await f.audio.load();f.audio.connect(true);await f.audio.playlist();assert.equal(f.media.length,1)
+  f.media[0].onended();await flush();assert.equal(timers.size,1)
+  const timer=timers.values().next().value;timers.clear();timer.fn();await flush()
+  assert.equal(f.media.length,2);assert.equal(f.audio.state().byCategory.music,2)
+  f.media[1].onended();assert.equal(timers.size,1)
+  f.audio.connect(false);assert.equal(timers.size,0)
+  f.audio.connect(true);assert.equal(timers.size,1)
+  const resumed=timers.values().next().value;timers.clear();resumed.fn();await flush();assert.equal(f.media.length,3)
+  await f.audio.toggle('music');assert.equal(f.media[2].paused,true);assert.equal(timers.size,0)
+  f.audio.dispose()
+})
+test('an elevated spectator camera cannot attenuate the action body to silence',async()=>{
+  const f=fixture();await f.audio.load();await f.audio.toggle('effects')
+  const camera={position:{x:0,y:90,z:16},matrixWorld:{elements:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}}
+  f.audio.frame(camera,new Map(),{position:{x:0,y:64,z:0},eyeHeight:1.62})
+  assert.deepEqual(f.listeners[0].position,[0,65.62,0]);f.audio.dispose()
 })
