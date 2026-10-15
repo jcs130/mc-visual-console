@@ -7,12 +7,15 @@ import { nativeStaticItemState, verifyNativeStaticItemEvidence } from './native-
 import { nativeDomumItemEligible, nativeDomumItemState, NativeDomumItemIconRenderer } from './native-domum-item-icons.js'
 import { nativeSoulSlabEligible, nativeSoulSlabState, prepareNativeSoulSlabIcon } from './native-soul-slab-icons.js'
 import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
+import {nativePotionItemEligible,validateNativePotionItem} from './native-potion-items.js'
+import {renderNativePotionIcon} from './native-potion-icons.js'
 
 export function nativeItemIconEligible(item) {
   try {
     const stack = parseNativeItemStack(item)
     if (nativeSoulSlabEligible(stack.id)) nativeSoulSlabState(stack)
     else if (nativeDomumItemEligible(stack.id)) nativeDomumItemState(stack)
+    else if(nativePotionItemEligible(stack.id))validateNativePotionItem(stack)
     else nativeStaticItemState(stack)
     return true
   } catch { return false }
@@ -30,9 +33,10 @@ export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {
 }
 
 export class NativeItemIcons {
-  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {} } = {}) {
+  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {},potionIconOptions={} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
+    this.potionIconOptions=potionIconOptions
     this.animationEpochMs = Date.now()
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
     this.arsRenderer = new NativeArsItemIconRenderer(reader, arsRendererOptions)
@@ -53,6 +57,8 @@ export class NativeItemIcons {
       // Input is bounded to 64 KiB and this cache to 128 entries.
     } else if (nativeDomumItemEligible(key)) {
       try { nativeDomumItemState(stack); provider = 'domum' } catch { return null }
+    } else if(nativePotionItemEligible(key)){
+      try{validateNativePotionItem(stack);provider='potion'}catch{return null}
     } else {
       try { nativeStaticItemState(stack); provider = 'static' } catch { return null }
     }
@@ -82,6 +88,7 @@ export class NativeItemIcons {
       const stack=parseNativeItemStack(item)
       if (nativeSoulSlabEligible(item.name)) nativeSoulSlabState(stack)
       else if (nativeDomumItemEligible(item.name)) nativeDomumItemState(stack)
+      else if(nativePotionItemEligible(item.name))validateNativePotionItem(stack)
       else if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack)
       const entry=this.entries.get(item.name+'#'+item.snbt)
       return entry ? entry.reason : this.entries.size>=128?'NATIVE_ITEM_ICON_CACHE_LIMIT':'not_requested'
@@ -99,6 +106,12 @@ export class NativeItemIcons {
     entry.loading = true
     const name = entry.name
     try {
+      if(entry.provider==='potion'){
+        const {blob,...info}=await renderNativePotionIcon(this.reader,entry.stack,this.potionIconOptions)
+        if(this.disposed)return
+        entry.result={verified:true,url:this.createUrl(blob),sourcePath:info.sourcePaths.find(path=>path.includes('/models/item/')),...info}
+        entry.reason=null;return
+      }
       if (entry.provider === 'soul-slab') {
         const { blob, ...info } = await prepareNativeSoulSlabIcon(this.reader, entry.stack)
         if (this.disposed) return

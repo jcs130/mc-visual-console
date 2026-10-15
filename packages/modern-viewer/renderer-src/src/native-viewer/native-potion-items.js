@@ -56,7 +56,7 @@ export function nativePotionColor(component,data){
   return total===0?data.emptyPotionColor>>>0:(0xff000000|(Math.trunc(r/total)<<16)|(Math.trunc(g/total)<<8)|Math.trunc(b/total))>>>0
 }
 
-export async function prepareNativePotionItem(reader,stack){
+export function validateNativePotionItem(stack){
   if(!nativePotionItemEligible(stack?.id)||!record(stack.components)||!Number.isSafeInteger(stack.count)||stack.count<1)throw Error('NATIVE_POTION_ITEM_INVALID')
   for(const [key,value] of Object.entries(stack.components)){
     const name=key.startsWith('!')?key.slice(1):key
@@ -68,6 +68,11 @@ export async function prepareNativePotionItem(reader,stack){
     // The original glint pass is separate; do not disguise it as a flat PNG.
     throw Error('NATIVE_POTION_ITEM_VISUAL_COMPONENT_UNSUPPORTED:'+key)
   }
+  return stack
+}
+
+export async function prepareNativePotionItem(reader,stack){
+  validateNativePotionItem(stack)
   const data=await loadOriginalItemColors(reader)
   return {color:nativePotionColor(stack.components['minecraft:potion_contents'],data),sourcePaths:[ORIGINAL_ITEM_COLORS_PATH]}
 }

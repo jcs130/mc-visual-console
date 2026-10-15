@@ -48,8 +48,13 @@ checked against original `PotionContents.getColor()`, including signed custom
 colors, visible-effect weighting and the no-effect blue. All four original
 potion-colored item models retain their separate generated layers and tint
 indices. The host validates every item/effect registry ID before decoding the
-potion wire component. This supplies held/dropped/thrown item geometry; it does
-not claim all GUI icons, animated item textures, glint or complete item rendering.
+potion wire component. Held/dropped/thrown geometry and GUI icons now share this
+checked component color. The GUI provider covers every one of the 46 bases in
+all four models (184 combinations), preserving original opaque bottle pixels and
+tinting only layer zero. Its cache includes the full component-bearing stack;
+unsupported GUI transforms, animation or nonbinary alpha remain explicit.
+All 184 icons were also rendered in an offline browser fixture. This does not
+claim all other GUI icons, animated item textures, glint or Java pixel parity.
 
 Native pages and their identity stream now carry the same checked renderer-source
 and asset-manifest signature. A reconnect to the same build reuses the page;
@@ -71,7 +76,7 @@ are still unverified, not inferred from this geometry port. The reference is
 the locked 1.21.1 `LiquidBlockRenderer` (gfu) `tesselate`, `getHeight` and
 `calculateAverageHeight`, plus `FlowingFluid.getFlow`.
 
-The baseline matrix below is retained as the audit input. Subsequent native work restores the six original camera modes and short shots; actual displayed-root following; original dropped-item models, count stacking/bob/spin and collect events; fourteen original common hostile/golem models with walking/head/received swing/hurt/death/fuse animation; native entity pick/list/follow/return; original dungeon floor-mask cutaway/observer rotation/zoom; and the shared quality controls. Collision uses indexed original terrain triangles, not replacement cubes. Particle/projectile/audio gaps in the matrix remain implementation work. Original lighting, special equipment/poses and complete Java scene parity are still unverified; the strict complete flags stay false. Offline regression and original asset checks are recorded separately from live browser acceptance.
+The baseline matrix below is retained as the audit input. Subsequent native work restores the six original camera modes and short shots; actual displayed-root following; original dropped-item models, count stacking/bob/spin and collect events; fourteen original hostile/golem models with walking/head/received swing/hurt/death/fuse animation; native entity pick/list/follow/return; original dungeon floor-mask cutaway/observer rotation/zoom; and the shared quality controls. The fourteen models are an implementation increment, not a reduced scope or the complete 130-type entity registry. Collision uses indexed original terrain triangles, not replacement cubes. Particle/projectile/audio gaps in the matrix remain implementation work. Original lighting, special equipment/poses and complete Java scene parity are still unverified; the strict complete flags stay false. Offline regression and original asset checks are recorded separately from live browser acceptance.
 
 Audit date: 2026-10-15. This is a source audit of shared renderer `main` at `2dc7ac3507260342cb9224558c892adb2148d92a`, independent core/framework `main` at `7d456b660b6576a9bf429ae23a421b78aa28cb1c`, and the thin plugin at `0f507b767216f640d82e4bde497366c10f3bdbbd`. Those are the synchronized inputs checked before implementation. Statements about missing native support below describe that baseline; subsequent changes need their own verification. No game connection, server change, model request or runtime inspection was used for this audit.
 
