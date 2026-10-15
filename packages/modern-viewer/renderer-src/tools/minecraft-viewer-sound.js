@@ -1,4 +1,6 @@
 /** World audio mixer with optional local BGM. No inferred successful actions. */
+// Replaced by the matched-version build; the standalone source retains its legacy version.
+const cortiAudioMinecraftVersion = '1.20.6';
 const cortiAudioCategories = ['music', 'records', 'weather', 'blocks', 'hostile', 'neutral', 'players', 'ambient', 'voice'];
 function cortiAudioName(value) {
   const name = typeof value === 'string' ? value.replace(/^minecraft:/, '') : '';
@@ -73,7 +75,7 @@ function cortiAudioWaitLabel(milliseconds) {
 }
 function cortiAudioStatus(snapshot) {
   if (snapshot.error) return snapshot.error;
-  if (!snapshot.available) return '等待本地 1.20.6 声音资源';
+  if (!snapshot.available) return `等待本地 ${cortiAudioMinecraftVersion} 声音资源`;
   if (!snapshot.connected) return '连接断开，声音已停止';
   if (!snapshot.soundEnabled && !snapshot.musicEnabled) return '游戏音效与背景音乐已关闭';
   if (!snapshot.unlocked) return '点击音效或音乐，开启网页声音';
@@ -770,14 +772,14 @@ function cortiInstallWorldSound(socket) {
   // retaining a previous partial sound catalogue for the HTTP cache lifetime.
   void fetch('/sounds/manifest.json', { cache: 'no-cache' }).then(response => response.ok ? response.json() : null).then(value => {
     if (disposed) return;
-    if (value?.minecraftVersion === '1.20.6' && value.events && /^[a-f0-9]{40}$/.test(value.assetIndexSha1 || '')
+    if (value?.minecraftVersion === cortiAudioMinecraftVersion && value.events && /^[a-f0-9]{40}$/.test(value.assetIndexSha1 || '')
       && /^[a-f0-9]{40}$/.test(value.soundsJsonSha1 || '')) manifest = value;
-    else lastAudioError = '缺少匹配的本地 1.20.6 声音资源';
+    else lastAudioError = `缺少匹配的本地 ${cortiAudioMinecraftVersion} 声音资源`;
     update();
   }).catch(() => { if (!disposed) { lastAudioError = '无法读取本地声音资源'; update(); } });
   void fetch('/sounds/block-sounds.json', { cache: 'no-cache' }).then(response => response.ok ? response.json() : null).then(value => {
     if (disposed) return;
-    if (value?.minecraftVersion === '1.20.6' && value.schemaVersion === 1 && value.blocks
+    if (value?.minecraftVersion === cortiAudioMinecraftVersion && value.schemaVersion === 1 && value.blocks
       && typeof value.blocks === 'object' && !Array.isArray(value.blocks)) blockSounds = value.blocks;
     update();
   }).catch(() => { /* Packet-driven audio still works without optional block mapping. */ });

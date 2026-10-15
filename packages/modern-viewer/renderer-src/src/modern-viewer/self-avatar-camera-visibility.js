@@ -27,6 +27,7 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
   getUpperCutawayY = () => null,
   getUpperCutawayRegion = () => null,
   cutawayUniforms = null,
+  preserveUpperEntities = false,
   getOpaqueCache = () => null,
   getObservedFloorY = () => null,
 } = {}) {
@@ -78,7 +79,7 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
     if (entities.playerEntity) entityRoots.add(entities.playerEntity);
     const active = new Set();
     const visit = node => {
-      if (entityRoots.has(node) || node.userData?.lanternCutawayCap) return;
+      if (entityRoots.has(node) || node.userData?.lanternCutawayCap || node.userData?.lanternTransparencyOverlay) return;
       // Background planes draw without depth testing. Cloning their material
       // changes opaque-sort order and can paint the sky over terrain/actors.
       // They are not room geometry and must never receive a cutaway shader.
@@ -139,7 +140,7 @@ export function installSelfAvatarCameraVisibility(world, getSelfId, {
       removeUpperLayerPlane();
     }
     hiddenUpperEntities = 0;
-    if (Number.isFinite(cutawayY)) {
+    if (Number.isFinite(cutawayY) && !preserveUpperEntities) {
       for (const [entityId, object] of Object.entries(entities.entities ?? {})) {
         if (entityId === selfId) continue;
         const entity = object.originalEntity;

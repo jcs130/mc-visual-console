@@ -83,14 +83,14 @@ function fixture(options = {}) {
       if (url.endsWith('custom-bgm.json')) return options.customFetch ? options.customFetch()
         : { ok: Boolean(options.customCatalog), json: async () => options.customCatalog };
       return { ok: true, json: async () => url.endsWith('block-sounds.json')
-      ? { schemaVersion: 1, minecraftVersion: '1.20.6', blocks: { 'minecraft:stone': { step: 'minecraft:block.stone.step', hit: 'minecraft:block.stone.hit', break: 'minecraft:block.stone.break', volume: 1, pitch: 1 } } }
+      ? { schemaVersion: 1, minecraftVersion: options.version ?? '1.20.6', blocks: { 'minecraft:stone': { step: 'minecraft:block.stone.step', hit: 'minecraft:block.stone.hit', break: 'minecraft:block.stone.break', volume: 1, pitch: 1 } } }
       : options.manifest ?? sampleManifest(), arrayBuffer: async () => {
         if (options.failSoundFetch) throw Error('local test failed audio read'); return new ArrayBuffer(1);
       } }; },
     setTimeout: (fn, delay) => { const id = ++counter; timers.set(id, { fn, at: clock + delay }); return id; }, clearTimeout: id => timers.delete(id),
     setInterval: fn => { const id = ++counter; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id),
   });
-  runInContext(script, vm);
+  runInContext(script.replace("const cortiAudioMinecraftVersion = '1.20.6';", `const cortiAudioMinecraftVersion = '${options.version ?? '1.20.6'}';`), vm);
   return { vm, api: window.cortiWorldAudio, button, musicButton, testButton, playMusicButton, document, window, frames, settings, socket, contexts, media, starts, panners, requests, requestOptions, output, storage,
     async ready() { await flush(); }, async unlock() { document.emit('pointerdown', {}); await flush(); },
     async advance(ms) { clock += ms; for (const [id, timer] of [...timers]) if (timer.at <= clock) { timers.delete(id); timer.fn(); }
@@ -122,6 +122,18 @@ test('denied autoplay remains explicit and incompatible sound resources do not p
   assert.equal(denied.api.state().unlocked, false); assert.match(denied.api.state().error, /浏览器/); denied.close();
   const wrong = fixture({ manifest: { ...sampleManifest(), minecraftVersion: '1.21.1' } }); await wrong.ready(); await wrong.unlock();
   assert.equal(wrong.api.state().available, false); assert.equal(await wrong.api.play({ name: 'block.stone.step' }), false); wrong.close();
+});
+
+test('matched 1.21.1 audio accepts its original catalog, decodes local effects and rejects a legacy catalog',async()=>{
+  const manifest=JSON.parse(await readFile(new URL('../../../asset-packs/java-1.21.1-sounds/public/sounds/manifest.json',import.meta.url),'utf8'));
+  const view=fixture({version:'1.21.1',manifest});await view.ready();await view.unlock();
+  assert.equal(view.api.state().available,true);
+  assert.equal(view.api.state().manifestEventCount,Object.keys(manifest.events).length);
+  assert.equal(await view.api.play({name:'ui.button.click',category:'players'}),true);
+  assert.equal(view.starts.length,1);view.close();
+  const wrong=fixture({version:'1.21.1',manifest:sampleManifest()});await wrong.ready();await wrong.unlock();
+  assert.equal(wrong.api.state().available,false);
+  assert.match(runInContext('cortiAudioStatus(window.cortiWorldAudio.state())',wrong.vm),/1.21.1/);wrong.close();
 });
 test('weighted variants and contextual music respect empty and unknown dimensions', () => {
   const view = fixture();

@@ -5,6 +5,7 @@
 | 包 | 内容 | 使用范围 |
 | --- | --- | --- |
 | `java-1.20.6` | 原版模型数据、烘焙方块状态、方块与物品图集、实体/界面贴图、物品图标、绘画、地图调色板、展示框与粒子原素材 | 1.20.6 Socket.IO 渲染器；约 22 MB |
+| `java-1.21.1` | 原版 1.21.1 模型与纹理、26,684 个状态、1,754 张物品图标、绘画与中文字体；逐文件校验 | 1.21.1 Mineflayer Socket.IO 渲染器；约 23 MB；自定义服务端资源包与全场景像素一致性尚未验证 |
 | `java-1.20.6-sounds` | 游戏音效与背景音乐、声音注册表 | 1.20.6 可选音频；约 557 MB |
 | `native-1.21.1` | 锁定模组包清单中全部主资源，包括原生模型、贴图、语言与 YSM 动画 | 1.21.1 原生渲染器；约 254 MB，不能解释其他模组包的 state ID |
 
@@ -20,6 +21,8 @@ node tools/prepare-viewer-assets.mjs java-1.20.6 "C:\viewer-output"
 ```
 
 `--sounds` 安装音频包，`--preset=qiandengji` 启用千灯纪画面适配。默认使用通用画面，不包含宿主的 Agent 身份、台词或连接信息。该命令检查素材后复制并构建当前源码，生成 `viewer-assets.json` 与 `viewer-client.json`。修改源码后重新执行即可更新画面。
+
+1.21.1 的 Mineflayer 画面使用 `node tools/prepare-viewer-assets.mjs java-1.21.1 <输出目录>`。宿主的群系表、容器物品解码和纹理 URL 同样必须绑定实际连接版本；共享 `host/viewer-version.mjs` 提供对应选择。不要用 `native-1.21.1` 模组包解释普通 Java 协议的方块状态。
 
 完整 Git checkout 包含可选音频；npm 的默认文件清单仅包含画面与原生素材。资源未变时不需要重新导出客户端 JAR。
 

@@ -10,6 +10,21 @@ const source = patchRendererPlayerSkin(readFileSync(require.resolve('minecraft-r
 const start = source.indexOf('async updatePlayerSkin(');
 const end = source.indexOf('async loadAndApplyCape(', start);
 
+test('the pinned skin fetch rejects disabled, non-PNG and oversized responses before image decoding', async () => {
+  const definition=source.match(/var Lv=async n=>\{[\s\S]*?\};function Gg/)[0].replace(';function Gg','');
+  let response;
+  const load=runInNewContext(definition+';Lv',{fetch:async()=>response,O:Buffer,Uint8Array,Error});
+  response=new Response('Remote texture retrieval is disabled',{status:503});
+  await assert.rejects(load('/head-texture/test.png'),/SKIN_TEXTURE_UNAVAILABLE_HTTP_503/);
+  response=new Response('not an image',{headers:{'content-type':'text/plain'}});
+  await assert.rejects(load('/head-texture/test.png'),/SKIN_TEXTURE_CONTENT_TYPE/);
+  response=new Response(Buffer.alloc(65537),{headers:{'content-type':'image/png'}});
+  await assert.rejects(load('/head-texture/test.png'),/SKIN_TEXTURE_FORMAT/);
+  const png=Buffer.alloc(24);png.set([137,80,78,71,13,10,26,10]);
+  response=new Response(png,{headers:{'content-type':'image/png; charset=binary'}});
+  assert.equal(await load('/head-texture/test.png'),'data:image/png;base64,'+png.toString('base64'));
+});
+
 test('skin loading completes after decode and rejects late profiles and default textures', async () => {
   const pending = new Map();
   const player = { skin: {}, ears: {}, cape: {}, elytra: {} };

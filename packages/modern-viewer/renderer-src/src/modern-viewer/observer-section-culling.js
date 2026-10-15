@@ -1,3 +1,5 @@
+import { Vector3 } from 'three';
+
 // Reuse the pinned renderer's section-connectivity graph from the *display*
 // camera. While a roof is cut, retain the observed room as a second seed.
 // This only removes draw spans; it never changes the world or Agent perception.
@@ -6,12 +8,22 @@ export function installObserverSectionCulling(manager, getRoomSeed) {
   if (!cull?.update || !cull.hasRegisteredSection) return null;
   const originals = new Map();
   let revision = 0, signature = '', visible = null, lastSeed = '';
+  let lastCameraSignature = '';
+  const cameraPosition = new Vector3();
   const diagnostics = { mode: 'camera', rebuilds: 0, visibleSections: 0 };
   const key = (p, h = 16) => `${Math.floor(p.x / 16) * 16},${Math.floor(p.y / h) * h},${Math.floor(p.z / 16) * 16}`;
   const seed = () => {
     const p = getRoomSeed?.();
     return p && [p.x, p.y, p.z].every(Number.isFinite) ? p : null;
   };
+  function displayPosition(camera = manager.worldRenderer?.camera) {
+    const origin = manager.worldRenderer?.sceneOrigin;
+    if (!camera?.getWorldPosition || !origin?.toWorldX || !origin?.toWorldY || !origin?.toWorldZ) return null;
+    camera.parent?.updateMatrixWorld?.(true);
+    camera.updateMatrixWorld?.(true);
+    camera.getWorldPosition(cameraPosition);
+    return { x: origin.toWorldX(cameraPosition.x), y: origin.toWorldY(cameraPosition.y), z: origin.toWorldZ(cameraPosition.z) };
+  }
   const wrap = (object, name, factory) => {
     if (typeof object[name] !== 'function') return;
     const original = object[name], wrapped = factory(original);
@@ -26,11 +38,31 @@ export function installObserverSectionCulling(manager, getRoomSeed) {
   wrap(manager, 'updateCullDirtyFromCamera', original => function (...args) {
     const p = seed(), next = p ? key(p, manager.worldRenderer?.getSectionHeight?.() ?? 16) : '';
     if (next !== lastSeed) { lastSeed = next; manager.markCullDirty(); }
+    const camera = args[0], display = displayPosition(camera);
+    if (display) {
+      const pose = [display.x, display.y, display.z, ...(camera.projectionMatrix?.elements ?? [])].join(',');
+      if (pose !== lastCameraSignature) { lastCameraSignature = pose; manager.markCullDirty(); }
+    }
     return original.apply(this, args);
   });
   wrap(cull, 'update', original => function (params) {
+    // These arguments are the renderer's floating shader origin, not the
+    // offset observer. Change the graph seed only; the frustum's section boxes
+    // and GPU position uniforms must retain their original coordinate frame.
+    const display = displayPosition();
+    if (display) params = { ...params, cameraWorldX: display.x, cameraWorldY: display.y, cameraWorldZ: display.z };
     const p = seed(), h = params.sectionHeight;
     const cameraKey = key({ x: params.cameraWorldX, y: params.cameraWorldY, z: params.cameraWorldZ }, h);
+    diagnostics.cameraSection = cameraKey;
+    if (display && !this.hasRegisteredSection(cameraKey)) {
+      visible = null; signature = ''; diagnostics.mode = 'unreceived-observer';
+      const result = original.call(this, { ...params, smartCull: false });
+      diagnostics.visibleSections = result.size;
+      // Upstream's disabled path replaces its set without invalidating the BFS.
+      // Re-entering received terrain must rebuild rather than reuse that set.
+      this.invalidate();
+      return result;
+    }
     const roomKey = p ? key(p, h) : '';
     if (!params.smartCull || !p || roomKey === cameraKey || !this.hasRegisteredSection(roomKey)) {
       visible = null; signature = ''; diagnostics.mode = 'camera';
