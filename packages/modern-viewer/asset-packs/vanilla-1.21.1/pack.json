@@ -3,8 +3,8 @@
   "id": "vanilla-1.21.1",
   "kind": "native",
   "minecraftVersion": "1.21.1",
-  "fileCount": 8454,
-  "bytes": 27969369,
+  "fileCount": 8455,
+  "bytes": 29744551,
   "files": {
     "assets/.mcassetsroot": {
       "bytes": 0,
@@ -33803,8 +33803,8 @@
       "sha256": "71a714f737f4101da7710743585cbf86dbea4995f5acc252554a0384cf833888"
     },
     "native-assets.json": {
-      "bytes": 2131967,
-      "sha256": "50e57845c2dceffd789765db553c5c5c581f1dc7918b49824c5acfc57e1bb0c7"
+      "bytes": 2132219,
+      "sha256": "d84e1dc046311c06c6e459b78e9216e97af2effed42dc30c870641a5db14831e"
     },
     "registry/block-states.jsonl": {
       "bytes": 11753620,
@@ -33821,6 +33821,10 @@
     "registry/particle-collisions.json": {
       "bytes": 8689716,
       "sha256": "3eb554012eb5c5fad976ab944fff7ae3b2ee5a723bb9fbe7024ba7605348959a"
+    },
+    "assets/minecraft/native/client-model-layers.json": {
+      "bytes": 1774930,
+      "sha256": "3571f2c6d4fbaa2e07db239853e0baf5db9dd07c5b66653cafa7588da466fbe3"
     }
   },
   "source": {

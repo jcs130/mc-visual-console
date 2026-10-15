@@ -14,6 +14,7 @@ import { playerCamera } from './player-camera.js'
 import { createNativeSession } from './native-session.js'
 import { createNativeBedTemplate, nativeBedState } from './native-bed.js'
 import { NativeEntityLayer } from './native-entity-layer.js'
+import {loadOriginalModelLayers,ORIGINAL_MODEL_LAYERS_PATH,originalBlockModelContract} from './native-original-model-layers.js'
 import { MILLSTONE_ID, prepareNativeMillstoneModel, NativeKineticRenderClock, nativeKineticTimeStatus } from './native-millstone.js'
 import { stageNativeKineticActors } from './native-kinetic-layer.js'
 import { nativeColonyHutEligible, prepareNativeColonyHutModel } from './native-colony-huts.js'
@@ -35,7 +36,7 @@ const pointKey = p => `${p.x},${p.y},${p.z}`
 let renderer, loader, events, current, pending = null, rebuilding = false, epoch = null, player = null, generation = 0
 const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
-let colormaps, textureStart = performance.now()
+let colormaps, originalModelLayers=null, vanillaRegistry=false, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
 let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap,audio,particles
 let director, cameraOptions=normalizeCameraSettings(cameraSettings??{version:1,mode:'follow'}),cameraFrame=null
@@ -74,6 +75,8 @@ async function start () {
     return result.arrayBuffer()
   })
   assetReader = reader
+  if(manifest.assets[ORIGINAL_MODEL_LAYERS_PATH])originalModelLayers=await loadOriginalModelLayers(reader)
+  vanillaRegistry=manifest.registryHashes['block-states.jsonl']==='55893d269459e1e05387903c77b2db877d7cece875ed31a5a6a2f965822ea546'
   audio=createNativeAudio({onChange:publishDiagnostics});void audio.load()
   const session = createNativeSession(manifest.registryHashes['block-states.jsonl'], { entityRegistrySha256: manifest.registryHashes['entities.tsv'] ?? null })
   loader = new NativeModelLoader(reader)
@@ -400,14 +403,16 @@ async function template (state, variants) {
         blockEntityRendererEmpty: true, blueprintPreviewAvailable: false, pixelParityVerified: false }
       model.updateMatrixWorld(true); return model
     }
-    // The exact empty-board entity guard is checked per position before this
-    // shared template is used. Other entity-backed blocks remain unsupported.
+    // BlockEntity presence does not replace the ordinary MODEL render path.
+    // Additional renderers are tracked separately from the original base.
     if (state.name === WINDMILL_BEARING_ID) verifyNativeWindmillBearing(assetReader, state)
-    if ((state.hasBlockEntity && ![CUTTING_BOARD_ID, WINDMILL_BEARING_ID].includes(state.name)) || state.renderShape !== 'MODEL') throw Error('原生实体方块渲染未适配')
+    const contract=originalBlockModelContract(state,originalModelLayers,{vanillaOnly:vanillaRegistry})
+    if(!contract.renderBase)throw Error(contract.issue)
     const model = await loader.models(variants, { allowTint: true })
     if(disposed){loader.releaseModel(model);throw Error('NATIVE_SCENE_DISPOSED')}
     let faces = 0; model.traverse(part => { if (part.isMesh) faces++ })
     if (!faces) throw Error('原生模型无可绘制面')
+    if(![CUTTING_BOARD_ID,WINDMILL_BEARING_ID].includes(state.name))model.userData.nativeBaseIssue=contract.issue
     model.updateMatrixWorld(true)
     return model
   })())
@@ -471,6 +476,7 @@ async function rebuildLatest () {
             }
             for (const subgroup of subgroups.values()) {
               const model = await template(state, subgroup.variants)
+              if(model.userData.nativeBaseIssue)nextStaticIssues.push(`${state.name}：${model.userData.nativeBaseIssue}`)
               if (run !== generation) break
               const instanceCount = subgroup.positions.length / 3
               const meshes = []
