@@ -928,3 +928,25 @@ test('actual own-player metadata survives the injected presentation boundary onl
  const self=host.status().presentation.self
  for(const [key,value]of Object.entries(fields))assert.equal(self[key],value,key)
 })
+
+
+test('actual publisher keeps current frame and HUD samples during held and retired terrain scans',async()=>{
+ const {nativeTerrainSignature}=await import('../native-occlusion.mjs')
+ const source=await fs.readFile(new URL('../native-world-preview-host.mjs',import.meta.url),'utf8')
+ const publisher=source.slice(source.indexOf('      let scanning=false'),source.indexOf('      timer.unref()'))
+ let tick,health=20,resolveScan,scans=0;const sent=[],client={needsSnapshot:false,blocked:false},waiting={needsSnapshot:true,blocked:false}
+ const clients=new Set([client]),cadence={dirty:true,required(){return this.dirty},completed(){this.dirty=false}}
+ const world={pose:{},epoch:1,time:{age:1},entitySnapshot:()=>({entities:[]}),snapshotAsync:()=>{scans++;return new Promise(r=>resolveScan=r)},unavailable:e=>{throw e}}
+ const initial={type:'snapshot',epoch:1,groups:[],bounds:{},biomeSeed:'old'}
+ const state=Function('world','clients','cadence','encodeNativeWorldEvent','createHash','nativeTerrainSignature','initial','health','setInterval','sendNativeWorldEvent',`
+ let closed=false,pendingSnapshot=null,cachedSnapshot=initial,cachedTerrainSignature=null,snapshotBuildMs,snapshotBuildCount=0,terrainSignatureMs,wireEncodeMs;
+ const sourceMode='same_player_connection',selfPlayer=()=>({uuid:'own'}),presentation=()=>({self:{health:health()}}),playerPose=()=>({}),motionTracker={current:()=>({tick:world.time.age})},injectTrackedMaidPresentation=s=>s,sendIdentity=()=>true,agentVisual={subscribe:()=>()=>{}},connectionEnded=false;
+ ${publisher};return {cache:()=>cachedSnapshot}`)(world,clients,cadence,encodeNativeWorldEvent,createHash,nativeTerrainSignature,initial,()=>health,callback=>{tick=callback;return {}},(c,value)=>{sent.push({client:c,message:JSON.parse(value.text.slice(6))});return true})
+ tick();assert.equal(scans,1);health=17;world.time.age=2;tick();health=12;world.time.age=3;tick()
+ assert.equal(scans,1);assert.deepEqual(sent.map(s=>s.message.presentation.self.health),[20,17,12]);assert.deepEqual(sent.map(s=>s.message.motion.tick),[1,2,3])
+ resolveScan(null);await new Promise(r=>setImmediate(r));assert.equal(state.cache(),initial);assert.equal(cadence.dirty,true)
+ tick();assert.equal(scans,2);assert.equal(sent.at(-1).message.type,'frame')
+ clients.add(waiting);resolveScan({type:'snapshot',epoch:1,groups:[],bounds:{},biomeSeed:'latest'});await new Promise(r=>setImmediate(r));health=9;tick()
+ const latest=sent.filter(s=>s.message.type==='snapshot');assert.equal(latest.length,2);assert.ok(latest.every(s=>s.message.biomeSeed==='latest'&&s.message.presentation.self.health===9));assert.equal(waiting.needsSnapshot,false);assert.equal(cadence.dirty,false)
+ assert.equal(sent.some(s=>s.message.type==='snapshot'&&s.message.biomeSeed==='old'),false)
+})

@@ -454,7 +454,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       const agentVisual = createNativeAgentVisualization(bot, { getAgentStatus, now })
       let closed = false, closing = null, listening = null, currentPort = port, connectionEnded = false, identityConfirmed = Boolean(bot.username)
       const cadence = new NativeSnapshotCadence()
-      let cachedSnapshot = null, cachedTerrainSignature = null, snapshotBuildCount = 0, snapshotBuildMs = null, terrainSignatureMs = null, wireEncodeMs = null
+      let pendingSnapshot = null, cachedSnapshot = null, cachedTerrainSignature = null, snapshotBuildCount = 0, snapshotBuildMs = null, terrainSignatureMs = null, wireEncodeMs = null
       const motionTracker = createNativePlayerMotionTracker()
       let physicsTickCount = 0
       let receivedProfile = null, messageSequence = 0, gameMessages = [], currentTitle = null, currentActionbar = null
@@ -614,7 +614,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       server.requestTimeout = 10000; server.headersTimeout = 10000
       const worldChanged = change => { cadence.invalidate(change) }
       const resetPresentation = () => { gameMessages = []; currentTitle = null; currentActionbar = null }
-      const reset = () => { cadence.reset(); cachedSnapshot = null; cachedTerrainSignature = null; motionTracker.reset('dimension'); resetPresentation() }
+      const reset = () => { cadence.reset(); pendingSnapshot = null; cachedSnapshot = null; cachedTerrainSignature = null; motionTracker.reset('dimension'); resetPresentation() }
       const pose = () => { cadence.observe(world.pose) }
       const motionReset = () => motionTracker.reset('respawn')
       const motionDeath = () => motionTracker.reset('death')
@@ -639,7 +639,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         }
       }
       const unavailable = reason => {
-        cachedSnapshot = null; cachedTerrainSignature = null; cadence.reset(); motionTracker.reset('connection'); resetPresentation()
+        pendingSnapshot = null; cachedSnapshot = null; cachedTerrainSignature = null; cadence.reset(); motionTracker.reset('connection'); resetPresentation()
         for (const client of clients) client.needsSnapshot = true
         const encoded=encodeNativeWorldEvent({type:'unavailable',reason})
         for (const client of clients) sendNativeWorldEvent(client, encoded)
@@ -717,34 +717,35 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       bot._client.on('player_info', playerInfo)
       nativeStream.events.on('presentation', presentationChanged)
       let scanning=false
-      const timer = setInterval(async () => {
-        if (closed || !clients.size || scanning) return
+      const startSnapshot = startedAt => {
+        scanning=true
+        void world.snapshotAsync().then(snapshot => {
+          if(closed || !snapshot)return // Retired work leaves the coherent cache and dirty cadence intact.
+          snapshotBuildMs = Math.round((performance.now() - startedAt) * 100) / 100; snapshotBuildCount++
+          cachedSnapshot = snapshot.type === 'snapshot' ? snapshot : null
+          cadence.completed(world.pose, startedAt, snapshot.type === 'snapshot', snapshot.bounds)
+          if(snapshot.type==='snapshot'){
+            const signatureStarted=performance.now()
+            const signature=createHash('sha256').update(nativeTerrainSignature(snapshot)).digest('hex')
+            terrainSignatureMs=performance.now()-signatureStarted
+            snapshot.terrainSignature=signature
+            if(signature!==cachedTerrainSignature)pendingSnapshot=snapshot
+            cachedTerrainSignature=signature
+          }else {cachedTerrainSignature=null;pendingSnapshot=snapshot}
+        }).catch(error => {if(!closed)world.unavailable(error)}).finally(()=>{scanning=false})
+      }
+      const timer = setInterval(() => {
+        if (closed || !clients.size) return
         try {
           // A blocked browser must not cause repeated world scans. Its next
           // drain requests one current snapshot instead of replaying old frames.
           for (const client of clients) if (client.blocked) client.missedWorld ||= cadence.dirty
           if (![...clients].some(client => !client.blocked)) return
-          let player = selfPlayer()
-          let ownPresentation = presentation(player)
-          let snapshot = null
+          const player = selfPlayer(), ownPresentation = presentation(player)
           const startedAt = performance.now()
-          if (cadence.required(world.pose, startedAt, !cachedSnapshot && [...clients].some(c => !c.blocked && c.needsSnapshot))) {
-            scanning=true
-            try { snapshot = await world.snapshotAsync() } finally { scanning=false }
-            if(closed || !snapshot)return
-            player=selfPlayer();ownPresentation=presentation(player)
-            snapshotBuildMs = Math.round((performance.now() - startedAt) * 100) / 100; snapshotBuildCount++
-            cachedSnapshot = snapshot.type === 'snapshot' ? snapshot : null
-            cadence.completed(world.pose, startedAt, snapshot.type === 'snapshot', snapshot.bounds)
-            if(snapshot.type==='snapshot'){
-              const signatureStarted=performance.now()
-              const signature=createHash('sha256').update(nativeTerrainSignature(snapshot)).digest('hex')
-              terrainSignatureMs=performance.now()-signatureStarted
-              snapshot.terrainSignature=signature
-              if(signature===cachedTerrainSignature)snapshot=null
-              cachedTerrainSignature=signature
-            }else cachedTerrainSignature=null
-          }
+          if (!scanning && cadence.required(world.pose, startedAt, !cachedSnapshot && [...clients].some(c => !c.blocked && c.needsSnapshot))) startSnapshot(startedAt)
+          // Dynamic frames never await scanning; a new client waits for coherent terrain.
+          const snapshot=pendingSnapshot;pendingSnapshot=null
           const terrainValue=snapshot || cachedSnapshot
           const common={pose:playerPose(player),time:world.time,motion:{...motionTracker.current(),epoch:world.epoch},selfPlayer:player,presentation:ownPresentation}
           const wireStarted=performance.now()

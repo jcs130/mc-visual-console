@@ -73,7 +73,7 @@ const kineticClock = new NativeKineticRenderClock()
 let kineticClockState = { available: false, reason: 'NATIVE_KINETIC_NATIVE_TIME_UNAVAILABLE' }
 const kineticVisibility = () => {
   if (disposed) return
-  frameGaps.reset();if(renderer)renderer.domElement.dataset.frameGaps="null";selfDisplay.reset();displayPose=null
+  frameGaps.resetWindow();if(renderer)renderer.domElement.dataset.frameGaps="null";selfDisplay.reset();displayPose=null
   if (document.hidden) {
     lastPlayerFrameTime = null
     kineticClock.pause(performance.now()); kineticClockState = { available: false, reason: 'NATIVE_KINETIC_RENDER_CLOCK_PAUSED' }
@@ -141,7 +141,7 @@ async function start () {
   renderer.domElement.addEventListener('pointerup',selectPointer)
   const resize = () => {
     const host = viewport
-    frameGaps.reset();renderer.domElement.dataset.frameGaps="null"
+    frameGaps.resetWindow();renderer.domElement.dataset.frameGaps="null"
     renderer.setSize(host.clientWidth, host.clientHeight)
     camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix()
     firstPersonCamera.aspect = camera.aspect; firstPersonCamera.updateProjectionMatrix()
@@ -471,7 +471,7 @@ async function template (state, variants) {
 async function rebuildLatest () {
   try {
     await terrainQueue.run(async (snapshot, terrainCurrent) => {
-      const run=generation, stagedActors=new Map()
+      const run=generation;let staged=null
       const isCurrent=()=>run===generation&&!disposed&&terrainCurrent()
       try {
       const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
@@ -479,9 +479,9 @@ async function rebuildLatest () {
       const signatureStarted=performance.now()
       const signature = nativeStaticSignature(snapshot)
       terrainPhases.signatureMs=performance.now()-signatureStarted
-      const staged = await stageNativeKineticActors({nodes:snapshot.kinetic,definitions,actors:stagedActors,
-        createActor:(state,position)=>createKineticActor(loader,state,position),attach:()=>{},remove:actor=>actor.dispose?.(),
-        isCurrent})
+      staged = await stageNativeKineticActors({nodes:snapshot.kinetic,definitions,actors,
+        createActor:(state,position)=>createKineticActor(loader,state,position),attach:actor=>worldRoot.add(actor.root),remove:removeActor,
+        isCurrent,deferCommit:true})
       if (!staged.current) return
       const nextIssues = staged.issues, nextStaticIssues = []
       let fluidStateAt=null
@@ -580,17 +580,14 @@ async function rebuildLatest () {
       // Received bounds/states/columns can change without mesh arrays changing.
       // The room cache must use this snapshot, independently of mesh rebuilding.
       if(!isCurrent())return
-      for(const actor of actors.values())removeActor(actor)
-      actors.clear()
-      for(const [key,actor] of stagedActors){worldRoot.add(actor.root);actors.set(key,actor)}
-      stagedActors.clear()
+      if(!staged.commit())return
       roomVisibility.stage(snapshot)
       unknown = [...nextIssues, ...staticIssues]
       if (!isCurrent()) return
       if (!current) return
       publishDiagnostics()
       if (camera.position.lengthSq() === 0 && viewMode === 'region') orbitPosition()
-      } finally { for(const actor of stagedActors.values())actor.dispose?.() }
+      } finally { staged?.dispose() }
     })
   } catch (error) { fail(error) }
 }

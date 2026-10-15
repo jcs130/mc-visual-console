@@ -59,3 +59,19 @@ test('late publications retain visible-session spikes with bounded sixty-second 
  assert.equal(g.session.sampleCount,session.sampleCount+1);assert.equal(g.session.durationMs,session.durationMs+1000)
  assert.equal(g.buckets.length,61);g.reset();assert.equal(g.session.sampleCount,0)
 })
+
+
+test('actual scene visibility and ResizeObserver callbacks preserve visible-session spikes',async()=>{
+ const {readFile}=await import('node:fs/promises')
+ const source=await readFile(new URL('../../src/native-viewer/native-scene.js',import.meta.url),'utf8')
+ const visibility=source.slice(source.indexOf('const kineticVisibility = () => {'),source.indexOf("document.addEventListener('visibilitychange'"))
+ const resize=source.slice(source.indexOf('  const resize = () => {'),source.indexOf('  observer = new ResizeObserver(resize)'))
+ const frameGaps=new NativeFrameGaps(),document={hidden:false},renderer={domElement:{dataset:{}},setSize(){}},camera={updateProjectionMatrix(){}}
+ const callbacks=Function('frameGaps','document','renderer','camera',`let disposed=false,displayPose=null,lastPlayerFrameTime=null,kineticClockState;const selfDisplay={reset(){}},kineticClock={pause(){},resume(){}},actors=new Map(),publishDiagnostics=()=>{},viewport={clientWidth:800,clientHeight:600},firstPersonCamera={updateProjectionMatrix(){}},selfActor=null;${visibility};${resize};return {visibility:kineticVisibility,resize}`)(frameGaps,document,renderer,camera)
+ frameGaps.frame(0);frameGaps.frame(200);frameGaps.frame(1200)
+ const before={...frameGaps.session};assert.equal(before.over100,2)
+ document.hidden=true;callbacks.visibility();document.hidden=false;callbacks.visibility();callbacks.resize()
+ assert.deepEqual(frameGaps.session,before)
+ frameGaps.frame(90000);const stats=frameGaps.frame(91000)
+ assert.equal(stats.session.sampleCount,3);assert.equal(stats.session.durationMs,2200);assert.equal(stats.window60.over100,3)
+})
