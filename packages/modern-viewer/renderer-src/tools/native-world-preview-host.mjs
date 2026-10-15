@@ -506,7 +506,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         if (Buffer.byteLength(JSON.stringify(value)) > MAX_PRESENTATION_BYTES) return unavailable('PRESENTATION_TOO_LARGE')
         return value
       }
-      const status = () => ({ schemaVersion: 1, mode: sourceMode, readOnly: true, build: buildInfo, identity: identity(),
+      const status = () => {
+        // Report the same entity volume sent to attached viewers. Off-screen
+        // entities may exceed the snapshot budget without affecting this view.
+        const entityState = world.entitySnapshot(cachedSnapshot?.bounds)
+        return { schemaVersion: 1, mode: sourceMode, readOnly: true, build: buildInfo, identity: identity(),
         selfPlayer: selfPlayer(), presentation: presentation(),
         connection: { ended: connectionEnded, playerEntityAvailable: Boolean(bot.entity) },
         viewer: { available: !closed && !world.error, closed, state: world.error || closed ? 'unavailable' : world.dimension && world.pose ? 'snapshot' : 'waiting',
@@ -514,10 +518,12 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           packetSequence: world.lastSequence, packetCount: world.packetCount, loadedColumns: world.columns.size,
           terrain: { coverage: cachedSnapshot?.viewCoverage ?? null, bounds: cachedSnapshot?.bounds ?? null,
             snapshotBuildCount, snapshotBuildMs, minimumIntervalMs: cadence.minimumIntervalMs, recenterDistance: cadence.recenterDistance },
-          entityDataAvailable: world.entitySnapshot().available, entityDataReason: world.entitySnapshot().reason ?? null,
+          entityDataAvailable: entityState.available, entityDataReason: entityState.reason ?? null,
+          entityDataScope: cachedSnapshot?.bounds ? 'current_view_bounds' : 'tracked_connection_entities',
           entityRegistrySha256,
           entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false },
-        agent: injectedAgentStatus(getAgentStatus, now) })
+        agent: injectedAgentStatus(getAgentStatus, now) }
+      }
       const headers = type => ({ 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': CSP })
       const server = http.createServer(async (request, response) => {
         try {
