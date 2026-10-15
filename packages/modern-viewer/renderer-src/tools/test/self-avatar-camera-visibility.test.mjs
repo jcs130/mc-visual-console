@@ -192,6 +192,14 @@ test('cutaway hides upper-floor models on every draw and restores native visibil
   controller.dispose();
 });
 
+test('the alpha observer keeps upper-floor actors visible instead of removing the surrounding scene',()=>{
+  const {world,camera,avatar,other}=fixture();camera.position.z=4;
+  other.originalEntity={id:8,name:'skeleton',pos:{y:70}};
+  const controller=installSelfAvatarCameraVisibility(world,()=>7,{getUpperCutawayY:()=>64,preserveUpperEntities:true});
+  for(let i=0;i<60;i++){world.entities.render();assert.equal(other.visible,true);assert.equal(avatar.visible,true);}
+  assert.equal(controller.diagnostics.hiddenUpperEntities,0);controller.dispose();
+});
+
 test('disposing does not overwrite a later wrapper', () => {
   const { world } = fixture();
   const controller = installSelfAvatarCameraVisibility(world, () => 7);

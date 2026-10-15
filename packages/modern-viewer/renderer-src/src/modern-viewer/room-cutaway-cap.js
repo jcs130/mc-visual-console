@@ -1,5 +1,4 @@
 import { BufferGeometry, Float32BufferAttribute, Mesh, MeshBasicMaterial } from 'three';
-import { projectedRoomFloor } from './room-visibility.js';
 
 // A voxel mesher emits exposed faces only. An observer inside rock therefore
 // sees through the solid interior even when no fragment is discarded. Close
@@ -19,18 +18,15 @@ export function originalCubeTop(provider, block) {
   return !face?.rotation && t && [t.u, t.v, t.su, t.sv].every(Number.isFinite) ? t : null;
 }
 
-export function buildRoomCap({ cache, provider, center, camera, floorMask, radius = 32 }) {
+export function buildRoomCap({ cache, provider, center, radius = 32 }) {
   const positions = [], uvs = [], textures = new Map();
   const x0 = Math.floor(center.x), z0 = Math.floor(center.z), floor = Math.floor(center.y);
   let unavailable = 0;
   for (let z = z0 - radius; z <= z0 + radius; z++) for (let x = x0 - radius; x <= x0 + radius; x++) {
-    const point = { x: x + .5, y: floor + 1.95, z: z + .5 };
-    const localFloor = floorMask?.floorYAt(point) ?? floor;
-    point.y = localFloor + 1.95;
-    if (!cache.isOpaqueFullBlock(x, Math.floor(point.y), z)) continue;
-    // Foreground wall caps descend to the protected floor so they do not
-    // replace the obstruction removed by the view's connected-floor cut.
-    if (projectedRoomFloor(point, camera, floor + .05, floorMask)) point.y = localFloor + .06;
+    // The shader never fades terrain below the actor's feet. Close that same
+    // plane, including solid columns whose connected walkable floor is higher
+    // or lower. A roof-height cap can leave the entire rock interior open.
+    const point = { x: x + .5, y: center.y + .06, z: z + .5 };
     const block = cache.blockAt(x, Math.floor(point.y), z);
     if (!block || !cache.isOpaqueFullBlock(x, Math.floor(point.y), z)) continue;
     if (!textures.has(block.stateId)) textures.set(block.stateId, originalCubeTop(provider, block));
@@ -65,9 +61,11 @@ export function createRoomCutawayCap(world, getCache) {
       mesh.visible = !!(active && region?.roomMask?.contains(region.center) && cache && resources?.worldBlockProvider);
       if (!mesh.visible) return;
       const { center, camera, roomMask } = region;
-      const key = [Math.floor(center.x), Math.floor(center.y), Math.floor(center.z), Math.round(camera.x * 2), Math.round(camera.y * 2), Math.round(camera.z * 2), cache.revision].join(',');
+      const radius = Math.max(1, Math.min(96, Math.ceil(Math.max(region.radius ?? 32,
+        Math.hypot(camera.x - center.x, camera.z - center.z) + 2))));
+      const key = [Math.floor(center.x), center.y, Math.floor(center.z), radius, cache.revision].join(',');
       if (signature !== key || lastCache !== cache || lastProvider !== resources.worldBlockProvider) {
-        const data = buildRoomCap({ cache, provider: resources.worldBlockProvider, center, camera, floorMask: roomMask });
+        const data = buildRoomCap({ cache, provider: resources.worldBlockProvider, center, radius });
         const geometry = new BufferGeometry();
         geometry.setAttribute('position', new Float32BufferAttribute(data.positions, 3));
         geometry.setAttribute('uv', new Float32BufferAttribute(data.uvs, 2));

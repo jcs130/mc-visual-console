@@ -77,6 +77,7 @@ import { installObserverSectionCulling } from "./observer-section-culling.js";
 import { RoomCoverCache } from "./room-cover-cache.js";
 import { RoomFloorMask } from "./room-floor-mask.js";
 import { createRoomCutawayCap } from "./room-cutaway-cap.js";
+import { createObserverTransparency } from "./observer-transparency.js";
 import { installDungeonObserverControls } from "./dungeon-observer-controls.js";
 import { renderedEntityPosition, installRenderedCameraFollow } from "./rendered-camera-follow.js";
 import { installSelfAvatarCameraVisibility } from "./self-avatar-camera-visibility.js";
@@ -583,6 +584,7 @@ let dungeonRoomCoverCache = null;
 let dungeonFloorMask = null;
 let observerSectionCulling = null;
 let roomCutawayCap = null;
+let observerTransparency = null;
 let dungeonCutawayApplied = false;
 let dungeonCutawayMaterialScanCursor = 0;
 let dungeonOcclusionDiagnostics = {
@@ -1039,7 +1041,7 @@ async function initializeRenderer(version) {
           getUpperCutawayRegion: () => dungeonUpperCutawayRegion,
           getOpaqueCache: () => dungeonRoomCoverCache,
           getObservedFloorY: () => resolveObserverTargetPosition()?.position?.y ?? latestPosition?.pos?.y,
-          cutawayUniforms: dungeonVisibilityUniforms },
+          cutawayUniforms: dungeonVisibilityUniforms, preserveUpperEntities: true },
       );
     }
     for (const entity of entityCache.values()) fishingVisuals.updateEntity(entity, { historical: true });
@@ -2293,12 +2295,15 @@ function installDungeonOcclusion() {
   // Patch the handful of shared terrain shaders once at startup. Runtime
   // checks only flip uniforms, avoiding material clones and shader churn.
   refreshDungeonCutawayMaterials();
+  observerTransparency ??= createObserverTransparency(globalThis.world, dungeonVisibilityUniforms);
+  observerTransparency.update();
   const scene = globalThis.world?.scene;
   if (scene) {
     const previous = scene.onBeforeRender;
     scene.onBeforeRender = function (...args) {
       previous?.apply(this, args);
       updateDungeonVisibilityFrame();
+      observerTransparency?.sync();
     };
   }
   scheduleDungeonOcclusionCheck();
@@ -2416,6 +2421,7 @@ function runDungeonOcclusionCheck() {
   }
   roomCutawayCap ??= createRoomCutawayCap(world, () => dungeonRoomCoverCache);
   roomCutawayCap.update(dungeonUpperCutawayRegion, dungeonCutawayApplied);
+  observerTransparency?.update();
   if (!wasActive && dungeonOcclusionState.active) viewerPerformanceCounters.cutawayActivations += 1;
   if (wasActive && !dungeonOcclusionState.active) viewerPerformanceCounters.cutawayRestores += 1;
 
@@ -2446,6 +2452,7 @@ function runDungeonOcclusionCheck() {
     coverCache: dungeonRoomCoverCache?.diagnostics ?? null,
     floorMask: dungeonFloorMask?.diagnostics ?? null,
     solidCutSurface: roomCutawayCap?.diagnostics ?? null,
+    transparency: observerTransparency?.diagnostics ?? null,
     applied: dungeonCutawayApplied,
     checks: dungeonOcclusionDiagnostics.checks + 1,
     samples: dungeonOcclusionDiagnostics.samples + trace.samples,
@@ -5897,6 +5904,8 @@ function installVisibilityHandling() {
     selfAvatarCameraVisibility = null;
     roomCutawayCap?.dispose();
     roomCutawayCap = null;
+    observerTransparency?.dispose();
+    observerTransparency = null;
     observerSectionCulling?.dispose();
     observerSectionCulling = null;
     pendingViewerEffects.length = 0;
@@ -5949,7 +5958,7 @@ function publishDiagnostics(version) {
     npcEntityPicking: "rate-limited-recursive-visible-mesh-raycast",
     performanceArchitecture: "adaptive-dpr-hysteresis-and-idempotent-ui",
     dungeonPointerLookArchitecture: "horizontal-avatar-plane-no-camera-pitch",
-    dungeonOcclusionArchitecture: "bounded-supercover-multiray-local-shader-sight-corridor",
+    dungeonOcclusionArchitecture: "connected-floor-nearest-surface-alpha-blend",
     viewerEffectsArchitecture: "bounded-authoritative-events-plus-labelled-chat-inference",
     observerControlsCharacter: false,
     get selfAvatarCameraVisibility() {

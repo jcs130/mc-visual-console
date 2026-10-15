@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { installObserverSectionCulling } from '../../src/modern-viewer/observer-section-culling.js';
+import { PerspectiveCamera } from 'three';
 const require = createRequire(import.meta.url);
 const compiled = await build({entryPoints:[require.resolve('minecraft-renderer/src/three/occlusion/sectionOcclusionCull.ts')],bundle:true,write:false,platform:'node',format:'esm'});
 const { SectionOcclusionCull } = await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
@@ -44,4 +45,40 @@ test('removing an observed section, changing distance and disposal invalidate ca
   cull.update(params);cull.update({...params,viewDistance:7});assert.equal(controller.diagnostics.rebuilds,2);
   cull.unregisterSection('32,0,0');assert.equal(cull.update(params).has('32,0,0'),false);
   controller.dispose();assert.equal(cull.update(params).has('64,0,0'),false);
+});
+
+test('the display camera seeds occlusion while the anchor remains the terrain shader origin',()=>{
+  const {cull,manager,params,setRoom,controller}=fixture();
+  const camera=new PerspectiveCamera(48,16/9,.1,1000);
+  camera.position.set(65,2,1);camera.updateMatrixWorld(true);
+  manager.worldRenderer={camera,sceneOrigin:{toWorldX:x=>x,toWorldY:y=>y,toWorldZ:z=>z}};
+  setRoom(null);
+  assert.equal(cull.update(params).has('64,0,0'),true,'the visible exterior is seeded from the actual observer');
+  assert.equal(cull.isSectionVisible('0,0,0'),false,'the sealed anchor is not mistaken for the observer');
+  assert.deepEqual(params,{smartCull:true,cameraWorldX:1,cameraWorldY:2,cameraWorldZ:1,viewDistance:6,sectionHeight:16,worldMinY:0,worldMaxY:256},'shader/frustum anchor arguments are unchanged');
+  controller.dispose();
+});
+
+test('zoom and projection changes dirty observer spans even when the actor and camera rotation stay fixed',()=>{
+  const {manager,getDirty}=fixture();
+  const camera=new PerspectiveCamera(48,16/9,.1,1000);
+  manager.worldRenderer={camera,sceneOrigin:{toWorldX:x=>x-1024,toWorldY:y=>y+64,toWorldZ:z=>z-2048}};
+  manager.updateCullDirtyFromCamera(camera,-1024,64,-2048);
+  const initial=getDirty();
+  manager.updateCullDirtyFromCamera(camera,-1024,64,-2048);
+  assert.equal(getDirty(),initial,'unchanged frames reuse draw spans');
+  camera.position.z=32;camera.updateMatrixWorld(true);
+  manager.updateCullDirtyFromCamera(camera,-1024,64,-2048);
+  assert.equal(getDirty(),initial+1,'observer dolly invalidates the frustum');
+  camera.aspect=.6;camera.updateProjectionMatrix();
+  manager.updateCullDirtyFromCamera(camera,-1024,64,-2048);
+  assert.equal(getDirty(),initial+2,'resize invalidates the frustum');
+});
+
+test('unreceived observer sections cannot prove that received terrain is hidden',()=>{
+  const {cull,manager,params,setRoom}=fixture();
+  const camera=new PerspectiveCamera();camera.position.set(300,100,300);camera.updateMatrixWorld(true);
+  manager.worldRenderer={camera,sceneOrigin:{toWorldX:x=>x,toWorldY:y=>y,toWorldZ:z=>z}};
+  setRoom(null);
+  assert.equal(cull.update(params).size,5,'retain received sections for the normal frustum pass');
 });
