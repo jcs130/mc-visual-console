@@ -105,7 +105,7 @@ export function createNativeAudio({fetchData=globalThis.fetch,contextFactory=()=
       if(media){media.onended=ended;try{await media.play()}catch(error){retire(row);throw error}}
       else{source.onended=ended;source.start()}
       if(ticket.cancelled||run!==generation){retire(row);return false}started++;byCategory[category]=(byCategory[category]??0)+1;changed();return true
-    }catch(e){failed++;error=/^NATIVE_/.test(e.message)?e.message:'NATIVE_AUDIO_DECODE_FAILED';lastFailure={name:eventName,category,reason:error};changed();return false}
+    }catch(e){failed++;error=/^NATIVE_/.test(e.message)?e.message:'NATIVE_AUDIO_DECODE_FAILED';lastFailure={name:eventName,category,reason:error,cause:String(e.name??'Error'),detail:String(e.message??'').slice(0,180)};changed();return false}
     finally{pending.delete(ticket)}
   }
   async function startPlaylist(){

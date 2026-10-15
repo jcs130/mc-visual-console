@@ -10,6 +10,8 @@ after a short 2–8 second gap. Loading errors back off for 30 seconds. Disconne
 mute and page disposal cancel scheduled playback. The viewer remembers local
 enable/volume choices, but restores them only after a browser gesture. The panel
 separately counts effects and music, and exposes the last failed sound and reason.
+The observer CSP permits `media-src 'self' blob:` for these verified compressed
+tracks. Other origins, frame embedding and arbitrary objects remain blocked.
 
 ## Original inputs and preparation
 

@@ -22,7 +22,7 @@ import {nativeViewerBuildSignature,withNativeViewerBuild} from '../src/native-vi
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
-const CSP = "default-src 'self'; script-src 'self'; img-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'"
+const CSP = "default-src 'self'; script-src 'self'; img-src 'self' blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'"
 const SHA256 = /^[a-f0-9]{64}$/
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 // DefaultPlayerSkin.get(UUID), matched to the original 1.21.1 client. The

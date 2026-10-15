@@ -617,6 +617,8 @@ test('full original shell modes and diagnostic page coexist with native bundles,
     const response = await request(host, route)
     assert.equal(response.status, 200)
     assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/)
+    assert.match(response.headers['content-security-policy'], /media-src 'self' blob:/,'verified compressed music needs a local Blob media source')
+    assert.doesNotMatch(response.headers['content-security-policy'], /media-src[^;]*(?:https?:|\*)/,'audio must not open a remote or wildcard source')
     assert.equal(response.headers['x-content-type-options'], 'nosniff')
     assert.equal(response.headers['cache-control'], 'no-store')
   }
