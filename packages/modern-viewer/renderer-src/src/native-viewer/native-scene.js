@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { nativeViewerUrl } from './native-url.js'
 import {createNativeAudio} from './native-audio.js'
+import {NativeParticleLayer} from './native-particles.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath } from './model-loader.js'
 import { createKineticActor } from './create-kinetics.js'
@@ -36,7 +37,7 @@ const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 let statics, worldRoot, camera, firstPersonScene, firstPersonCamera, controls, viewMode = mode, lastGroupSignature = null, unknown = [], staticIssues = [], drawn = 0, tickAge = null
 let colormaps, textureStart = performance.now()
 let disposed = false, skinState = null, observer, assetReader, playerUuid, selfActor = null, selfController, cameraCollisionAt = 0, cameraDistance = null, entityLayer
-let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap,audio
+let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = null, miniMap,audio,particles
 let director, cameraOptions=normalizeCameraSettings(cameraSettings??{version:1,mode:'follow'}),cameraFrame=null
 let terrainRaycast=()=>[],selectedEntity=null,pointerStart=null,lastCollision=null
 const roomVisibility=createNativeRoomVisibility()
@@ -96,6 +97,7 @@ async function start () {
     onActor(actor, status); publishDiagnostics()
   } })
   entityLayer = new NativeEntityLayer(reader,{onChange:publishDiagnostics});worldRoot.add(entityLayer.root)
+  particles=new NativeParticleLayer(reader,{onChange:publishDiagnostics});worldRoot.add(particles.root)
   scene.add(new THREE.AmbientLight(0xffffff, 1.1))
   const light = new THREE.DirectionalLight(0xffffff, 2.2); light.position.set(35, 70, 15); scene.add(light)
   camera = new THREE.PerspectiveCamera(70, 1, 0.05, 150)
@@ -140,6 +142,7 @@ async function start () {
         entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{...current.selfPlayer,position:current.pose},camera)
         updatePlayerCamera(now)
         audio.frame(camera,entityLayer.data,current?.selfPlayer?{...current.selfPlayer,position:current.pose}:null)
+        particles.frame(Date.now(),current?.motion,camera,current)
         roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,height:observerTarget?.height??1.8,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
         if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
@@ -186,7 +189,7 @@ async function start () {
       const event = session.receive(JSON.parse(message.data)), value = event.value
       if (event.kind === 'ignored') return
       if(event.kind==='entity_collect'){void entityLayer.collect(value);audio.collect(value);return}
-      if(event.kind==='world_effect'){audio.event(value);return}
+      if(event.kind==='world_effect'){if(value.effect.kind==='particle')void particles.event(value,current?.motion);else audio.event(value);return}
       if (event.kind === 'agent_visual') {
         visualPort.emit(value.event, value.value)
         const operation = value.value?.input?.operations?.findLast(row => row.kind === 'inventory' && row.windowId === 0)
@@ -336,8 +339,8 @@ function publishDiagnostics() {
   onDiagnostics({ total: current?.groups?.reduce((sum, g) => sum + g.positions.length / 3, 0) || 0,
     drawn: drawn + [...actors.values()].filter(actor => !actor.staticBodyRenderedSeparately && actor.root.visible).length,
     issues: [...unknown, ...(actors.size && !kineticClockState.available ? [kineticClockState.reason] : []),
-      ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
-    appearance: selfController?.appearance(),
+      ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[]),...(particles?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
+    appearance: selfController?.appearance(),particles:particles?.diagnostics(),
     audio:audio?.state(),
     selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture, selectionSource: selfActor.assetInfo.selectionSource,
       support: selfActor.assetInfo.support ?? null, notice: selfActor.assetInfo.notice, motion: selfMotionState ?? selfActor.root.userData.motion ?? null } : null,
@@ -356,6 +359,7 @@ function clearStatics () {
 function clearScene () {
   miniMap?.reset()
   audio?.connect(false)
+  particles?.reset()
   generation++; pending = null; current = null; lastGroupSignature = null; clearStatics()
   for (const actor of actors.values()) removeActor(actor)
   actors.clear()
@@ -554,7 +558,7 @@ function fail (error) {
 }
 function dispose () {
   if (disposed) return
-  disposed = true; audio?.dispose();miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
+  disposed = true; audio?.dispose();particles?.dispose();miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
   renderer?.domElement.removeEventListener('pointerdown',manualCameraInput,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
   renderer?.domElement.removeEventListener('pointerdown',rememberPointer);renderer?.domElement.removeEventListener('pointerup',selectPointer)

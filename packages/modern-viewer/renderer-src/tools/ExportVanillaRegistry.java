@@ -25,8 +25,28 @@ public class ExportVanillaRegistry {
         for (int i = 0; i < names.length; i++) parameters[i] = type(names[i]);
         return type(owner).getMethod(members.get(owner + "." + signature), parameters).invoke(instance, args);
     }
+    static Map<String,Object> particleVoxel(Object shape) throws Exception {
+        String voxel="net.minecraft.world.phys.shapes.VoxelShape",discrete="net.minecraft.world.phys.shapes.DiscreteVoxelShape",axisName="net.minecraft.core.Direction$Axis";
+        Class<?> axisType=type(axisName);
+        Method coords=type(voxel).getDeclaredMethod(members.get(voxel+".getCoords("+axisName+")"),axisType);coords.setAccessible(true);
+        Field field=type(voxel).getDeclaredField(members.get(voxel+".shape"));field.setAccessible(true);Object grid=field.get(shape);
+        List<List<?>> axes=new ArrayList<>();List<Integer> dimensions=new ArrayList<>();
+        for(String axis:List.of("X","Y","Z")){
+            Object value=Enum.valueOf((Class)axisType,axis);
+            axes.add(new ArrayList<>((List<?>)coords.invoke(shape,value)));
+            dimensions.add((int)call(discrete,"getSize("+axisName+")",grid,value));
+        }
+        int nx=dimensions.get(0),ny=dimensions.get(1),nz=dimensions.get(2);
+        byte[] occupied=new byte[(nx*ny*nz+7)/8];
+        Method full=type(discrete).getMethod(members.get(discrete+".isFullWide(int,int,int)"),int.class,int.class,int.class);
+        for(int x=0;x<nx;x++)for(int y=0;y<ny;y++)for(int z=0;z<nz;z++)if((boolean)full.invoke(grid,x,y,z)){
+            int index=(x*ny+y)*nz+z;occupied[index/8]|=(byte)(1<<(index%8));
+        }
+        return Map.of("axes",axes,"dimensions",dimensions,"occupied",Base64.getEncoder().encodeToString(occupied));
+    }
     public static void main(String[] args) throws Exception {
-        if (args.length != 2) throw new IllegalArgumentException("official-server-mappings.txt new-output-directory");
+        if (args.length != 2 && !(args.length == 3 && args[2].equals("--particle-collisions"))) throw new IllegalArgumentException("official-mappings.txt new-output-directory [--particle-collisions]");
+        boolean exportCollisions = args.length == 3;
         String owner = null;
         for (String line : Files.readAllLines(Path.of(args[0]))) {
             if (line.startsWith("#") || !line.contains(" -> ")) continue;
@@ -50,8 +70,10 @@ public class ExportVanillaRegistry {
         Object blocks = field(BUILT, "BLOCK", null), fluids = field(BUILT, "FLUID", null);
         Object empty = field("net.minecraft.world.level.EmptyBlockGetter", "INSTANCE", null);
         Object zero = field("net.minecraft.core.BlockPos", "ZERO", null);
+        Object collisionContext = exportCollisions ? call("net.minecraft.world.phys.shapes.CollisionContext","empty()",null) : null;
         Gson gson = new Gson();
         List<String> blockRows = new ArrayList<>(), stateRows = new ArrayList<>(), entityRows = new ArrayList<>();
+        List<Map<String,Object>> collisionRows = new ArrayList<>();
         for (Object block : (Iterable<?>) blocks) {
             String name = call(REG, "getKey(java.lang.Object)", blocks, block).toString();
             int blockId = (int) call(REG, "getId(java.lang.Object)", blocks, block);
@@ -75,6 +97,27 @@ public class ExportVanillaRegistry {
                 row.put("blocksMotion", call(BASE, "blocksMotion()", state));
                 boolean dynamic = (boolean) call(BLOCK, "hasDynamicShape()", block);
                 row.put("dynamicShape", dynamic);
+                if (exportCollisions) {
+                    Map<String,Object> collisionRow = new LinkedHashMap<>();
+                    collisionRow.put("stateId",id); collisionRow.put("name",name); collisionRow.put("properties",properties);
+                    collisionRow.put("large",call(BASE,"hasLargeCollisionShape()",state));
+                    if (dynamic) collisionRow.put("unavailable","original_dynamic_collision_requires_world_context");
+                    else {
+                        Object collision = call(BASE,"getCollisionShape(net.minecraft.world.level.BlockGetter,net.minecraft.core.BlockPos,net.minecraft.world.phys.shapes.CollisionContext)",state,empty,zero,collisionContext);
+                        List<?> boxes = (List<?>) call("net.minecraft.world.phys.shapes.VoxelShape","toAabbs()",collision);
+                        List<List<Object>> bounds = new ArrayList<>();
+                        for (Object box : boxes) {
+                            List<Object> b = new ArrayList<>();
+                            for (String axis : List.of("minX","minY","minZ","maxX","maxY","maxZ")) b.add(field("net.minecraft.world.phys.AABB",axis,box));
+                            bounds.add(b);
+                        }
+                        if (!bounds.isEmpty() && (boolean)call(BASE,"hasOffsetFunction()",state)) collisionRow.put("unavailable","original_position_dependent_collision");
+                        else if (name.endsWith("shulker_box") || name.equals("minecraft:moving_piston")) collisionRow.put("unavailable","original_block_entity_collision_requires_world_context");
+                        else {collisionRow.put("boxes",bounds);collisionRow.put("voxel",particleVoxel(collision));
+                            collisionRow.put("canonicalFullBlock",collision==call("net.minecraft.world.phys.shapes.Shapes","block()",null));}
+                    }
+                    collisionRows.add(collisionRow);
+                }
                 if (!dynamic) {
                     Object shape = call(BASE, "getOcclusionShape(net.minecraft.world.level.BlockGetter,net.minecraft.core.BlockPos)", state, empty, zero);
                     List<?> boxes = (List<?>) call("net.minecraft.world.phys.shapes.VoxelShape", "toAabbs()", shape);
@@ -101,6 +144,8 @@ public class ExportVanillaRegistry {
         Files.writeString(out.resolve("blocks.tsv"), String.join("\n", blockRows) + "\n", java.nio.charset.StandardCharsets.UTF_8);
         Files.writeString(out.resolve("block-states.jsonl"), String.join("\n", stateRows) + "\n", java.nio.charset.StandardCharsets.UTF_8);
         Files.writeString(out.resolve("entities.tsv"), String.join("\n", entityRows) + "\n", java.nio.charset.StandardCharsets.UTF_8);
+        if (exportCollisions) Files.writeString(out.resolve("particle-collisions.json"),gson.toJson(Map.of("schemaVersion",1,
+            "minecraftVersion","1.21.1","source","original_static_block_collision_empty_context","states",collisionRows))+"\n",java.nio.charset.StandardCharsets.UTF_8);
         System.out.println("Exported blocks=" + blockRows.size() + " states=" + stateRows.size() + " entities=" + entityRows.size());
     }
 }

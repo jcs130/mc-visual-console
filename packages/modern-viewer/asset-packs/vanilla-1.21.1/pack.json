@@ -3,8 +3,8 @@
   "id": "vanilla-1.21.1",
   "kind": "native",
   "minecraftVersion": "1.21.1",
-  "fileCount": 8453,
-  "bytes": 19279653,
+  "fileCount": 8454,
+  "bytes": 27969369,
   "files": {
     "assets/.mcassetsroot": {
       "bytes": 0,
@@ -33817,6 +33817,10 @@
     "registry/entities.tsv": {
       "bytes": 2994,
       "sha256": "64a3020b859531bafd5901869448fc3e0d6e23e79812d136418e9482733788cf"
+    },
+    "registry/particle-collisions.json": {
+      "bytes": 8689716,
+      "sha256": "3eb554012eb5c5fad976ab944fff7ae3b2ee5a723bb9fbe7024ba7605348959a"
     }
   },
   "source": {

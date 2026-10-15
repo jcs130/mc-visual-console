@@ -42,7 +42,7 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
       if(value.type==='world_effect'){
         if(!ready||value.epoch!==epoch)return {kind:'ignored'}
         if(value.playerUuid?.toLowerCase()!==identity.playerUuid||value.source!=='received_native_packet_effect'||
-          !Number.isSafeInteger(value.sequence)||!Number.isFinite(value.observedAt)||!['sound','sound_stop'].includes(value.effect?.kind))throw Error('NATIVE_EFFECT_BINDING_MISMATCH')
+          !Number.isSafeInteger(value.sequence)||!Number.isFinite(value.observedAt)||!['sound','sound_stop','particle'].includes(value.effect?.kind))throw Error('NATIVE_EFFECT_BINDING_MISMATCH')
         if(value.sequence<=effectSequence)return {kind:'ignored'}
         effectSequence=value.sequence;return {kind:'world_effect',value}
       }
