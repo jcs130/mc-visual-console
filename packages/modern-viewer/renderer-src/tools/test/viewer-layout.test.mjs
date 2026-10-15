@@ -47,3 +47,16 @@ test('transient messages cannot move the Agent input panel inside a flowing rail
   check.checked=false;check.dispatch('change');assert.equal(ui.visible('agentOperations'),false);
   ui.dispose();assert.ok(inputs.parentNode===h.document.body);assert.ok(messages.parentNode===h.document.body);
 });
+
+test('wrapped toolbars reserve their measured height and release the observer and CSS state',()=>{
+  const h=browser(),make=h.document.createElement.bind(h.document),style=new Map();let bottom=111,watcher;
+  h.document.body.style.getPropertyValue=key=>style.get(key)??'';
+  h.document.body.style.setProperty=(key,value)=>style.set(key,value);
+  h.document.body.style.removeProperty=key=>style.delete(key);
+  h.document.createElement=tag=>{const el=make(tag);if(tag==='header')el.getBoundingClientRect=()=>({bottom});return el;};
+  h.window.ResizeObserver=class{constructor(fn){this.fn=fn;watcher=this;}observe(el){this.target=el;}disconnect(){this.closed=true;}};
+  const ui=installViewerLayout(h);
+  assert.equal(watcher.target.className,'viewer-toolbar');assert.equal(style.get('--viewer-toolbar-bottom'),'111px');
+  bottom=68;watcher.fn();assert.equal(style.get('--viewer-toolbar-bottom'),'68px');
+  ui.dispose();assert.equal(watcher.closed,true);assert.equal(style.has('--viewer-toolbar-bottom'),false);
+});

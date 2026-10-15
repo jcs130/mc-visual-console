@@ -28,6 +28,15 @@ export function installViewerLayout({document, window, photo = false, overlay = 
   const tools = make('div', 'viewer-toolbar-tools', toolbar);
   const left = make('aside', 'viewer-rail viewer-rail-left', document.body); roots.push(left);
   const right = make('aside', 'viewer-rail viewer-rail-right', document.body); roots.push(right);
+  const previousToolbarBottom=document.body.style.getPropertyValue?.('--viewer-toolbar-bottom')??'';
+  let toolbarBottom=null;
+  function measureToolbar(){
+    const bottom=toolbar.getBoundingClientRect?.().bottom;
+    if(!Number.isFinite(bottom)||toolbarBottom===Math.ceil(bottom))return;
+    toolbarBottom=Math.ceil(bottom);document.body.style.setProperty?.('--viewer-toolbar-bottom',`${toolbarBottom}px`);
+  }
+  const toolbarObserver=window.ResizeObserver?new window.ResizeObserver(measureToolbar):null;
+  toolbarObserver?.observe(toolbar);listen(window,'resize',measureToolbar);
   left.setAttribute('aria-label', '地图与操作信息'); right.setAttribute('aria-label', '技能与行动信息');
   const clean = make('button', '', tools, '简洁'); clean.type = 'button'; clean.title = '隐藏信息，保留画面工具栏（H）';
   const settings = make('details', 'viewer-display-settings', tools);
@@ -80,6 +89,7 @@ export function installViewerLayout({document, window, photo = false, overlay = 
     // chat row must never reflow the input panel or scroll it with the rail.
     for (const id of ['corti-minimap', 'native-terrain-map', 'corti-scoreboard', 'corti-effects', 'corti-content-status', 'corti-held-map']) move(document.getElementById(id), left);
     for (const id of ['corti-skills', 'agent-intent', 'agent-route-map', 'agent-presentation', 'native-live-inspector']) move(document.getElementById(id), right);
+    measureToolbar();
   }
   listen(clean, 'click', () => { layout.clean = !layout.clean; apply(); });
   listen(window, 'keydown', e => {
@@ -90,7 +100,9 @@ export function installViewerLayout({document, window, photo = false, overlay = 
   listen(document, 'pointerdown', e => { if (settings.open && !settings.contains(e.target)) settings.open = false; });
   const observer = new window.MutationObserver(adopt); observer.observe(document.body, {childList: true});
   function dispose() {
-    if (disposed) return; disposed = true; observer.disconnect();
+    if (disposed) return; disposed = true; observer.disconnect();toolbarObserver?.disconnect();
+    if(previousToolbarBottom)document.body.style.setProperty?.('--viewer-toolbar-bottom',previousToolbarBottom);
+    else document.body.style.removeProperty?.('--viewer-toolbar-bottom');
     for (const [el, name, handler] of listeners) el.removeEventListener(name, handler);
     for (const [el, parent] of moved) if (parent?.isConnected) parent.append(el);
     for (const root of roots) root.remove(); delete document.body.dataset.viewerLayout; delete document.body.dataset.viewerClean;
