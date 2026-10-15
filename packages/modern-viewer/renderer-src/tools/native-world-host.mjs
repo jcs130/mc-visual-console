@@ -7,6 +7,7 @@ import { CUTTING_BOARD_ID, cuttingBoardContent } from '../src/native-viewer/cutt
 import { createNativeEntityMotion } from '../src/native-viewer/native-entity-motion.js'
 import {viewerSoundPacket,viewerSoundStopPacket} from '../host/viewer-sound-packets.mjs'
 import {nativeParticlePacket} from '../src/native-viewer/native-particle-state.js'
+import {nativeThrownItemType,nativeThrownItemState} from '../src/native-viewer/native-thrown-item-state.js'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 // Leave room for the same-player presentation in the host's 2 MiB SSE event.
@@ -246,7 +247,7 @@ export class NativeWorldState extends EventEmitter {
         if(['minecraft:item','minecraft:experience_orb'].includes(entity?.name))this.emit('collect',{sequence:body.sequence,observedAt:timestamp,
           collectedEntityId:p.collectedEntityId,collectorEntityId:p.collectorEntityId,count:p.pickupItemCount,
           entity:{...entity,position:{...entity.position},velocity:{...entity.velocity},metadata:[...entity.metadata.values()],equipment:[],cues:[],
-            ...(entity.name==='minecraft:item'?{itemState:this.itemState(entity)}:{}),motion:this.entityMotions.get(entity.entityId)?.current()??null}})
+            ...(entity.name==='minecraft:item'||nativeThrownItemType(entity.name)?{itemState:this.itemState(entity)}:{}),motion:this.entityMotions.get(entity.entityId)?.current()??null}})
       } else if (body.name === 'entity_destroy') {
         if (!Array.isArray(p.entityIds) || p.entityIds.length > ENTITY_LIMITS.tracked || !p.entityIds.every(Number.isSafeInteger)) throw Error('NATIVE_ENTITY_DESTROY_INVALID')
         for (const id of p.entityIds) this.removeEntity(id)
@@ -347,6 +348,7 @@ export class NativeWorldState extends EventEmitter {
   }
 
   itemState(entity) {
+    if(nativeThrownItemType(entity.name))return nativeThrownItemState(entity,this.resolveItemStack)
     if(!this.resolveItemStack)return {available:false,reason:'NATIVE_DROPPED_ITEM_REGISTRY_UNAVAILABLE'}
     const row=entity.metadata.get(8)
     if(!row||!['item_stack',7].includes(row.type))return {available:false,reason:'NATIVE_DROPPED_ITEM_SLOT_UNAVAILABLE'}
@@ -396,14 +398,14 @@ export class NativeWorldState extends EventEmitter {
           row.item?.itemCount>0&&this.resolveItemStack?freezeEntityJSON({...row,stack:this.resolveItemStack(row.item)}):row)), cues = Object.freeze([...entity.cues])
         // These heavy arrays are invariant during ordinary interpolation ticks.
         // Cache their exact encoded byte cost; [] contributes two bytes each.
-        collections = { metadata, equipment, cues, ...(entity.name==='minecraft:item'?{itemState:freezeEntityJSON(this.itemState(entity))}:{}),
+        collections = { metadata, equipment, cues, ...(entity.name==='minecraft:item'||nativeThrownItemType(entity.name)?{itemState:freezeEntityJSON(this.itemState(entity))}:{}),
           bytes: [metadata,equipment,cues].reduce((sum, value) => sum + Buffer.byteLength(JSON.stringify(value)) - 2, 0) }
         this.entityCollections.set(entity.entityId, collections)
       }
       const { metadata, equipment, cues, ...scalar } = entity
       const row = { ...scalar, position: Object.freeze({ ...entity.position }), velocity: Object.freeze({ ...entity.velocity }),
         metadata: collections.metadata, equipment: collections.equipment, cues: collections.cues,
-        ...(entity.name==='minecraft:item'?{itemState:collections.itemState}:{}),
+        ...(entity.name==='minecraft:item'||nativeThrownItemType(entity.name)?{itemState:collections.itemState}:{}),
         // current() returns a detached copy: never freeze tracker internals.
         motion: freezeEntityJSON(this.entityMotions.get(entity.entityId)?.current() ?? null) }
       snapshotBytes += Buffer.byteLength(JSON.stringify({ ...row, metadata: [], equipment: [], cues: [] })) + collections.bytes + (entities.length ? 1 : 0)

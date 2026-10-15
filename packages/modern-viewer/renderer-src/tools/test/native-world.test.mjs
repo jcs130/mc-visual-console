@@ -370,6 +370,24 @@ test('dropped Slot projection uses the supplied native registry and collect surv
   assert.equal(collect.collectorEntityId,9);assert.equal(Object.hasOwn(collect,'inventoryGain'),false)
 })
 
+test('thrown item snapshots preserve constructor defaults, actual component-bearing Slot and explicit empty',()=>{
+  let calls=0
+  const {world,packet,spawn}=entityFixture('minecraft:potion\t500\n',wire=>{
+    calls++;assert.equal(wire.components[0].type,'potion_contents')
+    return {available:true,source:'same_player_vanilla_item_registry',minecraftVersion:'1.21.1',registryId:wire.itemId,
+      item:{name:'minecraft:lingering_potion',count:wire.itemCount,snbt:'{id:"minecraft:lingering_potion",count:1}'}}
+  })
+  spawn(12,500)
+  assert.equal(world.entitySnapshot().entities[0].itemState.item.name,'minecraft:splash_potion')
+  const wire={itemId:1161,itemCount:1,components:[{type:'potion_contents',data:{potionId:3,customColor:0,customEffects:[]}}],removeComponents:[]}
+  packet('entity_metadata',{entityId:12,metadata:[{key:8,type:'item_stack',value:wire}]})
+  assert.equal(world.entitySnapshot().entities[0].itemState.item.name,'minecraft:lingering_potion');assert.equal(calls,1)
+  world.tickEntities();assert.equal(world.entitySnapshot().entities[0].motion.tick,1);assert.equal(calls,1,'ticks reuse the immutable item projection')
+  packet('entity_metadata',{entityId:12,metadata:[{key:8,type:'item_stack',value:{itemCount:0}}]})
+  const empty=world.entitySnapshot().entities[0].itemState
+  assert.equal(empty.empty,true);assert.equal(empty.item,null);assert.equal(calls,1,'empty does not become a default potion')
+})
+
 test('registry is byte-anchored and never accepts a proxy ID table or duplicates', () => {
   assert.throws(() => loadNativeStateRegistry(Buffer.from('changed'), hash), /HASH_MISMATCH/)
   const duplicate = Buffer.from(bytes.toString() + '\n' + JSON.stringify(rows[0]))

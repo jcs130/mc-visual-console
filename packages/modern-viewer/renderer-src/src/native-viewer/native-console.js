@@ -10,6 +10,7 @@ import { loadCameraSettings, CAMERA_SETTINGS_KEY } from '../modern-viewer/camera
 import { installSceneSettings } from '../modern-viewer/scene-settings.js'
 import { loadSceneSettings,sceneColourFilter } from '../modern-viewer/scene-quality.js'
 import { installDungeonObserverControls } from '../modern-viewer/dungeon-observer-controls.js'
+import {createNativeViewerBuildGuard} from './native-viewer-build.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
@@ -30,6 +31,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   startStatus = startAgentStatusPolling, createInterface = createNativeInterface } = {}) {
   if (!document?.body || !window) throw Error('NATIVE_CONSOLE_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
+  const buildChanged=createNativeViewerBuildGuard(q('meta[name="native-viewer-build"]')?.content,()=>window.location.reload())
   const listeners = [], listen = (target, event, callback) => { target?.addEventListener(event, callback); listeners.push([target, event, callback]) }
   let disposed = false, identity = null, sceneHost = null, latestState = null, lastDiagnostics = null
   const appearanceUi = installAppearanceSettings({ document, window, onChange: id => sceneHost?.selectAppearance?.(id) })
@@ -189,6 +191,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   ui.reset(); switchView(pendingMode)
   try {
     sceneHost = await mount({ viewport, mode: pendingMode,
+      onBuild:buildChanged,
       cameraSettings,onCameraManual:mode=>mode&&cameraUi.select?cameraUi.select(mode):cameraUi.manual(),
       onSelection:value=>{targetSelect.value=value?String(value.entityId):'';targetInfo.textContent=value?`${value.name} · #${value.entityId}${Number.isFinite(value.health)?' · 生命 '+value.health:''}`:'正在跟随 Agent 本人'},
       onIdentity (value) { if (disposed) return; identity = value; ui.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },

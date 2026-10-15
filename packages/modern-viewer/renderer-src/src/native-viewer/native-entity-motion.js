@@ -3,6 +3,7 @@
 // the action connection's actual physicsTick; browser time never creates ticks.
 import { NATIVE_HOSTILE_TYPES, createNativeLivingAnimation } from './native-living-state.js'
 import { nativeProjectileType } from './native-projectile-state.js'
+import {nativeThrownItemType} from './native-thrown-item-state.js'
 const F=Math.fround, clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 const wrap=v=>((v+180)%360+360)%360-180
 const relative=(a,b,max)=>F(b-clamp(wrap(b-a),-max,max))
@@ -12,7 +13,7 @@ const types=new Set(NATIVE_MOB_TYPES)
 
 export function createNativeEntityMotion(entity) {
   if(entity?.name==='minecraft:item')return createNativeDroppedItemMotion(entity)
-  if(nativeProjectileType(entity?.name))return createNativeProjectileMotion(entity)
+  if(nativeProjectileType(entity?.name)||nativeThrownItemType(entity?.name))return createNativeProjectileMotion(entity)
   if(!types.has(entity?.name))return null
   let position={...entity.position},yaw=entity.yaw,pitch=entity.pitch,headYaw=entity.headYaw,bodyYaw=yaw
   let target={...position},targetYaw=yaw,targetPitch=pitch,targetHead=headYaw,lerpSteps=0,headSteps=0

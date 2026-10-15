@@ -346,6 +346,18 @@ test('status returns caller-provided goals, decisions and receipts without inven
   assert.deepEqual(JSON.parse((await request(host, 'healthz')).body), health)
 })
 
+test('served HTML and SSE identity bind the same checked renderer and asset manifest',async t=>{
+  const {host}=attachment(t);await host.listen()
+  const build=JSON.parse((await request(host,'build.json')).body)
+  const signature=build.buildSource.sourceSha256+':'+build.assetManifestSha256
+  for(const route of ['','third/','dungeon/','diagnostics/']){
+    const page=await request(host,route)
+    assert.equal(page.status,200);assert(page.body.includes('name="native-viewer-build" content="'+signature+'"'))
+  }
+  const stream=await events(host);t.after(()=>stream.close())
+  const identity=await stream.next();assert.equal(identity.type,'identity');assert.equal(identity.viewerBuild,signature)
+})
+
 test('self player reads only the caller connection, with real attribute modifiers and explicit missing fields', t => {
   const { bot, host, counts } = attachment(t)
   const entity = playerEntity(bot)

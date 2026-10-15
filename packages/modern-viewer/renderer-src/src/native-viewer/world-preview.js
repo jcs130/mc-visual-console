@@ -3,6 +3,8 @@ import { mountNativeWorld } from './native-scene.js'
 import { nativeViewerUrl } from './native-url.js'
 import { playerHud } from './player-camera.js'
 import { renderAgentStatus, startAgentStatusPolling } from './agent-status.js'
+import {createNativeViewerBuildGuard} from './native-viewer-build.js'
+const buildChanged=createNativeViewerBuildGuard(document.querySelector('meta[name="native-viewer-build"]')?.content,()=>location.reload())
 const el = id => document.getElementById(id)
 let player, playerUuid, scene
 const stopStatus = startAgentStatusPolling({
@@ -17,7 +19,7 @@ const updateMode = mode => {
 }
 try {
   scene = await mountNativeWorld({
-    viewport: el('viewport'), onMode: updateMode,
+    viewport: el('viewport'), onMode: updateMode,onBuild:buildChanged,
     onIdentity(value) {
       player = value.player; playerUuid = value.playerUuid?.toLowerCase()
       el('player').textContent = player; el('hud-player').textContent = player
