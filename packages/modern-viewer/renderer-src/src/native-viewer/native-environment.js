@@ -68,10 +68,14 @@ export function biomeColor (biome, kind, colormaps) {
 }
 
 export function blendedBiomeColor (snapshot, position, kind, colormaps, radius = 2) {
+  return blendColor(position, kind, colormaps, radius, p => biomeAt(snapshot, p))
+}
+
+function blendColor (position, kind, colormaps, radius, getBiome) {
   if (!Number.isInteger(radius) || radius < 0 || radius > 3) throw Error('NATIVE_BIOME_BLEND_RADIUS_INVALID')
   let red = 0, green = 0, blue = 0, count = 0
   for (let x = position.x - radius; x <= position.x + radius; x++) for (let z = position.z - radius; z <= position.z + radius; z++) {
-    const color = biomeColor(biomeAt(snapshot, { x, y: position.y, z }), kind, colormaps)
+    const color = biomeColor(getBiome({ x, y: position.y, z }), kind, colormaps)
     red += color >> 16 & 255; green += color >> 8 & 255; blue += color & 255; count++
   }
   return (Math.trunc(red / count) << 16) | (Math.trunc(green / count) << 8) | Math.trunc(blue / count)
@@ -80,15 +84,39 @@ export function blendedBiomeColor (snapshot, position, kind, colormaps, radius =
 const grass = new Set(['minecraft:grass_block', 'minecraft:short_grass', 'minecraft:fern', 'minecraft:tall_grass', 'minecraft:large_fern', 'minecraft:potted_fern', 'minecraft:sugar_cane'])
 const foliage = new Set(['minecraft:oak_leaves', 'minecraft:jungle_leaves', 'minecraft:acacia_leaves', 'minecraft:dark_oak_leaves', 'minecraft:mangrove_leaves', 'minecraft:vine'])
 export function blockTint (snapshot, state, position, tintIndex, colormaps) {
+  return tintBlock(state, position, tintIndex, (p, kind) => blendedBiomeColor(snapshot, p, kind, colormaps))
+}
+
+function tintBlock (state, position, tintIndex, blend) {
   if (tintIndex < 0) return 0xffffff
   if (state.name === 'minecraft:spruce_leaves') return 0x619961
   if (state.name === 'minecraft:birch_leaves') return 0x80a755
   if (grass.has(state.name)) {
     if (['minecraft:tall_grass', 'minecraft:large_fern'].includes(state.name) && state.properties.half === 'upper') position = { ...position, y: position.y - 1 }
-    return blendedBiomeColor(snapshot, position, 'grass', colormaps)
+    return blend(position, 'grass')
   }
-  if (foliage.has(state.name)) return blendedBiomeColor(snapshot, position, 'foliage', colormaps)
+  if (foliage.has(state.name)) return blend(position, 'foliage')
   throw Error(`NATIVE_BLOCK_COLOR_PROVIDER_UNSUPPORTED:${state.name}`)
+}
+
+// Owned by one immutable received terrain snapshot and its original colormaps.
+// Cache only successful exact lookups; eviction changes work, never the result.
+// No cross-snapshot keys, fallback biomes, blend-radius changes or seed shortcuts.
+export function createNativeEnvironment (snapshot, colormaps, { maxEntries = 65536 } = {}) {
+  if (!Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 65536) throw Error('NATIVE_ENVIRONMENT_CACHE_LIMIT_INVALID')
+  const cache = new Map(), key = p => `${p.x},${p.y},${p.z}`
+  const memo = (id, compute) => {
+    if (cache.has(id)) return cache.get(id)
+    const value = compute()
+    if (cache.size >= maxEntries) cache.delete(cache.keys().next().value)
+    cache.set(id, value)
+    return value
+  }
+  const getBiome = p => memo(`biome:${key(p)}`, () => biomeAt(snapshot, p))
+  const blend = (p, kind, radius = 2) => memo(`blend:${kind}:${radius}:${key(p)}`, () => blendColor(p, kind, colormaps, radius, getBiome))
+  return { biomeAt: getBiome, blendedBiomeColor: blend,
+    blockTint: (state, p, index) => tintBlock(state, p, index, blend),
+    clear: () => cache.clear(), get size () { return cache.size } }
 }
 
 export function modelOffset (state, position) {
