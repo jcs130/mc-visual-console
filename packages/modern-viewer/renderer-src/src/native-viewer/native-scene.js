@@ -7,8 +7,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { NativeAssetReader, NativeModelLoader, selectBlockVariants, resourcePath } from './model-loader.js'
 import { createKineticActor } from './create-kinetics.js'
 import { WINDMILL_BEARING_ID, verifyNativeWindmillBearing } from './native-windmill-bearing.js'
-import { blockTint, blendedBiomeColor, modelOffset } from './native-environment.js'
-import { nativeFluidFamily,nativeFluidGeometry } from './native-fluid.js'
+import { createNativeEnvironment, modelOffset } from './native-environment.js'
+import { nativeFluidFamily } from './native-fluid.js'
+import { buildNativeFluidMeshes, createNativeFluidStateReader } from './native-fluid-meshes.js'
+import { createNativeRebuildWork, NativeStaticStage, disposeNativeStaticMeshes, isNativeRebuildRetired, nativeStaticSignature } from './native-rebuild-work.js'
 import { CUTTING_BOARD_ID, cuttingBoardStaticModelStatus } from './cutting-board.js'
 import { NativeSelfPlayerController, applyNativeSelfPlayerMotion } from './native-self-player.js'
 import {BundledAppearanceReader} from './native-bundled-appearance.js'
@@ -395,8 +397,7 @@ function publishDiagnostics() {
 }
 function clearStatics () {
   if (!statics) return
-  for (const mesh of statics.children) { mesh.dispose?.(); if (mesh.userData.nativeFluid) mesh.geometry.dispose() } // fluid geometry is per-snapshot; model templates remain shared
-  statics.clear()
+  disposeNativeStaticMeshes(statics)
 }
 function clearScene () {
   selfDisplay.reset();displayPose=null;frameGaps.reset();if(renderer)renderer.domElement.dataset.frameGaps="null"
@@ -464,9 +465,10 @@ async function rebuildLatest () {
   try {
     while (pending) {
       const snapshot = pending, run = generation; pending = null
+      try {
       const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
       const cuttingBoards = new Map((snapshot.cuttingBoards || []).map(board => [pointKey(board.position), board]))
-      const signature = JSON.stringify([snapshot.groups, snapshot.occludedSolidRuns, snapshot.neighbors, snapshot.biomeGrid?.ids, snapshot.biomes, snapshot.biomeSeed, snapshot.cuttingBoards])
+      const signature = nativeStaticSignature(snapshot)
       const staged = await stageNativeKineticActors({nodes:snapshot.kinetic,definitions,actors,
         createActor:(state,position)=>createKineticActor(loader,state,position),attach:actor=>worldRoot.add(actor.root),remove:removeActor,
         isCurrent:()=>run===generation&&!disposed})
@@ -474,23 +476,21 @@ async function rebuildLatest () {
       const nextIssues = staged.issues, nextStaticIssues = []
       let fluidStateAt=null
       if (signature !== lastGroupSignature) {
-        const next = new THREE.Group(), tintCache = new Map(); let count = 0
-        let workStarted = performance.now()
-        const yieldWork=async()=>{if(performance.now()-workStarted<=8)return;await new Promise(resolve=>requestAnimationFrame(resolve));workStarted=performance.now();if(run!==generation)throw Error('NATIVE_SCENE_REBUILD_RETIRED')}
+        const next = new NativeStaticStage(), environment = createNativeEnvironment(snapshot, colormaps), tintColor = new THREE.Color()
+        const work = createNativeRebuildWork({ isCurrent: () => run === generation && !disposed })
+        let count = 0
+        try {
         for (const group of snapshot.groups) {
           // A larger native volume must leave the controls/HUD responsive.
           // Only scheduling changes; no geometry, state or texture is omitted.
-          if (performance.now() - workStarted > 8) {
-            await new Promise(resolve => requestAnimationFrame(resolve)); workStarted = performance.now()
-            if (run !== generation) break
-          }
+          const pause = work.checkpoint(); if (pause) await pause
           const state = definitions.get(group.stateId)
           if (['create:shaft', 'create:hand_crank'].includes(state.name)) continue
           if (nativeFluidFamily(state)) {
-            fluidStateAt??=fluidStateReader(snapshot,definitions)
-            const result = await fluidMeshes(snapshot, group, definitions,fluidStateAt)
-            if (run !== generation) { for (const mesh of result.meshes) mesh.geometry.dispose(); break }
+            fluidStateAt ??= await createNativeFluidStateReader(snapshot, definitions, work)
+            const result = await buildNativeFluidMeshes({ group, stateName: state.name, getState: fluidStateAt, environment, loader, work })
             for (const mesh of result.meshes) next.add(mesh)
+            work.check()
             nextStaticIssues.push(...result.issues)
             if(state.renderShape==='INVISIBLE'){count+=result.count;continue}
           }
@@ -498,7 +498,7 @@ async function rebuildLatest () {
           try {
             const positions = []
             for (let i = 0; i < group.positions.length; i += 3) {
-              if(i%768===0)await yieldWork()
+              const pause = work.checkpoint(); if (pause) await pause
               const position = { x: group.positions[i], y: group.positions[i + 1], z: group.positions[i + 2] }
               if (state.name === CUTTING_BOARD_ID) {
                 const support = cuttingBoardStaticModelStatus(state, cuttingBoards.get(pointKey(position)), loader.reader.manifest)
@@ -514,9 +514,8 @@ async function rebuildLatest () {
             if (isBed) nativeBedState(state)
             const blockstate = isBed ? null : await loader.blockstate(state.name)
             const subgroups = new Map()
-            let selected=0
             for (const position of positions) {
-              if(selected++%256===0)await yieldWork()
+              const pause = work.checkpoint(); if (pause) await pause
               const variants = isBed ? [] : selectBlockVariants(blockstate, state, position), key = JSON.stringify(variants)
               if (!subgroups.has(key)) subgroups.set(key, { variants, positions: [] })
               subgroups.get(key).positions.push(position.x, position.y, position.z)
@@ -524,27 +523,25 @@ async function rebuildLatest () {
             for (const subgroup of subgroups.values()) {
               const model = await template(state, subgroup.variants)
               if(model.userData.nativeBaseIssue)nextStaticIssues.push(`${state.name}：${model.userData.nativeBaseIssue}`)
-              if (run !== generation) break
+              work.check()
               const instanceCount = subgroup.positions.length / 3
               const meshes = []
               try {
                 if(!staticBatches.has(model))staticBatches.set(model,nativeStaticBatches(model))
                 for(const part of staticBatches.get(model).batches){
-                  await yieldWork()
+                  const pause = work.checkpoint(); if (pause) await pause
                   for(const material of Array.isArray(part.material)?part.material:[part.material])roomVisibility.patch(material)
                   const mesh = new THREE.InstancedMesh(part.geometry, part.material, instanceCount)
                   mesh.userData.nativeBlockPositions=subgroup.positions
                   meshes.push(mesh)
                   const matrix = new THREE.Matrix4()
                   for (let i = 0; i < instanceCount; i++) {
-                    if(i%256===0)await yieldWork()
+                    const pause = work.checkpoint(); if (pause) await pause
                     const p = { x: subgroup.positions[i * 3], y: subgroup.positions[i * 3 + 1], z: subgroup.positions[i * 3 + 2] }, offset = modelOffset(state, p)
                     matrix.makeTranslation(p.x + 0.5 + offset[0], p.y + 0.5 + offset[1], p.z + 0.5 + offset[2]).multiply(part.matrixWorld)
                     mesh.setMatrixAt(i, matrix)
                     if (part.userData.tintIndex >= 0) {
-                      const key = `${state.stateId}:${part.userData.tintIndex}:${pointKey(p)}`
-                      if (!tintCache.has(key)) tintCache.set(key, new THREE.Color().setHex(blockTint(snapshot, state, p, part.userData.tintIndex, colormaps)))
-                      mesh.setColorAt(i, tintCache.get(key))
+                      mesh.setColorAt(i, tintColor.setHex(environment.blockTint(state, p, part.userData.tintIndex)))
                     }
                   }
                   mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
@@ -553,12 +550,16 @@ async function rebuildLatest () {
               for (const mesh of meshes) next.add(mesh)
               count += instanceCount
             }
-          } catch (error) { nextStaticIssues.push(`${state.name}：${error.message}`) }
+          } catch (error) {
+            work.check()
+            if (isNativeRebuildRetired(error)) throw error
+            nextStaticIssues.push(`${state.name}：${error.message}`)
+          }
         }
-        if (run !== generation) { for (const mesh of next.children) { mesh.dispose?.(); if (mesh.userData.nativeFluid) mesh.geometry.dispose() } continue }
-        clearStatics(); for (const mesh of [...next.children]) statics.add(mesh)
+        next.commit(statics, () => run === generation && !disposed)
         terrainRaycast=createNativeTerrainRaycast(statics);lastCollision=null
         drawn = count; lastGroupSignature = signature; staticIssues = nextStaticIssues
+        } finally { next.dispose(); environment.clear() }
       }
       // Received bounds/states/columns can change without mesh arrays changing.
       // The room cache must use this snapshot, independently of mesh rebuilding.
@@ -568,50 +569,11 @@ async function rebuildLatest () {
       if (!current) continue
       publishDiagnostics()
       if (camera.position.lengthSq() === 0 && viewMode === 'region') orbitPosition()
+      } catch (error) { if (run === generation && !disposed && !isNativeRebuildRetired(error)) throw error }
     }
   } catch (error) { fail(error) } finally { rebuilding = false }
 }
 
-function fluidStateReader(snapshot,definitions){
-  const neighbors = new Map()
-  for (let i = 0; i < (snapshot.neighbors || []).length; i += 4) neighbors.set(`${snapshot.neighbors[i]},${snapshot.neighbors[i + 1]},${snapshot.neighbors[i + 2]}`, definitions.get(snapshot.neighbors[i + 3]))
-  return p=>{const state=neighbors.get(pointKey(p));if(!state)throw Error('NATIVE_FLUID_NEIGHBOR_NOT_RECEIVED');return state}
-}
-async function fluidMeshes (snapshot, group, definitions,get) {
-  const data = new Map(), issues = new Set()
-  let count = 0
-  for (let i = 0; i < group.positions.length; i += 3) {
-    const p = { x: group.positions[i], y: group.positions[i + 1], z: group.positions[i + 2] }
-    try {
-      const result = nativeFluidGeometry(p, get), color = new THREE.Color().setHex(result.family==='water'?blendedBiomeColor(snapshot, p, 'water', colormaps):0xffffff)
-      for (const quad of result.quads) {
-        if (!data.has(quad.texture)) data.set(quad.texture, { positions: [], colors: [], uv: [], indices: [] })
-        const batch = data.get(quad.texture), base = batch.positions.length / 3
-        for (let j = 0; j < 4; j++) {
-          batch.positions.push(quad.vertices[j * 3] + p.x, quad.vertices[j * 3 + 1] + p.y, quad.vertices[j * 3 + 2] + p.z)
-          batch.colors.push(color.r * quad.shade, color.g * quad.shade, color.b * quad.shade)
-          batch.uv.push(quad.uv[j * 2], 1 - quad.uv[j * 2 + 1])
-        }
-        batch.indices.push(base, base + 1, base + 2, base, base + 2, base + 3)
-        if (quad.backwards) batch.indices.push(base, base + 2, base + 1, base, base + 3, base + 2)
-      }
-      count++
-    } catch (error) { issues.add(`${definitions.get(group.stateId)?.name}：${error.message}`) }
-  }
-  const meshes = []
-  try {
-    for (const [texture, batch] of data) {
-      const material = await loader.fluidMaterial(texture), geometry = new THREE.BufferGeometry()
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3))
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(batch.colors, 3))
-      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uv, 2))
-      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(batch.positions.map((_, i) => i % 3 === 1 ? 1 : 0), 3))
-      geometry.setIndex(batch.indices)
-      const mesh = new THREE.Mesh(geometry, material); mesh.userData.nativeFluid = true; meshes.push(mesh)
-    }
-  } catch (error) { for (const mesh of meshes) mesh.geometry.dispose(); throw error }
-  return { meshes, count, issues: [...issues] }
-}
 function fail (error) {
   events?.close(); clearScene(); renderer?.setAnimationLoop(null)
   onUnavailable(error.message)
