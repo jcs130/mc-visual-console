@@ -31,6 +31,17 @@ test('all original view routes select the actual native first/third/dungeon came
   assert.equal(consoleViewMode('/', 'third'), 'third')
   assert.equal(consoleViewMode('/dungeon/', '__VIEW_MODE__'), 'dungeon')
 })
+
+test('console exposes build refresh before native registry decoding and keeps the current route',async()=>{
+  const {document,window}=fullShell();let hooks,reloads=0
+  window.location.reload=()=>reloads++
+  const scene={renderer:{setPixelRatio(){}},setView(){},dispose(){}}
+  const console=await bootNativeConsole({document,window,mount:async options=>{hooks=options;return scene},startStatus:()=>()=>{}})
+  const first='a'.repeat(64)+':'+'b'.repeat(64),next='c'.repeat(64)+':'+'b'.repeat(64)
+  assert.equal(hooks.onBuild(first),false);assert.equal(hooks.onBuild(first),false);assert.equal(reloads,0)
+  assert.equal(hooks.onBuild(next),true);assert.equal(hooks.onBuild(next),true);assert.equal(reloads,1)
+  assert.equal(window.location.pathname,'/third/');console.dispose()
+})
 test('full shell boots exactly one scene, reuses native UI and disposes resources once on pagehide', async () => {
   const { document, window } = fullShell()
   let mounted = 0, callbacks, disposed = 0, statusStops = 0; const views = [], ratios = [], appearances = []

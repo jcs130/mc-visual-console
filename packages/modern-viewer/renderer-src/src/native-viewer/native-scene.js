@@ -29,7 +29,7 @@ import { createNativeRoomVisibility } from './native-room-visibility.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
-export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{}, onState=()=>{},
+export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{}, onState=()=>{},onBuild=()=>false,
   onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{},cameraSettings,onCameraManual=()=>{},onSelection=()=>{}} = {}) {
 if (!viewport?.append || !['third', 'first', 'region', 'dungeon'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
 const pointKey = p => `${p.x},${p.y},${p.z}`
@@ -189,7 +189,11 @@ async function start () {
   events = new EventSource(nativeViewerUrl('events'))
   events.onmessage = message => {
     try {
-      const event = session.receive(JSON.parse(message.data)), value = event.value
+      const received=JSON.parse(message.data)
+      // A resource/registry deployment can invalidate the old session reader.
+      // Let the page reload its checked build before decoding that new epoch.
+      if(received?.type==='identity'&&onBuild(received.viewerBuild)){events?.close();return}
+      const event = session.receive(received), value = event.value
       if (event.kind === 'ignored') return
       if(event.kind==='entity_collect'){void entityLayer.collect(value);audio.collect(value);return}
       if(event.kind==='world_effect'){if(value.effect.kind==='particle')void particles.event(value,current?.motion);else audio.event(value);return}

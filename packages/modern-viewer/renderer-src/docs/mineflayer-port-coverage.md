@@ -51,6 +51,13 @@ indices. The host validates every item/effect registry ID before decoding the
 potion wire component. This supplies held/dropped/thrown item geometry; it does
 not claim all GUI icons, animated item textures, glint or complete item rendering.
 
+Native pages and their identity stream now carry the same checked renderer-source
+and asset-manifest signature. A reconnect to the same build reuses the page;
+a changed build refreshes that same route once, before the old native registry
+reader tries to decode the new stream. Existing pages opened before this feature
+need one initial refresh. This complements runtime tab reuse and does not start
+or stop the game, create another viewer tab or add model calls.
+
 The same original `LiquidBlockRenderer` path now handles **all 9,246 nonempty
 fluid states in the exported vanilla registry**, spanning 344 block IDs:
 source/flowing water and lava, bubble columns and all waterlogged states. The
