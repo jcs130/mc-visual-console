@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import { InventoryPlayerPreview } from '../modern-viewer/inventory-player-preview.js'
 import { FishingCatchHud } from '../modern-viewer/fishing-catch.js'
 import { NativeItemIcons } from './native-item-icons.js'
+import {nativeRecipeReferenceItem,NATIVE_RECIPE_REFERENCE_LABEL} from './native-recipe-reference.js'
+import {loadOriginalItemColors} from './native-potion-items.js'
 import { NativeLanguage } from './native-language.js'
 import { nativeSoulSlabAnimationStyle, NATIVE_SOUL_SLAB_KEYFRAMES } from './native-soul-slab-icons.js'
 import { nativeClientSourceVerified } from './native-client-source.js'
@@ -316,7 +318,11 @@ function node (document, tag, className, content) {
 
 // An optional future icon resolver must consume the complete native item.
 // Absence means a truthful text label, never /icons/<basename>.png.
-export function renderNativeItemSlot (document, slot, item, { label = '', resolveItemIcon, resolveItemIconReason, resolveItemName } = {}) {
+const renderedSlots=new WeakMap()
+export function renderNativeItemSlot (document, slot, item, { label = '', resolveItemIcon, resolveItemIconReason, resolveItemName, refreshOnly=false, hideCount=false,contextLabel='',imageStyle=null } = {}) {
+  const resolved=item?resolveItemIcon?.(item):null,reason=item?text(resolveItemIconReason?.(item),512):'',previous=renderedSlots.get(slot)
+  if(refreshOnly&&previous?.item===item&&previous.icon===resolved&&previous.reason===reason)return
+  const suffix=refreshOnly&&previous&&slot.title?.startsWith(previous.title)?slot.title.slice(previous.title.length):''
   slot.replaceChildren()
   slot.dataset.state = 'available'
   slot.dataset.itemName = item?.name ?? ''
@@ -330,17 +336,18 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
   const foodText = record(food) && Number.isSafeInteger(food.nutrition) && food.nutrition >= 0 &&
     finite(food.saturation) && food.saturation >= 0 && typeof food.canAlwaysEat === 'boolean' && finite(food.eatSeconds) && food.eatSeconds >= 0
     ? `\n原生营养 ${food.nutrition} · 饱和度 ${food.saturation} · 食用 ${food.eatSeconds} 秒${food.canAlwaysEat ? ' · 可饱食食用' : ''}` : ''
-  const identity = item ? `${displayName}${displayName !== item.name ? `\n${item.name}` : ''} × ${item.count}${foodText}` : ''
+  const identity = item ? `${displayName}${displayName !== item.name ? `\n${item.name}` : ''} × ${item.count}${foodText}${contextLabel?' · '+contextLabel:''}` : ''
   slot.title = item ? `${identity} · 原生物品模型未支持` : `${label}：空`
   slot.setAttribute('aria-label', slot.title)
   if (!item) return
-  let icon = resolveItemIcon?.(item), animationStyle = null, animationError = null
+  let icon = resolved, animationStyle = null, animationError = null
   if (icon?.animation) {
     try { animationStyle = nativeSoulSlabAnimationStyle(icon.animation) }
     catch (error) { animationError = error.message; icon = null }
   }
   if (record(icon) && icon.verified === true && typeof icon.url === 'string' && icon.url.startsWith('blob:')) {
     const image = node(document, 'img'); image.alt = displayName; image.src = icon.url
+    if(imageStyle)Object.assign(image.style,imageStyle)
     slot.dataset.modelState = icon.effectUnavailableReason ? 'partial' : 'verified'; slot.title = identity
     let iconContainer = slot
     if (animationStyle) {
@@ -356,23 +363,30 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
     }
     image.addEventListener('error', () => {
       if (image.parentNode !== iconContainer || (iconContainer !== slot && iconContainer.parentNode !== slot)) return
+      const state=renderedSlots.get(slot),annotations=state&&slot.title?.startsWith(state.title)?slot.title.slice(state.title.length):''
       if (iconContainer === slot) image.remove(); else iconContainer.remove()
       slot.dataset.modelState = 'unavailable'; delete slot.dataset.animationFrames; delete slot.dataset.effectReason
       slot.dataset.modelReason = 'NATIVE_ITEM_ICON_IMAGE_DECODE_FAILED'
-      slot.title = `${identity} · 原生物品图标解码失败（${slot.dataset.modelReason}）`; slot.setAttribute('aria-label', slot.title)
+      const diagnostic=`${identity} · 原生物品图标解码失败（${slot.dataset.modelReason}）`
+      // Decode diagnostics belong to this renderer, not to the caller's menu
+      // annotations. A different successful blob must replace the diagnostic.
+      if(state)state.title=diagnostic
+      slot.title = diagnostic+annotations; slot.setAttribute('aria-label', slot.title)
       slot.prepend(node(document, 'span', 'corti-item-fallback', displayName))
     }, { once: true })
     if (iconContainer === slot) slot.append(image)
     else { iconContainer.append(image); slot.append(iconContainer) }
   } else {
-    const reason = animationError || text(resolveItemIconReason?.(item), 512)
-    if (reason) slot.dataset.modelReason = reason
-    const loading = reason === 'loading' || reason === 'not_requested'
+    const failure = animationError || reason
+    if (failure) slot.dataset.modelReason = failure
+    const loading = failure === 'loading' || failure === 'not_requested'
     if (loading) slot.dataset.modelState = 'loading'
-    slot.title = `${identity} · ${loading ? '原生物品图标加载中' : `原生物品模型未支持${reason ? `（${reason}）` : ''}`}`
+    slot.title = `${identity} · ${loading ? '原生物品图标加载中' : `原生物品模型未支持${failure ? `（${failure}）` : ''}`}`
     slot.append(node(document, 'span', 'corti-item-fallback', displayName))
   }
-  if (item.count > 1) slot.append(node(document, 'span', 'corti-slot-count', String(item.count)))
+  if (!hideCount&&item.count > 1) slot.append(node(document, 'span', 'corti-slot-count', String(item.count)))
+  renderedSlots.set(slot,{item,icon:resolved,reason,title:slot.title})
+  slot.title+=suffix
   slot.setAttribute('aria-label', slot.title)
 }
 
@@ -410,16 +424,26 @@ export class NativeFishingCatchHud extends FishingCatchHud {
 
 export function createNativeInterface ({ document = globalThis.document,
   previewFactory = options => new InventoryPlayerPreview(options), now = Date.now,
-  setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason, language = new NativeLanguage() } = {}) {
+  setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason, language = new NativeLanguage(),onIconRevision=()=>{} } = {}) {
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   const survivalUi=createNativeSurvivalUi({document,translate:key=>language.translate(key)})
   let expectedUuid = null, identityKey = null, actor = null, actorReason = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
   let hudSignature = null, skillsSignature = null
+  const menuItems=new Map()
+  let recipeRegistry=null,recipeRegistryReason='loading'
   const resolveIcon = item => typeof resolveItemIcon === 'function' ? resolveItemIcon(item) : itemIcons?.resolve(item)
   const resolveName = item => language.item(item)
   const resolveIconReason = item => typeof resolveItemIconReason === 'function' ? resolveItemIconReason(item)
     : typeof resolveItemIcon === 'function' ? null : itemIcons?.reason(item)
+  const renderMenuItem=(element,item,options={})=>{
+    if(item)menuItems.set(element,{item,options})
+    renderNativeItemSlot(document,element,item,{resolveItemIcon:resolveIcon,resolveItemIconReason:resolveIconReason,resolveItemName:resolveName,...options})
+  }
+  const refreshMenuItems=()=>{
+    for(const [element,{item,options}]of menuItems)if(element.isConnected)
+      renderNativeItemSlot(document,element,item,{resolveItemIcon:resolveIcon,resolveItemIconReason:resolveIconReason,resolveItemName:resolveName,...options,refreshOnly:true})
+  }
   let presentation = unavailable('等待本人状态'), manualOpen = false, idleOpen = false,
     idleTimer = null, dismissedMenu = null, preview = null, disposed = false, lastMenuSignature = null
   let combatUntil = 0
@@ -503,7 +527,7 @@ export function createNativeInterface ({ document = globalThis.document,
     const element = node(document, 'div', 'corti-menu-slot')
     element.dataset.slot = String(row.slot)
     if (x !== undefined) { element.style.left = `${x * 2}px`; element.style.top = `${y * 2}px` }
-    renderNativeItemSlot(document, element, row.item, { label, resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName }); body.append(element)
+    renderMenuItem(element,row.item,{label}); body.append(element)
     return element
   }
   const actorSource = () => {
@@ -564,10 +588,10 @@ export function createNativeInterface ({ document = globalThis.document,
     const visible = Boolean(showWindow || manualOpen || idleOpen)
     menu.hidden = !visible
     menu.dataset.windowId = String(showWindow ? window.windowId : presentation.inventory?.windowId ?? 0)
-    if (!visible) { preview?.setVisible(false); lastMenuSignature = null; return }
+    if (!visible) { preview?.setVisible(false); lastMenuSignature = null; menuItems.clear(); return }
     const signature = JSON.stringify([showWindow ? window : presentation.inventory, presentation.modOperations, manualOpen, idleOpen, replay, assetsSequence])
     if (signature === lastMenuSignature) return
-    lastMenuSignature = signature; preview?.setVisible(false); body.replaceChildren()
+    lastMenuSignature = signature; menuItems.clear(); preview?.setVisible(false); body.replaceChildren()
     const heading = q('[data-menu-title]'), source = q('[data-menu-source]')
     if (showWindow) {
       menu.dataset.inventorySource = replay ? 'replay' : 'container'
@@ -671,9 +695,8 @@ export function createNativeInterface ({ document = globalThis.document,
             element.style.width = '32px'; element.style.height = '32px'; element.style.pointerEvents = 'none'
             element.dataset.previewKind = preview.kind; element.dataset.selected = String(preview.selected)
             element.dataset.nativePreviewIndex = String(preview.buttonId ?? preview.variantIndex)
-            renderNativeItemSlot(document, element, preview.item, { label: '原生配方预览（不是物品栏）', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName })
-            element.title += ' · 配方预览，不是可取物品'; element.setAttribute('aria-label', element.title)
-            for (const image of element.querySelectorAll('img')) { image.style.width = '32px'; image.style.height = '32px'; image.style.imageRendering = 'pixelated' }
+            renderMenuItem(element,preview.item,{label:'原生配方预览（不是物品栏）',contextLabel:'配方预览，不是可取物品',
+              imageStyle:{width:'32px',height:'32px',imageRendering:'pixelated'}})
             panel.append(element)
           }
         }
@@ -759,7 +782,7 @@ export function createNativeInterface ({ document = globalThis.document,
       }
       if (window.carried) {
         const carried = node(document, 'div', 'native-menu-carried'), icon = node(document, 'div', 'corti-menu-slot')
-        renderNativeItemSlot(document, icon, window.carried, { label: '本人光标', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName })
+        renderMenuItem(icon,window.carried,{label:'本人光标'})
         carried.append(icon, node(document, 'span', '', `光标：${resolveName(window.carried)} × ${window.carried.count}`)); body.append(carried)
       }
       const operation = presentation.modOperations?.at(-1)
@@ -777,7 +800,7 @@ export function createNativeInterface ({ document = globalThis.document,
       else body.append(node(document, 'p', 'corti-menu-note', '本人背包未同步；当前窗口无玩家槽映射'))
       if (presentation.inventory?.carried) {
         const carried = node(document, 'div', 'native-menu-carried'), icon = node(document, 'div', 'corti-menu-slot')
-        renderNativeItemSlot(document, icon, presentation.inventory.carried, { label: '本人光标', resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName })
+        renderMenuItem(icon,presentation.inventory.carried,{label:'本人光标'})
         carried.append(icon, node(document, 'span', '', `光标：${resolveName(presentation.inventory.carried)} × ${presentation.inventory.carried.count} · Mineflayer 窗口状态`)); body.append(carried)
       }
     }
@@ -872,14 +895,17 @@ export function createNativeInterface ({ document = globalThis.document,
     setActor (value, reason = null) { actor = value; actorReason = reason; lastMenuSignature = null; renderMenu() },
     async setAssets (reader) {
       const sequence = ++assetsSequence
+      recipeRegistry=null;recipeRegistryReason='loading'
       assets?.dispose(); itemIcons?.dispose(); assets = new NativeUiAssets(reader)
       itemIcons = new NativeItemIcons(reader, { onChange: () => {
         if (disposed || sequence !== assetsSequence) return
-        iconRevision++; lastMenuSignature = null; renderHud(); renderMenu()
+        iconRevision++; renderHud(); refreshMenuItems(); onIconRevision(iconRevision)
       } })
       const nextLanguage = new NativeLanguage(reader)
-      const [result] = await Promise.all([assets.prepare(), nextLanguage.prepare()])
+      const [result,,registry] = await Promise.all([assets.prepare(), nextLanguage.prepare(),loadOriginalItemColors(reader)
+        .then(data=>({data}),error=>({reason:error.message}))])
       if (disposed || sequence !== assetsSequence) return result
+      recipeRegistry=registry.data;recipeRegistryReason=registry.reason??null;iconRevision++
       language = nextLanguage
       const style = node(document, 'style')
       const background = (selector, name) => `${selector}{background-image:${uiSprite(name) ? `url("${uiSprite(name)}")` : 'none'}}`
@@ -888,7 +914,8 @@ export function createNativeInterface ({ document = globalThis.document,
         background('.corti-hotbar-selection', 'hotbar_selection'), background('.corti-xp', 'experience_bar_background'),
         background('.corti-xp-fill', 'experience_bar_progress'), NATIVE_SOUL_SLAB_KEYFRAMES].join('\n')
       q('style[data-native-hud-assets]')?.remove(); document.head?.append(style)
-      lastMenuSignature = null; hudSignature = null; renderHud(); renderMenu(); survivalUi.update(presentation,assets); return result
+      lastMenuSignature = null; hudSignature = null; renderHud(); renderMenu(); survivalUi.update(presentation,assets)
+      onIconRevision(iconRevision);return result
     },
     update (state) {
       if (disposed) return
@@ -920,7 +947,22 @@ export function createNativeInterface ({ document = globalThis.document,
       return false
     },
     reset,
-    renderObservedItem (target, item) { renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName }) },
+    renderObservedItem (target, item, options={}) { renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName,...options }) },
+    renderReferenceItem(target,value,options={}) {
+      target.dataset.itemContext='catalogue-default-reference'
+      try {
+        if(recipeRegistryReason)throw Error(recipeRegistryReason)
+        const {item,provenance}=nativeRecipeReferenceItem(assets?.reader,value,recipeRegistry)
+        // Reuse a stable reference stack while refreshing this exact row.
+        const previous=renderedSlots.get(target)?.item
+        const stable=previous?.snbt===item.snbt?previous:item
+        renderNativeItemSlot(document,target,stable,{resolveItemIcon:resolveIcon,resolveItemIconReason:resolveIconReason,resolveItemName:resolveName,...options,contextLabel:NATIVE_RECIPE_REFERENCE_LABEL})
+        target.dataset.referenceSource=provenance.source;target.dataset.referenceVersion=provenance.minecraftVersion
+      }catch(error){
+        delete target.dataset.referenceSource;delete target.dataset.referenceVersion
+        renderNativeItemSlot(document,target,value,{resolveItemIconReason:()=>error.message,resolveItemName:resolveName,...options,contextLabel:NATIVE_RECIPE_REFERENCE_LABEL})
+      }
+    },
     itemName: resolveName,
     getState () { return { expectedUuid, presentation, manualOpen, idleOpen, iconRevision, actorAvailable: Boolean(actorSource()) } },
     dispose () {

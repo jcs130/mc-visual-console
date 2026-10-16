@@ -12,7 +12,7 @@ const clock = value => {const date=new Date(value);return Number.isFinite(date.g
 
 // Application telemetry, not a replacement Minecraft GUI. Native inventory and
 // menus continue using original assets; this inspector labels evidence sources.
-export function createNativeActivityUi({document, itemName=item=>item?.displayName??item?.name??'未知物品',renderItem=null}={}) {
+export function createNativeActivityUi({document, itemName=item=>item?.displayName??item?.name??'未知物品',renderItem=null,renderReferenceItem=null}={}) {
   const add=(parent,tag,className,value)=>{
     const element=document.createElement(tag)
     if(className)element.className=className
@@ -44,7 +44,8 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
     @media(max-width:900px){.native-live-inspector{top:164px;width:250px;max-height:49vh;font-size:11px}}
     @media(max-width:600px){.native-live-inspector{top:auto;bottom:130px;width:230px;max-height:32vh}.native-inspector-pane>summary{padding:5px 8px}}
   `
-  let identity=null,epoch=null,signature=null,disposed=false
+  let identity=null,epoch=null,signature=null,disposed=false,lastIconRevision=null
+  const iconRows=new Map()
   const empty=(panel,value)=>{panel.replaceChildren();add(panel,'p','native-inspector-note',value)}
   const itemText=item=>text(itemName(item),120)||text(item?.name)||'未知物品'
   const row=(panel,value,source)=>{
@@ -52,14 +53,18 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
     if(source)add(node,'small','',source)
     return node
   }
-  const itemRow=(panel,item,value,source)=>{
+  const itemRow=(panel,item,value,source,{reference=false,historical=false}={})=>{
     const line=add(panel,'div','native-inspector-row native-inspector-item')
-    if(renderItem&&item?.snbt){const slot=add(line,'div','corti-menu-slot');renderItem(slot,item)}
+    const renderer=reference?renderReferenceItem:renderItem
+    if(renderer&&(reference||item?.snbt)){
+      const slot=add(line,'div','corti-menu-slot'),options={hideCount:historical,contextLabel:historical?'历史观察样本；数量变化见旁文':''}
+      iconRows.set(slot,{item,renderer,options});renderer(slot,item,options)
+    }
     const body=add(line,'div','',value);if(source)add(body,'small','',source)
     return line
   }
   function reset() {
-    signature=null
+    signature=null;lastIconRevision=null;iconRows.clear()
     status.textContent='等待本人操作数据'
     for(const panel of panes.values())empty(panel,'尚无记录')
   }
@@ -80,8 +85,12 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
       if(!identity||!presentation?.available||presentation.playerUuid!==identity.uuid||a?.schemaVersion!==1||a.playerUuid!==identity.uuid||a.entityId!==identity.entityId){reset();return}
       if(epoch!==state.epoch){reset();epoch=state.epoch}
       const playback=presentation.agentPlayback
-      const next=JSON.stringify([a.revision,a.dig?.elapsedMs,playback,iconRevision,presentation.nativeMenu?.windowId])
-      if(signature===next)return
+      const next=JSON.stringify([a.revision,a.dig?.elapsedMs,playback,presentation.nativeMenu?.windowId])
+      if(signature===next){
+        if(lastIconRevision!==iconRevision)for(const [slot,{item,renderer,options}]of iconRows)if(slot.isConnected)renderer(slot,item,{...options,refreshOnly:true})
+        lastIconRevision=iconRevision;return
+      }
+      iconRows.clear();lastIconRevision=iconRevision
       signature=next;status.textContent=`本人实时操作 · ${clock(a.sampledAt)}${a.truncated?' · 历史已按预算截短':''}`
       const eventPanel=panes.get('events');empty(eventPanel,'当前没有新操作')
       if(a.events?.length){eventPanel.replaceChildren();for(const event of a.events.slice(-8).reverse())row(eventPanel,eventText(event),`${clock(event.at)} · ${event.source==='sent_packet'?'已发送，效果待核对':event.source?.startsWith('server')?'服务端观测':'Mineflayer 事件'}`)}
@@ -89,13 +98,17 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
         if(finite(a.dig.durationMs)&&a.dig.durationMs>0){const bar=add(section,'progress','');bar.max=1;bar.value=Math.min(1,a.dig.elapsedMs/a.dig.durationMs);bar.setAttribute('aria-label','当前挖掘进度')}}
       const itemPanel=panes.get('items');empty(itemPanel,a.inventoryReady?'当前没有服务端确认的背包增减':'等待完整服务端背包基线')
       if(a.items?.length){itemPanel.replaceChildren();for(const entry of a.items.slice(-12).reverse()){
-        const line=itemRow(itemPanel,entry.item,`${itemText(entry.item)} ${entry.delta>0?'+':''}${entry.delta}`,`${clock(entry.at)} · 服务端背包差量；不推测来源`)
+        const line=itemRow(itemPanel,entry.item,`${itemText(entry.item)} ${entry.delta>0?'+':''}${entry.delta}`,`${clock(entry.at)} · 服务端背包差量；不推测来源`,{historical:true})
         line.className+=entry.delta>0?' native-inspector-gain':' native-inspector-loss'}}
       if(a.inventoryReconciling)add(itemPanel,'p','native-inspector-note','窗口操作中，收支将在结束并收到完整背包同步后核对。')
       const recipePanel=panes.get('recipes');empty(recipePanel,'当前没有与已知材料匹配的原版配方')
       if(a.recipes?.length){recipePanel.replaceChildren();for(const recipe of a.recipes.slice(0,12)){
-        row(recipePanel,`${itemText(recipe.output)} ×${recipe.output.count} · ${recipe.craftable?'材料齐备':recipe.requiresTable&&!recipe.tableOpen?'需要打开工作台':'材料不足'}`,
-          (recipe.missing??[]).map(item=>`${itemText(item)} 缺 ${item.count}`).join('；')||'原版配方目录预览，尚未执行合成')}
+        itemRow(recipePanel,recipe.output,`${itemText(recipe.output)} ×${recipe.output.count} · ${recipe.craftable?'材料齐备':recipe.requiresTable&&!recipe.tableOpen?'需要打开工作台':'材料不足'}`,
+          '原版1.21.1配方目录 · 默认外观参考 · 尚未执行合成',{reference:true})
+        for(const material of (recipe.materials??recipe.missing??[]).slice(0,9)){
+          const deficit=(recipe.missing??[]).find(item=>item.name===material.name)?.count??0
+          itemRow(recipePanel,material,`${itemText(material)} ×${material.count}${deficit?` · 缺 ${deficit}`:''}`,'目录材料 · 默认外观参考',{reference:true})
+        }}
         add(recipePanel,'p','native-inspector-note','实际放料、光标与产物见背包／工作台窗口；目录可合成不等于已经获得物品。')}
       const merchant=a.merchant&&presentation.nativeMenu?.windowId===a.merchant.windowId?a.merchant:null
       const tradePanel=panes.get('merchant');empty(tradePanel,'当前未打开已收到报价的交易窗口')
@@ -122,7 +135,7 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
       if(a.entities?.length){entityPanel.replaceChildren();for(const entity of a.entities.slice(0,24))row(entityPanel,`${text(entity.name)} · ${finite(entity.distance)?entity.distance.toFixed(1)+' 格':'距离未知'}`,`${position(entity.position)} · 实体 ${entity.id}`)}
     },
     reset,
-    dispose(){if(disposed)return;disposed=true;root.remove();style.remove()},
+    dispose(){if(disposed)return;disposed=true;iconRows.clear();root.remove();style.remove()},
     root
   }
 }

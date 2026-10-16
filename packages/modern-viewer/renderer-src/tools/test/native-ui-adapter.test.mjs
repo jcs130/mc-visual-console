@@ -15,6 +15,108 @@ const OTHER = '1231227c-09fa-3722-84f4-f3228a552c3c'
 
 import { shell } from './fixtures/native-console-dom.mjs'
 import { nativeSoulSlabAnimationStyle } from '../../src/native-viewer/native-soul-slab-icons.js'
+import { readFile } from 'node:fs/promises'
+import { NativeAssetReader } from '../../src/native-viewer/model-loader.js'
+
+test('replacement after an image decode error clears owned diagnostics while retaining disabled-slot annotations',()=>{
+  for(const annotation of ['', ' · 服务端已禁用']){
+    const document=shell(),slot=document.createElement('div'),item={name:'minecraft:chest',count:1,snbt:'{id:"minecraft:chest",count:1}'}
+    let icon={verified:true,url:'blob:old'}
+    const options={resolveItemIcon:()=>icon,resolveItemIconReason:()=>null}
+    renderNativeItemSlot(document,slot,item,options)
+    slot.title+=annotation;slot.setAttribute('aria-label',slot.title)
+    const old=slot.querySelector('img');old.dispatch('error')
+    assert.equal(slot.dataset.modelReason,'NATIVE_ITEM_ICON_IMAGE_DECODE_FAILED')
+    icon={verified:true,url:'blob:replacement'}
+    renderNativeItemSlot(document,slot,item,{...options,refreshOnly:true})
+    assert.equal(slot.dataset.modelState,'verified');assert.equal(slot.dataset.modelReason,undefined)
+    assert.equal(slot.title,'minecraft:chest × 1'+annotation)
+    assert.equal(slot.getAttribute('aria-label'),slot.title)
+    old.dispatch('error');assert.equal(slot.dataset.modelState,'verified')
+  }
+})
+
+test('real icon-ready burst patches menu images without rebuilding or releasing the unchanged preview',async()=>{
+  const directory=new URL('../../../asset-packs/native-1.21.1/',import.meta.url)
+  const manifest=JSON.parse(await readFile(new URL('native-assets.json',directory),'utf8'))
+  const reader=new NativeAssetReader(manifest,p=>readFile(new URL(p,directory)))
+  const read=reader.bytes.bind(reader),gates=new Map()
+  reader.bytes=async p=>{
+    if(/textures\/item\/(wheat_seeds|stick|diamond)\.png$/.test(p))await new Promise(resolve=>gates.set(p,resolve))
+    return read(p)
+  }
+  const h=harness();await h.ui.setAssets(reader)
+  const p=presentation();p.inventory.slots=p.inventory.slots.map(row=>({...row,item:null}))
+  for(const [n,name]of ['wheat_seeds','stick','diamond'].entries())p.inventory.slots[36+n].item={name:`minecraft:${name}`,count:2,snbt:`{id:"minecraft:${name}",count:2}`}
+  h.ui.update({epoch:1,presentation:p});h.document.getElementById('corti-inventory-toggle').dispatch('click')
+  const initialRevision=h.ui.getState().iconRevision
+  const body=h.document.querySelector('[data-menu-body]'),host=h.previews[0].host,original=body.replaceChildren.bind(body)
+  let rebuilds=0,attaches=0,releases=0
+  body.replaceChildren=(...args)=>{rebuilds++;return original(...args)}
+  const preview=h.previews[0],attach=preview.attach.bind(preview),visible=preview.setVisible.bind(preview)
+  preview.attach=value=>{attaches++;attach(value)};preview.setVisible=value=>{if(!value)releases++;visible(value)}
+  const settle=()=>new Promise(resolve=>setTimeout(resolve,5))
+  for(const name of ['wheat_seeds','stick','diamond']){
+    const path=`assets/minecraft/textures/item/${name}.png`
+    for(let n=0;n<100&&!gates.has(path);n++)await settle()
+    assert.ok(gates.has(path),path);gates.get(path)()
+    for(let n=0;n<1000&&h.ui.getState().iconRevision<initialRevision+['wheat_seeds','stick','diamond'].indexOf(name)+1;n++)await settle()
+    assert.equal(h.ui.getState().iconRevision,initialRevision+['wheat_seeds','stick','diamond'].indexOf(name)+1)
+  }
+  console.log('icon-ready menu counts',JSON.stringify({rebuilds,attaches,releases}))
+  assert.deepEqual({rebuilds,attaches,releases},{rebuilds:0,attaches:0,releases:0})
+  assert.equal(preview.host,host)
+  assert.equal(body.querySelectorAll('img').filter(img=>['minecraft:wheat_seeds','minecraft:stick','minecraft:diamond'].includes(img.parentNode.dataset.itemName)).length,3)
+  h.ui.dispose()
+})
+
+test('late original icon callbacks cannot repopulate a closed menu or a replacement epoch/assets; decode failures stay local',async()=>{
+  const directory=new URL('../../../asset-packs/vanilla-1.21.1/',import.meta.url)
+  const manifest=JSON.parse(await readFile(new URL('native-assets.json',directory),'utf8'))
+  const makeReader=()=>new NativeAssetReader(manifest,p=>readFile(new URL(p,directory)))
+  const source=makeReader(),read=source.bytes.bind(source),gates=new Map()
+  source.bytes=async path=>{
+    if(/textures\/item\/(wheat_seeds|stick)\.png$/.test(path))await new Promise(resolve=>gates.set(path,resolve))
+    return read(path)
+  }
+  const h=harness();h.ui.reset();await h.ui.setAssets(source)
+  const p=presentation();p.inventory.slots=p.inventory.slots.map(row=>({...row,item:null}))
+  const setItem=name=>{p.inventory.slots[36].item={name:`minecraft:${name}`,count:2,snbt:`{id:"minecraft:${name}",count:2}`}}
+  const wait=async check=>{for(let n=0;n<400&&!check();n++)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(check())}
+  setItem('wheat_seeds');h.ui.update({epoch:1,presentation:p});h.document.getElementById('corti-inventory-toggle').dispatch('click')
+  await wait(()=>gates.has('assets/minecraft/textures/item/wheat_seeds.png'))
+  const old=h.document.querySelector('[data-menu-body]').querySelectorAll('.corti-menu-slot').find(slot=>slot.dataset.itemName==='minecraft:wheat_seeds')
+  h.document.querySelector('[data-menu-close]').dispatch('click')
+  gates.get('assets/minecraft/textures/item/wheat_seeds.png')()
+  await wait(()=>h.document.querySelector('[data-corti-slots]').querySelector('img'))
+  assert.equal(old.querySelector('img'),null,'closed menu has no retained readiness targets')
+  h.document.getElementById('corti-inventory-toggle').dispatch('click')
+  assert.ok(h.document.querySelector('[data-menu-body]').querySelector('img'),'reopen draws the now-ready same source')
+  setItem('stick');h.ui.update({epoch:1,presentation:p})
+  await wait(()=>gates.has('assets/minecraft/textures/item/stick.png'))
+  setItem('diamond');h.ui.update({epoch:2,presentation:p});h.document.getElementById('corti-inventory-toggle').dispatch('click')
+  await wait(()=>h.document.querySelector('[data-menu-body]').querySelector('img'))
+  const current=h.document.querySelector('[data-menu-body]').querySelectorAll('.corti-menu-slot').find(slot=>slot.dataset.itemName==='minecraft:diamond'),host=h.previews[0].host
+  const oldImage=current.querySelector('img');oldImage.dispatch('error')
+  gates.get('assets/minecraft/textures/item/stick.png')()
+  await wait(()=>h.ui.getState().iconRevision>=4)
+  assert.equal(current.dataset.modelReason,'NATIVE_ITEM_ICON_IMAGE_DECODE_FAILED');assert.equal(current.querySelector('img'),null)
+  assert.equal(h.previews[0].host,host,'stale epoch completion retains current preview')
+  await h.ui.setAssets(makeReader());await wait(()=>current.isConnected===false)
+  const replacement=h.document.querySelector('[data-menu-body]').querySelectorAll('.corti-menu-slot').find(slot=>slot.dataset.itemName==='minecraft:diamond')
+  await wait(()=>replacement.querySelector('img'));oldImage.dispatch('error')
+  assert.equal(replacement.dataset.modelState,'verified')
+  const stale=makeReader(),staleRead=stale.bytes.bind(stale);let finish
+  stale.bytes=async path=>{if(path==='assets/minecraft/textures/item/diamond.png')await new Promise(resolve=>{finish=resolve});return staleRead(path)}
+  await h.ui.setAssets(stale);await wait(()=>finish)
+  await h.ui.setAssets(makeReader())
+  const finalSlot=h.document.querySelector('[data-menu-body]').querySelectorAll('.corti-menu-slot').find(slot=>slot.dataset.itemName==='minecraft:diamond')
+  await wait(()=>finalSlot.querySelector('img'));const finalRevision=h.ui.getState().iconRevision
+  finish();await new Promise(resolve=>setTimeout(resolve,30))
+  assert.equal(h.ui.getState().iconRevision,finalRevision,'retired asset provider cannot notify the replacement menu')
+  assert.equal(finalSlot.dataset.modelState,'verified')
+  h.ui.dispose()
+})
 
 test('soul slab displays the original clipped animated image, discloses missing glint and clears state when the item changes', () => {
   const document = shell(), slot = document.createElement('div')
