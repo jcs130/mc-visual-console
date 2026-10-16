@@ -9,6 +9,9 @@ const percent = (n) => finite(n) ? `${n.toFixed(0)}%` : dash;
 const phase = { idle: "待命", reading: "读取输入", generating: "生成回答", disconnected: "断连", unknown: "状态未知" };
 const brainPhase = { idle: "框架待命", delivering: "接收输入", model: "模型决策", tools: "执行工具", backoff: "等待重试", handoff: "整理上下文" };
 const roles = { main: "主意识", system1: "系统1", planning: "规划", reflection: "反思", cognition: "构思", dream: "记忆整理", unknown: "未知" };
+// Framework roles are already attributed by this Agent's metadata endpoint.
+// They remain usable when independent-runtime timing metrics are not supplied.
+const decisionSourceForRole = role => role === "system1" ? "system1" : ["main", "planning", "reflection", "cognition", "dream"].includes(role) ? "system2" : "unknown";
 const readings = { focused: "聚焦", connected: "连贯", standard: "常规", full: "完整", unknown: "未知" };
 const origins = { adaptive: "自动选择", configured: "配置", inherited: "继承配置", fallback: "回退", manual: "人工指定", mixed: "组合来源" };
 const effortLabels = { off: "关闭", minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max", default: "默认深度", other: "其他", unknown: "未知" };
@@ -103,6 +106,9 @@ function renderBrain(age) {
   const fresh = !expired(b, age);
   const s = fresh ? b.selection : null;
   const w = fresh ? b.statistics : null;
+  const selectionCard = $("selection-title")?.closest(".detail-card");
+  if (selectionCard) selectionCard.dataset.decisionSource = decisionSourceForRole(s?.role);
+  if ($("brain-route")) $("brain-route").dataset.decisionSource = decisionSourceForRole(s?.role);
   const config = b.configuration || {};
   const cfg = !expired({ ...config, freshForSeconds: 7 }, age) ? config : {};
   setText("brain-scope", s?.scope === "last" ? "上次策略" : "本次策略");
@@ -157,7 +163,18 @@ function renderBrain(age) {
   const distribution = (counts, labels) => !counts ? dash : Object.entries(labels).map(([key, text]) => `${text} ${integer(counts[key])}`).join(" · ");
   setText("reading-distribution", distribution(w?.readingCounts, readings));
   setText("effort-distribution", distribution(w?.effortCounts, effortLabels));
-  setText("route-distribution", distribution(w?.routeCounts, roles));
+  const routes = $("route-distribution");
+  if (routes) {
+    routes.replaceChildren();
+    if (!w?.routeCounts) routes.textContent = dash;
+    else for (const [index, [role, label]] of Object.entries(roles).entries()) {
+      if (index) routes.append(document.createTextNode(" · "));
+      const count = document.createElement("span"); count.className = "decision-role";
+      count.dataset.decisionSource = decisionSourceForRole(role);
+      count.textContent = `${label} ${integer(w.routeCounts[role])}`;
+      routes.append(count);
+    }
+  }
   for (const [id, key] of [["history", "history_budget"], ["input", "matched_input"], ["reasoning", "reasoning_budget"]]) {
     const dist = w?.contextDistributions?.[key];
     setText(`${id}-percentiles`, `${integer(dist?.p50)} / ${integer(dist?.p95)} tok · ${integer(dist?.samples)} 个样本`);
@@ -236,6 +253,7 @@ function renderOverview(age) {
   const runtimePhase = { starting: "引擎启动中", started: "引擎已启动", stopping: "引擎停止中", disconnected: "游戏引擎未启动" };
   setText("overview-phase", usefulBrain && brainPhase[b.phase] ? brainPhase[b.phase] : runtimePhase[h?.phase] || "阶段未提供");
   const s = b?.selection;
+  if ($("overview-request")) $("overview-request").dataset.decisionSource = decisionSourceForRole(s?.role);
   setText("overview-request", s ? `${s.scope === "last" ? "上次" : "本次"}请求：${roles[s.role] || "未知通道"} · 思考 ${effort(s)}${finite(s.actualInputTokens) ? ` · 输入 ${tokens(s.actualInputTokens)}` : ""}` : "尚未提供逐次请求信息");
   setText("overview-work", h?.tools ? `工具调用中 ${integer(h.tools.active)} · 已返回 ${integer(h.tools.returned)} · 返回失败 ${integer(h.tools.errors)}` : "工具调用读数未接入");
   const w = h?.window || b?.statistics;
