@@ -1,3 +1,7 @@
+import {NATIVE_AQUATIC_TYPES,nativeAquaticType,nativeAquaticState} from './native-aquatic-state.js'
+import {createNativeAquaticActor} from './native-aquatic-actors.js'
+import {NATIVE_NO_MESH_TYPES,nativeEntityCoverage} from './native-entity-coverage.js'
+import {nativeLivingOverlay} from './native-hostile-actors.js'
 import * as THREE from 'three'
 import { nativeClientSourceVerified } from './native-client-source.js'
 import { NativeAssetReader } from './model-loader.js'
@@ -19,7 +23,7 @@ import {loadOriginalModelLayers,createOriginalModelLayer,ORIGINAL_MODEL_LAYERS_P
 // Locked vanilla classes: fwm/fvd/fuz/fxa/fwz/fxi/fxv, fwu/fuf, glk,
 // gly/gjw/gju/gmh/gmm/gne and original saddle/fur/profession layers.
 // Original assets/geometry only; this is not a generic mob proxy renderer.
-export const NATIVE_ENTITY_RENDER_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','create:contraption','create:stationary_contraption',WANDSCAPE_NPC,...NATIVE_HOSTILE_TYPES])
+export const NATIVE_ENTITY_RENDER_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','create:contraption','create:stationary_contraption',WANDSCAPE_NPC,...NATIVE_HOSTILE_TYPES,...NATIVE_AQUATIC_TYPES,...NATIVE_NO_MESH_TYPES])
 const SUPPORTED=new Set(NATIVE_ENTITY_RENDER_TYPES),F=Math.fround,PI=F(Math.PI),RAD=F(Math.PI/180)
 const wrap=v=>((v+180)%360+360)%360-180,lerp=(a,b,t)=>a+(b-a)*t,angle=(a,b,t)=>a+wrap(b-a)*t
 const cube=(uv,origin,size,dilation=0,mirror=false)=>({uv,origin,size,dilation,mirror})
@@ -39,6 +43,8 @@ function meta(entity,key,type,defaultValue){
 }
 
 export function nativeEntityRenderState(entity,{registries}={}){
+  if(nativeAquaticType(entity?.name))return nativeAquaticState(entity)
+  if(NATIVE_NO_MESH_TYPES.includes(entity?.name))return {name:entity.name,intentionalNoMesh:true}
   if(nativeHostileType(entity?.name))return nativeHostileState(entity)
   if(entity?.name===WANDSCAPE_NPC)return nativeWandscapeRenderState(entity)
   if(['create:contraption','create:stationary_contraption'].includes(entity?.name))return nativeContraptionState(entity)
@@ -50,7 +56,7 @@ export function nativeEntityRenderState(entity,{registries}={}){
   if(flags&1)throw Error('NATIVE_ENTITY_FIRE_LAYER_UNSUPPORTED')
   if(flags&64)throw Error('NATIVE_ENTITY_OUTLINE_UNSUPPORTED')
   if(entity.equipment?.some(value=>value.item?.itemCount>0 || value.item?.count>0))throw Error('NATIVE_ENTITY_EQUIPMENT_RENDERING_UNSUPPORTED')
-  const state={name:entity.name,invisible:Boolean(flags&32),alive:health>0,baby:entity.name==='minecraft:slime'?false:meta(entity,16,'boolean',false),defaultsSource:'Minecraft_1.21.1_defineSynchedData'}
+  const state={name:entity.name,invisible:Boolean(flags&32),alive:health>0,health,baby:entity.name==='minecraft:slime'?false:meta(entity,16,'boolean',false),defaultsSource:'Minecraft_1.21.1_defineSynchedData'}
   if(entity.name==='minecraft:slime') {state.size=meta(entity,16,'int',1);if(state.size<1||state.size>127)throw Error('NATIVE_SLIME_SIZE_INVALID')}
   if(entity.name==='minecraft:pig')state.saddled=meta(entity,17,'boolean',false)
   if(entity.name==='minecraft:sheep') {const wool=meta(entity,17,'byte',0);state.color=wool&15;state.sheared=Boolean(wool&16);if(wool&~31)throw Error('NATIVE_SHEEP_FLAGS_UNSUPPORTED');if(meta(entity,2,'optional_component',null)!==null)throw Error('NATIVE_SHEEP_CUSTOM_NAME_EFFECT_UNSUPPORTED')}
@@ -100,6 +106,11 @@ async function texture(bytes){const url=URL.createObjectURL(new Blob([bytes],{ty
 export async function createNativeEntityActor(reader,entity,{registries,loadTexture=texture}={}){
   if(!(reader instanceof NativeAssetReader)||reader.manifest.clientJarSha256!==ENTITY_MODEL_CLIENT_SHA256)throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(!nativeClientSourceVerified(reader.manifest,ENTITY_MODEL_CLIENT_SHA256))throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
+  if(NATIVE_NO_MESH_TYPES.includes(entity?.name)){
+    const root=new THREE.Group();root.visible=false;let disposed=false
+    return {root,assetInfo:{type:entity.name,intentionalNoMesh:true,coverage:nativeEntityCoverage(entity.name),sourcePaths:[],completeEntityParityVerified:false},update(next){if(disposed)throw Error('NATIVE_ENTITY_ACTOR_DISPOSED');if(next.entityId!==entity.entityId||next.uuid!==entity.uuid||next.name!==entity.name)throw Error('NATIVE_ENTITY_ACTOR_IDENTITY_MISMATCH')},dispose(){disposed=true;root.removeFromParent();root.clear()}}
+  }
+  if(nativeAquaticType(entity?.name))return createNativeAquaticActor(reader,entity,{loadTexture})
   if(entity?.name==='minecraft:item')return createNativeDroppedItemActor(reader,entity,{loadTexture})
   if(nativeThrownItemType(entity?.name))return createNativeThrownItemActor(reader,entity,{loadTexture})
   if(nativeProjectileType(entity?.name))return createNativeProjectileActor(reader,entity,{loadTexture})
@@ -126,7 +137,7 @@ export async function createNativeEntityActor(reader,entity,{registries,loadText
     const owner=original?model.bones.get('root'):model.root
     const heads=new THREE.Group(),body=new THREE.Group();owner.add(heads,body)
     for(const bone of [...owner.children])if(bone!==heads&&bone!==body)(['head','beak','red_thing'].includes(bone.name)?heads:body).add(bone)
-    layers.push({kind,model,heads,body,material,hatVisible:options.hatVisible??true});sourcePaths.push(path)
+    layers.push({kind,model,heads,body,material,overlay:nativeLivingOverlay(material),hatVisible:options.hatVisible??true});sourcePaths.push(path)
     return model
   }
   try{
@@ -155,17 +166,20 @@ export async function createNativeEntityActor(reader,entity,{registries,loadText
       const current=nativeEntityRenderState(next,{registries}),motion=next.motion
       if(leaf==='villager'&&JSON.stringify([current.villager,current.baby])!==villagerKey)throw Error('NATIVE_ENTITY_RENDER_VARIANT_CHANGED')
       if(motion?.source!==NATIVE_MOB_MOTION_SOURCE||motion.tickMs!==50||!Number.isSafeInteger(motion.tick)||motion.tick<0||!Number.isFinite(motion.sampledAt)||!motion.position||!motion.previous?.position||!motion.walk||
-        ![...['x','y','z'].map(axis=>motion.position[axis]),...['x','y','z'].map(axis=>motion.previous.position[axis]),motion.bodyYaw,motion.headYaw,motion.pitch,motion.previous.bodyYaw,motion.previous.headYaw,motion.previous.pitch,motion.walk.speedOld,motion.walk.speed,motion.walk.position].every(Number.isFinite)||
+        ![...['x','y','z'].map(axis=>motion.position[axis]),...['x','y','z'].map(axis=>motion.previous.position[axis]),motion.bodyYaw,motion.headYaw,motion.pitch,motion.previous.bodyYaw,motion.previous.headYaw,motion.previous.pitch,motion.walk.speedOld,motion.walk.speed,motion.walk.position,motion.living?.hurtTime,motion.living?.deathTime,motion.living?.attackAnim,motion.living?.attackAnimOld].every(Number.isFinite)||
         (leaf==='slime'&&![motion.slime?.oSquish,motion.slime?.squish].every(Number.isFinite))||
         (leaf==='chicken'&&![motion.chicken?.oFlap,motion.chicken?.flap,motion.chicken?.oFlapSpeed,motion.chicken?.flapSpeed].every(Number.isFinite))||
         (leaf==='sheep'&&(!Number.isInteger(motion.eatCounter)||motion.eatCounter<0||motion.eatCounter>40)))throw Error('NATIVE_ENTITY_MOTION_UNAVAILABLE')
       const partial=Math.max(0,Math.min(1,(now-motion.sampledAt)/50)),p=motion.position,old=motion.previous
       root.position.set(...['x','y','z'].map(axis=>lerp(old.position[axis],p[axis],partial)))
       const bodyYaw=angle(old.bodyYaw,motion.bodyYaw,partial),headYaw=angle(old.headYaw,motion.headYaw,partial),pitch=lerp(old.pitch,motion.pitch,partial)
-      root.rotation.y=Math.PI-bodyYaw*Math.PI/180;root.visible=!current.invisible&&current.alive
+      root.rotation.y=Math.PI-bodyYaw*Math.PI/180;root.visible=!current.invisible
+      orientation.rotation.z=motion.living.deathTime>0?Math.min(1,Math.sqrt(Math.max(0,((motion.living.deathTime+partial-1)/20)*1.6)))*Math.PI/2:0
+      root.userData.nativeLiving={type:current.name,health:current.health,tick:motion.tick,hurtTime:motion.living.hurtTime,deathTime:motion.living.deathTime,attackAnim:lerp(motion.living.attackAnimOld,motion.living.attackAnim,partial),swingPoseSource:'original_common_models_do_not_consume_attackAnim',issues:[]}
       const speed=F(lerp(motion.walk.speedOld,motion.walk.speed,partial)),walkPosition=F(motion.walk.position-F(motion.walk.speed*F(1-partial))),phase=F(F(walkPosition*(current.baby?3:1))*F(.6662))
       const leg=offset=>F(F(cos(F(phase+offset))*F(1.4))*speed),headX=F(pitch*RAD),headY=F(wrap(headYaw-bodyYaw)*RAD)
       for(const entry of layers){
+        entry.overlay.set(motion.living.hurtTime>0||motion.living.deathTime>0)
         entry.heads.position.set(0,0,0);entry.body.position.set(0,0,0);entry.body.scale.setScalar(1)
         if(current.baby&&leaf!=='villager'){const headOffset=leaf==='pig'?4:leaf==='cow'?10:leaf==='sheep'?8:5;entry.heads.position.set(0,headOffset,leaf==='chicken'?2:4);entry.body.scale.setScalar(.5);entry.body.position.y=12}
         if(entry.kind==='saddle')entry.model.root.visible=current.saddled

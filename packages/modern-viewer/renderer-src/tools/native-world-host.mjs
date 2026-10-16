@@ -1,3 +1,4 @@
+import {nativeAquaticEnvironment} from '../src/native-viewer/native-aquatic-state.js'
 import { EventEmitter } from 'node:events'
 import { NativeSnapshotCadence } from './native-snapshot-cadence.mjs'
 import { createHash } from 'node:crypto'
@@ -233,7 +234,7 @@ export class NativeWorldState extends EventEmitter {
         }
         case 'spawn_entity': case 'spawn_entity_experience_orb': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
         case 'rel_entity_move': case 'entity_move_look': case 'entity_look': case 'entity_teleport':
-        case 'entity_head_rotation': case 'entity_velocity': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'collect': case 'entity_effect': case 'remove_entity_effect':
+        case 'entity_head_rotation': case 'entity_velocity': case 'entity_update_attributes': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'collect': case 'entity_effect': case 'remove_entity_effect':
           this.handleEntity(body); break
       }
     } catch (error) { this.unavailable(error) }
@@ -263,7 +264,7 @@ export class NativeWorldState extends EventEmitter {
           position:{x:p.x,y:p.y,z:p.z},yaw:0,pitch:0,headYaw:0,onGround:null,velocity:{x:0,y:0,z:0},objectData:null,
           metadata:new Map(),equipment:new Map(),effects:[],cues:[],spawnedAt:timestamp,updatedAt:timestamp,lastSequence:body.sequence,
           identitySource:'native_entity_id_and_connection_epoch_no_wire_uuid'}
-        this.entities.set(p.entityId,entity);this.entityMotions.set(p.entityId,createNativeEntityMotion(entity))
+        this.entities.set(p.entityId,entity);this.entityMotions.set(p.entityId,this.createEntityMotion(entity))
       } else if (body.name === 'spawn_entity') {
         if (!Number.isSafeInteger(p.entityId) || !UUID.test(p.objectUUID || '') || !Number.isSafeInteger(p.type) || !this.entityRegistry.has(p.type) || !finite(p)) throw Error('NATIVE_ENTITY_SPAWN_INVALID')
         if (!this.entities.has(p.entityId) && this.entities.size >= ENTITY_LIMITS.tracked) throw Error('NATIVE_ENTITY_TRACKING_BUDGET_EXCEEDED')
@@ -272,14 +273,27 @@ export class NativeWorldState extends EventEmitter {
           yaw: entityAngle(p.yaw), pitch: entityAngle(p.pitch), headYaw: entityAngle(p.headPitch), onGround: null, velocity: this.entityVelocity(p.velocity),
           objectData:Number.isSafeInteger(p.objectData)?p.objectData:null,
           metadata: new Map(), equipment: new Map(), effects: [], cues: [], spawnedAt: timestamp, updatedAt: timestamp, lastSequence: body.sequence })
-        const motion=createNativeEntityMotion(this.entities.get(p.entityId))
+        const motion=this.createEntityMotion(this.entities.get(p.entityId))
         if(motion)this.entityMotions.set(p.entityId,motion)
       } else {
         const entity = this.entities.get(p.entityId)
         // The receiving player's own status/animation packets may have no
         // spawn packet. Never fabricate another identity from proxy state.
         if (!entity) return
-        if (body.name === 'entity_metadata') {
+        if(body.name==='entity_update_attributes'){
+          if(!Array.isArray(p.properties)||p.properties.length>128)throw Error('NATIVE_ENTITY_ATTRIBUTES_INVALID')
+          for(const row of p.properties){
+            // Names come from this connection's validated codec; never interpret
+            // numeric attribute IDs using a translated proxy registry.
+            if(!['generic.scale','minecraft:generic.scale'].includes(row.key))continue
+            if(!Number.isFinite(row.value)||!Array.isArray(row.modifiers)||row.modifiers.length>64||row.modifiers.some(m=>!Number.isFinite(m.amount)||![0,1,2].includes(m.operation)))throw Error('NATIVE_ENTITY_SCALE_INVALID')
+            const base=row.modifiers.filter(m=>m.operation===0).reduce((v,m)=>v+m.amount,row.value)
+            let value=row.modifiers.filter(m=>m.operation===1).reduce((v,m)=>v+base*m.amount,base)
+            for(const m of row.modifiers.filter(m=>m.operation===2))value*=1+m.amount
+            if(!Number.isFinite(value))throw Error('NATIVE_ENTITY_SCALE_INVALID')
+            entity.renderScale=Object.freeze({value:Math.max(.0625,Math.min(16,value)),source:'received_native_entity_update_attributes'})
+          }
+        } else if (body.name === 'entity_metadata') {
           if (!Array.isArray(p.metadata) || p.metadata.length > 255) throw metadataFailure(body)
           for (const [entryIndex, entry] of p.metadata.entries()) {
             const optionalAbsent = !!entry && Object.prototype.hasOwnProperty.call(entry, 'value') && entry.value === undefined && OPTIONAL_ENTITY_METADATA.has(entry.type)
@@ -415,6 +429,13 @@ export class NativeWorldState extends EventEmitter {
       entities.push(Object.freeze(row))
     }
     return finish({ ...base, available: true, entities: Object.freeze(entities) })
+  }
+
+  createEntityMotion(entity) {
+    return createNativeEntityMotion(entity,{environmentAt:(next,position)=>nativeAquaticEnvironment({...next,position},p=>{
+      if(!this.dimension||p.y<this.dimension.minY||p.y>=this.dimension.minY+this.dimension.height)return null
+      const id=this.stateIdAt(p);return id===null?null:this.states.get(id)??null
+    })})
   }
 
   tickEntities () {

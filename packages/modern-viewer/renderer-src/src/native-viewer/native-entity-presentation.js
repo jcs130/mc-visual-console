@@ -26,14 +26,14 @@ export class NativeEntityPresentation {
     const old = a.entity.motion, next = b.entity.motion, live = current.motion
     if (!old || !next || !live || !point(live.position) || !point(live.previous?.position) ||
         !['bodyYaw', 'headYaw', 'pitch'].every(k => Number.isFinite(old[k]) && Number.isFinite(next[k])) ||
-        ![old.walk?.position, next.walk?.position, old.walk?.speed, next.walk?.speed].every(Number.isFinite)) return current
+        (live.walk&&![old.walk?.position, next.walk?.position, old.walk?.speed, next.walk?.speed].every(Number.isFinite))) return current
     const pose = Object.fromEntries(['bodyYaw', 'headYaw', 'pitch'].map(k => [k, k === 'pitch' ? mix(old[k], next[k], t) : angle(old[k], next[k], t)]))
-    const speed = mix(old.walk.speed, next.walk.speed, t)
+    const speed = live.walk?mix(old.walk.speed, next.walk.speed, t):null
     // Existing actors render one native 50ms interval. Supply an explicitly
     // marked display projection at its endpoint, using received walk phases.
     return { ...current, position, motion: { ...live, ...pose, position,
       previous: { ...live.previous, ...pose, position }, sampledAt: now - 50,
-      walk: { ...live.walk, position: mix(old.walk.position, next.walk.position, t), speed, speedOld: speed },
+      ...(live.walk?{walk: { ...live.walk, position: mix(old.walk.position, next.walk.position, t), speed, speedOld: speed }}:{}),
       displayProjection: 'buffered_received_entity_samples' } }
   }
 }

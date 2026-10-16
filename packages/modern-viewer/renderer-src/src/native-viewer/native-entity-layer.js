@@ -1,3 +1,5 @@
+import {nativeAquaticType} from './native-aquatic-state.js'
+import {nativeEntityCoverage,NATIVE_ENTITY_CENSUS} from './native-entity-coverage.js'
 import * as THREE from 'three'
 import { createNativeEntityActor } from './native-entity-dispatch.js'
 import { nativeContraptionGeometryKey } from './native-contraption.js'
@@ -17,12 +19,16 @@ export class NativeEntityLayer {
     if(this.disposed)return
     if(!state?.available){this.reset();this.streamReason=state?.reason??'NATIVE_ENTITY_STREAM_UNAVAILABLE';this.onChange();return}
     const registries=state.renderRegistries?.playerUuid===playerUuid&&state.renderRegistries?.source==='server_builtin_registries'?state.renderRegistries:null
+    if(Number.isSafeInteger(state.epoch)&&Number.isSafeInteger(this.epoch)&&state.epoch<this.epoch)return
+    if(state.epoch===this.epoch&&Number.isSafeInteger(state.revision)&&Number.isSafeInteger(this.revision)&&state.revision<this.revision)return
+    if(this.epoch!==undefined&&state.epoch!==this.epoch)this.reset()
+    this.epoch=state.epoch;this.revision=state.revision
     this.streamReason=null
     const entities=state.entities.filter(entity=>entity.entityId!==selfEntityId)
     this.data=new Map(entities.map(entity=>[entity.entityId,entity]))
     const receivedAt=this.now()
     for(const [id,row]of this.presentations)if(!this.data.has(id)||identityKey(this.data.get(id))!==row.identity)this.presentations.delete(id)
-    for(const entity of entities)if(entity.motion?.walk){
+    for(const entity of entities)if(entity.motion?.previous?.position){
       let row=this.presentations.get(entity.entityId)
       if(!row){row={identity:identityKey(entity),buffer:new NativeEntityPresentation()};this.presentations.set(entity.entityId,row)}
       row.buffer.push(entity,receivedAt)
@@ -31,6 +37,7 @@ export class NativeEntityLayer {
     this.pending={entities,registries,generation:this.generation};void this.drain()
   }
   signature(entity,registries) {
+    if(nativeAquaticType(entity.name))return JSON.stringify([identityKey(entity),entity.name,Boolean(entity.motion),entity.metadata.filter(row=>row.key===17&&['minecraft:axolotl','minecraft:pufferfish','minecraft:tropical_fish'].includes(entity.name))])
     return JSON.stringify([identityKey(entity),entity.name,entity.experienceValue,entity.objectData,entity.metadata,entity.equipment,Boolean(entity.motion),entity.name==='minecraft:villager'?registries:null,
       entity.name==='touhou_little_maid:maid'?[entity.maidRenderState,entity.motion?.maid?.hurtTime>0,entity.motion?.maid?.hurtPending,entity.motion?.maid?.swingPending,entity.motion?.maid?.animationId,entity.motion?.maid?.swimAmount>0||entity.motion?.maid?.swimAmountOld>0]:null,
       entity.name.startsWith('create:')?nativeContraptionGeometryKey(entity):null])
@@ -105,11 +112,11 @@ export class NativeEntityLayer {
   }
   diagnostics() {
     const motionIssues=[...this.actors.values()].flatMap(row=>[row.actor.root.userData.nativeContraption?.reason,...(row.actor.root.userData.nativeLiving?.issues??[]),...(row.actor.root.userData.nativeProjectile?.issues??[])]).filter(Boolean)
-    return {received:this.data.size,rendered:this.actors.size,droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
+    return {received:this.data.size,rendered:[...this.actors.values()].filter(row=>!row.actor.assetInfo?.intentionalNoMesh).length,intentionalNoMesh:[...this.actors.values()].filter(row=>row.actor.assetInfo?.intentionalNoMesh).length,registryCensus:NATIVE_ENTITY_CENSUS.length,registryCounts:{original:130,visiblePending:80,aquaticIntegrated:12,intentionalNoMesh:3,otherNonSelfPaths:34,selfOnly:1},coverage:[...this.data.values()].map(row=>nativeEntityCoverage(row.name)),droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
       issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
   }
   reset() {
-    this.generation++;this.pending=null;for(const row of this.actors.values())row.actor.dispose();this.actors.clear();this.failures.clear();this.data.clear();this.root.clear();this.streamReason=null
+    this.generation++;this.epoch=undefined;this.revision=null;this.pending=null;for(const row of this.actors.values())row.actor.dispose();this.actors.clear();this.failures.clear();this.data.clear();this.root.clear();this.streamReason=null
     for(const row of this.pickups.values())row.actor?.dispose();this.pickups.clear();this.pickupSeen.clear();this.collected.clear();this.presentations.clear();this.clock=null
   }
   dispose(){if(this.disposed)return;this.disposed=true;this.reset();this.root.removeFromParent()}

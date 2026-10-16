@@ -1,3 +1,5 @@
+import {NATIVE_AQUATIC_TYPES,nativeAquaticType,nativeAquaticState} from './native-aquatic-state.js'
+import {createNativeAquaticAnimation} from './native-aquatic-animation.js'
 // Locked 1.21.1: LivingEntity/WalkAnimationState, BodyRotationControl,
 // Chicken.aiStep, Sheep.handleEntityEvent/aiStep and Slime.tick. Runs only on
 // the action connection's actual physicsTick; browser time never creates ticks.
@@ -8,10 +10,12 @@ const F=Math.fround, clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 const wrap=v=>((v+180)%360+360)%360-180
 const relative=(a,b,max)=>F(b-clamp(wrap(b-a),-max,max))
 export const NATIVE_MOB_MOTION_SOURCE='same_connection_entity_ticks'
-export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','wandscape:wandscape_npc',...NATIVE_HOSTILE_TYPES])
+export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','wandscape:wandscape_npc',...NATIVE_HOSTILE_TYPES,...NATIVE_AQUATIC_TYPES])
 const types=new Set(NATIVE_MOB_TYPES)
+let viewerClientConstructorId=0
 
-export function createNativeEntityMotion(entity) {
+export function createNativeEntityMotion(entity,{environmentAt,random}={}) {
+  const clientConstructorId=++viewerClientConstructorId
   if(entity?.name==='minecraft:item')return createNativeDroppedItemMotion(entity)
   if(nativeProjectileType(entity?.name)||nativeThrownItemType(entity?.name))return createNativeProjectileMotion(entity)
   if(!types.has(entity?.name))return null
@@ -20,6 +24,9 @@ export function createNativeEntityMotion(entity) {
   let walk={speedOld:0,speed:0,position:0},ticks=0,headStable=0,lastStableHead=headYaw,lastCue=0
   let squish=0,oSquish=0,targetSquish=0,wasOnGround=false,flap=0,oFlap=0,flapSpeed=0,oFlapSpeed=0,flapVelocity=1,eatCounter=0
   let sampledAt=entity.spawnedAt,previous={position:{...position},yaw,pitch,headYaw,bodyYaw}
+  const isAquatic=nativeAquaticType(entity.name),hasWalk=!isAquatic||['minecraft:turtle','minecraft:axolotl'].includes(entity.name)
+  const aquatic=isAquatic?createNativeAquaticAnimation(entity,{clientConstructorId,...(random?{random}:{})}):null
+  let aquaticEntity=entity,aquaticEnvironment=isAquatic?(environmentAt?.(entity,position)??{available:false,reason:'NATIVE_AQUATIC_WATER_OCCUPANCY_UNAVAILABLE'}):null
   const isMaid=entity.name==='touhou_little_maid:maid'
   const living=createNativeLivingAnimation(entity)
   let hurtTime=0,hurtPending=false,health=null,swingPending=false,maidCue=0,swimAmount=0,swimAmountOld=0,maidAnimationId=0
@@ -41,13 +48,14 @@ export function createNativeEntityMotion(entity) {
     }
   }
   function snapshot(){return {source:NATIVE_MOB_MOTION_SOURCE,tickMs:50,tick:ticks,sampledAt,position:{...position},yaw,pitch,headYaw,bodyYaw,
-    previous:{...previous,position:{...previous.position}},walk:{...walk},slime:{squish,oSquish,targetSquish},chicken:{flap,oFlap,flapSpeed,oFlapSpeed},eatCounter,
+    previous:{...previous,position:{...previous.position}},...(hasWalk?{walk:{...walk}}:{}),...(isAquatic?{aquatic:aquatic.current(),aquaticEnvironment,velocity:aquaticEntity.velocity?{...aquaticEntity.velocity}:null,onGround:aquaticEntity.onGround===true}:{}),slime:{squish,oSquish,targetSquish},chicken:{flap,oFlap,flapSpeed,oFlapSpeed},eatCounter,
     ...(isMaid?{maid:{hurtTime,hurtPending,swingPending,attackAnim:0,swingTime:0,swimAmount,swimAmountOld,animationId:maidAnimationId,source:'Minecraft_1.21.1_client_constructor_and_received_cues'}}:{}),
     living:living.current(),initialDefaultsSource:'Minecraft_1.21.1_client_constructor',animationParityVerified:false}}
   return {
     observe(next,kind){
       living.observe(next,kind)
       observeMaid(next,kind)
+      if(isAquatic){aquaticEntity=next;aquatic.observe(next,nativeAquaticState(next))}
       if(['rel_entity_move','entity_move_look','entity_look','entity_teleport'].includes(kind)){
         target={...next.position};targetYaw=next.yaw;targetPitch=next.pitch;lerpSteps=3
       }
@@ -68,9 +76,11 @@ export function createNativeEntityMotion(entity) {
       const distance=F(Math.sqrt(dx*dx+dz*dz)),speedTarget=Math.min(F(distance*4),1)
       walk={speedOld:walk.speed,speed:F(walk.speed+F(F(speedTarget-walk.speed)*F(.4))),position:walk.position}
       walk.position=F(walk.position+walk.speed)
-      if(dx*dx+dz*dz>2.500000277905201e-7){bodyYaw=yaw;headYaw=relative(headYaw,bodyYaw,75);lastStableHead=headYaw;headStable=0}
-      else if(Math.abs(headYaw-lastStableHead)>15){headStable=0;lastStableHead=headYaw;bodyYaw=relative(bodyYaw,headYaw,75)}
-      else {headStable++;if(headStable>10)bodyYaw=relative(bodyYaw,headYaw,75*(1-clamp((headStable-10)/10,0,1)))}
+      if(isAquatic){aquaticEntity=next;aquaticEnvironment=environmentAt?.(next,position)??{available:false,reason:'NATIVE_AQUATIC_WATER_OCCUPANCY_UNAVAILABLE'};aquatic.tick({...next,aquaticEnvironment,living:living.current()},nativeAquaticState(next))}
+      const maxHead=next.name==='minecraft:dolphin'?1:75
+      if(dx*dx+dz*dz>2.500000277905201e-7){bodyYaw=yaw;headYaw=relative(headYaw,bodyYaw,maxHead);lastStableHead=headYaw;headStable=0}
+      else if(Math.abs(headYaw-lastStableHead)>15){headStable=0;lastStableHead=headYaw;bodyYaw=relative(bodyYaw,headYaw,maxHead)}
+      else {headStable++;if(headStable>10)bodyYaw=relative(bodyYaw,headYaw,maxHead*(1-clamp((headStable-10)/10,0,1)))}
       const ground=next.onGround===true // Entity constructor's original default is false.
       for(const cue of next.cues||[]){if(cue.sequence<=lastCue)continue;if(next.name==='minecraft:sheep'&&cue.kind==='entity_status'&&cue.code===10)eatCounter=40;lastCue=Math.max(lastCue,cue.sequence)}
       if(next.name==='minecraft:sheep')eatCounter=Math.max(0,eatCounter-1)

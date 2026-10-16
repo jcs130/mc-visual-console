@@ -1,3 +1,4 @@
+import {assertNativeEntityCensus} from './native-entity-coverage.js'
 import * as THREE from 'three'
 import {nativeClientSourceVerified} from './native-client-source.js'
 import {ENTITY_MODEL_CLIENT_SHA256} from './native-entity-model.js'
@@ -14,6 +15,7 @@ export function loadOriginalModelLayers(reader) {
     const data=await reader.json(ORIGINAL_MODEL_LAYERS_PATH)
     if(data.schemaVersion!==1||data.minecraftVersion!=='1.21.1'||data.clientJarSha256!==ENTITY_MODEL_CLIENT_SHA256||data.modelUnits!=='original_Y_down_pixels'||data.rotationOrder!=='ZYX'||Object.keys(data.layers??{}).length!==213||data.blockEntityRenderers?.length!==44)throw Error('NATIVE_ORIGINAL_MODEL_LAYERS_INVALID')
     for(const [key,count] of Object.entries({entities:130,particles:109,blockEntities:44,menus:25}))if(data.registries?.[key]?.length!==count)throw Error('NATIVE_ORIGINAL_REGISTRY_INCOMPLETE')
+    assertNativeEntityCensus(data)
     return data
   })())
   return loaded.get(reader)
