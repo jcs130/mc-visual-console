@@ -47,6 +47,23 @@ function browser(bridgeOptions = {}) {
 }
 const P = (x, z) => ({ x, y: 64, z });
 
+test('different host decision sources produce distinct cards and target colors without inventing rejected routes', () => {
+  const h = browser();
+  try {
+    h.bot.emit('viewer:decision', { id: 's1', source: 'system1', status: 'accepted', label: '接敌', from: P(0, 0), target: P(4, 8) });
+    h.bot.emit('viewer:decision', { id: 's2', source: 'system2', status: 'accepted', label: '导航受理', from: P(0, 0), target: P(-4, 8) });
+    h.bridge.flush(); h.step(40);
+    const panel = h.byId('agent-decisions'), rows = panel.querySelector('.agent-decision-rows').children;
+    assert.equal(panel.hidden, false); assert.match(panel.textContent, /系统一.*接敌.*系统二.*导航受理/s);
+    assert.notEqual(rows[0].style.borderLeftColor, rows[1].style.borderLeftColor);
+    for (const row of rows) assert.ok(h.draws.some(draw => draw[0] === 'stroke' && draw[1] === row.style.borderLeftColor));
+    h.bot.emit('viewer:decision', { id: 'rejected', source: 'system1', status: 'rejected', label: '过期选择', from: P(0, 0), target: P(4, 8) });
+    h.bridge.flush(); h.step(40); assert.match(panel.textContent, /未受理/);
+    const check = h.document.querySelectorAll('input').find(el => el.getAttribute('aria-label') === '显示系统一与系统二的决策');
+    check.checked = false; check.dispatch('change'); h.step(40); assert.equal(panel.hidden, true);
+  } finally { h.dispose(); }
+});
+
 test('flight permission, coordinate route and real combined input stay distinct through the entire viewer', () => {
   let flight = { allowed: true, flying: false, mode: 'ground', expiresAtMs: 5000 };
   const h = browser({ getFlightState: () => flight });

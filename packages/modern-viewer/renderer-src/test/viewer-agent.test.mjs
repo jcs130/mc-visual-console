@@ -34,6 +34,24 @@ function fixture({ hub = createViewerAgentHub(), uuid = a, id = 1, name = 'ag_te
   const latest = () => events.filter(([name]) => name === 'agentVisualization').at(-1)?.[1];
   return { bot, client, writes, hub, socket, events, bridge, latest, advance(ms) { time += ms; bridge.flush(); } };
 }
+test('host decision sources remain distinct, expire, and cannot be supplied by a public drawing update', () => {
+  const h = fixture();
+  try {
+    const base = { status: 'accepted', label: '选择目标', from: h.bot.entity.position, target: { x: 5, y: 64, z: 2 }, ttlMs: 1000 };
+    h.bot.emit('viewer:decision', { ...base, id: 'one', source: 'system1', prompt: 'DO_NOT_PUBLISH' });
+    h.bot.emit('viewer:decision', { ...base, id: 'two', source: 'system2' });
+    h.bridge.publish({ intent: { goal: '公开说明' }, decisions: [{ ...base, id: 'spoofed', source: 'system1' }] });
+    h.bridge.flush();
+    assert.deepEqual(h.latest().decisions.map(row => [row.id, row.source]), [['one', 'system1'], ['two', 'system2']]);
+    assert.equal(JSON.stringify(h.latest()).includes('DO_NOT_PUBLISH'), false);
+    h.client.write('use_entity', { target: 9, mouse: 1 }); h.bridge.flush();
+    assert.equal(h.latest().input.operations[0].source, undefined, 'packet kind does not identify a model');
+    h.advance(1001); assert.deepEqual(h.latest().decisions, []);
+    h.bot.emit('viewer:decision', { ...base, id: 'old-world', source: 'system1' });
+    h.bot.game.dimension = 'the_nether'; h.bridge.flush(); assert.deepEqual(h.latest().decisions, []);
+  } finally { h.bridge.dispose(); }
+});
+
 test('actual path, controls and packets are observed without intercepting gameplay or recording login/chat', () => {
   const h = fixture(); try {
     h.bot.emit('path_update', { status: 'success', path: [{ x: 0, y: 64, z: 0 }, { x: 9, y: 64, z: 3 }] });

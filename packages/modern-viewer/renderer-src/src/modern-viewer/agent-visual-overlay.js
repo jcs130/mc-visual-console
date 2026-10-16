@@ -1,5 +1,5 @@
 import { AgentVisualState } from './agent-visual-state.js';
-import { AGENT_VISUAL_COLORS as COLORS, normalizeVisualRoute, visualPoint } from './agent-visual-protocol.js';
+import { AGENT_VISUAL_COLORS as COLORS, AGENT_DECISION_COLORS, AGENT_DECISION_LABELS, normalizeVisualRoute, visualPoint } from './agent-visual-protocol.js';
 import { drawVisualMarkers, frameVisualMarkers, routeMapProjection, drawVisualScene } from './agent-visual-drawing.js';
 import { resolveAgentPointer, visibleInventorySlot, createAgentPointerMotion } from './agent-pointer.js';
 
@@ -36,6 +36,14 @@ export function installAgentVisualization({ socket, document = globalThis.docume
     const item = make('span', '', mapLegend, `${role === 'candidate' ? '┄' : '●'} ${label}`); item.style.color = COLORS[role];
   }
   const operations = panel('agent-operations', 'Agent 按键和鼠标操作');
+  const decisions = panel('agent-decisions', '系统一与系统二的最近决策');
+  make('strong', '', decisions, '决策来源');
+  const decisionLegend = make('div', 'agent-marker-legend', decisions);
+  for (const source of ['system1', 'system2']) {
+    const item = make('span', '', decisionLegend, `● ${AGENT_DECISION_LABELS[source]}`); item.style.color = AGENT_DECISION_COLORS[source];
+  }
+  const decisionRows = make('div', 'agent-decision-rows', decisions);
+  make('small', '', decisions, '连线表示选择的目标，完成另验');
   const opsHeader = make('header', '', operations); make('strong', '', opsHeader, '操作');
   make('small', '', opsHeader, '实际发出 · 不代表完成');
   const keys = make('div', 'agent-control-keys', operations), keyElements = new Map();
@@ -79,6 +87,17 @@ export function installAgentVisualization({ socket, document = globalThis.docume
       target: visualPoint(value.position), detail: '', until: window.performance.now() + 1650 }); legacyAttacks = legacyAttacks.slice(-6);
   });
   function render(frame) {
+    decisions.hidden = !visible('agentDecisions') || !frame?.subject || !(frame.decisions?.length);
+    const signature = JSON.stringify(frame?.decisions?.map(({ id, source, status, label }) => ({ id, source, status, label })) ?? []);
+    if (decisionRows.dataset.signature !== signature) {
+      decisionRows.dataset.signature = signature; decisionRows.replaceChildren();
+      for (const decision of frame?.decisions ?? []) {
+        const row = make('div', 'agent-decision-row', decisionRows); row.dataset.source = decision.source;
+        row.style.borderLeftColor = AGENT_DECISION_COLORS[decision.source];
+        const source = make('b', '', row, AGENT_DECISION_LABELS[decision.source]); source.style.color = AGENT_DECISION_COLORS[decision.source];
+        make('span', '', row, decision.label); make('small', '', row, decision.status === 'accepted' ? '已受理 · 完成另验' : '未受理');
+      }
+    }
     intent.hidden = !frame?.intent;
     if (frame?.intent) {
       setText(name, `${frame.subject.playerName} · 行动`); setText(status, STATUS[frame.intent.status]);

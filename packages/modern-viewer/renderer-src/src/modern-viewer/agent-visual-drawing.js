@@ -1,4 +1,4 @@
-import { AGENT_VISUAL_COLORS as COLORS } from './agent-visual-protocol.js';
+import { AGENT_VISUAL_COLORS as COLORS, AGENT_DECISION_COLORS, AGENT_DECISION_LABELS } from './agent-visual-protocol.js';
 
 /** Liang-Barsky clipping bounds flow-arrow work even for a distant marker whose
  * camera projection is billions of pixels offscreen. */
@@ -65,6 +65,15 @@ export function frameVisualMarkers(frame) {
   const line = (id, role, points, label = '', flow = false, group = 'route') => ({ id, kind: 'line', space: 'world', role, points, label, group,
     color: COLORS[role], width: role === 'candidate' ? 2 : 3, dashed: role === 'candidate', flow, radius: 5 });
   const result = [];
+  for (const decision of frame.decisions ?? []) {
+    const color = AGENT_DECISION_COLORS[decision.source] ?? AGENT_DECISION_COLORS.unknown;
+    const label = `${AGENT_DECISION_LABELS[decision.source] ?? AGENT_DECISION_LABELS.unknown} · ${decision.label}${decision.status === 'rejected' ? ' · 未受理' : ''}`;
+    // Rejected choices stay in the decision card and never become a route through the world.
+    if (decision.status !== 'accepted' || !decision.target) continue;
+    if (decision.from) result.push({ ...line(`decision-${decision.id}`, 'info', [decision.from, decision.target], '', true, 'action'), color, width: 4 });
+    result.push({ id: `decision-target-${decision.id}`, kind: 'point', space: 'world', role: 'info',
+      points: [decision.target], label, color, width: 3, radius: 10, group: 'action' });
+  }
   if (frame.trail.length > 1) result.push(line('actual-trail', 'trail', frame.trail));
   for (const candidate of frame.candidates) result.push(line(candidate.id, 'candidate', candidate.points, candidate.label, true));
   if (frame.route?.points.length > 1) result.push(line('chosen-route', 'path', frame.route.points, '', true));

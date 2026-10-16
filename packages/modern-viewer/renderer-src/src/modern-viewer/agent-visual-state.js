@@ -1,6 +1,6 @@
 import { visualSubject, sameVisualSubject, visualText, visualPoint, visualPoints, normalizeVisualIntent,
   normalizeVisualRoute, normalizeVisualCandidates, normalizeVisualMarkers, normalizeVisualPointer,
-  normalizeVisualPresentation, normalizeVisualCamera, normalizeVisualFlight } from './agent-visual-protocol.js';
+  normalizeVisualPresentation, normalizeVisualCamera, normalizeVisualFlight, normalizeVisualDecision } from './agent-visual-protocol.js';
 
 /** Local monotonic deadlines; no dependence on the Agent/OBS wall clock. */
 export class AgentVisualState {
@@ -30,6 +30,10 @@ export class AgentVisualState {
     if ((value.route && !route) || (value.intent && !intent) || !candidates || !markers || !trail) return false;
     const time = this.now(), expires = (row, raw, max = 120_000) => row ? { ...row,
       until: time + Math.max(0, Math.min(max, Number.isFinite(raw?.remainingMs) ? raw.remainingMs : 0)) } : null;
+    const decisions = Array.isArray(value.decisions) ? value.decisions.slice(-4).flatMap(row => {
+      const decision = normalizeVisualDecision(row);
+      return decision ? [expires(decision, row, 15_000)] : [];
+    }) : [];
     const input = value.input ?? {}, pointer = normalizeVisualPointer(input.pointer);
     const operations = Array.isArray(input.operations) ? input.operations.slice(-6).flatMap(row => {
       if (!row || !['attack', 'gather', 'interact', 'inventory'].includes(row.kind) || !Number.isSafeInteger(row.id)) return [];
@@ -49,7 +53,7 @@ export class AgentVisualState {
     this.deadline = time + Math.max(500, Math.min(3500, Number.isFinite(value.ttlMs) ? value.ttlMs : 3500));
     this.frame = { subject, intent: expires(intent, value.intent), route: expires(route, value.route, 30_000), camera: expires(normalizeVisualCamera(value.camera), value.camera, 3000),
       candidates: candidates.map((v, i) => expires(v, value.candidates[i], 30_000)),
-      markers: markers.map((v, i) => expires(v, value.markers[i], 30_000)), trail, presentation,
+      markers: markers.map((v, i) => expires(v, value.markers[i], 30_000)), decisions, trail, presentation,
       input: { controls: Array.isArray(input.controls) ? ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak'].filter(k => input.controls.includes(k)) : [],
         flight: normalizeVisualFlight(input.flight), position: visualPoint(input.position), yaw: Number.isFinite(input.yaw) ? input.yaw : null,
         pitch: Number.isFinite(input.pitch) ? input.pitch : null, operations, pointer: expires(pointer, input.pointer, 3000) } };
@@ -70,6 +74,7 @@ export class AgentVisualState {
     const live = row => row && row.until > time ? row : null, frame = this.frame;
     return { ...frame, intent: live(frame.intent), route: live(frame.route), camera: live(frame.camera), presentation: live(frame.presentation),
       candidates: frame.candidates.filter(live), markers: frame.markers.filter(live),
+      decisions: frame.decisions.filter(live),
       input: { ...frame.input, operations: frame.input.operations.filter(live), pointer: live(frame.input.pointer) },
       media: live(frame.presentation) ? this.media?.presentation ?? null : null };
   }

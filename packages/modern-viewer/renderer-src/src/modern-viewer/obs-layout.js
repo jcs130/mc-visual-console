@@ -6,6 +6,7 @@ export const OBS_COMPONENTS = Object.freeze([
   ['agentIntent', 'Agent 意图和行动说明', '#agent-intent'],
   ['agentRoute', '寻路和候选轨迹图', '#agent-route-map'],
   ['agentOperations', 'Agent 按键和鼠标操作', '#agent-operations'],
+  ['agentDecisions', '系统一与系统二的决策', '#agent-decisions'],
   ['worldPaths', '场景中的路径和流动箭头', '#corti-tactical-canvas, #corti-tactical-legend'],
   ['worldActions', '攻击、采集和交互标记', '#agent-action-markers'],
   ['worldMarkers', '开发者自定义点线面', '#agent-custom-markers'],

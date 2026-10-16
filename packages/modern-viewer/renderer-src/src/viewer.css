@@ -25,6 +25,10 @@ body[data-obs-overlay=true] #viewer-canvas{background:transparent;pointer-events
 #agent-route-map canvas{display:block;width:100%;height:156px;margin-top:7px;border-radius:8px;background:#ffffff05}
 .agent-marker-legend{display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:7px;font-size:10px}
 #agent-operations{left:18px;bottom:16px;width:min(220px,calc(100vw - 36px))}
+#agent-decisions{left:18px;top:260px;width:min(260px,calc(100vw - 36px))}
+.agent-decision-rows{display:grid;gap:8px;margin-top:8px}
+.agent-decision-row{display:grid;gap:4px;border-left:3px solid #a6b7d4;padding-left:8px;font-size:12px;overflow-wrap:anywhere}
+.agent-decision-row small{font-size:10px;color:#a6b7c7}
 .agent-control-keys{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}.agent-control-keys span{padding:2px 7px;border:1px solid #7796af30;border-radius:5px;color:#6e889e;background:#ffffff05;font-size:11px}
 .agent-control-keys span[data-active=true]{border-color:#6cddc4;background:#4ee6b12b;color:#c7fff2}
 .agent-mouse{display:flex;align-items:center;gap:5px;margin-top:7px}.agent-mouse>span{padding:3px 12px;border-radius:7px;border:1px solid #7796af30;background:#ffffff08;color:#7a95a9;font-size:11px}

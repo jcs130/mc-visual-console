@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeAgentVisualUpdate, normalizeVisualRoute, visualPoint, visualSubject,
-  sameVisualSubject, visualText, normalizeVisualFlight } from '../src/modern-viewer/agent-visual-protocol.js';
+  sameVisualSubject, visualText, normalizeVisualFlight, normalizeVisualDecision } from '../src/modern-viewer/agent-visual-protocol.js';
 
 /** A trusted, in-process fan-out for action players and their Eyes/live views.
  * Register the actual action bot, never infer its thoughts/inventory from an Eye.
@@ -66,7 +66,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     if (!sameVisualSubject(record?.subject, subject)) {
       hub.remove(owner);
       record = { subject, epoch: randomUUID(), dimension: bot.game?.dimension ?? null, intent: null, route: null,
-        candidates: [], markers: [], pointer: null, camera: null, presentation: null, presentationRevision: 0, trail: [], operations: [], input: {} };
+        candidates: [], markers: [], decisions: [], pointer: null, camera: null, presentation: null, presentationRevision: 0, trail: [], operations: [], input: {} };
       if (!hub.put(owner, record)) { record = null; return null; }
     }
     return record;
@@ -81,6 +81,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     r.candidates = r.candidates.filter(v => v.until > time);
     r.markers = r.markers.filter(v => v.until > time);
     r.operations = r.operations.filter(v => v.until > time);
+    r.decisions = r.decisions.filter(v => v.until > time);
     r.trail = r.trail.filter(v => time - v.at <= 8_000);
   }
   function publish(update) {
@@ -98,6 +99,12 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     return { ok: true, code: 'AGENT_VISUAL_ACCEPTED', subject: { ...r.subject }, accepted: Object.keys(parsed.value) };
   }
   publishers.set(bot, publish);
+  // This owner-bot event is separate from public drawing updates, which cannot supply decision attribution.
+  on('viewer:decision', value => {
+    const decision = normalizeVisualDecision(value), r = refreshRecord();
+    if (!decision || !r) return;
+    r.decisions = [...r.decisions.filter(row => row.source !== decision.source), { ...decision, until: now() + decision.ttlMs }].slice(-4);
+  });
   on('viewer:agent', (update, acknowledge) => { const result = publish(update); if (typeof acknowledge === 'function') acknowledge(result); });
   on('spawn', () => { ended = false; hub.remove(owner); record = null; refreshRecord(); flush(true); });
   on('respawn', () => { hub.remove(owner); record = null; flush(true); });
@@ -138,7 +145,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     const time = now(), position = visualPoint(bot.entity.position);
     if (r.dimension !== (bot.game?.dimension ?? null)) {
       r.dimension = bot.game?.dimension ?? null; r.epoch = randomUUID();
-      r.trail = []; r.intent = null; r.route = null; r.candidates = []; r.markers = []; r.operations = []; r.pointer = null; r.camera = null; r.presentation = null;
+      r.trail = []; r.intent = null; r.route = null; r.candidates = []; r.markers = []; r.decisions = []; r.operations = []; r.pointer = null; r.camera = null; r.presentation = null;
     }
     const previous = r.trail.at(-1);
     if (position && (!previous || Math.hypot(previous.x - position.x, previous.y - position.y, previous.z - position.z) >= .3)) {
@@ -168,6 +175,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     if (r) Object.assign(frame, {
       intent: remaining(r.intent, time), route: remaining(r.route, time), camera: remaining(r.camera, time),
       candidates: r.candidates.map(v => remaining(v, time)), markers: r.markers.map(v => remaining(v, time)),
+      decisions: r.decisions.map(v => remaining(v, time)),
       trail: r.trail.map(({ at, ...p }) => p), input: { ...r.input, operations: r.operations.map(v => remaining(v, time)), pointer: remaining(r.pointer, time) },
       presentation: presentation ? { id: presentation.id, revision: r.presentationRevision, kind: presentation.kind,
         title: presentation.title, caption: presentation.caption, remainingMs: Math.max(0, presentation.until - time) } : null,

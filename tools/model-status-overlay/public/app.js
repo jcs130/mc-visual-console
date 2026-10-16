@@ -251,7 +251,7 @@ function renderOverview(age) {
     const roleLabel = m.role === "system2" ? "主决策" : "快决策";
     const values = [[m.role === "system2" ? "系统 2" : "系统 1", `${roleLabel}${m.active > 0 ? ` · 进行中 ${integer(m.active)}` : ""}`],
       duration(m.ttftMs), duration(m.elapsedMs), [m.cacheSamples > 0 ? ratio(m.cacheRatio) : dash, `${integer(m.cacheSamples)} 个样本`]];
-    const row = document.createElement("div"); row.className = "response-row";
+    const row = document.createElement("div"); row.className = "response-row"; row.dataset.decisionSource = m.role;
     for (const [index, value] of values.entries()) {
       const cell = document.createElement("div"), label = document.createElement("span"), strong = document.createElement("strong"), small = document.createElement("small");
       cell.className = "response-cell"; label.className = "mobile-label";

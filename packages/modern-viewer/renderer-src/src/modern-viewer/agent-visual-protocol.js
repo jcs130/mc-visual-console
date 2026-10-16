@@ -4,6 +4,8 @@
 export const AGENT_VISUAL_SCHEMA = 1;
 export const AGENT_VISUAL_COLORS = Object.freeze({ path: '#4ee6b1', trail: '#63b8ff', candidate: '#a6b7d4',
   attack: '#ff697b', gather: '#ffbe55', interact: '#c59aff', info: '#b7e7ff' });
+export const AGENT_DECISION_COLORS = Object.freeze({ system1: '#ffb454', system2: '#63b8ff', human: '#d5a6ff', unknown: '#a6b7d4' });
+export const AGENT_DECISION_LABELS = Object.freeze({ system1: '系统一', system2: '系统二', human: '人工', unknown: '来源未提供' });
 export const AGENT_VISUAL_LIMITS = Object.freeze({ markers: 48, vertices: 1024, route: 128,
   candidates: 4, imageBytes: 512 * 1024, sceneNodes: 64, drawingBytes: 64 * 1024 });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,6 +18,15 @@ export function visualSubject(v) {
     ? { playerUuid: v.playerUuid.toLowerCase(), playerName: v.playerName, entityId: v.entityId } : null;
 }
 export const sameVisualSubject = (a, b) => !!a && !!b && a.playerUuid.toLowerCase() === b.playerUuid.toLowerCase() && a.entityId === b.entityId;
+/** Host-authored selection/admission only. Packet kind and proximity never identify a model. */
+export function normalizeVisualDecision(v) {
+  if (!v || typeof v !== 'object' || !['accepted', 'rejected'].includes(v.status)) return null;
+  const id = visualText(v.id, 80), label = visualText(v.label, 100);
+  if (!id || !label) return null;
+  const source = Object.hasOwn(AGENT_DECISION_COLORS, v.source) ? v.source : 'unknown';
+  return { id, source, status: v.status, label, from: visualPoint(v.from), target: visualPoint(v.target),
+    ttlMs: visualTtl(v.ttlMs, 8000, 15_000) };
+}
 /** Optional controller telemetry. Never infer key presses from a route or a spell receipt. */
 export function normalizeVisualFlight(v) {
   if (!v || typeof v.allowed !== 'boolean' || typeof v.flying !== 'boolean') return null;

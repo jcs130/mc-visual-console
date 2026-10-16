@@ -27,6 +27,10 @@ html.dashboard-root,body.dashboard{height:auto;min-height:100%;overflow:auto;bac
 .response-cell{min-width:0;display:flex;flex-direction:column;gap:5px}
 .response-cell strong{font:500 19px var(--mono);color:#d9eee2;white-space:nowrap}
 .response-cell:first-child strong{font:600 13px "Segoe UI","Microsoft YaHei",sans-serif}
+.response-row[data-decision-source=system1]{border-left:3px solid #ffb454;padding-left:10px}
+.response-row[data-decision-source=system2]{border-left:3px solid #63b8ff;padding-left:10px}
+.response-row[data-decision-source=system1] .response-cell:first-child strong{color:#ffb454}
+.response-row[data-decision-source=system2] .response-cell:first-child strong{color:#63b8ff}
 .response-cell small{font-size:10px;color:#8fa89a;line-height:1.5}
 .response-cell .mobile-label{display:none}
 .section-caption{font-size:11px;line-height:1.6;color:#90a69a;margin:12px 0 0}

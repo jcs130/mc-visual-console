@@ -87,7 +87,7 @@ export function installViewerLayout({document, window, photo = false, overlay = 
     if (tools.lastElementChild !== settings) { tools.append(clean, settings); }
     // Inputs and transient messages have independent viewport anchors. A live
     // chat row must never reflow the input panel or scroll it with the rail.
-    for (const id of ['corti-minimap', 'native-terrain-map', 'corti-scoreboard', 'corti-effects', 'corti-content-status', 'corti-held-map']) move(document.getElementById(id), left);
+    for (const id of ['corti-minimap', 'native-terrain-map', 'corti-scoreboard', 'corti-effects', 'agent-decisions', 'corti-content-status', 'corti-held-map']) move(document.getElementById(id), left);
     for (const id of ['corti-skills', 'agent-intent', 'agent-route-map', 'agent-presentation', 'native-live-inspector']) move(document.getElementById(id), right);
     measureToolbar();
   }
