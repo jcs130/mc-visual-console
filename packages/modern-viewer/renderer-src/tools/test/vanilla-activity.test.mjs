@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { observeVanillaActivity } from '../../host/vanilla-activity.mjs'
+import { parseNativeItemStack } from '../../src/native-viewer/native-item-stack.js'
 
 const uuid = '6e8b395e-4349-3d44-99f5-b7488825e426'
 const stack = (id, count) => ({itemId:id,itemCount:count,components:[],removeComponents:[]})
@@ -18,6 +19,47 @@ function fixture() {
   return {bot,client,activity,tick:()=>{time+=100},packet:(name,value)=>client.emit('packet',value,{name,state:'play'})}
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve))
+
+test('grouped gains and losses preserve exact observed representatives independently of totals',async()=>{
+  const f=fixture(),send=async rows=>{f.packet('window_items',{windowId:0,items:rows,carriedItem:{itemCount:0}});await settle()}
+  await send(inventory(36,0))
+  const rows=inventory(36,2);rows[37]=stack(1,3)
+  const original=structuredClone(rows)
+  await send(rows)
+  let entry=f.activity.snapshot().items.at(-1)
+  assert.equal(entry.delta,5);assert.equal(entry.item.count,2)
+  assert.equal(parseNativeItemStack(entry.item).count,2)
+  assert.deepEqual(rows,original,'wire observations remain immutable')
+  rows[36]=stack(1,1);await send(rows)
+  entry=f.activity.snapshot().items.at(-1);assert.equal(entry.delta,-1);assert.equal(parseNativeItemStack(entry.item).count,1)
+  await send(inventory(36,0))
+  entry=f.activity.snapshot().items.at(-1);assert.equal(entry.delta,-4);assert.equal(parseNativeItemStack(entry.item).count,1)
+  const revision=f.activity.snapshot().revision
+  f.bot.emit('respawn');assert.ok(f.activity.snapshot().revision>revision);assert.deepEqual(f.activity.snapshot().items,[])
+  f.activity.close()
+})
+
+test('distinct typed component/removal patches keep their actual samples; malformed observations invalidate the baseline',async()=>{
+  const f=fixture(),send=async rows=>{f.packet('window_items',{windowId:0,items:rows,carriedItem:{itemCount:0}});await settle()}
+  await send(inventory(36,0))
+  const rows=inventory(36,2);rows[36].components=[{type:'damage',data:1}]
+  rows[37]={...stack(1,3),removeComponents:[{type:'damage'}]}
+  await send(rows)
+  const entries=f.activity.snapshot().items
+  assert.deepEqual(entries.map(e=>e.delta),[2,3])
+  assert.equal(parseNativeItemStack(entries[0].item).components['minecraft:damage'],1)
+  assert.deepEqual(parseNativeItemStack(entries[1].item).components['!minecraft:damage'],{})
+  const changed=structuredClone(rows);changed[36].components=[{type:'damage',data:2}];await send(changed)
+  assert.equal(f.activity.snapshot().items.length,2,'a same-name component change is not income')
+  for(const invalid of [{itemId:1,itemCount:2},{itemId:999,itemCount:2,components:[]},undefined]){
+    const bad=inventory(36,2);bad[36]=invalid;await send(bad)
+    assert.equal(f.activity.snapshot().inventoryReady,false)
+    assert.equal(f.activity.snapshot().items.length,2)
+    await send(rows);assert.equal(f.activity.snapshot().items.length,2,'recovery establishes a new baseline')
+  }
+  await send([]);assert.equal(f.activity.snapshot().inventoryReady,false)
+  f.activity.close()
+})
 
 test('server inventory initial sync and own slot/cursor moves do not invent income; real change is component-bound',async()=>{
   const f=fixture(); f.packet('window_items',{windowId:0,stateId:1,items:inventory(),carriedItem:{itemCount:0}});await settle()

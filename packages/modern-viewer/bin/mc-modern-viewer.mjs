@@ -49,7 +49,7 @@ const bot = mineflayer.createBot({
 bot.once('spawn', () => {
   console.log('[mc-modern-viewer] 已进入世界，挂画面')
   startModernViewer(() => bot, { port: VIEWER_PORT })
-  console.log(`[mc-modern-viewer] 画面：http://127.0.0.1:${VIEWER_PORT}/  （/ 第一人称 · /third/ 环绕 · /dungeon/ 2.5D）`)
+  console.log(`[mc-modern-viewer] 画面：http://127.0.0.1:${VIEWER_PORT}/  （/ 第一人称 · /third/ 环绕 · /3dview/ 三维）`)
 })
 bot.on('kicked', (reason) => console.error('[mc-modern-viewer] 被踢：', reason))
 bot.on('error', (err) => console.error('[mc-modern-viewer] 出错：', err?.message ?? err))

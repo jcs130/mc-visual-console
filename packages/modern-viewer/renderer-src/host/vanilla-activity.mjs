@@ -5,6 +5,8 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const finite=value=>typeof value==='number'&&Number.isFinite(value)
 const point=value=>value&&['x','y','z'].every(key=>finite(value[key]))?Object.fromEntries(['x','y','z'].map(key=>[key,value[key]])):null
 const text=(value,limit=160)=>{try{return String(value??'').replace(/§[0-9a-fk-or]/gi,'').slice(0,limit)}catch{return ''}}
+const reference=(item,count)=>({name:`minecraft:${item.name}`,count,reference:{schemaVersion:1,
+  source:'vanilla_recipe_catalog',minecraftVersion:'1.21.1',appearance:'original_default',id:`minecraft:${item.name}`,registryId:item.id}})
 
 // A wire Slot is not a predicted Mineflayer Window slot. Preserve its complete
 // component patch; the original item renderer decides which visuals it knows.
@@ -41,7 +43,7 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
     for(const item of [...slots].filter(([slot])=>slot>0&&slot<=45).map(([,item])=>item).concat(cursor?[cursor]:[])) {
       if(!item?.snbt)continue
       const key=item.snbt.replace(/,count:\d+/,',count:1')
-      const row=result.get(key)??{item:{...item,count:1},count:0};row.count+=item.count;result.set(key,row)
+      const row=result.get(key)??{item,count:0};row.count+=item.count;result.set(key,row)
     }
     return result
   }
@@ -70,17 +72,20 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
   }
   const on=(target,name,fn)=>{target?.on?.(name,fn);hooks.push([target,name,fn])}
   const decode=wire=>vanillaWireItem(wire,bot.registry)
+  const unknownOwned=Object.freeze({snbt:null})
+  const decodeOwned=wire=>wire?.itemCount===0?null:decode(wire)??unknownOwned
   const recordSlots=(value,full)=>{
     const win=bot.currentWindow
     if(value.windowId===0) {
-      if(full&&value.items?.length===46){for(let n=0;n<46;n++)slots.set(n,decode(value.items[n]));inventoryReady=true;cursor=decode(value.carriedItem);if(!(win?.id>0))awaitingOwnSnapshot=false}
-      else if(!full&&Number.isInteger(value.slot)&&value.slot>=0&&value.slot<=45)slots.set(value.slot,decode(value.item))
-    } else if([-1,255].includes(value.windowId)&&!full)cursor=decode(value.item)
+      if(full&&value.items?.length===46){for(let n=0;n<46;n++)slots.set(n,decodeOwned(value.items[n]));inventoryReady=true;cursor=decodeOwned(value.carriedItem);if(!(win?.id>0))awaitingOwnSnapshot=false}
+      else if(!full&&Number.isInteger(value.slot)&&value.slot>=0&&value.slot<=45)slots.set(value.slot,decodeOwned(value.item))
+      else if(full){inventoryReady=false;baseline=null}
+    } else if([-1,255].includes(value.windowId)&&!full)cursor=decodeOwned(value.item)
     else if(win&&value.windowId===win.id&&Number.isInteger(win.inventoryStart)&&win.inventoryEnd-win.inventoryStart===36) {
       const rows=full?value.items?.map((item,slot)=>({slot,item})):[value]
       for(const row of rows??[])if(row.slot>=win.inventoryStart&&row.slot<win.inventoryEnd)
-        slots.set(9+row.slot-win.inventoryStart,decode(row.item))
-      if(full)cursor=decode(value.carriedItem)
+        slots.set(9+row.slot-win.inventoryStart,decodeOwned(row.item))
+      if(full)cursor=decodeOwned(value.carriedItem)
     }
     if([...slots.values(),cursor].some(item=>item&&!item.snbt)){inventoryReady=false;baseline=null}
     changed()
@@ -160,13 +165,14 @@ export function observeVanillaActivity(bot,{now=Date.now,onChange=()=>{}}={}) {
     recipeKey=key;const best=new Map()
     for(const variants of Object.values(bot.registry?.recipes??{}).slice(0,4096))for(const recipe of variants.slice(0,32)) {
       const source=recipe.ingredients??recipe.inShape?.flat(),needs=new Map()
+      if(!Array.isArray(source)||source.length>9||!Number.isSafeInteger(recipe.result?.count)||recipe.result.count<1)continue
       for(const ingredient of source??[]) {const id=typeof ingredient==='number'?ingredient:ingredient?.id;if(Number.isSafeInteger(id)&&id>=0)needs.set(id,(needs.get(id)??0)+1)}
       const output=bot.registry?.items?.[recipe.result?.id];if(!output||!needs.size)continue
-      let matched=0,total=0;const missing=[]
-      for(const [id,count]of needs){const item=bot.registry.items[id];if(!item){matched=0;break};const have=counts.get(`minecraft:${item.name}`)??0;matched+=Math.min(count,have);total+=count;if(have<count)missing.push({name:`minecraft:${item.name}`,count:count-have})}
+      let matched=0,total=0;const missing=[],materials=[]
+      for(const [id,count]of needs){const item=bot.registry.items[id];if(!item){matched=0;break};const have=counts.get(`minecraft:${item.name}`)??0;matched+=Math.min(count,have);total+=count;materials.push(reference(item,count));if(have<count)missing.push(reference(item,count-have))}
       if(!matched)continue
       const requiresTable=recipe.inShape?recipe.inShape.length>2||recipe.inShape.some(row=>row.length>2):(source?.length??0)>4
-      const row={output:{name:`minecraft:${output.name}`,count:recipe.result.count},missing,requiresTable,tableOpen:table,
+      const row={output:reference(output,recipe.result.count),materials,missing,requiresTable,tableOpen:table,
         craftable:missing.length===0&&(!requiresTable||table),matched,total,source:'vanilla_recipe_catalog'}
       const old=best.get(row.output.name);if(!old||row.matched/row.total>old.matched/old.total)best.set(row.output.name,row)
     }

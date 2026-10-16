@@ -128,7 +128,8 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const ui = createInterface({ document })
   const deathUi=createNativeDeathUi({document})
   const activityUi = createNativeActivityUi({ document, itemName: item => ui.itemName?.(item) ?? item?.name,
-    renderItem: (target, item) => ui.renderObservedItem?.(target, item) })
+    renderItem: (target, item, options) => ui.renderObservedItem?.(target, item, options),
+    renderReferenceItem: (target, item, options) => ui.renderReferenceItem?.(target, item, options) })
   quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5,preference:sceneSettings.quality })
   const updateDiagnosticText = () => {
     const d = lastDiagnostics
