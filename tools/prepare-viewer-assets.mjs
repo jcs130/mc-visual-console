@@ -39,7 +39,7 @@ export async function loadAssetPack(id, assetRoot = SHARED_ASSET_ROOT) {
   const directory = path.resolve(assetRoot, id);
   const manifestBytes = await fs.readFile(path.join(directory, 'pack.json'));
   const manifest = JSON.parse(manifestBytes);
-  if (manifest.schemaVersion !== 1 || manifest.id !== id || !['java', 'native', 'sounds'].includes(manifest.kind) ||
+  if (manifest.schemaVersion !== 1 || manifest.id !== id || !['java', 'native', 'sounds', 'bgm'].includes(manifest.kind) ||
       !manifest.files || typeof manifest.files !== 'object' || Array.isArray(manifest.files)) throw Error('ASSET_PACK_MANIFEST_INVALID');
   const entries = Object.entries(manifest.files);
   if (manifest.fileCount !== entries.length || !entries.length) throw Error('ASSET_PACK_COUNT_INVALID');
@@ -65,13 +65,28 @@ export async function verifyAssetPack(id, assetRoot = SHARED_ASSET_ROOT) {
     const bytes = await fs.readFile(file);
     if (bytes.length !== expected.bytes || hash(bytes) !== expected.sha256) throw Error('ASSET_PACK_HASH_MISMATCH: ' + relative);
   });
+  if (Object.hasOwn(pack.manifest.files, 'public/sounds/custom-bgm.json')) {
+    const catalog = JSON.parse(await fs.readFile(path.join(pack.directory, 'public/sounds/custom-bgm.json'), 'utf8'));
+    if (catalog.version !== 1 || !Array.isArray(catalog.tracks)) throw Error('ASSET_PACK_BGM_CATALOG_INVALID');
+    for (const track of catalog.tracks) {
+      if (typeof track.file !== 'string' || !Object.hasOwn(pack.manifest.files, `public/sounds/${track.file}`))
+        throw Error('ASSET_PACK_BGM_RESOURCE_MISSING: ' + String(track.id));
+    }
+  }
   return pack;
 }
 
 async function copyAssetPack(pack, output) {
   // Publish catalog metadata after its files, so readers cannot observe a new
   // catalog whose audio is still being copied. Preserve private custom tracks.
-  const catalog = 'public/sounds/manifest.json';
+  const catalogs = ['public/sounds/manifest.json', 'public/sounds/custom-bgm.json'];
+  if (pack.manifest.kind === 'bgm') {
+    const previous = await fs.readFile(path.join(output, 'public/sounds/custom-bgm.json')).catch(error => {
+      if (error.code !== 'ENOENT') throw error; return null;
+    });
+    if (previous && hash(previous) !== pack.manifest.files['public/sounds/custom-bgm.json']?.sha256)
+      return 'custom-catalog-preserved';
+  }
   const copy = async ([relative, expected]) => {
     const bytes = await fs.readFile(path.join(pack.directory, relative));
     if (bytes.length !== expected.bytes || hash(bytes) !== expected.sha256) throw Error('ASSET_PACK_CHANGED_DURING_COPY: ' + relative);
@@ -79,13 +94,16 @@ async function copyAssetPack(pack, output) {
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.writeFile(destination, bytes);
   };
-  await eachFile(pack.entries.filter(([relative]) => relative !== catalog), copy);
-  const manifest = pack.entries.find(([relative]) => relative === catalog);
-  if (manifest) await copy(manifest);
+  await eachFile(pack.entries.filter(([relative]) => !catalogs.includes(relative)), copy);
+  for (const catalog of catalogs) {
+    const manifest = pack.entries.find(([relative]) => relative === catalog);
+    if (manifest) await copy(manifest);
+  }
+  return 'copied';
 }
 
 /** Also used by direct renderer builds: updating visuals must not omit audio. */
-export async function prepareSoundAssetPack({ minecraftVersion, outputDirectory, assetRoot = SHARED_ASSET_ROOT }) {
+export async function prepareSoundAssetPack({ minecraftVersion, outputDirectory, assetRoot = SHARED_ASSET_ROOT, originalBgm = assetRoot === SHARED_ASSET_ROOT }) {
   if (!['1.20.6', '1.21.1'].includes(minecraftVersion)) throw Error('ASSET_PACK_SOUND_VERSION_UNSUPPORTED');
   const output = path.resolve(outputDirectory), source = path.resolve(assetRoot);
   if (inside(source, output) || inside(output, source)) throw Error('ASSET_PACK_OUTPUT_OVERLAPS_SOURCE');
@@ -96,21 +114,27 @@ export async function prepareSoundAssetPack({ minecraftVersion, outputDirectory,
     if (previous && JSON.parse(previous).minecraftVersion !== minecraftVersion) throw Error('ASSET_PACK_OUTPUT_VERSION_MISMATCH');
   }
   await copyAssetPack(audio, output);
+  let bgm = null;
+  if (originalBgm) {
+    const pack = await verifyAssetPack('original-bgm', assetRoot);
+    bgm = { id: pack.manifest.id, status: await copyAssetPack(pack, output), manifestSha256: pack.manifestSha256,
+      fileCount: pack.manifest.fileCount, bytes: pack.manifest.bytes };
+  }
   const receipt = { schemaVersion: 1, minecraftVersion, preparedAt: new Date().toISOString(),
     id: audio.manifest.id, manifestSha256: audio.manifestSha256, fileCount: audio.manifest.fileCount,
-    bytes: audio.manifest.bytes, source: audio.manifest.source ?? null };
+    bytes: audio.manifest.bytes, source: audio.manifest.source ?? null, originalBgm: bgm };
   await fs.writeFile(path.join(output, 'viewer-audio-assets.json'), JSON.stringify(receipt, null, 2) + '\n');
   return receipt;
 }
 
-export async function prepareAssetPack({ id, outputDirectory, sounds = true, preset = null, assetRoot = SHARED_ASSET_ROOT, buildJava = true }) {
+export async function prepareAssetPack({ id, outputDirectory, sounds = true, preset = null, assetRoot = SHARED_ASSET_ROOT, buildJava = true, originalBgm = assetRoot === SHARED_ASSET_ROOT }) {
   if (preset !== null && preset !== 'qiandengji') throw Error('ASSET_PACK_PRESET_INVALID');
   const output = path.resolve(outputDirectory);
   for (const source of [path.resolve(assetRoot), rendererRoot]) {
     if (inside(source, output) || inside(output, source)) throw Error('ASSET_PACK_OUTPUT_OVERLAPS_SOURCE');
   }
   const primary = await verifyAssetPack(id, assetRoot);
-  if (primary.manifest.kind === 'sounds') throw Error('ASSET_PACK_SELECT_VISUAL_PACK');
+  if (['sounds', 'bgm'].includes(primary.manifest.kind)) throw Error('ASSET_PACK_SELECT_VISUAL_PACK');
   if (primary.manifest.kind !== 'java' && preset) throw Error('ASSET_PACK_OPTIONS_REQUIRE_JAVA');
   if (sounds && !['java','native'].includes(primary.manifest.kind)) throw Error('ASSET_PACK_OPTIONS_REQUIRE_JAVA');
   const packs = [primary];
@@ -118,13 +142,14 @@ export async function prepareAssetPack({ id, outputDirectory, sounds = true, pre
     const audio = await verifyAssetPack(primary.manifest.kind==='native'?`java-${primary.manifest.minecraftVersion}-sounds`:id+'-sounds', assetRoot);
     if (audio.manifest.kind !== 'sounds' || audio.manifest.minecraftVersion !== primary.manifest.minecraftVersion) throw Error('ASSET_PACK_SOUND_VERSION_MISMATCH');
     packs.push(audio);
+    if (originalBgm) packs.push(await verifyAssetPack('original-bgm', assetRoot));
   }
   for (const relative of ['viewer-assets.json', 'public/asset-source.json', 'native-assets.json']) {
     const previous = await fs.readFile(path.join(output, relative), 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return null; });
     if (previous && JSON.parse(previous).minecraftVersion !== primary.manifest.minecraftVersion) throw Error('ASSET_PACK_OUTPUT_VERSION_MISMATCH');
   }
   await fs.mkdir(output, { recursive: true });
-  for (const pack of packs) await copyAssetPack(pack, output);
+  for (const pack of packs) pack.copyStatus = await copyAssetPack(pack, output);
   if (primary.manifest.kind === 'java' && buildJava) {
     // Selected packs have already been verified/copied above, including an
     // explicit silent deployment. Do not duplicate that work in the child.
@@ -137,7 +162,7 @@ export async function prepareAssetPack({ id, outputDirectory, sounds = true, pre
   const receipt = { schemaVersion: 1, minecraftVersion: primary.manifest.minecraftVersion, kind: primary.manifest.kind,
     preparedAt: new Date().toISOString(), preset, packs: packs.map(pack => ({ id: pack.manifest.id,
       manifestSha256: pack.manifestSha256, fileCount: pack.manifest.fileCount, bytes: pack.manifest.bytes,
-      source: pack.manifest.source ?? null })) };
+      source: pack.manifest.source ?? null, status: pack.copyStatus })) };
   await fs.writeFile(path.join(output, 'viewer-assets.json'), JSON.stringify(receipt, null, 2) + '\n');
   return receipt;
 }

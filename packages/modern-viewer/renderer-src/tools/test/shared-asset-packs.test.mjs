@@ -128,6 +128,46 @@ test('direct builds can restore matched audio, preserve private music and reject
   await assert.rejects(prepareSoundAssetPack({ ...f, minecraftVersion: '1.20.6' }), /VERSION_MISMATCH/);
 });
 
+async function bgmFixture(f) {
+  const root = path.join(f.assetRoot, 'original-bgm'), data = Buffer.from('explicit OGG test fixture');
+  const catalog = Buffer.from(JSON.stringify({ version: 1, tracks: [{ id: 'stock', title: 'Stock test', file: 'custom-bgm/stock.ogg' }] }));
+  await fs.mkdir(path.join(root, 'public/sounds/custom-bgm'), { recursive: true });
+  const files = { 'public/sounds/custom-bgm/stock.ogg': data, 'public/sounds/custom-bgm.json': catalog };
+  for (const [name, bytes] of Object.entries(files)) await fs.writeFile(path.join(root, name), bytes);
+  await fs.writeFile(path.join(root, 'pack.json'), JSON.stringify({ schemaVersion: 1, id: 'original-bgm', kind: 'bgm',
+    fileCount: 2, bytes: data.length + catalog.length, files: Object.fromEntries(Object.entries(files).map(([name, bytes]) =>
+      [name, { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }])) }));
+  return root;
+}
+
+test('version-independent original BGM is copied completely and cannot replace a personal catalog', async t => {
+  const f = await fixture(t); await audioFixture(f); await bgmFixture(f);
+  const result = await prepareSoundAssetPack({ ...f, minecraftVersion: '1.20.6', originalBgm: true });
+  assert.equal(result.originalBgm.status, 'copied');
+  assert.equal((JSON.parse(await fs.readFile(path.join(f.outputDirectory, 'public/sounds/custom-bgm.json')))).tracks.length, 1);
+  await fs.writeFile(path.join(f.outputDirectory, 'public/sounds/custom-bgm.json'), '{"version":1,"tracks":[]}');
+  const next = await prepareSoundAssetPack({ ...f, minecraftVersion: '1.20.6', originalBgm: true });
+  assert.equal(next.originalBgm.status, 'custom-catalog-preserved');
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(f.outputDirectory, 'public/sounds/custom-bgm.json'))).tracks, []);
+});
+
+test('a committed BGM catalog cannot advertise audio absent from its pack', async t => {
+  const f = await fixture(t), root = await bgmFixture(f);
+  const manifest = JSON.parse(await fs.readFile(path.join(root, 'pack.json')));
+  const removed = manifest.files['public/sounds/custom-bgm/stock.ogg'];
+  delete manifest.files['public/sounds/custom-bgm/stock.ogg']; manifest.fileCount--; manifest.bytes -= removed.bytes;
+  await fs.writeFile(path.join(root, 'pack.json'), JSON.stringify(manifest));
+  await assert.rejects(verifyAssetPack('original-bgm', f.assetRoot), /BGM_RESOURCE_MISSING/);
+});
+
+test('the shared original BGM pack is independent of Minecraft version and includes all eight tracks', async () => {
+  const pack = await verifyAssetPack('original-bgm');
+  assert.equal(pack.manifest.kind, 'bgm');
+  const catalog = JSON.parse(await fs.readFile(path.join(pack.directory, 'public/sounds/custom-bgm.json')));
+  assert.equal(catalog.tracks.length, 8);
+  assert.equal(pack.entries.filter(([name]) => name.endsWith('.ogg')).length, 8);
+});
+
 test('the committed Java pack contains baked states and every original icon, texture and render input', async () => {
   const { directory, manifest } = await verifyAssetPack('java-1.20.6');
   for (const relative of ['public/blocksStates/1.20.6.json', 'public/textures/1.20.6.png',
