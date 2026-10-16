@@ -36,3 +36,13 @@ export async function installItemAppearanceAssets(source,root) {
   for(const [name,bytes]of result.files) {const dest=path.join(target,name);await mkdir(path.dirname(dest),{recursive:true});await writeFile(dest,bytes,{flag:'wx'});}
   return verifyItemAppearanceAssets(root);
 }
+
+/** Qiandengji builds include their versioned original art without a separate
+ * install step. Generic consumers remain opt-in; existing or corrupt packs
+ * are verified, never overwritten or silently replaced. */
+export async function prepareItemAppearanceAssets(root,{qiandengji=false,source}={}) {
+  const installed=await verifyItemAppearanceAssets(root);
+  if(installed || !qiandengji)return installed;
+  if(!source)throw Error('ITEM_APPEARANCE_SOURCE_REQUIRED');
+  return installItemAppearanceAssets(source,root);
+}

@@ -9,7 +9,7 @@ import {runInNewContext} from 'node:vm';
 import * as THREE from 'three';
 import {ItemAppearanceRegistry,itemCustomModelData,itemAppearanceKey,sha256Bytes,validateItemAppearanceManifest,loadItemAppearancePack,installItemAppearanceRenderer} from '../../src/modern-viewer/item-appearances.js';
 import {createPaperHeldItem,PaperYsmHeldItems,paperYsmItemMount} from '../../src/modern-viewer/paper-ysm-items.js';
-import {readItemAppearanceAssets,installItemAppearanceAssets,verifyItemAppearanceAssets} from '../item-appearance-assets.mjs';
+import {readItemAppearanceAssets,installItemAppearanceAssets,verifyItemAppearanceAssets,prepareItemAppearanceAssets} from '../item-appearance-assets.mjs';
 
 const root=fileURLToPath(new URL('../../../asset-packs/qiandengji-items-1.20.6/',import.meta.url));
 const pack=await readItemAppearanceAssets(root);
@@ -144,4 +144,21 @@ test('installs the original integer-component item pack for 1.21.1 without rewri
     const r=await registry();const dagger=r.create(item(731002),'thirdperson');
     assert.equal(dagger.root.userData.appearanceId,'qiandengji:blink_dagger');dagger.dispose();r.clear();
   }finally{await rm(tmp,{recursive:true,force:true});}
+});
+for(const version of ['1.20.6','1.21.1'])
+test('Qiandengji '+version+' preparation includes the original pack once while generic builds stay opt-in',async()=>{
+  const tmp=await mkdtemp(path.join(tmpdir(),'qiandengji-item-prepare-'));
+  try{
+    await mkdir(path.join(tmp,'public'));await writeFile(path.join(tmp,'public/asset-source.json'),JSON.stringify({minecraftVersion:version}));
+    assert.equal(await prepareItemAppearanceAssets(tmp),null);
+    const first=await prepareItemAppearanceAssets(tmp,{qiandengji:true,source:root});assert.equal(first.items,5);
+    assert.deepEqual(await prepareItemAppearanceAssets(tmp,{qiandengji:true,source:root}),first);
+    const filename=path.join(tmp,'public/item-appearances/models/focus_wand.json');
+    await writeFile(filename,'{}');
+    await assert.rejects(()=>prepareItemAppearanceAssets(tmp,{qiandengji:true,source:root}),/HASH_MISMATCH/);
+    assert.equal(await readFile(filename,'utf8'),'{}');
+  }finally{
+    const absolute=path.resolve(tmp);assert(absolute.startsWith(path.resolve(tmpdir())+path.sep));
+    await rm(absolute,{recursive:true,force:true});
+  }
 });

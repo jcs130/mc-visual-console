@@ -2,6 +2,7 @@ import {patchRendererMovement} from './minecraft-viewer-movement-patch.mjs';
 /** Build the portable modern viewer source against Minecraft 1.20.6 data. */
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { mkdtemp, mkdir, readFile, copyFile, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -17,8 +18,8 @@ import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
 import { verifyTextDisplayAssets } from './text-display-assets.mjs'
 import { viewerSourceDigest } from './viewer-build-source.mjs'
 import { patchObsRendererAlpha } from './minecraft-viewer-obs-alpha.mjs'
-import { verifyItemAppearanceAssets } from './item-appearance-assets.mjs'
 import { viewerVersionCss } from '../host/viewer-version.mjs'
+import { prepareItemAppearanceAssets } from './item-appearance-assets.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -63,7 +64,10 @@ if (!['1.20.6', '1.21.1'].includes(version) || !sourceManifest.clientJarSha256) 
 }
 const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256,{version})
 const textDisplays = await verifyTextDisplayAssets(outputRoot,sourceManifest.clientJarSha256,version)
-const itemAppearances = await verifyItemAppearanceAssets(outputRoot)
+const itemAppearances = await prepareItemAppearanceAssets(outputRoot, {
+  qiandengji: options.includes('--preset=qiandengji'),
+  source: fileURLToPath(new URL('../../asset-packs/qiandengji-items-1.20.6/', import.meta.url)),
+})
 const replacements = {
   'blockStatesModels.json': 'blockStatesModels.json',
   'blocksAtlases.json': 'blocksAtlases.json',

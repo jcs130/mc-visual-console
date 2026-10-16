@@ -4,7 +4,7 @@ The existing same-connection YSM bridge accepts attested YSM 2.4.1 / protocol 2.
 
 The optional original item pack uses integer `minecraft:custom_model_data`, base-item identities and original model/display transforms. Both supported versions carry this format. Installation validates the original manifest and every file hash, retains the source version, and refuses an existing destination. Compatibility does not change the source pack version or imply complete custom-content support.
 
-The optional pack contains five original weapons; it is not a complete catalog of server items. Install it explicitly into a new consumer asset directory, rebuild that directory, and verify the actual item component, browser icon and held mesh separately. The generic core does not select a server-specific pack or player model.
+The optional pack contains five original weapons; it is not a complete catalog of server items. `build-minecraft-viewer-client.mjs --preset=qiandengji` now installs the versioned original pack into a new consumer asset directory automatically, for both 1.20.6 and 1.21.1. An existing pack is verified and preserved; corrupt bytes fail explicitly and are never overwritten. Generic builds stay opt-in. Rebuild the actual served directory and verify the item component, browser icon and held mesh separately. Publishing source does not update a remote host, provide a Java client resource-pack URL or assign a YSM model.
 
 The old `/dungeon/` observer entry is an alias of `/3dview/`. It renders the same Minecraft connection, not the separate Dungeon World. Camera rotation/zoom changes only the observer view. A successful screenshot or render does not prove every earlier scene was correct.
 
