@@ -100,9 +100,9 @@ function selectArmClip(definition, kind, hand, item, categoryOverride) {
   return [prefix+'$'+id,prefix+':'+category,prefix].find(name=>Object.hasOwn(names,name));
 }
 export class PaperYsmAnimation {
-  constructor(model,main,{arm=null,extra=null,controllers=[],selectBase=null,lookBone='Head'}={}) {
+  constructor(model,main,{arm=null,extra=null,controllers=[],selectBase=null,lookBone='Head',adaptMainPose=null}={}) {
     this.model=model;this.main=main;this.arm=arm;this.extra=extra;this.controllers=controllers;
-    this.selectBase=selectBase;this.lookBone=lookBone;
+    this.selectBase=selectBase;this.lookBone=lookBone;this.adaptMainPose=adaptMainPose;
     this.compiled=new Map();this.layers=new Map();this.variables=Object.create(null);this.selected=[];this.errors=[];this.start=null;
   }
   clip(def,name){let map=this.compiled.get(def);if(!map){map=new Map();this.compiled.set(def,map);}if(!map.has(name))map.set(name,compilePaperYsmClip(def,name,this.model.bones));return map.get(name);}
@@ -143,6 +143,9 @@ export class PaperYsmAnimation {
         }
         const age=seconds??(now-row.started)/1000;
         const sampled=samplePaperYsmClip(loop&&!clip.hold?{...clip,loop:true}:clip,age,context,row.cursor);
+        // Optional verified-source conversion precedes locomotion blending and
+        // live look/hand/hurt overlays. Ordinary models keep the original pose.
+        if(key==='main')this.adaptMainPose?.(sampled,name);
         applyPaperYsmPose(this.model,sampled,additiveRotation);this.selected.push(name);return true;
       }catch(error){this.errors.push(error.message);return false;}
     };

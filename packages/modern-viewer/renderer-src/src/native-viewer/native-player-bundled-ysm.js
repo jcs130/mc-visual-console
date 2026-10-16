@@ -3,7 +3,7 @@ import { BundledAppearanceReader } from './native-bundled-appearance.js'
 import { bundledPath } from './native-bundled-contract.js'
 import { createNativeBedrockModel } from './native-entity-model-bedrock.js'
 import { compileBundledYsmAnimations, sampleNativeYsmClip, applyNativeYsmBonePose } from './native-ysm-animation.js'
-import { createBundledYsmAnimation } from './native-bundled-ysm-motion.js'
+import { bundledYsmSourcePoseAdapter, createBundledYsmAnimation } from './native-bundled-ysm-motion.js'
 import { batchYsmBones } from '../modern-viewer/ysm-bone-batch.js'
 import { BundledYsmHeldItems } from './native-bundled-ysm-items.js'
 import { NativeHeldItems } from './native-held-items.js'
@@ -39,6 +39,8 @@ export async function createNativeBundledYsmPlayerActor (nativeReader, { uuid, b
       !Array.isArray(player.texture) || player.texture.length !== 1 || resolve(player.texture[0]) !== files.texture) throw Error('BUNDLED_YSM_DEFINITION_INVALID')
   // Verify every declared source, including the original first-person arm model.
   await Promise.all(Object.values(files).map(path => reader.bytes(path)))
+  const sourceHashes = Object.fromEntries(Object.entries(files).map(([kind, path]) => [kind, reader.catalog.assets[path].sha256]))
+  const sourcePoseAdapter = bundledYsmSourcePoseAdapter(choice, sourceHashes)
   const geometry = await reader.json(files.model), animation = await reader.json(files.animation), armGeometry = await reader.json(files.armModel)
   const arm = await reader.json(files.armAnimation), extra = await reader.json(files.extraAnimation)
   const bytes = await reader.bytes(files.texture), data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -67,20 +69,21 @@ export async function createNativeBundledYsmPlayerActor (nativeReader, { uuid, b
     applyNativeYsmBonePose(model, [sampleNativeYsmClip(clips, 'idle', 0)])
     batch = batchYsmBones(model, material)
     content.add(model.root)
-    const controller = createBundledYsmAnimation(model, animation, { arm, extra, uuid })
+    const controller = createBundledYsmAnimation(model, animation, { arm, extra, uuid, sourcePoseAdapter })
     held = new BundledYsmHeldItems(nativeReader, model, uuid, loadTexture)
     arms = createBundledYsmFirstPersonArms(armGeometry, material)
     first = new NativeHeldItems(nativeReader, { ...heldItemOptions, uuid, firstPersonOnly: true,
       firstPersonArms: arms.mounts, emptyArmMatrix: bundledYsmFirstPersonArmMatrix, loadHeldTexture: heldItemOptions.loadHeldTexture ?? loadTexture })
     const support = Object.freeze({ scope: 'plugin_bundled_original_same_player_vanilla', mainClips: [...clips.keys()], notice,
       sourceRules: 'explicit_client_appearance_over_same_player_vanilla_samples', heldItemRenderingAvailable: true, equipmentRenderingAvailable: false,
+      sourcePoseConvention: sourcePoseAdapter?.source ?? null,
       firstPersonRenderingAvailable: true, firstPersonBasis: BUNDLED_YSM_ARM_BASIS,
       firstPersonNativeBasisVerified: false, firstPersonArmScope: 'original_default_pose_empty_main_hand_observed_swing',
       extraActionsRenderingAvailable: true, animationParityVerified: false, completeEntityParityVerified: false })
     const assetInfo = Object.freeze({ kind: 'ysm', uuid, name: choice.label, modelId: choice.modelId, texture: choice.texture,
       source: 'plugin_bundled', selectionSource: 'web_viewer_override', provenance: choice.provenance,
       ysmVersion: choice.ysmVersion, license: structuredClone(definition.metadata.license), authors: structuredClone(definition.metadata.authors ?? []),
-      sourcePaths: Object.values(files), sourceHashes: Object.fromEntries(Object.entries(files).map(([kind, path]) => [kind, reader.catalog.assets[path].sha256])),
+      sourcePaths: Object.values(files), sourceHashes,
       scale: { width, height }, boneCount: model.bones.size, cubeCount: model.cubeCount, faceCount: model.faceCount, drawMeshes: batch.geometries.length,
       geometrySource: 'plugin_bundled_original_Bedrock', poseSource: 'original_numeric_animation_keyframes_bounded_browser_port',
       support, notice, headPoseRenderingAvailable: true, eyesRenderingAvailable: false, animationRenderingAvailable: true,

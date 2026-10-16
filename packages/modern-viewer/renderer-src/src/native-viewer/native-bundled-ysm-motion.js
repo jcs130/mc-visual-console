@@ -6,6 +6,20 @@ const angle = n => Math.atan2(Math.sin(n), Math.cos(n))
 const fresh = (time, now, limit) => Number.isFinite(time) && now >= time - 100 && now - time <= limit
 const poses = { 0: 'standing', 1: 'fall_flying', 2: 'sleeping', 3: 'swimming', 4: 'spin_attack', 5: 'crouching', 7: 'dying' }
 
+// The original handwritten YUI swim uses -80 degrees where standard YSM's
+// forward swim uses positive X. Limit this Web correction to verified originals;
+// the shared Bedrock channel signs and source asset bytes remain unchanged.
+export function bundledYsmSourcePoseAdapter (choice, sourceHashes) {
+  if (choice.modelId !== 'neko_yui' || choice.ysmVersion !== '2.4.1' ||
+      sourceHashes.model !== '1feb1121e6946a899c75ea020b32d01809672010ac043c410e2d049426e58205' ||
+      sourceHashes.animation !== '0cbd59d07acfa203438855d678e077da0af88e751d00e6fba713b1e775771ef5') return null
+  return { source: 'original_neko_yui_swim_pitch', apply (pose, clip) {
+    if (clip !== 'swim') return
+    const channels = pose.get('AllBody'), rotation = channels?.rotation
+    if (rotation) pose.set('AllBody', { ...channels, rotation: [-rotation[0], rotation[1], rotation[2]] })
+  } }
+}
+
 // A client appearance policy over the action body's existing vanilla samples.
 // This never manufactures a same_player_server_tick row or native mod flags.
 export function bundledYsmMotionInput(current, uuid, now) {
@@ -52,10 +66,11 @@ export function bundledYsmMotionInput(current, uuid, now) {
     animation: self.animation }
 }
 
-export function createBundledYsmAnimation(model, main, { arm, extra, uuid } = {}) {
+export function createBundledYsmAnimation(model, main, { arm, extra, uuid, sourcePoseAdapter = null } = {}) {
   let animator, identity, lastNow, current, health, hurt, sequence = 0
   const reset = () => {
     animator = new PaperYsmAnimation(model, main, { arm, extra, lookBone: model.bones.has('AllHead') ? 'AllHead' : 'Head',
+      adaptMainPose: sourcePoseAdapter?.apply,
       selectBase: (m, base) => m.pose === 'dying' ? 'death' : m.climbing === true
         ? (m.verticalSpeed > .02 ? 'ladder_up' : m.verticalSpeed < -.02 ? 'ladder_down' : 'ladder_stillness')
         : m.isPassenger === true ? (m.vehicleType === 'minecraft:boat' ? 'boat' : m.vehicleType === 'minecraft:pig' ? 'ride_pig' : 'ride') : base })
@@ -81,6 +96,7 @@ export function createBundledYsmAnimation(model, main, { arm, extra, uuid } = {}
         const state = animator.apply({ motion: m, animation: m.animation }, now)
         return (current = { ...state, available: state.errors.length === 0, reason: state.errors[0] ?? null,
           clip: state.base, source: 'bundled_client_same_player_vanilla', headingSource: m.headingSource,
+          sourcePoseConvention: sourcePoseAdapter?.source ?? null,
           bodyRotationRadians: m.bodyYaw, equipmentReason: m.equipmentReason,
           hurtSource: m.hurt ? 'same_player_health_or_hurt_sample' : null,
           missingInputs: ['inWater', 'sprinting', 'climbing', 'flying', 'isPassenger', 'usingItem'].filter(key => typeof m[key] !== 'boolean'),
