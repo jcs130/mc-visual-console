@@ -4,17 +4,17 @@ export const BUNDLED_LIMITS = Object.freeze({ catalog: 131072, file: 2 * 1024 * 
 export const bundledPath = value => typeof value === 'string' && value.length <= 240 && /^[a-zA-Z0-9_./-]+\.(?:png|json)$/.test(value) &&
   !value.startsWith('/') && !value.split('/').some(part => ['', '.', '..'].includes(part))
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
-export function validateBundledCatalog (catalog) {
+export function validateBundledCatalog (catalog, { limits = BUNDLED_LIMITS } = {}) {
   if (!object(catalog) || catalog.schema !== BUNDLED_SCHEMA || catalog.source !== 'plugin_bundled' ||
-      !object(catalog.assets) || !Array.isArray(catalog.appearances) || catalog.appearances.length > BUNDLED_LIMITS.appearances ||
-      Object.keys(catalog.assets).length > BUNDLED_LIMITS.files) throw Error('BUNDLED_CATALOG_INVALID')
+      !object(catalog.assets) || !Array.isArray(catalog.appearances) || catalog.appearances.length > limits.appearances ||
+      Object.keys(catalog.assets).length > limits.files) throw Error('BUNDLED_CATALOG_INVALID')
   let total = 0
   for (const [path, entry] of Object.entries(catalog.assets)) {
     if (!bundledPath(path) || !object(entry) || !/^[a-f0-9]{64}$/.test(entry.sha256 ?? '') ||
-        !Number.isSafeInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > BUNDLED_LIMITS.file) throw Error('BUNDLED_ASSET_INVALID')
+        !Number.isSafeInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > limits.file) throw Error('BUNDLED_ASSET_INVALID')
     total += entry.bytes
   }
-  if (total > BUNDLED_LIMITS.total) throw Error('BUNDLED_ASSETS_TOO_LARGE')
+  if (total > limits.total) throw Error('BUNDLED_ASSETS_TOO_LARGE')
   const ids = new Set()
   for (const row of catalog.appearances) {
     if (!object(row) || !/^[a-z0-9][a-z0-9_.-]{0,63}$/.test(row.id ?? '') || ids.has(row.id) ||

@@ -1,8 +1,9 @@
 import { BUNDLED_SCHEMA, BUNDLED_LIMITS, validateBundledCatalog } from './native-bundled-contract.js'
 
 export class BundledAppearanceReader {
-  constructor (catalog, readBytes) {
-    validateBundledCatalog(catalog)
+  constructor (catalog, readBytes, { limits = BUNDLED_LIMITS } = {}) {
+    validateBundledCatalog(catalog, { limits })
+    this.limits = limits
     this.catalog = structuredClone(catalog); this.readBytes = readBytes; this.cache = new Map()
   }
   // Endpoint is supplied by the scene's scoped nativeViewerUrl helper. Asset

@@ -6,7 +6,7 @@ import { BUNDLED_SCHEMA, BUNDLED_LIMITS, validateBundledCatalog } from '../src/n
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 // Retain a bounded verified snapshot. Later filesystem replacement cannot alter
 // either served bytes or the build digest, and requests never resolve paths.
-export async function loadBundledAppearances (catalogFile = '') {
+export async function loadBundledAppearances (catalogFile = '', { limits = BUNDLED_LIMITS } = {}) {
   const empty = reason => {
     const metadata = { schema: BUNDLED_SCHEMA, source: 'plugin_bundled', available: false, reason, assets: {}, appearances: [] }
     return { metadata, sha256: sha(JSON.stringify(metadata)), read: () => null }
@@ -26,10 +26,10 @@ export async function loadBundledAppearances (catalogFile = '') {
       if ((await fs.lstat(ancestor)).isSymbolicLink()) throw Error('BUNDLED_ASSET_LINK_UNSUPPORTED')
       ancestor = path.dirname(ancestor)
     }
-    await check(file, BUNDLED_LIMITS.catalog)
+    await check(file, limits.catalog)
     const catalogBytes = await fs.readFile(file)
-    if (catalogBytes.length > BUNDLED_LIMITS.catalog) throw Error('BUNDLED_CATALOG_TOO_LARGE')
-    const catalog = validateBundledCatalog(JSON.parse(catalogBytes.toString('utf8'))), files = new Map()
+    if (catalogBytes.length > limits.catalog) throw Error('BUNDLED_CATALOG_TOO_LARGE')
+    const catalog = validateBundledCatalog(JSON.parse(catalogBytes.toString('utf8')), { limits }), files = new Map()
     const digest = createHash('sha256').update(catalogBytes)
     for (const [relative, entry] of Object.entries(catalog.assets).sort(([a], [b]) => a.localeCompare(b))) {
       let target = root
@@ -39,7 +39,7 @@ export async function loadBundledAppearances (catalogFile = '') {
         if (stat.isSymbolicLink() || !stat.isDirectory()) throw Error('BUNDLED_ASSET_LINK_UNSUPPORTED')
       }
       target = path.join(root, relative)
-      await check(target, BUNDLED_LIMITS.file)
+      await check(target, limits.file)
       const bytes = await fs.readFile(target)
       if (bytes.length !== entry.bytes || sha(bytes) !== entry.sha256) throw Error('BUNDLED_ASSET_HASH_MISMATCH')
       digest.update(relative).update(bytes); files.set(relative, bytes)

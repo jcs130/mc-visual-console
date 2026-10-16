@@ -4,6 +4,7 @@ import {createNativeBedrockModel} from '../native-viewer/native-entity-model-bed
 import {PaperYsmAnimation} from './paper-ysm-animation.js';
 import {PaperYsmHeldItems} from './paper-ysm-items.js';
 import {applyRescuePose,relaxRestTail,supportsRescuePose} from './paper-ysm-rest-pose.js';
+import {createPaperSkinActor} from './paper-skin.js';
 export {applyPaperYsmAnimation} from './paper-ysm-animation.js';
 
 /** Describe the received state; missing assignment is not a failed asset download. */
@@ -38,6 +39,7 @@ export function paperYsmHeadAnchor(model,root) {
   const point=bounds.getCenter(new THREE.Vector3());point.y=bounds.max.y+.22;return point;
 }
 export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTexture}={}) {
+  if(bundle?.format==='minecraft-skin-original')return createPaperSkinActor(bundle,textureId,{loadTexture});
   const definition=json(bundle,'ysm.json'),geometry=json(bundle,bundle.model),animation=json(bundle,bundle.animation);
   const file=bundle.files[bundle.textures[textureId]];if(!file)throw Error('YSM_TEXTURE_UNAVAILABLE');
   if(definition.spec!==2 || definition.properties?.free!==true)throw Error('YSM_DEFINITION_UNSUPPORTED');
@@ -124,9 +126,9 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
 /** Mounted only onto a currently tracked vanilla player entity with the same UUID. */
 export class PaperYsmPlayers {
   constructor({entity,rendered,itemModels={},createActor=createPaperYsmActor,presentation=()=>null}={}){this.entity=entity;this.rendered=rendered;this.itemModels=itemModels;this.createActor=createActor;this.presentation=presentation;this.nametags=new WeakMap();this.motions=new Map();this.fallback=new Map();this.states=new Map();this.assets=new Map();this.assetSizes=new Map();this.assetBytes=0;this.actors=new Map();this.pending=new Map();this.failures=new Map();this.sequence=0;this.overrides=new Map();this.selectionNotices=new Map();}
-  asset(bundle){if(bundle?.schemaVersion!==1||bundle.format!=='ysm-bedrock-original'||!bundle.assetSha256)return;
+  asset(bundle,{maxBytes=8*1024*1024}={}){if(bundle?.schemaVersion!==1||!['ysm-bedrock-original','minecraft-skin-original'].includes(bundle.format)||!bundle.assetSha256)return;
     if(this.assets.has(bundle.assetSha256))return;
-    const size=Object.values(bundle.files??{}).reduce((n,f)=>n+(f.base64?.length??0),0);if(size>8*1024*1024)return;
+    const size=Object.values(bundle.files??{}).reduce((n,f)=>n+(f.base64?.length??0),0);if(size>Math.min(16*1024*1024,maxBytes))return;
     while(this.assets.size>=32 || this.assetBytes+size>32*1024*1024){const key=this.assets.keys().next().value;this.assetBytes-=this.assetSizes.get(key);this.assetSizes.delete(key);this.assets.delete(key);
       for(const [uuid,choice]of this.overrides)if(choice.assetSha256===key){this.overrides.delete(uuid);this.unmount(uuid);this.selectionNotices.set(uuid,'所选资源已过期；已恢复服务器外观');}}
     this.assets.set(bundle.assetSha256,bundle);this.assetSizes.set(bundle.assetSha256,size);this.assetBytes+=size;}
@@ -135,11 +137,23 @@ export class PaperYsmPlayers {
     if(previous && (previous.epoch!==row.epoch||previous.entityId!==row.entityId))this.remove(row.playerUuid);
     else if(previous && !this.overrides.has(row.playerUuid) && (previous.assetSha256!==row.assetSha256||previous.texture!==row.texture||!row.available))this.unmount(row.playerUuid);
     if(this.states.size<40||this.states.has(row.playerUuid))this.states.set(row.playerUuid,row);}
+  // A locally configured Web model needs a real tracked body, not a fabricated
+  // Freesia assignment. No packet, server model ID or authorisation is invented.
+  localEntity(entity,epoch){
+    const uuid=entity?.uuid?.toLowerCase();
+    if(entity?.isSelf!==true||typeof uuid!=='string'||!Number.isSafeInteger(entity.id)||this.entity(entity.id)?.uuid?.toLowerCase()!==uuid)return false;
+    const previous=this.states.get(uuid);
+    if(previous?.entityId===entity.id)return true;
+    if(previous)this.remove(uuid);
+    this.states.set(uuid,{schemaVersion:1,source:'same_connection_entity',playerUuid:uuid,entityId:entity.id,epoch,
+      available:false,renderAvailable:false,reason:'YSM_SERVER_STATE_UNAVAILABLE'});return true;
+  }
   choices(){
     const choices=[{id:'server',label:'跟随服务器'},{id:'skin',label:'原版玩家皮肤（Web）'}];
     for(const bundle of this.assets.values())for(const [texture,path]of Object.entries(bundle.textures??{})) {
-      if(!bundle.files?.[path] || !bundle.files?.[bundle.model] || !bundle.files?.['ysm.json'])continue;
-      choices.push({id:`ysm:${bundle.assetSha256}:${encodeURIComponent(texture)}`,label:`${bundle.modelId} · ${texture}`,assetSha256:bundle.assetSha256,modelId:bundle.modelId,texture});
+      if(!bundle.files?.[path] || bundle.format==='ysm-bedrock-original'&&(!bundle.files?.[bundle.model] || !bundle.files?.['ysm.json']))continue;
+      const label=bundle.source==='browser_upload'?`${bundle.displayLabel} · ${texture==='slim'?'细臂':'宽臂'}（上传皮肤 · Web）`:bundle.source==='plugin_bundled'?`${bundle.displayLabel??bundle.modelId} · ${texture}（Web 原模型）`:`${bundle.modelId} · ${texture}`;
+      choices.push({id:`ysm:${bundle.assetSha256}:${encodeURIComponent(texture)}`,label,assetSha256:bundle.assetSha256,modelId:bundle.modelId,texture});
     }
     return choices;
   }
@@ -167,6 +181,7 @@ export class PaperYsmPlayers {
     else if(this.pending.has(uuid))status+=' · 模型载入中';
     else if(actor)status+=` · ${actor.assetInfo.modelId} / ${actor.assetInfo.texture}${actor.animationIssues?.size?' · 动作兼容提示（详情如下）':''}`;
     else if(!choice){const message=paperYsmAvailabilityText(row);if(message)status+=' · '+message;}
+    if(choice&&choice.id!=='skin'&&row?.available===false)status+=' · 服务器模型尚未同步';
     return {available,selected:choice?.id??'server',choices:this.choices(),status:this.selectionNotices.get(uuid)??status,animationIssues:[...(actor?.animationIssues??[])]};
   }
   motion(row,now=performance.now()) {
@@ -287,5 +302,5 @@ export class PaperYsmPlayers {
       }else if(child.name.startsWith('geometry_armor_'))hide(child);
     }
   }
-  stats(){return {states:this.states.size,rendered:this.actors.size,pending:this.pending.size,failed:this.failures.size,unavailable:[...this.states.values()].filter(r=>r.available&&!r.renderAvailable).length,errors:[...this.failures.values()],animationUnavailable:[...this.actors.values()].map(a=>a.actor.animationReason).filter(Boolean),heldUnavailable:[...this.actors.values()].flatMap(a=>Object.values(a.actor.heldState??{}).filter(hand=>hand.status==='unavailable')),actors:[...this.actors].map(([uuid,a])=>({uuid,animation:a.actor.animationState,held:a.actor.heldState})),assets:[...this.actors.values()].map(a=>a.actor.assetInfo)};}
+  stats(){return {states:this.states.size,rendered:this.actors.size,pending:this.pending.size,failed:this.failures.size,unavailable:[...this.states.values()].map(r=>this.effective(r)).filter(r=>r.available&&!r.renderAvailable).length,errors:[...this.failures.values()],animationUnavailable:[...this.actors.values()].map(a=>a.actor.animationReason).filter(Boolean),heldUnavailable:[...this.actors.values()].flatMap(a=>Object.values(a.actor.heldState??{}).filter(hand=>hand.status==='unavailable')),actors:[...this.actors].map(([uuid,a])=>({uuid,animation:a.actor.animationState,held:a.actor.heldState})),assets:[...this.actors.values()].map(a=>a.actor.assetInfo)};}
 }

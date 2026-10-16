@@ -4,6 +4,7 @@ import {TextDisplays} from './text-displays.js';
 import {loadTextDisplayFont} from './text-display-font.js';
 import {PaperYsmPlayers,paperYsmAvailabilityText} from './paper-ysm.js';
 import {installAppearanceSettings} from './appearance-settings.js';
+import {loadPaperBundledAppearances,PaperBundledAppearanceSelection} from './paper-bundled-appearance.js';
 import paperYsmItemModels from 'mc-assets/dist/blockStatesModels.json';
 const cortiContentMinecraftVersion = '1.20.6';
 
@@ -18,24 +19,37 @@ let cortiContentDisposed = false;
 let cortiContentError = null;
 const cortiAppearances=new Map();
 const cortiYsmPlayers=new PaperYsmPlayers({itemModels:paperYsmItemModels.models.latest,entity:id=>entityCache.get(String(id))??(pendingAvatarState?.entity?.id===id?pendingAvatarState.entity:null),rendered:id=>globalThis.world?.entities?.entities?.[String(id)],presentation:()=>activeScenePolicy});
-let appearanceSubject=null,appearanceUiAt=-Infinity;
+let appearanceSubject=null,appearanceUiAt=-Infinity,cortiLocalAppearance=null,cortiLocalAppearanceError=null,cortiOwnAppearanceEntity=null;
 const appearanceUi=installAppearanceSettings({document,window,hidden:isPhotoView||isObsOverlay,
-  onChange:id=>{if(appearanceSubject)cortiYsmPlayers.select(appearanceSubject,id);updateAppearanceUi();}});
+  onChange:id=>{if(appearanceSubject){if(cortiLocalAppearance)cortiLocalAppearance.select(cortiYsmPlayers,appearanceSubject,id);else cortiYsmPlayers.select(appearanceSubject,id);}updateAppearanceUi();},
+  onUpload:async(file,model)=>{if(!cortiLocalAppearance)throw Error('人物模型设置尚未就绪');await cortiLocalAppearance.upload(cortiYsmPlayers,resolveOwnAvatarEntity(),file,model);updateAppearanceUi();}});
+if(!isObsOverlay){
+  let storage=null;try{storage=window.localStorage;}catch{}
+  loadPaperBundledAppearances(new URL('player-appearances/config.json',import.meta.url),{storage}).then(local=>{
+    if(cortiContentDisposed)return;cortiLocalAppearance=local??new PaperBundledAppearanceSelection({bundles:[],storage,scope:new URL('./',import.meta.url).href.replace(/\/(third|3dview)\/$/,'/')});
+    if(cortiOwnAppearanceEntity)cortiLocalAppearance.attach(cortiYsmPlayers,cortiOwnAppearanceEntity);
+    updateAppearanceUi();
+  }).catch(error=>{cortiLocalAppearanceError=String(error.message);cortiLocalAppearance=new PaperBundledAppearanceSelection({bundles:[],storage,scope:new URL('./',import.meta.url).href.replace(/\/(third|3dview)\/$/,'/')});
+    if(cortiOwnAppearanceEntity)cortiLocalAppearance.attach(cortiYsmPlayers,cortiOwnAppearanceEntity);updateAppearanceUi();});
+}
 function updateAppearanceUi(){
   const entity=resolveOwnAvatarEntity(),uuid=entity?.uuid?.toLowerCase()??null;
   if(appearanceSubject && appearanceSubject!==uuid)cortiYsmPlayers.resetSelection(appearanceSubject);
   appearanceSubject=uuid;
-  appearanceUi.update({...cortiYsmPlayers.selection(uuid),subject:entity?.username??pendingAvatarState?.username??'当前观战人物'});
+  const selection=cortiYsmPlayers.selection(uuid);
+  if(cortiLocalAppearanceError)selection.status+=' · 网页原模型未加载：'+cortiLocalAppearanceError;
+  if(cortiLocalAppearance?.skinError)selection.status+=' · '+cortiLocalAppearance.skinError;
+  appearanceUi.update({...selection,subject:entity?.username??pendingAvatarState?.username??'当前观战人物'});
 }
 socket.on('appearanceAsset',bundle=>cortiYsmPlayers.asset(bundle));
 socket.on('appearanceMotion',event=>cortiYsmPlayers.motion(event));
-socket.on('avatarState',event=>cortiYsmPlayers.bodyMotion(event));
+socket.on('avatarState',event=>{cortiOwnAppearanceEntity=event?.entity??null;if(cortiLocalAppearance&&cortiOwnAppearanceEntity)cortiLocalAppearance.attach(cortiYsmPlayers,cortiOwnAppearanceEntity);cortiYsmPlayers.bodyMotion(event);});
 socket.on('entityAnimation',event=>cortiYsmPlayers.action(event));
-socket.on('appearanceReset',()=>{cortiAppearances.clear();cortiYsmPlayers.clear();});
+socket.on('appearanceReset',()=>{cortiOwnAppearanceEntity=null;cortiAppearances.clear();cortiYsmPlayers.clear();cortiLocalAppearance?.clear();});
 socket.on('appearanceRemove',event=>{cortiAppearances.delete(event?.playerUuid);cortiYsmPlayers.remove(event?.playerUuid);});
 socket.on('appearanceState',event=>{
   if(event?.schemaVersion!==1||event.source!=='freesia_worker'||typeof event.playerUuid!=='string'||typeof event.renderAvailable!=='boolean')return;
-  if(cortiAppearances.size<40||cortiAppearances.has(event.playerUuid)){cortiAppearances.set(event.playerUuid,event);cortiYsmPlayers.state(event);}
+  if(cortiAppearances.size<40||cortiAppearances.has(event.playerUuid)){cortiAppearances.set(event.playerUuid,event);cortiYsmPlayers.state(event);if(cortiOwnAppearanceEntity)cortiLocalAppearance?.attach(cortiYsmPlayers,cortiOwnAppearanceEntity);}
 });
 const cortiContentStatus = document.createElement('div');
 cortiContentStatus.id = 'corti-content-status';
@@ -87,7 +101,7 @@ if (typeof isObsOverlay !== 'undefined' && isObsOverlay) {
 }
 socket.on('mapFrame', event => cortiMapPhotos.handleFrame(event));
 socket.on('textDisplay', event => cortiTextDisplays.handle(event));
-const cortiAppearanceClear=()=>{cortiAppearances.clear();cortiYsmPlayers.clear();};
+const cortiAppearanceClear=()=>{cortiOwnAppearanceEntity=null;cortiLocalAppearance?.clear();cortiAppearances.clear();cortiYsmPlayers.clear();};
 socket.on('disconnect', () => {cortiContentClear();cortiAppearanceClear();});
 socket.on('viewerReset', () => {cortiContentClear();cortiAppearanceClear();});
 loadViewerContentAssets(fetch,{minecraftVersion:cortiContentMinecraftVersion}).then(({assets,texture})=>{
