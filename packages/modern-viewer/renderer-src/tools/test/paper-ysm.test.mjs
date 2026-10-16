@@ -1,7 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {PaperYsmPlayers,applyPaperYsmAnimation,createPaperYsmActor,paperYsmHeadAnchor} from '../../src/modern-viewer/paper-ysm.js';
+import {PaperYsmPlayers,applyPaperYsmAnimation,createPaperYsmActor,paperYsmHeadAnchor,paperYsmAvailabilityText} from '../../src/modern-viewer/paper-ysm.js';
+
+test('YSM status distinguishes the live worker waiting for a player binding from missing original assets',()=>{
+ const uuid='822d173a-7181-3b9b-be60-804f29b24ecc';
+ const waiting={schemaVersion:1,source:'freesia_worker',playerUuid:uuid,entityId:16212,available:false,renderAvailable:false,workerConnected:true,stateStatus:'awaiting_model_state',reason:'YSM_WORKER_STATE_UNAVAILABLE',renderReason:'YSM_WORKER_STATE_UNAVAILABLE'};
+ assert.equal(paperYsmAvailabilityText(waiting),'模型服务已连接，等待当前角色的 YSM 模型状态');
+ assert.equal(paperYsmAvailabilityText({...waiting,stateStatus:'worker_offline',workerConnected:false}),'YSM 模型服务暂未连接');
+ assert.equal(paperYsmAvailabilityText({...waiting,stateStatus:'awaiting_initial_poll',workerConnected:undefined}),'等待模型服务返回当前角色的 YSM 模型状态');
+ assert.equal(paperYsmAvailabilityText({...waiting,available:true,renderReason:'YSM_ASSET_PENDING'}),'等待原始 YSM 模型资源');
+ assert.equal(paperYsmAvailabilityText({...waiting,available:true,renderAvailable:true}),'');
+ const players=new PaperYsmPlayers({entity:()=>({id:16212,uuid}),rendered:()=>new THREE.Group()});
+ players.state(waiting);
+ assert.match(players.selection(uuid).status,/等待当前角色的 YSM 模型状态/);
+ assert.doesNotMatch(players.selection(uuid).status,/缺少可公开原始资源/);
+ players.clear();
+});
 test('sleep anchors to the confirmed bed in all directions and recovery resets every root transform',async()=>{
  const encode=value=>({base64:Buffer.from(JSON.stringify(value)).toString('base64')});
  const bundle={modelId:'sleep-test',model:'m',animation:'a',textures:{main:'t'},files:{
