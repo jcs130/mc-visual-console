@@ -34,7 +34,7 @@ import { nativeStaticBatches } from './native-static-batch.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
-export async function mountNativeWorld({viewport, mode='third', onIdentity=()=>{}, onState=()=>{},onBuild=()=>false,
+export async function mountNativeWorld({viewport, transitionTiming, mode='third', onIdentity=()=>{}, onState=()=>{},onBuild=()=>false,
   onUnavailable=()=>{}, onDiagnostics=()=>{}, onActor=()=>{}, onFrame=()=>{}, onMode=()=>{},cameraSettings,onCameraManual=()=>{},onSelection=()=>{},
   defaultAppearance='server', selectionStorage, selectionScope} = {}) {
 if (!viewport?.append || !['third', 'first', 'region', '3dview'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
@@ -151,7 +151,8 @@ async function start () {
   renderer.setAnimationLoop(now => {
     try {
       if (disposed || document.hidden) return
-      const frameStarted=performance.now()
+      const frameStarted=performance.now(), timingFrame=transitionTiming?.worldStart(now)
+      let cameraMs=0,roomMs=0
       const gapStats=frameGaps.frame(now)
       if(gapStats)renderer.domElement.dataset.frameGaps=JSON.stringify(gapStats)
       displayPose=selfDisplay.sample(now)??current?.pose
@@ -169,11 +170,15 @@ async function start () {
           }
         }
         entityLayer.frame(Date.now(),current?.motion,current?.selfPlayer?.entityId===undefined?null:{...current.selfPlayer,position:current.pose},camera)
+        const cameraStarted=timingFrame?performance.now():0
         updatePlayerCamera(now)
+        cameraMs=timingFrame?performance.now()-cameraStarted:0
         audio.frame(camera,entityLayer.data,current?.selfPlayer?{...current.selfPlayer,position:current.pose}:null)
         audio.observation(current)
         particles.frame(Date.now(),current?.motion,camera,current)
+        const roomStarted=timingFrame?performance.now():0
         roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,height:observerTarget?.height??1.8,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
+        roomMs=timingFrame?performance.now()-roomStarted:0
         if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
         // is a freshness guard, never substituted for its absolute phase.
@@ -217,6 +222,7 @@ async function start () {
         bounds:current?.bounds,visual:agentVisual.snapshot(),now})
       const afterMap=performance.now()
       publishFrame(now)
+      const afterUi=timingFrame?performance.now():afterMap
       if(now-lastCostAt>=1000){
         frameCost={updateMs:beforeRender-frameStarted,mainMs:afterRender-beforeRender,handsMs:beforeMap-afterRender,mapMs:afterMap-beforeMap,
           uiMs:performance.now()-afterMap,mainCalls:mainDraw.calls,mainTriangles:mainDraw.triangles,
@@ -224,6 +230,9 @@ async function start () {
           mapReadback:miniMap.root.dataset.readback??null,room:roomStatus?.reason??null}
         lastCostAt=now;renderer.domElement.dataset.frameCost=JSON.stringify(frameCost);publishDiagnostics()
       }
+      transitionTiming?.worldFinish(timingFrame,{cameraMs,roomMs,updateMs:beforeRender-frameStarted,
+        mainCpuDrawMs:afterRender-beforeRender,handsMs:beforeMap-afterRender,mapMs:afterMap-beforeMap,
+        uiMs:afterUi-afterMap,diagnosticsMs:performance.now()-afterUi})
     } catch (error) { fail(error) }
   })
   events = new EventSource(nativeViewerUrl('events'))
@@ -605,7 +614,9 @@ function dispose () {
   controls?.dispose(); clearScene(); roomVisibility.dispose(); selfController?.dispose(); entityLayer?.dispose(); for(const batch of staticBatches.values())batch.dispose();staticBatches.clear();loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }
-return { setView, dispose, renderer, camera, scene: worldRoot.parent, assetReader,audio,
+return { setView, dispose, renderer,
+  timingContext:()=>({view:viewMode,snapshotRevision:current?.revision,terrainRequested:terrainQueue.stats.requested,
+    terrainCommitted:terrainQueue.stats.committed,terrainBuilding:terrainQueue.running,terrainPending:!!terrainQueue.pending,terrainCommittedAt:terrainQueue.committedAt}), camera, scene: worldRoot.parent, assetReader,audio,
   setCameraSettings,selectTarget,startCameraShot:kind=>director?.startShot(kind,performance.now()),
   setSceneSettings:value=>{sceneOptions={...sceneOptions,...value}},getDungeonCamera:()=>({...dungeonCamera}),setDungeonCamera:value=>{dungeonCamera={...value}},
   selectAppearance: id => selfController?.selectAppearance(id),

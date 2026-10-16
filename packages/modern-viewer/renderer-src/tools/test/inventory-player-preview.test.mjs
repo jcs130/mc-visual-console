@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as THREE from 'three';
 import { PlayerObject } from 'skinview3d/libs/model.js';
+import { createNativeTransitionTiming } from '../../src/native-viewer/native-transition-timing.js';
 import { InventoryPlayerPreview, createInventoryPreviewFallback, mirrorInventoryPlayer,
   inventoryMirrorMatches, poseInventoryPlayer, releaseInventoryMirror }
   from '../../src/modern-viewer/inventory-player-preview.js';
@@ -207,6 +208,55 @@ test('visible preview renders at most 30 fps, reuses one context and stops fully
   assert.equal(h.disposed, 1);
   assert.equal(h.frames.size, 0);
   assert.equal(h.listeners.size, 0);
+});
+
+test('real preview RAF reports cold/warm phases and mirror releases while borrowing original resources', () => {
+  const source = avatar(), viewport = { dataset: {} };
+  const timing = createNativeTransitionTiming({ viewport });
+  const h = browserHarness(source, { transitionTiming: timing });
+  let sourceDisposals = 0;
+  source.traverse(node => node.geometry?.addEventListener('dispose', () => sourceDisposals++));
+  const open = timing.begin('menu', 'click');
+  h.preview.attach(h.hosts(), open); h.tick(0); timing.finish(open);
+  let record = JSON.parse(viewport.dataset.transitionTiming).transitions.at(-1);
+  assert.equal(record.firstPreview.context, 'cold');
+  assert.equal(record.readyPreview.status, 'ready');
+  assert.equal(record.mirrorBuilds, 1);
+  for (const key of ['contextSetupMs', 'mirrorMs', 'poseBoundsLayoutMs', 'cpuDrawMs', 'totalMs', 'latencyMs']) assert.ok(record.readyPreview[key] >= 0, key);
+  assert.equal(h.preview.mirror.nodes.get(source.getObjectByName('custom_item_right')).geometry, source.getObjectByName('custom_item_right').geometry);
+  const close = timing.begin('menu', 'click'); h.preview.setVisible(false, close); timing.finish(close);
+  assert.equal(JSON.parse(viewport.dataset.transitionTiming).transitions.at(-1).mirrorReleases, 1);
+  assert.equal(h.frames.size, 0);
+  const reopen = timing.begin('menu', 'click'); h.preview.attach(h.hosts(), reopen); h.tick(40); timing.finish(reopen);
+  record = JSON.parse(viewport.dataset.transitionTiming).transitions.at(-1);
+  assert.equal(record.readyPreview.context, 'warm'); assert.equal(record.mirrorBuilds, 1);
+  assert.equal(h.contexts, 1); assert.equal(sourceDisposals, 0);
+  const priorMirror = h.preview.mirror;
+  source.getObjectByName('custom_item_right').material = new THREE.MeshBasicMaterial(); h.tick(80);
+  assert.notEqual(h.preview.mirror, priorMirror, 'diagnostics do not disable identity/topology/material checks');
+  assert.equal(JSON.parse(viewport.dataset.transitionTiming).transitions.at(-1).mirrorBuilds, 2);
+  h.document.hidden = true; h.tick(120); assert.equal(h.frames.size, 0);
+  h.preview.dispose(); assert.equal(h.disposed, 1); assert.equal(sourceDisposals, 0); timing.dispose();
+});
+
+test('a first waiting preview RAF and later ready RAF remain separate observations', () => {
+  let source = null;
+  const viewport = { dataset: {} }, timing = createNativeTransitionTiming({ viewport });
+  const h = browserHarness(null, { transitionTiming: timing, resolveSource: () => source });
+  const open = timing.begin('menu', 'state'); h.preview.attach(h.hosts(), open); h.tick(0);
+  source = avatar(); h.tick(40);
+  const record = JSON.parse(viewport.dataset.transitionTiming).transitions.at(-1);
+  assert.equal(record.firstPreview.status, 'waiting'); assert.equal(record.readyPreview.status, 'ready');
+  assert.equal(record.mirrorBuilds, 1); assert.equal(h.contexts, 1);
+  h.preview.dispose(); timing.dispose();
+});
+
+test('an unavailable diagnostics dataset cannot stop the actual preview RAF or disposal', () => {
+  const timing = createNativeTransitionTiming({ viewport: { get dataset() { throw Error('unavailable sink'); } } });
+  const h = browserHarness(avatar(), { transitionTiming: timing });
+  h.preview.attach(h.hosts(), timing.begin('menu', 'click')); h.tick(0);
+  assert.equal(h.renders, 1); assert.equal(h.preview.host.dataset.previewState, 'ready');
+  h.preview.dispose(); assert.equal(h.disposed, 1); assert.equal(h.frames.size, 0); timing.dispose();
 });
 
 test('document visibility, detached host, disconnect/reset and renderer failure do not leak timers', () => {

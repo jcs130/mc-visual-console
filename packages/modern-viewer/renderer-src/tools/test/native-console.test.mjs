@@ -30,6 +30,30 @@ const presentation = () => ({ schemaVersion: 1, playerUuid: UUID, available: tru
     slots: Array.from({ length: 46 }, (_, slot) => ({ slot, item: null })) },
   nativeMenu: { windowId: 0, stateId: 1, menuType: 'minecraft:inventory', slots: [] }, skills: null, gameMessages: [] })
 
+test('actual console links and menu handlers share bounded viewport diagnostics and clean visibility listeners', async () => {
+  const {document,window}=fullShell();let mode='third',hooks
+  const console=await bootNativeConsole({document,window,startStatus:()=>()=>{},mount:async options=>{
+    hooks=options;options.onIdentity({confirmed:true,playerUuid:UUID,entityId:7,epoch:1})
+    options.onState({type:'snapshot',epoch:1,presentation:presentation()})
+    return {setView(value){mode=value;options.onMode(value)},timingContext:()=>({view:mode,snapshotRevision:7,terrainRequested:3,terrainCommitted:3,terrainCommittedAt:42}),
+      dispose(){},renderer:{setPixelRatio(){}}}
+  }})
+  const viewport=document.getElementById('viewer-canvas')
+  document.querySelectorAll('[data-view]').find(link=>link.dataset.view==='first').dispatch('click',{preventDefault(){}})
+  document.getElementById('corti-inventory-toggle').dispatch('click')
+  document.querySelector('[data-menu-close]').dispatch('click')
+  document.querySelectorAll('[data-view]').find(link=>link.dataset.view==='3dview').dispatch('click',{preventDefault(){}})
+  const value=JSON.parse(viewport.dataset.transitionTiming)
+  const modes=value.transitions.filter(row=>row.kind==='mode'&&row.reason==='click')
+  assert.deepEqual(modes.map(row=>[row.currentView,row.targetView]),[['third','first'],['first','3dview']])
+  assert.equal(modes.at(-1).after.snapshotRevision,7)
+  assert.ok(value.transitions.some(row=>row.kind==='menu'&&row.reason==='click'&&row.menuRebuilds===1))
+  assert.ok(hooks.transitionTiming,'same collector reaches owning world loop')
+  document.hidden=true;document.dispatch('visibilitychange')
+  assert.equal(JSON.parse(viewport.dataset.transitionTiming).visibility.epoch,1)
+  console.dispose();assert.equal(document.listeners.get('visibilitychange').length,0)
+})
+
 test('real console refreshes registry-waiting and delayed inspector icons from one initial state without another onState',async()=>{
   const {document,window}=fullShell(),directory=new URL('../../../asset-packs/vanilla-1.21.1/',import.meta.url)
   const manifest=JSON.parse(await readFile(new URL('native-assets.json',directory),'utf8'))

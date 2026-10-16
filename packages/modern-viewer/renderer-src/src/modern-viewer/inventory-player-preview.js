@@ -280,11 +280,11 @@ export function createInventoryPreviewFallback(THREE, { getAvatar, getSkin, getE
 }
 
 export class InventoryPlayerPreview {
-  constructor({ THREE, resolveSource, createFallback, getUnavailableReason = () => null, document = globalThis.document,
+  constructor({ THREE, resolveSource, createFallback, transitionTiming, getUnavailableReason = () => null, document = globalThis.document,
     requestFrame = globalThis.requestAnimationFrame?.bind(globalThis),
     cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis),
     createRenderer = (options) => new THREE.WebGLRenderer(options) }) {
-    Object.assign(this, { THREE, resolveSource, createFallback, getUnavailableReason, document, requestFrame, cancelFrame, createRenderer });
+    Object.assign(this, { THREE, resolveSource, createFallback, transitionTiming, getUnavailableReason, document, requestFrame, cancelFrame, createRenderer });
     this.host = null;
     this.renderer = null;
     this.mirror = null;
@@ -304,7 +304,8 @@ export class InventoryPlayerPreview {
     document?.addEventListener('visibilitychange', this.onVisibility);
   }
 
-  attach(host) {
+  attach(host, timingRecord = null) {
+    this.timingRecord = timingRecord;
     if (this.disposed) return;
     if (this.host !== host) {
       this.host?.removeEventListener('pointermove', this.onPointer);
@@ -317,15 +318,20 @@ export class InventoryPlayerPreview {
     this.setVisible(true);
   }
 
-  setVisible(visible) {
+  releaseMirror(record = this.timingRecord) {
+    if (this.mirror) this.transitionTiming?.previewRelease(record);
+    releaseInventoryMirror(this.mirror);
+    this.mirror = null;
+  }
+
+  setVisible(visible, timingRecord = this.timingRecord) {
     if (!visible && !this.active && !this.mirror && !this.fallback) return;
     this.active = Boolean(visible) && !this.disposed;
     if (!this.active) {
       if (this.frame !== null) this.cancelFrame?.(this.frame);
       this.frame = null;
       this.lastFrame = -Infinity;
-      releaseInventoryMirror(this.mirror);
-      this.mirror = null;
+      this.releaseMirror(timingRecord);
       this.fallback?.dispose();
       this.fallback = null;
       this.renderer?.clear();
@@ -349,6 +355,9 @@ export class InventoryPlayerPreview {
   render() {
     if (!this.active || !this.host?.isConnected) { this.setVisible(false); return; }
     const T = this.THREE;
+    const timing = this.transitionTiming?.previewStart(this.timingRecord);
+    let phaseAt = timing ? performance.now() : 0;
+    if (timing) Object.assign(timing, { context: this.renderer ? 'warm' : 'cold', contextSetupMs: 0, mirrorMs: 0, poseBoundsLayoutMs: 0, cpuDrawMs: 0, mirrorBuilds: 0 });
     try {
       let source = this.resolveSource();
       if (!source && this.createFallback) {
@@ -356,9 +365,9 @@ export class InventoryPlayerPreview {
         this.fallback.update();
         source = this.fallback.ready ? this.fallback.root : null;
       }
+      if (timing) { timing.sourceMs = performance.now() - phaseAt; phaseAt = performance.now(); }
       if (!source) {
-        releaseInventoryMirror(this.mirror);
-        this.mirror = null;
+        this.releaseMirror();
         this.renderer?.clear();
         const reason = this.getUnavailableReason();
         this.host.dataset.previewState = reason ? 'unavailable' : 'waiting';
@@ -381,15 +390,19 @@ export class InventoryPlayerPreview {
         this.scene.add(light);
         this.camera = new T.OrthographicCamera(-1, 1, 1, -1, .01, 30);
       }
+      if (timing) { timing.contextSetupMs = performance.now() - phaseAt; phaseAt = performance.now(); }
       if (!inventoryMirrorMatches(this.mirror, source)) {
-        releaseInventoryMirror(this.mirror);
+        this.releaseMirror();
         this.mirror = mirrorInventoryPlayer(T, source);
+        this.transitionTiming?.previewBuild(this.timingRecord);
+        if (timing) timing.mirrorBuilds++;
         this.stage.add(this.mirror.root);
         if (this.fallback && source !== this.fallback.root) {
           this.fallback.dispose();
           this.fallback = null;
         }
       }
+      if (timing) { timing.mirrorMs = performance.now() - phaseAt; phaseAt = performance.now(); }
       this.turn.yaw += (this.turn.targetYaw - this.turn.yaw) * .20;
       this.turn.pitch += (this.turn.targetPitch - this.turn.pitch) * .20;
       poseInventoryPlayer(this.mirror, this.turn.yaw, this.turn.pitch);
@@ -402,7 +415,10 @@ export class InventoryPlayerPreview {
         if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
         if (node.geometry.boundingBox) bounds.union(node.geometry.boundingBox.clone().applyMatrix4(node.matrixWorld));
       });
-      if (bounds.isEmpty()) { this.host.dataset.previewState = 'waiting'; return; }
+      if (bounds.isEmpty()) {
+        if (timing) timing.poseBoundsLayoutMs = performance.now() - phaseAt;
+        this.host.dataset.previewState = 'waiting'; return;
+      }
       const size = bounds.getSize(new T.Vector3());
       const center = bounds.getCenter(new T.Vector3());
       const width = this.host.clientWidth || 104;
@@ -417,13 +433,22 @@ export class InventoryPlayerPreview {
       this.camera.lookAt(center);
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(width, height, false);
+      if (timing) { timing.poseBoundsLayoutMs = performance.now() - phaseAt; phaseAt = performance.now(); }
       this.renderer.render(this.scene, this.camera);
+      if (timing) timing.cpuDrawMs = performance.now() - phaseAt;
       this.host.dataset.previewState = 'ready';
       this.host.dataset.previewSource = source === this.fallback?.root ? 'standalone' : 'world';
     } catch {
+      if (timing) timing.incomplete = true;
       // Context creation may fail on constrained browsers; keep the item UI.
       this.host.dataset.previewState = 'unavailable';
       this.setVisible(false);
+    } finally {
+      if (timing) {
+        timing.status = this.host?.dataset.previewState ?? 'waiting';
+        timing.totalMs = performance.now() - timing.at;
+        this.transitionTiming.previewFinish(this.timingRecord, timing);
+      }
     }
   }
 

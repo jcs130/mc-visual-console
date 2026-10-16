@@ -1,3 +1,4 @@
+import { createNativeTransitionTiming } from './native-transition-timing.js'
 import {writeChanged,createTargetSignature} from './native-display-performance.js'
 import { mountNativeWorld } from './native-scene.js'
 import { pageDefaultAppearance, pageSelectionScope } from './native-appearance-default.js'
@@ -70,6 +71,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   },onShot:kind=>{if(pendingMode!=='third')switchView('third');sceneHost?.startCameraShot?.(kind)}})
   let frames = 0, sampledAt = null, lastUiFrameAt = -Infinity, pendingMode = consoleViewMode(window.location?.pathname, document.body.dataset.viewMode)
   const viewport = el('viewer-canvas') ?? append(document, document.body, 'div', 'native-console-viewport')
+  const transitionTiming = createNativeTransitionTiming({ viewport, document, context: () => sceneHost?.timingContext?.() ?? { view: pendingMode } })
   viewport.id = 'viewer-canvas'; viewport.setAttribute('aria-label', '同一 Agent 本人及原生世界')
   const targets=append(document,document.body,'details','native-target-panel');append(document,targets,'summary','','观察目标')
   const targetBody=append(document,targets,'div','native-toolbar-panel')
@@ -126,7 +128,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     @media(max-width:720px){.native-agent-status{top:55px;font-size:10px;gap:1px 6px}.native-agent-field:has(#agent-decision-at){display:none}}
   `
   let activityUi=null
-  const ui = createInterface({ document,onIconRevision:iconRevision=>{
+  const ui = createInterface({ document, transitionTiming,onIconRevision:iconRevision=>{
     if(!disposed&&latestState)activityUi?.update(latestState,{iconRevision})
   } })
   const deathUi=createNativeDeathUi({document})
@@ -203,7 +205,8 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   if (map) map.hidden = true // Missing native map is disclosed in diagnostics, not an empty terrain panel.
   // Block old stylesheet URLs until NativeUiAssets installs verified pack URLs.
   style.textContent += '\n.corti-crosshair,.corti-hotbar,.corti-hotbar-selection,.corti-xp,.corti-xp-fill{background-image:none}'
-  const switchView = mode => {
+  const switchView = (mode, reason = 'mode') => {
+    const timing = transitionTiming.begin('mode', reason, mode)
     pendingMode = mode; sceneHost?.setView(mode)
     const selected = Object.entries(MODES).find(([, value]) => value === mode)?.[0]
     document.body.dataset.viewMode = selected
@@ -214,29 +217,30 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     const crosshair = q('.corti-crosshair'); if (crosshair) crosshair.hidden = mode !== 'first'
     const dungeonNav=q('.dungeon-camera-controls');if(dungeonNav)dungeonNav.hidden=mode!=='3dview'
     updateDiagnosticText()
+    transitionTiming.finish(timing)
   }
   for (const link of document.querySelectorAll('[data-view]')) listen(link, 'click', event => {
     const mode = MODES[link.dataset.view]
     if (!mode || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
-    event.preventDefault(); switchView(mode)
+    event.preventDefault(); switchView(mode, 'click')
     if (link.getAttribute('href')) window.history?.replaceState(null, '', link.getAttribute('href'))
   })
   listen(document, 'keydown', event => {
     if (event.code !== 'F5' || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return
-    event.preventDefault(); switchView(pendingMode === 'first' ? 'third' : 'first')
+    event.preventDefault(); switchView(pendingMode === 'first' ? 'third' : 'first', 'key')
   })
   const stopStatus = startStatus({ fetchStatus, expectedPlayer: () => identity?.player,
     onView: view => { if (!disposed) renderAgentStatus(view, el) } })
   const dispose = () => {
     if (disposed) return
-    disposed = true; stopStatus(); layoutUi.dispose(); chatUi?.dispose(); galleryUi.dispose(); appearanceUi.dispose(); cameraUi.dispose(); sceneUi.dispose(); dungeonUi?.dispose();targets.remove();activityUi.dispose(); deathUi.dispose(); ui.dispose(); sceneHost?.dispose()
+    disposed = true; stopStatus(); layoutUi.dispose(); chatUi?.dispose(); galleryUi.dispose(); appearanceUi.dispose(); cameraUi.dispose(); sceneUi.dispose(); dungeonUi?.dispose();targets.remove();activityUi.dispose(); deathUi.dispose(); ui.dispose(); sceneHost?.dispose(); transitionTiming.dispose()
     for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     label.remove(); ysmNotice.remove(); stateBar.remove(); details.remove(); style.remove()
   }
   listen(window, 'pagehide', dispose)
   ui.reset(); switchView(pendingMode)
   try {
-    sceneHost = await mount({ viewport, mode: pendingMode, defaultAppearance, selectionStorage, selectionScope,
+    sceneHost = await mount({ viewport, transitionTiming, mode: pendingMode, defaultAppearance, selectionStorage, selectionScope,
       onBuild:buildChanged,
       cameraSettings,onCameraManual:mode=>mode&&cameraUi.select?cameraUi.select(mode):cameraUi.manual(),
       onSelection:value=>{targetSelect.value=value?String(value.entityId):'';targetInfo.textContent=value?`${value.name} · #${value.entityId}${Number.isFinite(value.health)?' · 生命 '+value.health:''}`:'正在跟随 Agent 本人'},

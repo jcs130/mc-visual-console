@@ -17,6 +17,7 @@ import { shell } from './fixtures/native-console-dom.mjs'
 import { nativeSoulSlabAnimationStyle } from '../../src/native-viewer/native-soul-slab-icons.js'
 import { readFile } from 'node:fs/promises'
 import { NativeAssetReader } from '../../src/native-viewer/model-loader.js'
+import { createNativeTransitionTiming } from '../../src/native-viewer/native-transition-timing.js'
 
 test('replacement after an image decode error clears owned diagnostics while retaining disabled-slot annotations',()=>{
   for(const annotation of ['', ' · 服务端已禁用']){
@@ -45,7 +46,8 @@ test('real icon-ready burst patches menu images without rebuilding or releasing 
     if(/textures\/item\/(wheat_seeds|stick|diamond)\.png$/.test(p))await new Promise(resolve=>gates.set(p,resolve))
     return read(p)
   }
-  const h=harness();await h.ui.setAssets(reader)
+  const viewport={dataset:{}},timing=createNativeTransitionTiming({viewport})
+  const h=harness({transitionTiming:timing});await h.ui.setAssets(reader)
   const p=presentation();p.inventory.slots=p.inventory.slots.map(row=>({...row,item:null}))
   for(const [n,name]of ['wheat_seeds','stick','diamond'].entries())p.inventory.slots[36+n].item={name:`minecraft:${name}`,count:2,snbt:`{id:"minecraft:${name}",count:2}`}
   h.ui.update({epoch:1,presentation:p});h.document.getElementById('corti-inventory-toggle').dispatch('click')
@@ -67,7 +69,11 @@ test('real icon-ready burst patches menu images without rebuilding or releasing 
   assert.deepEqual({rebuilds,attaches,releases},{rebuilds:0,attaches:0,releases:0})
   assert.equal(preview.host,host)
   assert.equal(body.querySelectorAll('img').filter(img=>['minecraft:wheat_seeds','minecraft:stick','minecraft:diamond'].includes(img.parentNode.dataset.itemName)).length,3)
-  h.ui.dispose()
+  const records=JSON.parse(viewport.dataset.transitionTiming).transitions
+  assert.ok(records.some(row=>row.reason==='click'&&row.menuRebuilds===1))
+  assert.ok(records.filter(row=>row.reason==='icon').length>=3)
+  for(const row of records.filter(row=>row.reason==='icon'))assert.deepEqual([row.menuRebuilds,row.mirrorBuilds,row.mirrorReleases],[0,0,0])
+  h.ui.dispose();timing.dispose()
 })
 
 test('late original icon callbacks cannot repopulate a closed menu or a replacement epoch/assets; decode failures stay local',async()=>{

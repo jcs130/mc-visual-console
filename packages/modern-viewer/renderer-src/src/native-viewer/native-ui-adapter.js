@@ -423,7 +423,7 @@ export class NativeFishingCatchHud extends FishingCatchHud {
 }
 
 export function createNativeInterface ({ document = globalThis.document,
-  previewFactory = options => new InventoryPlayerPreview(options), now = Date.now,
+  previewFactory = options => new InventoryPlayerPreview(options), now = Date.now, transitionTiming,
   setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason, language = new NativeLanguage(),onIconRevision=()=>{} } = {}) {
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
@@ -445,7 +445,7 @@ export function createNativeInterface ({ document = globalThis.document,
       renderNativeItemSlot(document,element,item,{resolveItemIcon:resolveIcon,resolveItemIconReason:resolveIconReason,resolveItemName:resolveName,...options,refreshOnly:true})
   }
   let presentation = unavailable('等待本人状态'), manualOpen = false, idleOpen = false,
-    idleTimer = null, dismissedMenu = null, preview = null, disposed = false, lastMenuSignature = null
+    idleTimer = null, dismissedMenu = null, preview = null, disposed = false, lastMenuSignature = null, menuTiming = null
   let combatUntil = 0
   let recentWindow = null, recentTimer = null
   const timers = new Set(), seenMessages = new Set(), seenTitles = new Set(), listeners = []
@@ -562,8 +562,8 @@ export function createNativeInterface ({ document = globalThis.document,
       for (let i = 0; i < 27; i++) if (map.has(9 + i)) slot(panel, map.get(9 + i), 8 + (i % 9) * 18, 84 + Math.floor(i / 9) * 18, '背包')
       for (let i = 0; i < 9; i++) if (map.has(36 + i)) slot(panel, map.get(36 + i), 8 + i * 18, 142, '快捷栏')
       body.append(panel)
-      preview ??= previewFactory({ THREE, document, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason }) // Intentionally no createFallback.
-      preview.attach(host)
+      preview ??= previewFactory({ THREE, document, transitionTiming, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason }) // Intentionally no createFallback.
+      preview.attach(host, menuTiming)
     } else {
       const host = node(document, 'div', 'native-inventory-preview')
       host.style.width = '104px'; host.style.height = '140px'; host.style.position = 'relative'
@@ -572,26 +572,33 @@ export function createNativeInterface ({ document = globalThis.document,
       const grid = node(document, 'div', 'corti-menu-grid')
       for (const row of inventory.slots) slot(grid, row, undefined, undefined, `原生槽 ${row.slot}`)
       panel.append(grid); body.append(panel)
-      preview ??= previewFactory({ THREE, document, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason })
-      preview.attach(host)
+      preview ??= previewFactory({ THREE, document, transitionTiming, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason })
+      preview.attach(host, menuTiming)
     }
     body.append(node(document, 'p', 'corti-menu-note', '本人原生物品与组件 · 只读；已支持图标按原生模型加载，未支持的专用模型及装备明确标注'))
     if (actor?.assetInfo?.kind === 'ysm') body.append(node(document, 'p', 'corti-menu-note', actorSource()
       ? 'YSM 背包人物沿用本人原模型与当前姿态；装备未适配' : '本人 YSM 背包人物预览不可用；装备未适配'))
   }
-  const renderMenu = () => {
+  const renderMenu = (reason = 'state') => {
+    const started = transitionTiming?.clock()
+    menuTiming = null
+    try {
     const menu = el('corti-menu'), body = q('[data-menu-body]')
     if (!menu || !body) return
     const actual = actualContainer(), window = actual || recentWindow, replay = Boolean(!actual && recentWindow)
     const windowKey = window ? `${window.windowId ?? ''}:${window.stateId ?? ''}` : null
     const showWindow = window && dismissedMenu !== windowKey
     const visible = Boolean(showWindow || manualOpen || idleOpen)
+    const changedVisibility = menu.hidden === visible
+    if (changedVisibility || reason === 'click' || reason === 'actor') menuTiming = transitionTiming?.begin('menu', reason, null, started)
     menu.hidden = !visible
     menu.dataset.windowId = String(showWindow ? window.windowId : presentation.inventory?.windowId ?? 0)
-    if (!visible) { preview?.setVisible(false); lastMenuSignature = null; menuItems.clear(); return }
+    if (!visible) { preview?.setVisible(false, menuTiming); lastMenuSignature = null; menuItems.clear(); return }
     const signature = JSON.stringify([showWindow ? window : presentation.inventory, presentation.modOperations, manualOpen, idleOpen, replay, assetsSequence])
     if (signature === lastMenuSignature) return
-    lastMenuSignature = signature; menuItems.clear(); preview?.setVisible(false); body.replaceChildren()
+    menuTiming ??= transitionTiming?.begin('menu', reason, null, started)
+    if (menuTiming) menuTiming.menuRebuilds++
+    lastMenuSignature = signature; menuItems.clear(); preview?.setVisible(false, menuTiming); body.replaceChildren()
     const heading = q('[data-menu-title]'), source = q('[data-menu-source]')
     if (showWindow) {
       menu.dataset.inventorySource = replay ? 'replay' : 'container'
@@ -657,8 +664,8 @@ export function createNativeInterface ({ document = globalThis.document,
           host.style.left = `${52 + layout.offsetX * 2}px`; host.dataset.previewState = 'waiting'
           host.setAttribute('role', 'img'); host.setAttribute('aria-label', '本人原模型预览；装备渲染未支持')
           panel.append(host)
-          preview ??= previewFactory({ THREE, document, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason })
-          preview.attach(host)
+          preview ??= previewFactory({ THREE, document, transitionTiming, resolveSource: actorSource, getUnavailableReason: actorUnavailableReason })
+          preview.attach(host, menuTiming)
         }
         let progress = null, cookingPot = null, crafter = null
         if (kind === 'crafter') {
@@ -804,6 +811,7 @@ export function createNativeInterface ({ document = globalThis.document,
         carried.append(icon, node(document, 'span', '', `光标：${resolveName(presentation.inventory.carried)} × ${presentation.inventory.carried.count} · Mineflayer 窗口状态`)); body.append(carried)
       }
     }
+    } finally { transitionTiming?.finish(menuTiming) }
   }
   const renderSkills = () => {
     const skills = presentation.skills, mana = skills?.mana
@@ -864,13 +872,13 @@ export function createNativeInterface ({ document = globalThis.document,
     cancelIdle(); clearRecent(); manualOpen = false
     const window = actualContainer()
     if (window) dismissedMenu = `${window.windowId ?? ''}:${window.stateId ?? ''}`
-    renderMenu()
+    renderMenu('click')
   }
-  listen(el('corti-inventory-toggle'), 'click', () => { cancelIdle(); clearRecent(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu() })
+  listen(el('corti-inventory-toggle'), 'click', () => { cancelIdle(); clearRecent(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu('click') })
   listen(q('[data-menu-close]'), 'click', closeMenu)
   listen(document, 'keydown', event => {
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return
-    if (event.code === 'KeyE') { event.preventDefault(); cancelIdle(); clearRecent(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu() }
+    if (event.code === 'KeyE') { event.preventDefault(); cancelIdle(); clearRecent(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu('click') }
     else if (event.code === 'Escape') { event.preventDefault(); closeMenu() }
   })
   const fishingRoot = el('viewer-fishing-catch')
@@ -892,14 +900,16 @@ export function createNativeInterface ({ document = globalThis.document,
       const key = next && JSON.stringify([next, identity.entityId ?? null, identity.epoch ?? null, identity.player ?? null, identity.mode ?? null])
       if (identityKey !== key) { reset(); expectedUuid = next; identityKey = key }
     },
-    setActor (value, reason = null) { actor = value; actorReason = reason; lastMenuSignature = null; renderMenu() },
+    setActor (value, reason = null) { actor = value; actorReason = reason; lastMenuSignature = null; renderMenu('actor') },
     async setAssets (reader) {
       const sequence = ++assetsSequence
       recipeRegistry=null;recipeRegistryReason='loading'
       assets?.dispose(); itemIcons?.dispose(); assets = new NativeUiAssets(reader)
       itemIcons = new NativeItemIcons(reader, { onChange: () => {
         if (disposed || sequence !== assetsSequence) return
-        iconRevision++; renderHud(); refreshMenuItems(); onIconRevision(iconRevision)
+        const timing=transitionTiming?.begin('menu', 'icon')
+        try { iconRevision++; renderHud(); refreshMenuItems(); onIconRevision(iconRevision) }
+        finally { transitionTiming?.finish(timing) }
       } })
       const nextLanguage = new NativeLanguage(reader)
       const [result,,registry] = await Promise.all([assets.prepare(), nextLanguage.prepare(),loadOriginalItemColors(reader)
