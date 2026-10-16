@@ -48,6 +48,7 @@ test('actual console links and menu handlers share bounded viewport diagnostics 
   assert.deepEqual(modes.map(row=>[row.currentView,row.targetView]),[['third','first'],['first','3dview']])
   assert.equal(modes.at(-1).after.snapshotRevision,7)
   assert.ok(value.transitions.some(row=>row.kind==='menu'&&row.reason==='click'&&row.menuRebuilds===1))
+  assert.deepEqual(value.transitions.filter(row=>row.kind==='menu'&&row.reason==='click').map(row=>row.menuVisible),[true,false])
   assert.ok(hooks.transitionTiming,'same collector reaches owning world loop')
   document.hidden=true;document.dispatch('visibilitychange')
   assert.equal(JSON.parse(viewport.dataset.transitionTiming).visibility.epoch,1)

@@ -1,10 +1,10 @@
-// Small, local CPU observations only. No snapshot/body/asset identifiers are copied.
+// Small, local CPU observations only. No snapshots, player identity or asset data are copied.
 // World and inventory keep their independent render loops and resource ownership.
 export function createNativeTransitionTiming({ viewport, document = globalThis.document,
   now = () => performance.now(), timeOrigin = globalThis.performance?.timeOrigin ?? null,
   context = () => ({}) } = {}) {
   const transitions = [], slowWorldFrames = [], visibilityChanges = []
-  let sequence = 0, visibilityEpoch = 0, previousRaf = null, previousFrame = null, disposed = false
+  let sequence = 0, iconCallbacks = 0, visibilityEpoch = 0, previousRaf = null, previousFrame = null, disposed = false
   const safe = fn => (...args) => { try { if (!disposed) return fn(...args) } catch { /* Observation must never interrupt a viewer callback. */ } }
   const visibility = () => ({ hidden: Boolean(document?.hidden), state: document?.visibilityState ?? (document?.hidden ? 'hidden' : 'visible'), epoch: visibilityEpoch })
   const state = () => {
@@ -16,7 +16,7 @@ export function createNativeTransitionTiming({ viewport, document = globalThis.d
   }
   const bounded = (rows, row) => { rows.push(row); if (rows.length > 8) rows.shift() }
   const publish = () => { viewport.dataset.transitionTiming = JSON.stringify({ version: 1, timeOrigin,
-    visibility: visibility(), visibilityChanges, transitions, slowWorldFrames }) }
+    visibility: visibility(), visibilityChanges, iconCallbacks, transitions, slowWorldFrames }) }
   const retained = row => row && transitions.includes(row) && now() - row.at <= 5000
   const overlap = frame => {
     frame.snapshotOverlap = frame.before.snapshotRevision !== frame.after.snapshotRevision
@@ -27,6 +27,13 @@ export function createNativeTransitionTiming({ viewport, document = globalThis.d
   const begin = safe((kind, reason, targetView = null, at = now()) => {
     const before = state(), row = { sequence: ++sequence, at, kind, reason,
       currentView: before.view, targetView: targetView ?? before.view, before, menuRebuilds: 0, mirrorBuilds: 0, mirrorReleases: 0 }
+    if (kind === 'menu' && reason === 'icon') {
+      iconCallbacks++
+      const icons = transitions.filter(record => record.kind === 'menu' && record.reason === 'icon')
+      // A cold menu can decode dozens of icons before its first preview RAF.
+      // Keep the actual opening action available for that later phase report.
+      if (icons.length >= 2) transitions.splice(transitions.indexOf(icons[0]), 1)
+    }
     bounded(transitions, row); publish(); return row
   })
   const finish = safe((row, details = {}) => {

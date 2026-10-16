@@ -69,9 +69,9 @@ test('real icon-ready burst patches menu images without rebuilding or releasing 
   assert.deepEqual({rebuilds,attaches,releases},{rebuilds:0,attaches:0,releases:0})
   assert.equal(preview.host,host)
   assert.equal(body.querySelectorAll('img').filter(img=>['minecraft:wheat_seeds','minecraft:stick','minecraft:diamond'].includes(img.parentNode.dataset.itemName)).length,3)
-  const records=JSON.parse(viewport.dataset.transitionTiming).transitions
+  const diagnostic=JSON.parse(viewport.dataset.transitionTiming),records=diagnostic.transitions
   assert.ok(records.some(row=>row.reason==='click'&&row.menuRebuilds===1))
-  assert.ok(records.filter(row=>row.reason==='icon').length>=3)
+  assert.equal(records.filter(row=>row.reason==='icon').length,2);assert.ok(diagnostic.iconCallbacks>=3)
   for(const row of records.filter(row=>row.reason==='icon'))assert.deepEqual([row.menuRebuilds,row.mirrorBuilds,row.mirrorReleases],[0,0,0])
   h.ui.dispose();timing.dispose()
 })

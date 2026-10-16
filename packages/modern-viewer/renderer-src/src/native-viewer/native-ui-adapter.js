@@ -581,6 +581,7 @@ export function createNativeInterface ({ document = globalThis.document,
   }
   const renderMenu = (reason = 'state') => {
     const started = transitionTiming?.clock()
+    let menuVisible = null
     menuTiming = null
     try {
     const menu = el('corti-menu'), body = q('[data-menu-body]')
@@ -589,6 +590,7 @@ export function createNativeInterface ({ document = globalThis.document,
     const windowKey = window ? `${window.windowId ?? ''}:${window.stateId ?? ''}` : null
     const showWindow = window && dismissedMenu !== windowKey
     const visible = Boolean(showWindow || manualOpen || idleOpen)
+    menuVisible = visible
     const changedVisibility = menu.hidden === visible
     if (changedVisibility || reason === 'click' || reason === 'actor') menuTiming = transitionTiming?.begin('menu', reason, null, started)
     menu.hidden = !visible
@@ -811,7 +813,7 @@ export function createNativeInterface ({ document = globalThis.document,
         carried.append(icon, node(document, 'span', '', `光标：${resolveName(presentation.inventory.carried)} × ${presentation.inventory.carried.count} · Mineflayer 窗口状态`)); body.append(carried)
       }
     }
-    } finally { transitionTiming?.finish(menuTiming) }
+    } finally { transitionTiming?.finish(menuTiming, { menuVisible }) }
   }
   const renderSkills = () => {
     const skills = presentation.skills, mana = skills?.mana

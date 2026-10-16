@@ -58,3 +58,17 @@ test('expired actions and failing observation sinks cannot interrupt callbacks',
   assert.doesNotThrow(() => { const row = broken.begin('mode', 'click'); broken.finish(row); document.dispatch('visibilitychange'); broken.dispose() })
   timing.dispose()
 })
+
+test('cold menu icon bursts cannot evict the six-action sequence before its deferred preview phase', () => {
+  const viewport = { dataset: {} }, timing = createNativeTransitionTiming({ viewport })
+  const open = timing.begin('menu', 'click')
+  for (let n = 0; n < 100; n++) timing.finish(timing.begin('menu', 'icon'))
+  const first = timing.previewStart(open); assert.ok(first)
+  timing.previewFinish(open, { ...first, status: 'ready', context: 'cold', cpuDrawMs: 1 })
+  for (let n = 0; n < 5; n++) timing.finish(timing.begin('menu', 'click'))
+  const value = JSON.parse(viewport.dataset.transitionTiming)
+  assert.equal(value.iconCallbacks, 100); assert.equal(value.transitions.length, 8)
+  assert.equal(value.transitions.filter(row => row.reason === 'icon').length, 2)
+  assert.equal(value.transitions.find(row => row.sequence === open.sequence).readyPreview.context, 'cold')
+  timing.dispose()
+})
