@@ -20,6 +20,7 @@ import { viewerSourceDigest } from './viewer-build-source.mjs'
 import { patchObsRendererAlpha } from './minecraft-viewer-obs-alpha.mjs'
 import { viewerVersionCss } from '../host/viewer-version.mjs'
 import { prepareItemAppearanceAssets } from './item-appearance-assets.mjs'
+import { viewerReactiveModule } from './viewer-reactive-module.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
@@ -284,6 +285,7 @@ const buildResult = await build({
   format: 'esm', legalComments: 'none', loader: { '.png': 'dataurl' }, minify: true,
   outfile: path.join(outputRoot, 'dist', 'modern-viewer.js'), platform: 'browser',
   plugins: [
+    await viewerReactiveModule(sourceRoot),
     { name: 'cortico-minecraft-1.20.6', setup(context) {
       context.onResolve({ filter: /^minecraft-data$/ }, () => ({ path: aliasFile }))
       context.onResolve({ filter: /^mc-assets\/dist\// }, ({ path: request }) => {
@@ -300,7 +302,6 @@ const buildResult = await build({
         loader: 'json',
       }))
       context.onResolve({ filter: /^valtio\/utils$/ }, () => ({ path: path.join(sourceRoot, 'src', 'modern-viewer', 'valtio-utils-shim.js') }))
-      context.onResolve({ filter: /^valtio$/ }, () => ({ path: path.join(sourceRoot, 'node_modules', 'valtio', 'esm', 'vanilla.mjs') }))
       context.onLoad({ filter: /[\\/]presets[\\/]qiandengji[\\/][^\\/]+\.js$/ }, async ({ path: file }) => {
         const name = path.basename(file)
         if (vanillaPresetModules[name]) return { contents: vanillaPresetModules[name], loader: 'js', resolveDir: path.dirname(file) }

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createCanvas } from 'canvas';
 import { overviewSpec, overviewPanels, overviewRegions, overviewCamera, overviewProject, overviewCoverage, overviewMarker, overviewLabelLayout, annotateOverview, captureOverview } from '../../src/modern-viewer/overview-capture.js';
 
 function origin(x, y, z) {
@@ -27,6 +28,31 @@ test('overhead projection shares camera coordinates, stays north up across negat
 test('negative chunk boundaries and missing coverage are explicit, not fabricated air', () => {
   const coverage = overviewCoverage({minX:-32,maxX:0,minZ:-16,maxZ:16},{'-32,-16':true,'-16,0':true});
   assert.deepEqual(coverage,{total:4,meshed:2,missing:[[-32,0],[-16,-16]]});
+});
+
+test('capture keeps all received top-surface pixels outside the player view and hatches only unmeshed chunks', () => {
+  const position={x:8,y:64,z:8}, sceneOrigin=origin(8,66,8);
+  const terrain=createCanvas(1280,720), paint=terrain.getContext('2d');
+  const world={camera:{},cameraWorldPos:{...position},sceneOrigin,scene:{fog:null},reactiveDebugParams:{smartCull:true},
+    worldSizeParams:{minY:-64,worldHeight:384},finishedChunks:{},renderer:{domElement:terrain,render(){}},
+    render(){paint.fillStyle='#267c35';paint.fillRect(0,0,1280,720);}};
+  const spec=overviewSpec({center:[8,8],span:32,grid:0},position,1280,720);
+  for(const [x,z] of overviewCoverage(spec.bounds,{}).missing)world.finishedChunks[`${x},${z}`]=true;
+  const canvases=[];
+  const document={createElement(){const canvas=createCanvas(1,1);canvases.push(canvas);return canvas;}};
+  const complete=captureOverview(world,{center:[8,8],span:32,grid:0},{position,width:1280,height:720,document});
+  const output=canvases[0].getContext('2d');
+  for(const [x,y]of[[110,110],[1100,110],[110,600],[1100,600]])
+    assert.deepEqual([...output.getImageData(x,y,1,1).data],[38,124,53,255]);
+  assert.equal(complete.metadata.source,'client-loaded-world');
+  assert.equal(complete.metadata.layers,'top-surfaces-only');
+  assert.equal(complete.metadata.coverage.meshed,complete.metadata.coverage.total);
+  assert.equal(complete.metadata.perception,undefined);
+  delete world.finishedChunks['-16,0'];canvases.length=0;
+  const partial=captureOverview(world,{center:[8,8],span:32,grid:0},{position,width:1280,height:720,document});
+  assert.equal(partial.metadata.coverage.meshed,partial.metadata.coverage.total-1);
+  assert.notDeepEqual([...canvases[0].getContext('2d').getImageData(110,110,1,1).data],[38,124,53,255]);
+  assert.deepEqual([...canvases[0].getContext('2d').getImageData(1100,600,1,1).data],[38,124,53,255]);
 });
 
 test('block pins land at cell centers; continuous positions, including integers, are never shifted', () => {

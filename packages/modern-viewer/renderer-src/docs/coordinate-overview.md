@@ -17,6 +17,10 @@ const { png, metadata } = window.__mcOverviewCapture({
 ```
 
 Defaults: center at current body X/Z, 32 blocks wide, automatic grid and labels.
+All already received and meshed terrain in these bounds is rendered. The overhead
+camera is independent of the player's first-person field of view; no eye-visibility
+or historical-pixel mask is applied. Metadata identifies this as
+`source: 'client-loaded-world'`, `layers: 'top-surfaces-only'`.
 Width may be 8–2048 blocks; depth follows the viewport ratio. Up to 128 pins have
 absolute XYZ and a label of at most 24 characters. These are per-image resource
 budgets, not a restriction to local close-ups. No extra terrain is requested.

@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SightGrid,clearSight,visibleEntity,visibleSurface,hearingHint,TerrainMemory} from '../../src/modern-viewer/perception-view.js';
 import {VisibleMotion,focusEntities} from '../../src/modern-viewer/perception-risk.js';
-import {captureOverview} from '../../src/modern-viewer/overview-capture.js';
 const air={name:'air',shapes:[]},stone={name:'stone',shapes:[[0,0,0,1,1,1]]};
 const self={id:1,pos:{x:.5,y:64,z:.5},yaw:0,pitch:-.2};
 const ground={top:()=>64,block:(_x,y)=>y<64?stone:air};
@@ -96,7 +95,4 @@ test('attention modes rank urgent warnings and clear forecasts as soon as an ent
   const next=motion.sample([{...rows[1],pos:{x:1,y:64,z:-4}}],1500)[0];
   assert.equal(next.forecast.x,3);assert.equal(next.forecast.probability,null);
   motion.sample([],1600);assert.equal(motion.sample([rows[1]],1700)[0].forecast,null);
-});
-test('overview refuses an unmasked export even if a caller passes a complete renderer',()=>{
-  assert.throws(()=>captureOverview({}, {}, {}),/visibility mask/);
 });

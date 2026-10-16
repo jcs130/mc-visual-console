@@ -226,15 +226,14 @@ export function annotateOverview(ctx, spec, project, coverage, pins, player, dim
   for(const item of regionLabels)label(ctx,item.text,item.x,item.y,item.id===`A${selected}`?'#ffcc68':'#89d5ff');
   const dim=({overworld:'主世界',the_nether:'下界',the_end:'末地'})[String(dimension??'').replace(/^minecraft:/,'')]??'自定义维度';
   label(ctx,`${panelId==='overview'?'总览':displayId(panelId)+' 近景'} · 北 −Z ↑ / 东 +X →${width>=600?' · '+dim:''} · ${Math.round(spec.span*10)/10} 格`,8,7);
-  label(ctx,`网格 ${grid ? grid+' 格':'关闭'} · ${width>=600?'[]格心 / ()实坐标 · ':''}灰色未知 · 斜纹未更新${layout.hidden?' · 隐藏 '+layout.hidden+' 标签':''}`,8,height-29,'#f6ddb0');
+  label(ctx,`网格 ${grid ? grid+' 格':'关闭'} · ${width>=600?'[]格心 / ()实坐标 · ':''}${coverage.missing.length?'斜线区未加载':'范围内区块已加载'}${layout.hidden?' · 隐藏 '+layout.hidden+' 标签':''}`,8,height-29,'#f6ddb0');
   return { mode:layout.mode, shown:layout.shown, hidden:layout.hidden };
 }
 
 /** Render synchronously in a private capture page, then restore its camera and origin.
  * Use the renderer's full terrain pass: a bare THREE.render omits its custom chunk buffers.
  * No pointer, camera-control/socket command or new Minecraft connection is involved. */
-export function captureOverview(world, input, { position, dimension, width, height, document, mask }) {
-  if(typeof mask!=='function')throw new Error('overview requires an observer visibility mask');
+export function captureOverview(world, input, { position, dimension, width, height, document }) {
   if (!world?.renderer || !world.sceneOrigin || !world.cameraWorldPos || !world.render || !position) throw new Error('overview renderer unavailable');
   const spec = overviewSpec(input, position, width, height);
   const panels = overviewPanels(spec);
@@ -275,29 +274,25 @@ export function captureOverview(world, input, { position, dimension, width, heig
       // only distance fog. Geometry still occludes normally; no roof cutaway.
       world.render();
       pane.drawImage(world.renderer.domElement, 0, 0, spec.width, spec.height);
-      const observed=mask({canvas:layer,spec,coverage});
-      if(!observed?.perception)throw new Error('overview visibility evidence unavailable');
-      pane.clearRect(0,0,spec.width,spec.height);pane.drawImage(observed.canvas,0,0);
       const regions=overviewRegions(spec);
       const project = point => overviewProject(point, view.camera, origin, spec.width, spec.height);
       const pins = spec.markers.map((pin, i) => overviewMarker(pin, i, project));
       const playerAt = [position.x, position.y, position.z];
       const player = { id: 'SELF', at: playerAt, ...project(playerAt) };
-      const labels = annotateOverview(pane, spec, project, {...coverage,missing:[]}, pins, player, dimension,panel.id);
+      const labels = annotateOverview(pane, spec, project, coverage, pins, player, dimension,panel.id);
       ctx.drawImage(layer,panel.viewport.x,panel.viewport.y);
       const shift=point=>({...point,pixel:[point.pixel[0]+panel.viewport.x,point.pixel[1]+panel.viewport.y]});
       return {id:panel.id,viewport:panel.viewport,bounds:spec.bounds,grid:spec.grid,
         coverage: { meshed: coverage.meshed, total: coverage.total },
-        perception:observed.perception,
         player:shift(player),pins:pins.map(shift),labels,
         regions:regions.map(region=>({...region,rect:{...region.rect,x:region.rect.x+panel.viewport.x,y:region.rect.y+panel.viewport.y}}))};
     });
     const [main,detail]=captures;
     metadata = {schema:'mc-overview/v3',capturedAt:new Date().toISOString(),dimension:dimension??null,
       bounds:main.bounds,grid:main.grid,north:'-Z',right:'+X',width,height,viewport:main.viewport,
-      coverage:main.coverage,perception:main.perception,player:main.player,pins:main.pins,labels:main.labels,
+      coverage:main.coverage,player:main.player,pins:main.pins,labels:main.labels,
       ...(spec.attention?{attention:{source:'caller-selected',regions:main.regions,...(detail?{detail}:{})}}:{}),
-      source:'eye-visible-and-visual-history',layers:'seen-top-surfaces-only'};
+      source:'client-loaded-world',layers:'top-surfaces-only'};
   } finally {
     world.renderer.render = old.render;
     world.camera = old.camera; Object.assign(world.cameraWorldPos, old.pos);

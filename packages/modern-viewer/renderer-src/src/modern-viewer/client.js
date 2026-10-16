@@ -7,7 +7,7 @@ import { io } from "socket.io-client";
 import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { captureOverview } from "./overview-capture.js";
 import { installSceneMinimap, dimensionLabel } from "./scene-minimap.js";
-import { SightGrid, TerrainMemory } from "./perception-view.js";
+import { SightGrid } from "./perception-view.js";
 import { installCameraWater } from './camera-water.js';
 import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
@@ -472,7 +472,6 @@ let fishingVisuals = null;
 let selfAvatarCameraVisibility = null;
 let rendererReady = false;
 let perceptionGrid = null;
-const overviewMemory = new TerrainMemory(document);
 let initializing = false;
 let selectedPlayerSkin = resolvePlayerSkin(DEFAULT_PLAYER_SKIN_ID);
 let playerSkinStatus = "waiting-for-renderer";
@@ -728,7 +727,6 @@ const stopConnectionStatus = installViewerConnectionStatus(socket, {
 window.addEventListener("beforeunload", stopConnectionStatus, { once: true });
 socket.on("viewerReset", () => {
   perceptionGrid?.clear();
-  overviewMemory.clear();
   resetObsHands();
   fishingCatchHud.reset();
   setTimeout(() => window.location.reload(), 250);
@@ -1018,7 +1016,6 @@ async function initializeRenderer(version) {
       return captureOverview(globalThis.world, options, {
         position: latestPosition?.pos, dimension: npcWorldContext.dimension,
         width: window.innerWidth, height: window.innerHeight, document,
-        mask: frame => overviewMemory.apply(frame,perceptionGrid,pendingAvatarState?.entity ?? latestPosition),
       });
     };
     viewerEffectSystem = new ViewerEffectSystem({
