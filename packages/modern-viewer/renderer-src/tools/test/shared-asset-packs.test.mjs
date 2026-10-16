@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { listAssetPackIds, loadAssetPack, verifyAssetPack, prepareAssetPack } from '../../../../../tools/prepare-viewer-assets.mjs';
+import { listAssetPackIds, loadAssetPack, verifyAssetPack, prepareAssetPack, prepareSoundAssetPack } from '../../../../../tools/prepare-viewer-assets.mjs';
 import { verifyViewerContentAssets } from '../viewer-content-assets.mjs';
 
 async function fixture(t) {
@@ -47,7 +47,7 @@ test('all discovered committed packs have valid manifests', async () => {
 
 test('shared pack copies the verified bytes and records version and source receipt', async t => {
   const f = await fixture(t);
-  const receipt = await prepareAssetPack({ ...f, id: 'java-1.20.6', buildJava: false });
+  const receipt = await prepareAssetPack({ ...f, id: 'java-1.20.6', sounds: false, buildJava: false });
   assert.deepEqual(await fs.readFile(path.join(f.outputDirectory, 'public/resource.bin')), f.bytes);
   assert.equal(receipt.minecraftVersion, '1.20.6');
   assert.equal(JSON.parse(await fs.readFile(path.join(f.outputDirectory, 'viewer-assets.json'))).packs[0].fileCount, 1);
@@ -75,14 +75,57 @@ test('missing or corrupt original resources fail before creating a deployment', 
 
 test('a pack cannot traverse its directory or overwrite another version or source tree', async t => {
   const f = await fixture(t);
-  await assert.rejects(prepareAssetPack({ ...f, id: 'java-1.20.6', outputDirectory: f.pack, buildJava: false }), /OVERLAPS_SOURCE/);
+  await assert.rejects(prepareAssetPack({ ...f, id: 'java-1.20.6', outputDirectory: f.pack, sounds: false, buildJava: false }), /OVERLAPS_SOURCE/);
   await fs.mkdir(path.join(f.outputDirectory, 'public'), { recursive: true });
   await fs.writeFile(path.join(f.outputDirectory, 'public/asset-source.json'), JSON.stringify({ minecraftVersion: '1.21.1' }));
-  await assert.rejects(prepareAssetPack({ ...f, id: 'java-1.20.6', buildJava: false }), /VERSION_MISMATCH/);
+  await assert.rejects(prepareAssetPack({ ...f, id: 'java-1.20.6', sounds: false, buildJava: false }), /VERSION_MISMATCH/);
   f.manifest.files['../outside.bin'] = f.manifest.files['public/resource.bin'];
   delete f.manifest.files['public/resource.bin'];
   await f.save();
   await assert.rejects(verifyAssetPack('java-1.20.6', f.assetRoot), /PATH_INVALID/);
+});
+
+async function audioFixture(f) {
+  const audio = path.join(f.assetRoot, 'java-1.20.6-sounds');
+  const bytes = Buffer.from('audio fixture, not original game content');
+  await fs.mkdir(path.join(audio, 'public/sounds/music'), { recursive: true });
+  const catalog = Buffer.from(JSON.stringify({ minecraftVersion: '1.20.6', events: {} }));
+  const files = { 'public/sounds/music/fixture.ogg': bytes, 'public/sounds/manifest.json': catalog };
+  for (const [relative, data] of Object.entries(files)) await fs.writeFile(path.join(audio, relative), data);
+  await fs.writeFile(path.join(audio, 'pack.json'), JSON.stringify({ schemaVersion: 1, id: 'java-1.20.6-sounds', kind: 'sounds',
+    minecraftVersion: '1.20.6', fileCount: 2, bytes: bytes.length + catalog.length,
+    files: Object.fromEntries(Object.entries(files).map(([relative, data]) => [relative, {
+      bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') }])) }));
+  return { audio, bytes };
+}
+
+test('ordinary preparation includes the full matched audio pack by default', async t => {
+  const f = await fixture(t), audio = await audioFixture(f);
+  const receipt = await prepareAssetPack({ ...f, id: 'java-1.20.6', buildJava: false });
+  assert.deepEqual(receipt.packs.map(p => p.id), ['java-1.20.6', 'java-1.20.6-sounds']);
+  assert.deepEqual(await fs.readFile(path.join(f.outputDirectory, 'public/sounds/music/fixture.ogg')), audio.bytes);
+});
+
+test('default audio omissions and corrupt audio fail before any visual deployment', async t => {
+  const f = await fixture(t);
+  await assert.rejects(prepareAssetPack({ ...f, id: 'java-1.20.6', buildJava: false }), { code: 'ENOENT' });
+  await assert.rejects(fs.stat(f.outputDirectory), { code: 'ENOENT' });
+  const audio = await audioFixture(f);
+  await fs.writeFile(path.join(audio.audio, 'public/sounds/music/fixture.ogg'), 'corrupt');
+  await assert.rejects(prepareAssetPack({ ...f, id: 'java-1.20.6', buildJava: false }), /HASH_MISMATCH/);
+  await assert.rejects(fs.stat(f.outputDirectory), { code: 'ENOENT' });
+});
+
+test('direct builds can restore matched audio, preserve private music and reject a different version', async t => {
+  const f = await fixture(t), audio = await audioFixture(f);
+  await fs.mkdir(path.join(f.outputDirectory, 'public/sounds/custom'), { recursive: true });
+  await fs.writeFile(path.join(f.outputDirectory, 'public/sounds/custom/private.ogg'), 'private');
+  const receipt = await prepareSoundAssetPack({ ...f, minecraftVersion: '1.20.6' });
+  assert.equal(receipt.fileCount, 2);
+  assert.deepEqual(await fs.readFile(path.join(f.outputDirectory, 'public/sounds/music/fixture.ogg')), audio.bytes);
+  assert.equal(await fs.readFile(path.join(f.outputDirectory, 'public/sounds/custom/private.ogg'), 'utf8'), 'private');
+  await fs.writeFile(path.join(f.outputDirectory, 'public/asset-source.json'), JSON.stringify({ minecraftVersion: '1.21.1' }));
+  await assert.rejects(prepareSoundAssetPack({ ...f, minecraftVersion: '1.20.6' }), /VERSION_MISMATCH/);
 });
 
 test('the committed Java pack contains baked states and every original icon, texture and render input', async () => {

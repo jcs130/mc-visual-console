@@ -26,7 +26,7 @@ npm ci --prefix packages/modern-viewer/renderer-src
 node tools/prepare-viewer-assets.mjs java-1.20.6 "<output-dir>"
 ```
 
-命令先检查逐文件哈希，再复制对应版本的素材并编译当前浏览器代码；`viewer-assets.json` 记录素材版本和清单哈希。需要游戏音效时加 `--sounds`。自定义导出仍可按[渲染器说明](packages/modern-viewer/renderer-src/README.md)使用自己的客户端 JAR。
+命令先检查逐文件哈希，再复制对应版本的素材和完整声音包并编译当前浏览器代码；`viewer-assets.json` 记录素材版本和清单哈希。音乐与音效默认包含，只有明确需要静音资源部署时才加 `--no-sounds`；旧的 `--sounds` 参数仍兼容。直接构建浏览器代码也会补齐匹配的声音包，不会因只更新画面而遗漏音频。自定义导出仍可按[渲染器说明](packages/modern-viewer/renderer-src/README.md)使用自己的客户端 JAR。
 
 构建默认使用通用模式，适合 Neko 等其他宿主。千灯纪的技能视觉映射和公会看板显示用 `--preset=qiandengji` 显式开启；此选项不启用参考包内的命名 NPC 身份或本地剧情。服务端机制和 Agent 决策仍在独立 World 中。
 

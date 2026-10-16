@@ -68,7 +68,42 @@ export async function verifyAssetPack(id, assetRoot = SHARED_ASSET_ROOT) {
   return pack;
 }
 
-export async function prepareAssetPack({ id, outputDirectory, sounds = false, preset = null, assetRoot = SHARED_ASSET_ROOT, buildJava = true }) {
+async function copyAssetPack(pack, output) {
+  // Publish catalog metadata after its files, so readers cannot observe a new
+  // catalog whose audio is still being copied. Preserve private custom tracks.
+  const catalog = 'public/sounds/manifest.json';
+  const copy = async ([relative, expected]) => {
+    const bytes = await fs.readFile(path.join(pack.directory, relative));
+    if (bytes.length !== expected.bytes || hash(bytes) !== expected.sha256) throw Error('ASSET_PACK_CHANGED_DURING_COPY: ' + relative);
+    const destination = path.join(output, relative);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.writeFile(destination, bytes);
+  };
+  await eachFile(pack.entries.filter(([relative]) => relative !== catalog), copy);
+  const manifest = pack.entries.find(([relative]) => relative === catalog);
+  if (manifest) await copy(manifest);
+}
+
+/** Also used by direct renderer builds: updating visuals must not omit audio. */
+export async function prepareSoundAssetPack({ minecraftVersion, outputDirectory, assetRoot = SHARED_ASSET_ROOT }) {
+  if (!['1.20.6', '1.21.1'].includes(minecraftVersion)) throw Error('ASSET_PACK_SOUND_VERSION_UNSUPPORTED');
+  const output = path.resolve(outputDirectory), source = path.resolve(assetRoot);
+  if (inside(source, output) || inside(output, source)) throw Error('ASSET_PACK_OUTPUT_OVERLAPS_SOURCE');
+  const audio = await verifyAssetPack(`java-${minecraftVersion}-sounds`, assetRoot);
+  if (audio.manifest.kind !== 'sounds' || audio.manifest.minecraftVersion !== minecraftVersion) throw Error('ASSET_PACK_SOUND_VERSION_MISMATCH');
+  for (const relative of ['public/asset-source.json', 'viewer-assets.json', 'public/sounds/manifest.json']) {
+    const previous = await fs.readFile(path.join(output, relative), 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return null; });
+    if (previous && JSON.parse(previous).minecraftVersion !== minecraftVersion) throw Error('ASSET_PACK_OUTPUT_VERSION_MISMATCH');
+  }
+  await copyAssetPack(audio, output);
+  const receipt = { schemaVersion: 1, minecraftVersion, preparedAt: new Date().toISOString(),
+    id: audio.manifest.id, manifestSha256: audio.manifestSha256, fileCount: audio.manifest.fileCount,
+    bytes: audio.manifest.bytes, source: audio.manifest.source ?? null };
+  await fs.writeFile(path.join(output, 'viewer-audio-assets.json'), JSON.stringify(receipt, null, 2) + '\n');
+  return receipt;
+}
+
+export async function prepareAssetPack({ id, outputDirectory, sounds = true, preset = null, assetRoot = SHARED_ASSET_ROOT, buildJava = true }) {
   if (preset !== null && preset !== 'qiandengji') throw Error('ASSET_PACK_PRESET_INVALID');
   const output = path.resolve(outputDirectory);
   for (const source of [path.resolve(assetRoot), rendererRoot]) {
@@ -89,15 +124,11 @@ export async function prepareAssetPack({ id, outputDirectory, sounds = false, pr
     if (previous && JSON.parse(previous).minecraftVersion !== primary.manifest.minecraftVersion) throw Error('ASSET_PACK_OUTPUT_VERSION_MISMATCH');
   }
   await fs.mkdir(output, { recursive: true });
-  for (const pack of packs) await eachFile(pack.entries, async ([relative, expected]) => {
-    const destination = path.join(output, relative);
-    const bytes = await fs.readFile(path.join(pack.directory, relative));
-    if (bytes.length !== expected.bytes || hash(bytes) !== expected.sha256) throw Error('ASSET_PACK_CHANGED_DURING_COPY: ' + relative);
-    await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.writeFile(destination, bytes);
-  });
+  for (const pack of packs) await copyAssetPack(pack, output);
   if (primary.manifest.kind === 'java' && buildJava) {
-    const args = [path.join(rendererRoot, 'tools/build-minecraft-viewer-client.mjs'), rendererRoot, output];
+    // Selected packs have already been verified/copied above, including an
+    // explicit silent deployment. Do not duplicate that work in the child.
+    const args = [path.join(rendererRoot, 'tools/build-minecraft-viewer-client.mjs'), rendererRoot, output, '--no-sounds'];
     if (preset) args.push('--preset=' + preset);
     const result = await runFile(process.execPath, args, { maxBuffer: 1024 * 1024 });
     if (result.stdout) process.stdout.write(result.stdout);
@@ -123,10 +154,11 @@ async function main() {
     return;
   }
   const [id, outputDirectory, ...options] = args;
-  if (!id || !outputDirectory || options.some(option => !['--sounds', '--preset=qiandengji'].includes(option))) {
-    throw Error('Usage: node tools/prepare-viewer-assets.mjs <java-1.20.6|java-1.21.1|native-1.21.1> <output-dir> [--sounds] [--preset=qiandengji]; --verify [pack]; --list');
+  if (!id || !outputDirectory || options.some(option => !['--sounds', '--no-sounds', '--preset=qiandengji'].includes(option))
+    || (options.includes('--sounds') && options.includes('--no-sounds'))) {
+    throw Error('Usage: node tools/prepare-viewer-assets.mjs <java-1.20.6|java-1.21.1|native-1.21.1> <output-dir> [--no-sounds] [--preset=qiandengji]; --verify [pack]; --list');
   }
-  const result = await prepareAssetPack({ id, outputDirectory, sounds: options.includes('--sounds'), preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null });
+  const result = await prepareAssetPack({ id, outputDirectory, sounds: !options.includes('--no-sounds'), preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null });
   console.log(JSON.stringify(result));
   if (result.kind === 'native') console.log('Native source resources prepared. Supply registry/ and override variants from the matching server export before starting the native host.');
 }

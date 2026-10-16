@@ -9,7 +9,7 @@ npm ci --prefix packages/modern-viewer/renderer-src
 node tools/prepare-viewer-assets.mjs java-1.20.6 "<Neko静态资源目录>"
 ```
 
-需要游戏音效时加 `--sounds`。输出目录提供第一人称、第三人称和地下城 2.5D 页面。宿主将当前动作 bot 的区块、实体、本人状态、装备与窗口转换为 [Socket.IO 合约](../packages/modern-viewer/renderer-src/SOCKET_PROTOCOL.md) 的事件。
+音乐与音效默认包含；明确需要静音资源部署时才加 `--no-sounds`。输出目录提供第一人称、第三人称和地下城 2.5D 页面。宿主将当前动作 bot 的区块、实体、本人状态、装备与窗口转换为 [Socket.IO 合约](../packages/modern-viewer/renderer-src/SOCKET_PROTOCOL.md) 的事件。
 
 静态路由使用 `/index.js` → `dist/modern-viewer.js`，其余资源来自 `public/`；`/textures/*` 指向 `public/textures/1.20.6/`。同一 HTTP 服务提供 `/socket.io` 与 `/third/socket.io`。每个连接先发版本与完整快照，再发实际变化。每位 Agent 使用自己的服务或明确隔离的数据路由，演出台词和音频不读取 Corti 的全局来源。
 

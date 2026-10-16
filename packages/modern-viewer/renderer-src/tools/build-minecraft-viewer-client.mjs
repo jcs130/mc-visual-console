@@ -21,13 +21,14 @@ import { patchObsRendererAlpha } from './minecraft-viewer-obs-alpha.mjs'
 import { viewerVersionCss } from '../host/viewer-version.mjs'
 import { prepareItemAppearanceAssets } from './item-appearance-assets.mjs'
 import { viewerReactiveModule } from './viewer-reactive-module.mjs'
+import { prepareSoundAssetPack } from '../../../../tools/prepare-viewer-assets.mjs'
 
 const [sourceArg, outputArg, ...options] = process.argv.slice(2)
 if (!sourceArg || !outputArg) {
-  console.error('用法：node tools/build-minecraft-viewer-client.mjs <modern-viewer 源码包> <输出包目录> [--preset=qiandengji]')
+  console.error('用法：node tools/build-minecraft-viewer-client.mjs <modern-viewer 源码包> <输出包目录> [--preset=qiandengji] [--no-sounds]')
   process.exit(2)
 }
-if (options.some(option => option !== '--preset=qiandengji')) throw Error('未知构建选项')
+if (options.some(option => !['--preset=qiandengji', '--no-sounds'].includes(option))) throw Error('未知构建选项')
 const presetSource = options.includes('--preset=qiandengji')
   ? (await Promise.all(['qiandengji-skills.js', 'qiandengji-guild.js'].map(file =>
     readFile(new URL(`./presets/${file}`, import.meta.url), 'utf8')))).join('\n') : ''
@@ -63,6 +64,7 @@ const version = sourceManifest.minecraftVersion
 if (!['1.20.6', '1.21.1'].includes(version) || !sourceManifest.clientJarSha256) {
   throw Error('请先从 1.20.6 客户端 JAR 导出资源')
 }
+if (!options.includes('--no-sounds')) await prepareSoundAssetPack({ minecraftVersion: version, outputDirectory: outputRoot })
 const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256,{version})
 const textDisplays = await verifyTextDisplayAssets(outputRoot,sourceManifest.clientJarSha256,version)
 const itemAppearances = await prepareItemAppearanceAssets(outputRoot, {

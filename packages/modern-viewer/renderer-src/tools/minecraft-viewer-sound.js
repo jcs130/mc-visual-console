@@ -210,6 +210,12 @@ function cortiInstallWorldSound(socket) {
     catalogError, foregroundAudio: { ...foreground },
     music: [...voices.values()].find(voice => voice.category === 'music')?.name ?? null,
     musicTrack: [...voices.values()].find(voice => voice.category === 'music')?.track ?? null,
+    playback: { contextState: context?.state ?? null, contextTime: Number.isFinite(context?.currentTime) ? context.currentTime : null,
+      streams: [...voices.values()].filter(voice => voice.streaming).map(voice => ({ name: voice.name, track: voice.track,
+        started: voice.started, paused: voice.media?.paused ?? null,
+        currentTime: Number.isFinite(voice.media?.currentTime) ? voice.media.currentTime : null,
+        duration: Number.isFinite(voice.media?.duration) ? voice.media.duration : null,
+        readyState: voice.media?.readyState ?? null, errorCode: voice.media?.error?.code ?? null })) },
     error: lastAudioError, connected, originKnown: Boolean(origin), dimension: musicState.dimension,
     biome: musicState.biome, musicCandidate: musicCandidate(), musicGate: musicGate(),
     musicWaitMs: Number.isFinite(nextMusicAt) ? Math.max(0, Math.ceil(nextMusicAt - now())) : null });

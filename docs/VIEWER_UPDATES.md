@@ -3,7 +3,7 @@
 源码更新后，运行中的 Web 和复制出去的相机不会自动换包。按宿主原来的 Minecraft 版本及 preset 构建，不要混用1.20.6与原生1.21.1资产。
 
 1. 更新本仓库到需要的提交，保留宿主自己的连接与控制逻辑。
-2. 例如千灯纪1.20.6：`node tools/prepare-viewer-assets.mjs java-1.20.6 <新的资产目录> --preset=qiandengji`；有原声音包的宿主保留 `--sounds`。
+2. 例如千灯纪1.20.6：`node tools/prepare-viewer-assets.mjs java-1.20.6 <新的资产目录> --preset=qiandengji`；默认复制版本匹配的完整音乐与音效。只有明确需要静音资源部署时才使用 `--no-sounds`，缺包或校验失败会阻止部署。直接构建浏览器代码同样补齐声音包，并写入 `viewer-audio-assets.json`。
 3. 执行 `node tools/check-viewer-build.mjs <资产目录>`。`ok=true`表示该目录的实际浏览器bundle摘要与清单一致，且构建时记录的渲染器及Mineflayer宿主代码摘要与当前源码一致。
 4. 让原宿主使用该资产目录与当前桥接代码，并在合适窗口重新启动宿主。浏览器刷新后核对其实际加载的bundle，不能只看本地文件。
 
