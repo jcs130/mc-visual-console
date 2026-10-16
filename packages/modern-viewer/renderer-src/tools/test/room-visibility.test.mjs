@@ -253,3 +253,11 @@ test('swimming, ladder and partial-support bodies retain a corridor while the fl
     }
   }
 });
+
+test('a raised foreground floor does not disable the body corridor or cut the actual lower floor',()=>{
+  const {settings,front}=fixture();settings.bodyCorridor=true;
+  settings.floorMask={contains:()=>true,floorYAt:()=>front.y+1,isOpen:()=>true};
+  assert.equal(cutawayMask(front,settings),1,'raised foreground support can itself obscure a lower body');
+  assert.equal(cutawayMask(front.clone().setY(settings.footY),settings),0);
+  assert.equal(cutawayMask(settings.target.clone().addScaledVector(settings.forward,3),settings),0);
+});

@@ -172,7 +172,8 @@ export function cutawayMask(point, { camera, target, right, up, forward, footY, 
   // Preserve the feet and lower terrain. Floor-wide removal requires a
   // connected floor; a measured body's sight corridor does not.
   if (point.y <= footY) return 0;
-  if (bodyCorridor && !floorMask?.contains(target)) return bodySightCorridor(point, camera, target);
+  const bodyMask = bodyCorridor ? bodySightCorridor(point, camera, target) : 0;
+  if (bodyMask > 0) return bodyMask;
   if (!floorMask) return 0;
   const localFloorY = floorMask?.floorYAt?.(point);
   if (localFloorY != null && point.y <= localFloorY + 0.05) return 0;
@@ -220,15 +221,16 @@ float lanternCutawayMask() {
   if (u_lanternCutawayEnabled < 0.5 || u_lanternReveal <= 0.0) return 0.0;
   vec3 point = v_lanternCutawayPosition;
   if (point.y <= u_lanternFootY) return 0.0;
-  if (u_lanternBodyCorridor > 0.5 && (u_lanternRoomMaskEnabled < 0.5 || lanternFloorAt(u_lanternCutawayTarget.xz).x <= 0.0)) {
+  if (u_lanternBodyCorridor > 0.5) {
     vec3 direction = u_lanternCutawayTarget - u_lanternCutawayCamera;
     vec3 offset = point - u_lanternCutawayCamera;
     float lengthSq = dot(direction, direction);
-    if (lengthSq < 0.01) return 0.0;
-    float along = dot(offset, direction) / lengthSq;
-    if (along < 0.0 || along > 1.0) return 0.0;
-    float lateral = length(offset - direction * along);
-    return (1.0 - smoothstep(1.35, 1.65, lateral)) * u_lanternReveal;
+    if (lengthSq >= 0.01) {
+      float along = dot(offset, direction) / lengthSq;
+      float lateral = length(offset - direction * along);
+      if (along >= 0.0 && along <= 1.0 && lateral < 1.65)
+        return (1.0 - smoothstep(1.35, 1.65, lateral)) * u_lanternReveal;
+    }
   }
   if (u_lanternRoomMaskEnabled < 0.5) return 0.0;
   float mask = 0.0;
