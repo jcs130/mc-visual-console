@@ -195,7 +195,8 @@ export class PaperYsmAnimation {
     if(transition.from && alpha<1)for(const [name,from]of transition.from) {
       const bone=this.model.bones.get(name);if(!bone)continue;
       bone.position.lerpVectors(from.position,bone.position,blend);
-      bone.quaternion.slerpQuaternions(from.quaternion,bone.quaternion,blend);
+      // slerpQuaternions(from, this, blend) overwrites its destination input.
+      bone.quaternion.slerp(from.quaternion,1-blend);
       bone.scale.lerpVectors(from.scale,bone.scale,blend);
     }
     else transition.from=null;
