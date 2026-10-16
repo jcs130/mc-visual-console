@@ -26,7 +26,10 @@ export async function verifyItemAppearanceAssets(root) {
 export async function installItemAppearanceAssets(source,root) {
   const target=path.join(root,'public/item-appearances'),result=await readItemAppearanceAssets(source);
   const original=JSON.parse(await readFile(path.join(root,'public/asset-source.json'),'utf8'));
-  if(original.minecraftVersion!=='1.20.6')throw Error('ITEM_APPEARANCE_CONSUMER_VERSION_MISMATCH');
+  // These versions both carry integer custom_model_data and the original
+  // model/display format used by this checked pack. Keep the source manifest
+  // and asset hashes intact; a compatible consumer is not a new source pack.
+  if(!['1.20.6','1.21.1'].includes(original.minecraftVersion))throw Error('ITEM_APPEARANCE_CONSUMER_VERSION_MISMATCH');
   // A new version uses a new candidate deployment directory. Never overwrite
   // a running consumer or quietly keep obsolete files from an older catalog.
   await mkdir(target);

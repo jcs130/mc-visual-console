@@ -2,7 +2,7 @@ import { ServerParticles, loadViewerContentAssets } from './server-particles.js'
 import { MapPhotos, heldMapId } from './map-photos.js';
 import {TextDisplays} from './text-displays.js';
 import {loadTextDisplayFont} from './text-display-font.js';
-import {PaperYsmPlayers} from './paper-ysm.js';
+import {PaperYsmPlayers,paperYsmAvailabilityText} from './paper-ysm.js';
 import {installAppearanceSettings} from './appearance-settings.js';
 import paperYsmItemModels from 'mc-assets/dist/blockStatesModels.json';
 const cortiContentMinecraftVersion = '1.20.6';
@@ -107,7 +107,9 @@ function cortiAnimateNativeContent(now) {
   const ysm=cortiYsmPlayers.stats();
   // Per-action limitations remain in the stable model panel, not a flashing
   // overlay. Current frame errors are still available through stats().
-  const ysmMessage=ysm.actors.some(actor=>actor.animation?.base==='downed')?'倒地待救援':ysm.failed?'YSM 模型渲染失败：'+ysm.errors[0]:ysm.unavailable?'部分 YSM 模型缺少可公开原始资源，当前普通皮肤仅为回退画面':ysm.pending?'正在加载原 YSM 模型':ysm.heldUnavailable.length?'部分 YSM 手持物外观暂未适配：'+ysm.heldUnavailable[0].name:'';
+  let unavailableAppearance;
+  for(const row of cortiAppearances.values())if(row.available===false||!row.renderAvailable){unavailableAppearance=row;break;}
+  const ysmMessage=ysm.actors.some(actor=>actor.animation?.base==='downed')?'倒地待救援':ysm.failed?'YSM 模型渲染失败：'+ysm.errors[0]:ysm.unavailable?paperYsmAvailabilityText(unavailableAppearance):ysm.pending?'正在加载原 YSM 模型':ysm.heldUnavailable.length?'部分 YSM 手持物外观暂未适配：'+ysm.heldUnavailable[0].name:'';
   const message=cortiTextDisplayError?'文字气泡字库不可用，请更新匹配版本的网页资源包':texts.unavailable?'部分文字显示格式暂未适配':cortiContentError?'粒子／照片资源暂不可用，请更新匹配版本的网页资源包':photos.waiting?'尚未收到可用照片像素，请靠近展示框或重新手持地图':ysmMessage;
   cortiContentStatus.dataset.ysmStates=String(cortiAppearances.size);cortiContentStatus.dataset.ysmRendererReady=String(ysm.rendered>0);cortiContentStatus.dataset.ysmRendered=String(ysm.rendered);
   cortiContentStatus.dataset.textDisplays=String(texts.visible);cortiContentStatus.dataset.textDisplayReady=String(texts.ready);

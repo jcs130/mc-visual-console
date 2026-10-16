@@ -6,6 +6,20 @@ import {PaperYsmHeldItems} from './paper-ysm-items.js';
 import {applyRescuePose,relaxRestTail,supportsRescuePose} from './paper-ysm-rest-pose.js';
 export {applyPaperYsmAnimation} from './paper-ysm-animation.js';
 
+/** Describe the received state; missing assignment is not a failed asset download. */
+export function paperYsmAvailabilityText(row) {
+  if(row?.available===false){
+    if(row.stateStatus==='awaiting_model_state'||row.stateStatus==='awaiting_initial_poll')return row.workerConnected===true?'模型服务已连接，等待当前角色的 YSM 模型状态':'等待模型服务返回当前角色的 YSM 模型状态';
+    if(row.stateStatus==='worker_offline'||row.workerConnected===false)return 'YSM 模型服务暂未连接';
+    if(row.stateStatus==='unsupported')return '当前角色的 YSM 模型状态暂未支持';
+    return '服务器尚未提供当前角色的可用 YSM 外观';
+  }
+  if(row?.available&&!row.renderAvailable){
+    return row.renderReason==='YSM_ASSET_PENDING'?'等待原始 YSM 模型资源':'当前角色的原始 YSM 模型资源暂不可用';
+  }
+  return '';
+}
+
 const json=(bundle,path)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(bundle.files[path].base64),c=>c.charCodeAt(0))));
 /** Visible animated head only: bind-pose bounds may include folded props. */
 function paperYsmHeadBounds(model,root) {
@@ -152,8 +166,7 @@ export class PaperYsmPlayers {
     if(error)status+=` · 渲染失败：${error}`;
     else if(this.pending.has(uuid))status+=' · 模型载入中';
     else if(actor)status+=` · ${actor.assetInfo.modelId} / ${actor.assetInfo.texture}${actor.animationIssues?.size?' · 动作兼容提示（详情如下）':''}`;
-    else if(!choice && row?.available && !row.renderAvailable)status+=' · 服务器模型资源不可用';
-    else if(!choice && row?.available===false)status+=' · 服务器未提供可用 YSM 外观';
+    else if(!choice){const message=paperYsmAvailabilityText(row);if(message)status+=' · '+message;}
     return {available,selected:choice?.id??'server',choices:this.choices(),status:this.selectionNotices.get(uuid)??status,animationIssues:[...(actor?.animationIssues??[])]};
   }
   motion(row,now=performance.now()) {

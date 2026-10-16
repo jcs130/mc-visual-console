@@ -129,7 +129,19 @@ test('consumer install validates all bytes first and rejects overwrite or a mism
     const installed=await installItemAppearanceAssets(root,tmp);assert.equal(installed.items,5);assert.equal(installed.files,16);
     assert.deepEqual(await verifyItemAppearanceAssets(tmp),installed);
     await assert.rejects(()=>installItemAppearanceAssets(root,tmp),/EEXIST/);
-    await writeFile(path.join(tmp,'public/asset-source.json'),' {"minecraftVersion":"1.21.1"}');
+    await writeFile(path.join(tmp,'public/asset-source.json'),' {"minecraftVersion":"unsupported"}');
     await assert.rejects(()=>installItemAppearanceAssets(root,tmp),/VERSION_MISMATCH/);
+  }finally{await rm(tmp,{recursive:true,force:true});}
+});
+
+test('installs the original integer-component item pack for 1.21.1 without rewriting its art or manifest',async()=>{
+  const tmp=await mkdtemp(path.join(tmpdir(),'java-1211-item-assets-'));
+  try{
+    await mkdir(path.join(tmp,'public'));await writeFile(path.join(tmp,'public/asset-source.json'),' {"minecraftVersion":"1.21.1"}');
+    const installed=await installItemAppearanceAssets(root,tmp);assert.equal(installed.items,5);
+    for(const [name,bytes]of pack.files)assert.deepEqual(await readFile(path.join(tmp,'public/item-appearances',name)),bytes);
+    assert.equal((await verifyItemAppearanceAssets(tmp)).manifestSha256,pack.manifestSha256);
+    const r=await registry();const dagger=r.create(item(731002),'thirdperson');
+    assert.equal(dagger.root.userData.appearanceId,'qiandengji:blink_dagger');dagger.dispose();r.clear();
   }finally{await rm(tmp,{recursive:true,force:true});}
 });
