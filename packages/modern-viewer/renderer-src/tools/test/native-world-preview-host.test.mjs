@@ -162,7 +162,7 @@ function playerEntity (bot) {
 }
 
 test('prepared native host carries its local appearance default through root and nested pages', async t => {
-  const preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0, defaultAppearance: 'bundled:yui-ysm' })
+  const preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0, defaultAppearance: 'bundled:yui-ysm', selectionScope: 'a'.repeat(24) })
   for (const basePath of ['/', '/neko/']) {
     const { host } = attachment(t, { preparedHost, basePath })
     await host.listen()
@@ -172,6 +172,7 @@ test('prepared native host carries its local appearance default through root and
       const page = await request(host, route)
       assert.equal(page.status, 200)
       assert.match(page.body, /data-native-default-appearance="bundled:yui-ysm"/)
+      assert.ok(page.body.includes(`data-native-selection-scope="${'a'.repeat(24)}"`))
       assert.ok(page.body.includes(`src="${basePath}index.js"`))
     }
     await host.close()

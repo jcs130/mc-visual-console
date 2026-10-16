@@ -4,6 +4,7 @@ import { bootNativeConsole, consoleViewMode } from '../../src/native-viewer/nati
 import { createNativeInterface } from '../../src/native-viewer/native-ui-adapter.js'
 import { Element, shell } from './fixtures/native-console-dom.mjs'
 import { renderViewerPage } from '../../src/viewer-page.mjs'
+import { NativeSelfPlayerController } from '../../src/native-viewer/native-self-player.js'
 
 const UUID = 'e371227c-09fa-3722-84f4-f3228a552c3c'
 function fullShell () {
@@ -38,13 +39,48 @@ test('generated native page carries only validated local appearance into the rea
         return { renderer: { setPixelRatio () {} }, setView () {}, dispose () {} }
       } })
       assert.equal(mounted.defaultAppearance, defaultAppearance)
-      assert.equal(mounted.selectionScope, undefined) // Existing account/manifest preference scope is retained.
+      assert.equal(mounted.selectionScope, undefined) // Unset neutral callers retain their existing manifest scope.
       console.dispose()
     }
   }
   assert.match(renderViewerPage(), /data-native-default-appearance="server"/)
   for (const value of ['\"><script>alert(1)</script>', 'bundled:<bad>', 'server\n', 'a'.repeat(129), null]) {
     assert.throws(() => renderViewerPage('3dview', { defaultAppearance: value }), TypeError)
+  }
+})
+
+test('same viewer URL and UUID isolate host scopes while explicit server choice survives reconnect', async () => {
+  const storage = new Map(), selectionStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }
+  const scopeA = 'a'.repeat(24), scopeB = 'b'.repeat(24), legacy = 'https://same-viewer.test/manifest.json'
+  const legacyKey = `native-appearance/v1:${encodeURIComponent(legacy)}:${UUID}`
+  storage.set(legacyKey, 'server') // No server provenance: preserve, never migrate this preference.
+  const boot = async selectionScope => {
+    const html = renderViewerPage('3dview', { defaultAppearance: 'bundled:yui-ysm', selectionScope })
+    const { document, window } = fullShell(); window.location.href = 'https://same-viewer.test/3dview/'
+    document.body.dataset.nativeDefaultAppearance = html.match(/data-native-default-appearance="([^"]+)"/)[1]
+    document.body.dataset.nativeSelectionScope = html.match(/data-native-selection-scope="([^"]*)"/)[1]
+    let controller
+    const console = await bootNativeConsole({ document, window, startStatus: () => () => {}, mount: async options => {
+      assert.equal(options.selectionScope, selectionScope)
+      controller = new NativeSelfPlayerController({ manifest: {} }, { ...options, selectionStorage,
+        bundledAppearanceReader: { choices: () => [{ id: 'bundled:yui-ysm' }], get: () => ({ kind: 'ysm' }) },
+        bundledYsmFactory: async () => ({ assetInfo: { uuid: UUID.toLowerCase(), source: 'plugin_bundled' }, dispose () {} }),
+        minecraftFactory: async () => ({ assetInfo: { path: 'skin.png', sha256: 'hash' }, dispose () {} }) })
+      await controller.update({ uuid: UUID, entityId: 1, skin: { kind: 'default', assetPath: 'skin.png', sha256: 'hash' } }, UUID)
+      return { renderer: { setPixelRatio () {} }, setView () {}, dispose: () => controller.dispose() }
+    } })
+    return { console, controller }
+  }
+  const a = await boot(scopeA); assert.equal(a.controller.appearanceId, 'bundled:yui-ysm')
+  assert.equal(a.controller.selectAppearance('server'), true); a.console.dispose()
+  const b = await boot(scopeB); assert.equal(b.controller.appearanceId, 'bundled:yui-ysm'); b.console.dispose()
+  const reconnected = await boot(scopeA); assert.equal(reconnected.controller.appearanceId, 'server')
+  reconnected.controller.clear('respawn')
+  await reconnected.controller.update({ uuid: UUID, entityId: 2, skin: { kind: 'default', assetPath: 'skin.png', sha256: 'hash' } }, UUID)
+  assert.equal(reconnected.controller.appearanceId, 'server'); reconnected.console.dispose()
+  assert.equal(storage.get(legacyKey), 'server')
+  for (const value of ['raw-server.test', 'Alice', 'a'.repeat(65), '\"<script>', null]) {
+    assert.throws(() => renderViewerPage('3dview', { selectionScope: value }), TypeError)
   }
 })
 

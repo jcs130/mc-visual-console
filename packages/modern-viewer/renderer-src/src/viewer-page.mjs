@@ -3,13 +3,13 @@
 import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { validatedDefaultAppearance } from './native-viewer/native-appearance-default.js';
+import { validatedDefaultAppearance, validatedSelectionScope } from './native-viewer/native-appearance-default.js';
 
 const PAGE = readFileSync(new URL('./page-template.html', import.meta.url), 'utf8');
 export const VIEWER_CSS = readFileSync(new URL('./viewer.css', import.meta.url), 'utf8');
 
 /** @param {'first' | 'third' | '3dview'} [viewMode] */
-export function renderViewerPage(viewMode = 'first', { basePath = '/', defaultAppearance = 'server' } = {}) {
+export function renderViewerPage(viewMode = 'first', { basePath = '/', defaultAppearance = 'server', selectionScope } = {}) {
   if (viewMode === 'dungeon') viewMode = '3dview'; // Compatibility input only.
   if (!['first', 'third', '3dview'].includes(viewMode)) {
     throw new TypeError('Unsupported viewer mode');
@@ -17,7 +17,8 @@ export function renderViewerPage(viewMode = 'first', { basePath = '/', defaultAp
   if (!/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(basePath)) throw new TypeError('Unsupported viewer base path');
   // The validated ID alphabet excludes HTML delimiters and quotes.
   const page = PAGE.replace('__VIEW_MODE__', viewMode)
-    .replace('__DEFAULT_APPEARANCE__', validatedDefaultAppearance(defaultAppearance));
+    .replace('__DEFAULT_APPEARANCE__', validatedDefaultAppearance(defaultAppearance))
+    .replace('__SELECTION_SCOPE__', validatedSelectionScope(selectionScope) ?? '');
   return basePath === '/' ? page : page.replaceAll('href="/', `href="${basePath}`).replaceAll('src="/', `src="${basePath}`);
 }
 

@@ -11,3 +11,16 @@ export function pageDefaultAppearance (document) {
   try { return validatedDefaultAppearance(document?.body?.dataset.nativeDefaultAppearance) }
   catch { return 'server' }
 }
+
+export function validatedSelectionScope (value) {
+  if (value === undefined || value === '') return undefined
+  if (typeof value !== 'string' || !/^[a-f0-9]{24,64}$/.test(value)) {
+    throw new TypeError('Unsupported viewer appearance scope')
+  }
+  return value
+}
+
+export function pageSelectionScope (document) {
+  try { return validatedSelectionScope(document?.body?.dataset.nativeSelectionScope) }
+  catch { return undefined }
+}

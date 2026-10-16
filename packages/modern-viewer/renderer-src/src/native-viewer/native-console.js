@@ -1,6 +1,6 @@
 import {writeChanged,createTargetSignature} from './native-display-performance.js'
 import { mountNativeWorld } from './native-scene.js'
-import { pageDefaultAppearance } from './native-appearance-default.js'
+import { pageDefaultAppearance, pageSelectionScope } from './native-appearance-default.js'
 import { nativeViewerUrl } from './native-url.js'
 import { createNativeInterface } from './native-ui-adapter.js'
 import { createAdaptiveQualityController } from '../modern-viewer/viewer-performance.js'
@@ -34,7 +34,8 @@ function append (document, parent, tag, className, text) {
 
 export async function bootNativeConsole ({ document = globalThis.document, window = globalThis.window,
   mount = mountNativeWorld, fetchStatus = signal => fetch(nativeViewerUrl('status.json'), { cache: 'no-store', credentials: 'same-origin', signal }),
-  startStatus = startAgentStatusPolling, createInterface = createNativeInterface, defaultAppearance = pageDefaultAppearance(document), selectionStorage, selectionScope } = {}) {
+  startStatus = startAgentStatusPolling, createInterface = createNativeInterface, defaultAppearance = pageDefaultAppearance(document), selectionStorage,
+  selectionScope = pageSelectionScope(document) } = {}) {
   if (!document?.body || !window) throw Error('NATIVE_CONSOLE_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   const buildChanged=createNativeViewerBuildGuard(q('meta[name="native-viewer-build"]')?.content,()=>window.location.reload())
