@@ -33,7 +33,18 @@ export class CameraWaterTransition {
   }
 }
 
-export function installCameraWater(world, blockAt, now = () => performance.now()) {
+// Minecraft 1.21.1 FogRenderer.setupFog: water starts at -8, ends at 96;
+// a LocalPlayer scales the end by max(.25, getWaterVision()), then the
+// actual render distance caps it. A free observation camera is not that
+// LocalPlayer. Water Breathing alone does not select a 5/100 block cutoff.
+export function cameraWaterFogRange({ observer = false, waterVision, viewDistance } = {}) {
+  const vision = Number.isFinite(waterVision) ? Math.max(0, Math.min(1, waterVision)) : 0;
+  const end = 96 * (observer ? 1 : Math.max(.25, vision));
+  const cap = Number.isFinite(viewDistance) && viewDistance > 0 ? viewDistance * 16 : end;
+  return { near: -8, far: Math.min(end, cap), visionKnown: observer || Number.isFinite(waterVision) };
+}
+
+export function installCameraWater(world, blockAt, now = () => performance.now(), options = {}) {
   const transition = new CameraWaterTransition(), cameraPosition = new Vector3();
   // Keep the pinned renderer's existing water palette; only its camera-medium
   // selection and abrupt transitions change here. Biome colour parity is separate.
@@ -53,14 +64,22 @@ export function installCameraWater(world, blockAt, now = () => performance.now()
     const amount = transition.update(depth, now());
     // The native sky update restores the dry scene before every rendered frame.
     const fog = world.scene.fog;
+    const range = cameraWaterFogRange({
+      observer: options.observer === true,
+      waterVision: options.waterVision?.(),
+      viewDistance: world.viewDistance,
+    });
     if (fog && amount > 0) {
       fog.color.lerp(waterColor, amount);
-      fog.far += ((world.playerStateReactive.waterBreathing ? 100 : 5) - fog.far) * amount;
+      fog.near += (range.near - fog.near) * amount;
+      fog.far += (range.far - fog.far) * amount;
       world.scene.background?.isColor && world.scene.background.lerp(waterColor, amount);
       world.skyboxRenderer.skyMesh?.material?.color?.lerp(waterColor, amount);
       world.skyboxRenderer.voidMesh?.material?.color?.lerp(voidColor, amount);
     }
-    world.cameraMedium = { source: 'camera-streamed-block', known: depth !== null, submerged: transition.submerged, amount, position };
+    world.cameraMedium = { source: 'camera-streamed-block', known: depth !== null, submerged: transition.submerged, amount, position,
+      waterFog: { ...range, rangeSource: 'java-1.21.1-FogRenderer', colourSource: 'legacy-renderer-palette',
+        biomeColourParityVerified: false } };
   };
   return transition;
 }

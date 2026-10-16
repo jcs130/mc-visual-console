@@ -1058,7 +1058,8 @@ async function initializeRenderer(version) {
     installDungeonCameraControls();
     installDungeonOcclusion();
     if (usesWorldAvatar) installRenderedCameraFollow(globalThis.world, () => applyPosition(false, true));
-    if (dungeonRoomCoverCache) installCameraWater(globalThis.world, (x,y,z) => dungeonRoomCoverCache.blockAt(x,y,z));
+    if (dungeonRoomCoverCache) installCameraWater(globalThis.world, (x,y,z) => dungeonRoomCoverCache.blockAt(x,y,z), undefined,
+      { observer: usesWorldAvatar });
     installNpcGameplay();
     installDungeonInteractions();
     installDungeonContextMenu();
