@@ -238,3 +238,18 @@ test('cutaways never remove underground terrain or assume an unknown floor', () 
   assert.ok(shader.fragmentShader.includes('point.y <= u_lanternFootY'));
   assert.ok(!shader.fragmentShader.includes('vec2 aperture'));
 });
+
+test('swimming, ladder and partial-support bodies retain a corridor while the floor mask changes', () => {
+  for(const yaw of [0, Math.PI/4, Math.PI]) for(const pitch of [.82, 1.08, Math.PI/2]){
+    const {settings,front}=fixture(yaw,16,pitch);
+    settings.bodyCorridor=true;
+    for(const floorMask of [null,{contains:()=>false},settings.floorMask,null]){
+      assert.equal(cutawayMask(front,{...settings,floorMask}),1,'the same obstructing face cannot reappear when swimming crosses an unsupported floor cell');
+      const behind=settings.target.clone().addScaledVector(settings.forward,2);
+      assert.equal(cutawayMask(behind,{...settings,floorMask}),0,'the corridor ends before the body');
+      assert.equal(cutawayMask(front.clone().addScaledVector(settings.right,4),{...settings,floorMask:null}),0,'unrelated terrain stays opaque');
+      assert.equal(cutawayMask(point(0,settings.footY,0),{...settings,floorMask}),0,'no floor is invented or removed');
+      assert.equal(cutawayMask(point(0,86,0),{...settings,floorMask:null}),0,'an unsupported body does not authorize a whole roof cut');
+    }
+  }
+});

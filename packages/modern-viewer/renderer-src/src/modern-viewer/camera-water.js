@@ -20,6 +20,12 @@ export class CameraWaterTransition {
   amount = 0;
   submerged = false;
   at = null;
+  reset(depth, now) {
+    this.submerged = depth !== null && depth > .02;
+    this.amount = this.submerged ? 1 : 0;
+    this.at = now;
+    return this.amount;
+  }
   update(depth, now) {
     // Unknown streamed geometry never inherits the actor's water flag.
     if (depth === null) this.submerged = false;
@@ -31,6 +37,21 @@ export class CameraWaterTransition {
     if (Math.abs(this.amount - target) < .001) this.amount = target;
     return this.amount;
   }
+}
+
+// Undo only our last colour overlay. A fresh native sky/biome/dimension value
+// wins even when it reuses a Color object; never restore an old scene over it.
+function colourLayer() {
+  let source = null;
+  const base = new Color(), painted = new Color();
+  return {
+    restore(current) { if (current === source && current?.equals(painted)) current.copy(base); },
+    paint(current, tint, amount) {
+      source = current?.isColor ? current : null;
+      if (!source) return;
+      base.copy(source); source.lerp(tint, amount); painted.copy(source);
+    },
+  };
 }
 
 // Minecraft 1.21.1 FogRenderer.setupFog: water starts at -8, ends at 96;
@@ -49,11 +70,21 @@ export function installCameraWater(world, blockAt, now = () => performance.now()
   // Keep the pinned renderer's existing water palette; only its camera-medium
   // selection and abrupt transitions change here. Biome colour parity is separate.
   const waterColor = new Color(0, 0, 1), voidColor = new Color(0, 0, .6);
+  const fogLayer = colourLayer(), backgroundLayer = colourLayer(), skyLayer = colourLayer(), voidLayer = colourLayer();
+  const lastPosition = new Vector3();
+  let hasPosition = false, paintedFog = null, baseNear, baseFar, paintedNear, paintedFar;
   const previous = world.scene.onBeforeRender;
   world.scene.onBeforeRender = function (...args) {
-    previous?.apply(this, args);
     const camera = args[2] ?? world.camera;
-    if (camera.userData?.offscreenTerrain === true) return;
+    if (camera.userData?.offscreenTerrain === true) { previous?.apply(this, args); return; }
+    const scene = world.scene, skybox = world.skyboxRenderer;
+    fogLayer.restore(scene.fog?.color); backgroundLayer.restore(scene.background);
+    skyLayer.restore(skybox?.skyMesh?.material?.color); voidLayer.restore(skybox?.voidMesh?.material?.color);
+    if (scene.fog === paintedFog && paintedFog) {
+      if (paintedFog.near === paintedNear) paintedFog.near = baseNear;
+      if (paintedFog.far === paintedFar) paintedFog.far = baseFar;
+    }
+    previous?.apply(this, args);
     camera.getWorldPosition(cameraPosition);
     const position = {
       x: world.sceneOrigin.toWorldX(cameraPosition.x),
@@ -61,23 +92,29 @@ export function installCameraWater(world, blockAt, now = () => performance.now()
       z: world.sceneOrigin.toWorldZ(cameraPosition.z),
     };
     const depth = cameraWaterDepth(position, blockAt);
-    const amount = transition.update(depth, now());
-    // The native sky update restores the dry scene before every rendered frame.
+    const teleported = hasPosition && lastPosition.distanceToSquared(position) > 16 * 16;
+    lastPosition.set(position.x, position.y, position.z); hasPosition = true;
+    const at = now(), amount = teleported ? transition.reset(depth, at) : transition.update(depth, at);
+    // Sky updates may pause (for example with a custom/disabled skybox).
+    // Blend from the unpainted base rather than accumulating blue each frame.
     const fog = world.scene.fog;
     const range = cameraWaterFogRange({
       observer: options.observer === true,
       waterVision: options.waterVision?.(),
       viewDistance: world.viewDistance,
     });
-    if (fog && amount > 0) {
-      fog.color.lerp(waterColor, amount);
+    paintedFog = fog;
+    if (fog) {
+      baseNear = fog.near; baseFar = fog.far;
       fog.near += (range.near - fog.near) * amount;
       fog.far += (range.far - fog.far) * amount;
-      world.scene.background?.isColor && world.scene.background.lerp(waterColor, amount);
-      world.skyboxRenderer.skyMesh?.material?.color?.lerp(waterColor, amount);
-      world.skyboxRenderer.voidMesh?.material?.color?.lerp(voidColor, amount);
+      paintedNear = fog.near; paintedFar = fog.far;
     }
+    fogLayer.paint(fog?.color, waterColor, amount); backgroundLayer.paint(scene.background, waterColor, amount);
+    skyLayer.paint(skybox?.skyMesh?.material?.color, waterColor, amount);
+    voidLayer.paint(skybox?.voidMesh?.material?.color, voidColor, amount);
     world.cameraMedium = { source: 'camera-streamed-block', known: depth !== null, submerged: transition.submerged, amount, position,
+      discontinuityReset: teleported,
       waterFog: { ...range, rangeSource: 'java-1.21.1-FogRenderer', colourSource: 'legacy-renderer-palette',
         biomeColourParityVerified: false } };
   };

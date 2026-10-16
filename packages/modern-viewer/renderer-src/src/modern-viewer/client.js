@@ -2408,9 +2408,11 @@ function runDungeonOcclusionCheck() {
   // First entering a house must not trigger shader compilation.
   refreshDungeonCutawayMaterials();
   const wasActive = dungeonOcclusionState.active;
+  const unsupportedBody = focusedCharacterId === null
+    && (pendingAvatarState?.inWater === true || pendingAvatarState?.onGround === false);
   dungeonOcclusionState = updateOcclusionHysteresis(
     dungeonOcclusionState,
-    deepRoof || trace.occluded || roomCeiling,
+    deepRoof || trace.occluded || roomCeiling || unsupportedBody,
     DUNGEON_OCCLUSION_RELEASE_SAMPLES,
   );
   dungeonRoofState = updateOcclusionHysteresis(dungeonRoofState, roomCeiling || deepRoof, DUNGEON_OCCLUSION_RELEASE_SAMPLES);
@@ -2588,6 +2590,9 @@ function updateDungeonVisibilityFrame() {
   }
   camera.getWorldPosition(uniforms.u_lanternCutawayCamera.value);
   uniforms.u_lanternFootY.value = dungeonOcclusionTargetScene.y + 0.05;
+  // A known actor remains visible on slabs/trapdoors or in water even when
+  // the conservative walkable-floor seed is unavailable at this height.
+  uniforms.u_lanternBodyCorridor.value = 1;
   const feetWorldY = origin.toWorldY(dungeonOcclusionTargetScene.y);
   uniforms.u_lanternCutawayY.value = origin.toSceneY(roomCutoffWorldY(feetWorldY, true));
   uniforms.u_lanternCutawayTarget.value.copy(dungeonOcclusionTargetScene);

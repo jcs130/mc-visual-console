@@ -7,7 +7,7 @@ export const APERTURE_WIDTH = 1.3;
 export const APERTURE_HEIGHT = 1.85;
 export const APERTURE_EDGE = 0.22;
 export const CEILING_SCAN_HEIGHT = 64;
-export const CUTAWAY_MATERIAL_VERSION = 7;
+export const CUTAWAY_MATERIAL_VERSION = 8;
 export const OBSTRUCTION_OPACITY = 0.35;
 
 export function hasRoomCeiling(avatar, cache) {
@@ -83,6 +83,7 @@ export function createCutawayUniforms() {
     u_lanternFootY: { value: 0 },
     u_lanternRoomRadius: { value: ROOM_RADIUS },
     u_lanternRoomMaskEnabled: { value: 0 },
+    u_lanternBodyCorridor: { value: 0 },
     u_lanternRoomMask: { value: mask },
     u_lanternRoomMaskOrigin: { value: new Vector3() },
     u_lanternRoomMaskSize: { value: 1 },
@@ -133,6 +134,20 @@ function foregroundCorridor(point, camera, target, floorMask) {
   return 1 - smoothstep(1.35, 1.65, Math.abs(px * dz - pz * dx) / Math.sqrt(lengthSq));
 }
 
+// Swimming, climbing and partial support blocks can have a measured body
+// position without a two-block-clear floor seed. The bounded 3D sightline
+// still removes actual foreground occluders, without inventing a floor.
+function bodySightCorridor(point, camera, target) {
+  const direction = sub(target, camera), offset = sub(point, camera);
+  const lengthSq = dot(direction, direction);
+  if (lengthSq < .01) return 0;
+  const along = dot(offset, direction) / lengthSq;
+  if (along < 0 || along > 1) return 0;
+  const lateral = Math.hypot(offset.x - direction.x * along,
+    offset.y - direction.y * along, offset.z - direction.z * along);
+  return 1 - smoothstep(1.35, 1.65, lateral);
+}
+
 // A wall may stand outside the walkable footprint yet hide the floor behind
 // it. Intersect that pixel's camera ray with the connected floor, correcting
 // its height for steps. Bounded iteration rejects ambiguous multi-level rays.
@@ -153,10 +168,12 @@ export function projectedRoomFloor(point, camera, footY, floorMask) {
 }
 
 /** CPU reference for the terrain mask; coordinates may use any shared origin. */
-export function cutawayMask(point, { camera, target, right, up, forward, footY, cutoffY, covered, roomRadius = ROOM_RADIUS, floorMask = null }) {
-  // Cut only above a measured connected floor. Unknown space and everything
-  // below the actor's feet stay opaque, even when the camera enters rock.
-  if (!floorMask || point.y <= footY) return 0;
+export function cutawayMask(point, { camera, target, right, up, forward, footY, cutoffY, covered, roomRadius = ROOM_RADIUS, floorMask = null, bodyCorridor = false }) {
+  // Preserve the feet and lower terrain. Floor-wide removal requires a
+  // connected floor; a measured body's sight corridor does not.
+  if (point.y <= footY) return 0;
+  if (bodyCorridor && !floorMask?.contains(target)) return bodySightCorridor(point, camera, target);
+  if (!floorMask) return 0;
   const localFloorY = floorMask?.floorYAt?.(point);
   if (localFloorY != null && point.y <= localFloorY + 0.05) return 0;
   const corridor = foregroundCorridor(point, camera, target, floorMask);
@@ -181,6 +198,7 @@ uniform float u_lanternCutawayY;
 uniform float u_lanternFootY;
 uniform float u_lanternRoomRadius;
 uniform float u_lanternRoomMaskEnabled;
+uniform float u_lanternBodyCorridor;
 uniform sampler2D u_lanternRoomMask;
 uniform vec3 u_lanternRoomMaskOrigin;
 uniform float u_lanternRoomMaskSize;
@@ -201,7 +219,18 @@ vec3 lanternFloorAt(vec2 xz) {
 float lanternCutawayMask() {
   if (u_lanternCutawayEnabled < 0.5 || u_lanternReveal <= 0.0) return 0.0;
   vec3 point = v_lanternCutawayPosition;
-  if (u_lanternRoomMaskEnabled < 0.5 || point.y <= u_lanternFootY) return 0.0;
+  if (point.y <= u_lanternFootY) return 0.0;
+  if (u_lanternBodyCorridor > 0.5 && (u_lanternRoomMaskEnabled < 0.5 || lanternFloorAt(u_lanternCutawayTarget.xz).x <= 0.0)) {
+    vec3 direction = u_lanternCutawayTarget - u_lanternCutawayCamera;
+    vec3 offset = point - u_lanternCutawayCamera;
+    float lengthSq = dot(direction, direction);
+    if (lengthSq < 0.01) return 0.0;
+    float along = dot(offset, direction) / lengthSq;
+    if (along < 0.0 || along > 1.0) return 0.0;
+    float lateral = length(offset - direction * along);
+    return (1.0 - smoothstep(1.35, 1.65, lateral)) * u_lanternReveal;
+  }
+  if (u_lanternRoomMaskEnabled < 0.5) return 0.0;
   float mask = 0.0;
   if (u_lanternCutawayEnabled > 1.5) {
     vec3 faceNormal = normalize(cross(dFdx(point), dFdy(point)));

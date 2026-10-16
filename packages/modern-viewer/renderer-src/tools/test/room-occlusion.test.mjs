@@ -90,7 +90,7 @@ test('leaving an obstruction releases the reveal after the existing clear-sample
   const context = {
     usesWorldAvatar: true, isDungeonView: true, rendererReady: true,
     document: { hidden: false, getElementById: () => null }, performance,
-    latestPosition: { pos: { x: 0, y: 64, z: 0 } }, focusedCharacterId: null,
+    latestPosition: { pos: { x: 0, y: 64, z: 0 } }, focusedCharacterId: null, pendingAvatarState: null,
     world: { camera: { getWorldPosition: point => Object.assign(point, { x: 0, y: 74, z: 10 }) },
       cameraCollisionBlockCache: { isSolidBlock: () => false },
       sceneOrigin: { toWorldX: x => x, toWorldY: y => y, toWorldZ: z => z } },
@@ -125,4 +125,7 @@ test('leaving an obstruction releases the reveal after the existing clear-sample
   occluded = true;
   check();
   assert.equal(context.dungeonOcclusionDiagnostics.active, true, 'returning to a cave still reveals it');
+  occluded=false;context.pendingAvatarState={inWater:true,onGround:false};
+  for(let sample=0;sample<8;sample++)check();
+  assert.equal(context.dungeonOcclusionDiagnostics.active,true,'a swimming body retains its local sight corridor despite clear or missing support rays');
 });

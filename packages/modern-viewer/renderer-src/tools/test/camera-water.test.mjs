@@ -68,3 +68,37 @@ test('an offscreen terrain camera does not change the live water transition or i
   now+=500;scene.onBeforeRender(null,scene,inset);
   assert.equal(world.cameraMedium,medium);assert.equal(transition.at,at);assert.equal(transition.submerged,true);
 });
+
+test('water tint is reversible without a sky refresh and clears immediately on a dry teleport',()=>{
+  const scene=new Scene(),camera=new PerspectiveCamera();scene.add(camera);camera.position.set(0,64.5,0);
+  scene.fog=new Fog(new Color(.7,.8,.9),.0025,128);scene.background=new Color(.6,.7,.8);
+  const sky={material:{color:new Color(.4,.5,.6)}},voidMesh={material:{color:new Color(.1,.2,.3)}};
+  const dry={fog:scene.fog.clone(),background:scene.background.clone(),sky:sky.material.color.clone(),void:voidMesh.material.color.clone()};
+  const world={scene,camera,viewDistance:4,sceneOrigin:{toWorldX:x=>x,toWorldY:y=>y,toWorldZ:z=>z},skyboxRenderer:{skyMesh:sky,voidMesh}};
+  let now=0;installCameraWater(world,x=>x<16?water:air,()=>now,{observer:true});
+  for(;now<2000;now+=16)scene.onBeforeRender(null,scene,camera);
+  assert.equal(world.cameraMedium.submerged,true);
+  assert.ok(scene.fog.color.b>scene.fog.color.r);
+  camera.position.set(512,85,-300);now+=16;scene.onBeforeRender(null,scene,camera);
+  assert.equal(world.cameraMedium.submerged,false);assert.equal(world.cameraMedium.amount,0);
+  assert.equal(scene.fog.color.getHex(),dry.fog.color.getHex());
+  assert.equal(scene.fog.near,dry.fog.near);assert.equal(scene.fog.far,dry.fog.far);
+  assert.equal(scene.background.getHex(),dry.background.getHex());
+  assert.equal(sky.material.color.getHex(),dry.sky.getHex());assert.equal(voidMesh.material.color.getHex(),dry.void.getHex());
+});
+
+test('water blending does not accumulate and preserves a fresh external sky or dimension update',()=>{
+  const scene=new Scene(),camera=new PerspectiveCamera();scene.add(camera);camera.position.y=64.5;
+  const world={scene,camera,sceneOrigin:{toWorldX:x=>x,toWorldY:y=>y,toWorldZ:z=>z},skyboxRenderer:{}};
+  const dry=new Color(.7,.8,.9);scene.fog=new Fog(dry,.0025,128);scene.background=dry.clone();
+  let now=0,wet=true;installCameraWater(world,()=>wet?water:air,()=>now,{observer:true});
+  scene.onBeforeRender(null,scene,camera);now=16;scene.onBeforeRender(null,scene,camera);
+  const expected=dry.clone().lerp(new Color(0,0,1),world.cameraMedium.amount);
+  assert.ok(Math.abs(scene.fog.color.r-expected.r)<1e-9);
+  now=32;scene.onBeforeRender(null,scene,camera);
+  assert.ok(Math.abs(scene.fog.color.r-dry.r*(1-world.cameraMedium.amount))<1e-9,'each frame blends from the dry base');
+  scene.fog=new Fog(new Color(.2,.3,.4),2,80);scene.background=new Color(.1,.2,.3);
+  wet=false;for(;now<3000;now+=16)scene.onBeforeRender(null,scene,camera);
+  assert.equal(scene.fog.color.getHex(),new Color(.2,.3,.4).getHex());assert.equal(scene.fog.far,80);
+  assert.equal(scene.background.getHex(),new Color(.1,.2,.3).getHex());
+});
