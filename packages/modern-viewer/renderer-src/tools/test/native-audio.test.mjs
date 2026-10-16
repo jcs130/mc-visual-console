@@ -47,7 +47,7 @@ test('seeded variants preserve Java Random draws and nested references rather th
 test('audio defaults off, requires a gesture and verifies bytes before positional playback',async()=>{
   const f=fixture();await f.audio.load();f.audio.connect(true);f.event();await flush()
   assert.equal(f.contexts(),0);assert.equal(f.sources.length,0)
-  await f.audio.toggle('effects');f.event(2,{pitch:4,fixedRange:9});await flush()
+  await f.audio.toggle('effects');f.event(2,{pitch:4,fixedRange:9});await until(()=>f.sources.length>0||f.audio.state().failed>0)
   assert.equal(f.decoded(),1);assert.equal(f.sources[0].started,true);assert.equal(f.sources[0].playbackRate.value,2)
   assert.equal(f.panners[0].distanceModel,'linear');assert.equal(f.panners[0].maxDistance,16,'server fixedRange is not client attenuation');assert.deepEqual(f.panners[0].position,[1,64,3])
   assert.equal(f.gains[0].gain.value,.45);assert.equal(f.gains[1].gain.value,.7*.8)
@@ -84,7 +84,7 @@ test('original streamed music stays compressed, is explicitly selected and stops
 })
 test('entity audio follows only the original entity identity and stops on ID reuse',async()=>{
   const f=fixture();await f.audio.load();f.audio.connect(true);await f.audio.toggle('effects')
-  f.event(1,{entityId:7,entityUuid:'original'});await flush()
+  f.event(1,{entityId:7,entityUuid:'original'});await until(()=>f.sources.length>0||f.audio.state().failed>0)
   const camera={position:{x:0,y:64,z:0},matrixWorld:{elements:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}}
   f.audio.frame(camera,new Map([[7,{uuid:'original',position:{x:2,y:64,z:4}}]]))
   assert.deepEqual(f.panners[0].position,[2,64,4])
