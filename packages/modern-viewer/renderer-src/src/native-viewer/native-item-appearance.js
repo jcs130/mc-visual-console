@@ -18,24 +18,31 @@ const HELD_NON_VISUAL = new Set(['minecraft:damage', 'minecraft:custom_name', 'm
   'minecraft:rarity', 'minecraft:repair_cost', 'minecraft:unbreakable', 'minecraft:hide_additional_tooltip', 'minecraft:hide_tooltip'])
 
 function contextSnapshot(input) {
-  if (!record(input) || !NATIVE_ITEM_APPEARANCE_CONTEXTS.includes(input.kind) ||
-      Object.keys(input).some(key => !['kind', 'observed'].includes(key)) ||
-      (input.observed !== undefined && !record(input.observed))) throw Error('NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID')
+  if (!record(input)) throw Error('NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID')
   let nodes = 0
   const copy = (value, depth = 0) => {
     if (++nodes > 512 || depth > 8) throw Error('NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID')
     if (value === null || typeof value === 'boolean') return value
     if ((typeof value === 'string' && value.length <= 4096) || (typeof value === 'number' && Number.isFinite(value))) return value
-    if ((!record(value) && !Array.isArray(value)) || ![Object.prototype, Array.prototype, null].includes(Object.getPrototypeOf(value))) throw Error('NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID')
+    if ((!record(value) && !Array.isArray(value)) || !(Array.isArray(value) ? [Array.prototype] : [Object.prototype, null]).includes(Object.getPrototypeOf(value))) throw Error('NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID')
     const result = Array.isArray(value) ? [] : Object.create(null)
-    for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+    const descriptors = Object.getOwnPropertyDescriptors(value)
+    for (const key of Reflect.ownKeys(descriptors)) {
+      const descriptor = descriptors[key]
       if (Array.isArray(value) && key === 'length') continue
-      if (!Object.hasOwn(descriptor, 'value') || key.length > 256) throw Error('NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID')
+      if (typeof key !== 'string' || !Object.hasOwn(descriptor, 'value') || key.length > 256 ||
+          (depth === 0 && !['kind', 'observed'].includes(key))) throw Error('NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID')
+      if (depth === 0 && key === 'observed' && descriptor.value === undefined) continue
       Object.defineProperty(result, key, { value: copy(descriptor.value, depth + 1), enumerable: true })
     }
     return Object.freeze(result)
   }
-  return Object.freeze({ kind: input.kind, ...(input.observed !== undefined ? { observed: copy(input.observed) } : {}) })
+  // Validate the same captured data that will survive asynchronous selection;
+  // never read the caller's properties through getters, including at the root.
+  const snapshot = copy(input)
+  if (!NATIVE_ITEM_APPEARANCE_CONTEXTS.includes(snapshot.kind) ||
+      (snapshot.observed !== undefined && !record(snapshot.observed))) throw Error('NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID')
+  return snapshot
 }
 
 export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {

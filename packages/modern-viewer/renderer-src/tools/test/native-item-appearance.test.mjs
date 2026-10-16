@@ -144,19 +144,32 @@ test('original dropped chest and generated meshes consume ground selection while
 
 test('strict parsed provenance refuses plain/tag-wrapper impostors and invalid contexts before asset selection', async () => {
   const reader=await originalReader(),stack=parseNativeItemStack(raw('minecraft:stick'))
-  let reads=0;reader.json=async()=>{reads++;assert.fail('invalid input must fail before reading assets')}
+  let jsonReads=0,byteReads=0,getterReads=0
+  reader.json=async()=>{jsonReads++;assert.fail('invalid input must fail before reading JSON assets')}
+  reader.bytes=async()=>{byteReads++;assert.fail('invalid input must fail before reading byte assets')}
   for(const fake of [{id:'minecraft:stick',count:1,components:{}},JSON.parse(JSON.stringify(stack)),
     {id:'minecraft:stick',count:1,components:{'minecraft:damage':{type:'short',value:2}}}])
     await assert.rejects(resolveNativeItemAppearance(reader,fake,{kind:'gui'}),/STACK_PARSED_REQUIRED/)
   const cyclic={};cyclic.owner=cyclic
+  const accessorContexts=[]
+  for(const field of ['kind','observed']) for(const throwing of [false,true]) {
+    let calls=0
+    accessorContexts.push(Object.defineProperty({kind:'gui'},field,{enumerable:true,get(){
+      getterReads++;calls++
+      if(throwing) throw Error('root context getter must never run')
+      return field==='kind' ? calls===1?'gui':'not_a_context' : calls===1?{slot:36}:'replaced'
+    }}))
+  }
   for(const context of [null,{},'gui',{kind:'firstperson'},{kind:'gui',slot:36},{kind:'gui',observed:[]},
-    {kind:'gui',observed:{slot:NaN}},{kind:'gui',observed:cyclic},{kind:'gui',observed:{use:()=>true}}])
-    await assert.rejects(resolveNativeItemAppearance(reader,stack,context),/APPEARANCE_CONTEXT_INVALID/)
-  assert.equal(reads,0)
+    {kind:'gui',observed:{slot:NaN}},{kind:'gui',observed:cyclic},{kind:'gui',observed:{use:()=>true}},
+    ...accessorContexts,Object.create({kind:'gui'}),new(class {kind='gui'})(),
+    {kind:'gui',[Symbol('extra')]:true},{kind:'gui',observed:{[Symbol('extra')]:true}}])
+    await assert.rejects(resolveNativeItemAppearance(reader,stack,context),{message:'NATIVE_ITEM_APPEARANCE_CONTEXT_INVALID'})
+  assert.equal(getterReads,0);assert.equal(jsonReads,0);assert.equal(byteReads,0)
   assert.throws(()=>{stack.components['minecraft:damage']={type:'short',value:2}},TypeError)
   const compound=parseNativeItemStack(raw('minecraft:stick','"minecraft:damage":{type:"short",value:2}'))
   await assert.rejects(resolveNativeItemAppearance(reader,compound,{kind:'thirdperson_righthand'}),/HELD_DAMAGE_INVALID/)
-  assert.equal(reads,0)
+  assert.equal(jsonReads,0);assert.equal(byteReads,0)
 })
 
 test('shared production selection retains GUI-only families and refuses missing providers and conflicting original resources', async () => {
