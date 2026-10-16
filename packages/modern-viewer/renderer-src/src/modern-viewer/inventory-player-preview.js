@@ -322,6 +322,7 @@ export class InventoryPlayerPreview {
     if (this.mirror) this.transitionTiming?.previewRelease(record);
     releaseInventoryMirror(this.mirror);
     this.mirror = null;
+    this.framing = null;
   }
 
   setVisible(visible, timingRecord = this.timingRecord) {
@@ -407,20 +408,29 @@ export class InventoryPlayerPreview {
       this.turn.pitch += (this.turn.targetPitch - this.turn.pitch) * .20;
       poseInventoryPlayer(this.mirror, this.turn.yaw, this.turn.pitch);
       this.stage.updateMatrixWorld(true);
-      // Use visible body/equipment bounds, excluding hidden cape/debug layers.
-      const bounds = new T.Box3();
-      this.mirror.root.traverse((node) => {
-        if (!node.isMesh || !node.geometry) return;
-        for (let parent = node; parent; parent = parent.parent) if (!parent.visible) return;
-        if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
-        if (node.geometry.boundingBox) bounds.union(node.geometry.boundingBox.clone().applyMatrix4(node.matrixWorld));
-      });
-      if (bounds.isEmpty()) {
-        if (timing) timing.poseBoundsLayoutMs = performance.now() - phaseAt;
-        this.host.dataset.previewState = 'waiting'; return;
+      // Frame once per model/equipment mirror. Animated bounds and pointer
+      // rotation must not continually zoom or recenter the inventory camera.
+      if (!this.framing) {
+        const bounds = new T.Box3();
+        this.mirror.root.traverse((node) => {
+          if (!node.isMesh || !node.geometry) return;
+          for (let parent = node; parent; parent = parent.parent) if (!parent.visible) return;
+          if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
+          if (node.geometry.boundingBox) {
+            const box = node.geometry.boundingBox.clone().applyMatrix4(node.matrixWorld);
+            // YSM effect locators can collapse every vertex to one point. They
+            // draw no surface and must not expand the body camera's bounds.
+            if (box.min.equals(box.max)) return;
+            bounds.union(box);
+          }
+        });
+        if (bounds.isEmpty()) {
+          if (timing) timing.poseBoundsLayoutMs = performance.now() - phaseAt;
+          this.host.dataset.previewState = 'waiting'; return;
+        }
+        this.framing = { size: bounds.getSize(new T.Vector3()), center: bounds.getCenter(new T.Vector3()) };
       }
-      const size = bounds.getSize(new T.Vector3());
-      const center = bounds.getCenter(new T.Vector3());
+      const { size, center } = this.framing;
       const width = this.host.clientWidth || 104;
       const height = this.host.clientHeight || 140;
       const aspect = width / height;

@@ -69,7 +69,7 @@ function renderCortiSurvivalHud(state) {
   const hasAir = state.inWater === true && oxygen < 20;
   if (vitals) {
     vitals.classList.toggle('corti-has-air', hasAir);
-    vitals.style.height = `${Math.max(hasAir ? 54 : 36, heartRows * 18 + 2)}px`;
+    vitals.style.height = `${Math.max(36, heartRows * 18 + 2)}px`;
   }
   const foodIcons = root.querySelector('[data-corti-food]');
   if (foodIcons) foodIcons.style.alignSelf = 'flex-end';

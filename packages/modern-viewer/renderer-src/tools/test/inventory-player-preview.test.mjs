@@ -210,6 +210,33 @@ test('visible preview renders at most 30 fps, reuses one context and stops fully
   assert.equal(h.listeners.size, 0);
 });
 
+test('animated YSM bounds and pointer turns keep a stable camera until model topology changes', () => {
+  const source = avatar();
+  source.playerObject.visible = false;
+  const ysm = new THREE.Group(); ysm.name = 'paper-ysm-player';
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2, .4), new THREE.MeshBasicMaterial());
+  ysm.add(body); source.add(ysm);
+  const collapsed = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), body.material);
+  collapsed.name = 'effect locator'; collapsed.scale.setScalar(0); collapsed.position.set(15, -30, 4);
+  ysm.add(collapsed);
+  const h = browserHarness(source); h.preview.attach(h.hosts()); h.tick(0);
+  const camera = h.preview.camera;
+  const frame = () => [camera.left, camera.right, camera.top, camera.bottom, ...camera.position.toArray()];
+  const initial = frame();
+  assert.ok(camera.top <= 1.3, 'collapsed effect geometry must not make the body tiny');
+  for (const [i, amount] of [1.3, .7, 1.1, .9].entries()) {
+    body.scale.y = amount; body.position.y = .2 * amount;
+    h.preview.turn.targetYaw = i % 2 ? -.5 : .5;
+    h.tick((i + 1) * 40);
+    assert.deepEqual(frame(), initial, 'an animated pose must not resize or recenter the camera');
+  }
+  const equipment = new THREE.Mesh(new THREE.BoxGeometry(1, 5, 1), body.material);
+  ysm.add(equipment); h.tick(240);
+  assert.ok(camera.top > initial[2], 'new equipment invalidates framing and must still fit');
+  assert.equal(source.playerObject.visible, false);
+  h.preview.dispose();
+});
+
 test('real preview RAF reports cold/warm phases and mirror releases while borrowing original resources', () => {
   const source = avatar(), viewport = { dataset: {} };
   const timing = createNativeTransitionTiming({ viewport });

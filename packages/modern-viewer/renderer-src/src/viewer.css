@@ -459,8 +459,6 @@ to{opacity:1;transform:translateX(0)}
 
 .corti-vitals{display:grid;grid-template-columns:160px 44px 160px;grid-template-rows:minmax(18px,1fr) 18px;min-height:36px}
 
-.corti-vitals.corti-has-air{grid-template-rows:minmax(18px,1fr) 18px 18px}
-
 .corti-vitals>[data-corti-hearts]{grid-column:1;grid-row:1/-1;align-self:end}
 
 .corti-vitals>div.corti-mana-vital{position:static;grid-column:3;grid-row:1;width:160px;height:18px;justify-self:end;align-self:end;flex-direction:row}
@@ -469,9 +467,7 @@ to{opacity:1;transform:translateX(0)}
 
 .corti-vitals>[data-corti-food]{grid-row:2}
 
-.corti-vitals.corti-has-air>[data-corti-air]{grid-row:2}
-
-.corti-vitals.corti-has-air>[data-corti-food]{grid-row:3}
+.corti-vitals>[data-corti-air]{position:absolute;right:0;bottom:36px;width:160px;height:18px}
 
 .corti-level{bottom:61px;z-index:1}
 
