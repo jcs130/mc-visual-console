@@ -11,6 +11,11 @@ const UUID='01234567-89ab-cdef-0123-456789abcdef',OTHER='aaaaaaaa-bbbb-cccc-dddd
 const png=new Uint8Array(await readFile(new URL('../../../asset-packs/native-1.21.1/assets/minecraft/textures/entity/player/wide/steve.png',import.meta.url)));
 const memory=()=>{const rows=new Map();return {rows,getItem:k=>rows.get(k),setItem:(k,v)=>rows.set(k,v)};};
 const settle=()=>new Promise(r=>setImmediate(r));
+async function waitForRendered(players, tick) {
+ const deadline=Date.now()+2000;
+ while(players.stats().rendered!==1&&Date.now()<deadline){await settle();players.tick(tick);}
+ assert.equal(players.stats().rendered,1,'restored PNG must finish its asynchronous digest and actor load');
+}
 const uploadFile={name:'my-skin.png',size:png.length,arrayBuffer:async()=>png.slice().buffer};
 function harness(){
  const entity={id:7,uuid:UUID,isSelf:true},rendered=new THREE.Group();
@@ -39,7 +44,7 @@ test('uploaded PNG renders with the selected standard skin rig and restores afte
  const result=await local.upload(h.players,h.entity,uploadFile,'slim');assert.equal(result.saved,true);h.players.tick(0);await settle();
  assert.equal(h.players.stats().rendered,1);assert.equal(h.players.stats().assets[0].texture,'slim');
  assert.equal(h.players.actors.get(UUID).actor.playerObject.skin.modelType,'slim');assert.equal(h.players.states.get(UUID).available,false);
- h.players.clear();const refreshed=new PaperBundledAppearanceSelection({bundles:[],storage,scope:'scope'});refreshed.attach(h.players,h.entity);await settle();await settle();h.players.tick(10);await settle();
+ h.players.clear();const refreshed=new PaperBundledAppearanceSelection({bundles:[],storage,scope:'scope'});refreshed.attach(h.players,h.entity);await waitForRendered(h.players,10);
  assert.equal(h.players.stats().rendered,1);assert.equal(h.players.stats().assets[0].sha256,result.sha256);
  refreshed.decodeSkin=async()=>{};await refreshed.upload(h.players,h.entity,uploadFile,'wide');h.players.tick(20);await settle();assert.equal(h.players.stats().assets[0].texture,'wide');h.players.clear();
 });
