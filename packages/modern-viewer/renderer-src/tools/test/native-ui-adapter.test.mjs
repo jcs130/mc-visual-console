@@ -18,6 +18,24 @@ import { nativeSoulSlabAnimationStyle } from '../../src/native-viewer/native-sou
 import { readFile } from 'node:fs/promises'
 import { NativeAssetReader } from '../../src/native-viewer/model-loader.js'
 
+test('replacement after an image decode error clears owned diagnostics while retaining disabled-slot annotations',()=>{
+  for(const annotation of ['', ' · 服务端已禁用']){
+    const document=shell(),slot=document.createElement('div'),item={name:'minecraft:chest',count:1,snbt:'{id:"minecraft:chest",count:1}'}
+    let icon={verified:true,url:'blob:old'}
+    const options={resolveItemIcon:()=>icon,resolveItemIconReason:()=>null}
+    renderNativeItemSlot(document,slot,item,options)
+    slot.title+=annotation;slot.setAttribute('aria-label',slot.title)
+    const old=slot.querySelector('img');old.dispatch('error')
+    assert.equal(slot.dataset.modelReason,'NATIVE_ITEM_ICON_IMAGE_DECODE_FAILED')
+    icon={verified:true,url:'blob:replacement'}
+    renderNativeItemSlot(document,slot,item,{...options,refreshOnly:true})
+    assert.equal(slot.dataset.modelState,'verified');assert.equal(slot.dataset.modelReason,undefined)
+    assert.equal(slot.title,'minecraft:chest × 1'+annotation)
+    assert.equal(slot.getAttribute('aria-label'),slot.title)
+    old.dispatch('error');assert.equal(slot.dataset.modelState,'verified')
+  }
+})
+
 test('real icon-ready burst patches menu images without rebuilding or releasing the unchanged preview',async()=>{
   const directory=new URL('../../../asset-packs/native-1.21.1/',import.meta.url)
   const manifest=JSON.parse(await readFile(new URL('native-assets.json',directory),'utf8'))

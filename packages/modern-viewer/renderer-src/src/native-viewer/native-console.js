@@ -125,9 +125,12 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     .dungeon-camera-controls[hidden]{display:none!important}
     @media(max-width:720px){.native-agent-status{top:55px;font-size:10px;gap:1px 6px}.native-agent-field:has(#agent-decision-at){display:none}}
   `
-  const ui = createInterface({ document })
+  let activityUi=null
+  const ui = createInterface({ document,onIconRevision:iconRevision=>{
+    if(!disposed&&latestState)activityUi?.update(latestState,{iconRevision})
+  } })
   const deathUi=createNativeDeathUi({document})
-  const activityUi = createNativeActivityUi({ document, itemName: item => ui.itemName?.(item) ?? item?.name,
+  activityUi = createNativeActivityUi({ document, itemName: item => ui.itemName?.(item) ?? item?.name,
     renderItem: (target, item, options) => ui.renderObservedItem?.(target, item, options),
     renderReferenceItem: (target, item, options) => ui.renderReferenceItem?.(target, item, options) })
   quality = createAdaptiveQualityController({ nativePixelRatio: window.devicePixelRatio || 1, maximumPixelRatio: 1.5,preference:sceneSettings.quality })
@@ -237,7 +240,12 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       onBuild:buildChanged,
       cameraSettings,onCameraManual:mode=>mode&&cameraUi.select?cameraUi.select(mode):cameraUi.manual(),
       onSelection:value=>{targetSelect.value=value?String(value.entityId):'';targetInfo.textContent=value?`${value.name} · #${value.entityId}${Number.isFinite(value.health)?' · 生命 '+value.health:''}`:'正在跟随 Agent 本人'},
-      onIdentity (value) { if (disposed) return; resetMessages(); identity = value; ui.setIdentity(value); deathUi.setIdentity(value); activityUi.setIdentity(value); updateDiagnosticText() },
+      onIdentity (value) {
+        if (disposed) return
+        resetMessages()
+        if(identity?.confirmed!==value?.confirmed||identity?.playerUuid!==value?.playerUuid||identity?.entityId!==value?.entityId||identity?.epoch!==value?.epoch){latestState=null;activityUi.reset()}
+        identity=value;ui.setIdentity(value);deathUi.setIdentity(value);activityUi.setIdentity(value);updateDiagnosticText()
+      },
       onState (value) {
         if (disposed) return
         if (value?.type === 'presentation') {
@@ -251,6 +259,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       },
       onUnavailable (reason) {
         if (disposed) return
+        latestState=null
         lastDiagnostics = null; appearanceUi.update(null)
         resetMessages()
         label.hidden = true; ui.reset(); deathUi.reset(); activityUi.reset(); boot.classList.add('is-compact','is-error'); boot.textContent = `原生画面不可用：${reason}`

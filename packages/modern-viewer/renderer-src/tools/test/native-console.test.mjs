@@ -5,6 +5,9 @@ import { createNativeInterface } from '../../src/native-viewer/native-ui-adapter
 import { Element, shell } from './fixtures/native-console-dom.mjs'
 import { renderViewerPage } from '../../src/viewer-page.mjs'
 import { NativeSelfPlayerController } from '../../src/native-viewer/native-self-player.js'
+import {readFile} from 'node:fs/promises'
+import {NativeAssetReader} from '../../src/native-viewer/model-loader.js'
+import {ORIGINAL_ITEM_COLORS_PATH} from '../../src/native-viewer/native-potion-items.js'
 
 const UUID = 'e371227c-09fa-3722-84f4-f3228a552c3c'
 function fullShell () {
@@ -26,6 +29,74 @@ const presentation = () => ({ schemaVersion: 1, playerUuid: UUID, available: tru
   inventory: { windowId: 0, inventoryStart: 9, hotbarStart: 36, offhandSlot: 45, selectedHotbarSlot: 0,
     slots: Array.from({ length: 46 }, (_, slot) => ({ slot, item: null })) },
   nativeMenu: { windowId: 0, stateId: 1, menuType: 'minecraft:inventory', slots: [] }, skills: null, gameMessages: [] })
+
+test('real console refreshes registry-waiting and delayed inspector icons from one initial state without another onState',async()=>{
+  const {document,window}=fullShell(),directory=new URL('../../../asset-packs/vanilla-1.21.1/',import.meta.url)
+  const manifest=JSON.parse(await readFile(new URL('native-assets.json',directory),'utf8'))
+  const source=new NativeAssetReader(manifest,path=>readFile(new URL(path,directory))),read=source.bytes.bind(source)
+  let releaseRegistry,releaseImages,registryEntered=false,imageEntered=false,states=0,attaches=0,releases=0,preview,hooks
+  const registryGate=new Promise(resolve=>{releaseRegistry=resolve}),imageGate=new Promise(resolve=>{releaseImages=resolve})
+  source.bytes=async path=>{
+    if(path===ORIGINAL_ITEM_COLORS_PATH){registryEntered=true;await registryGate}
+    if(/textures\/item\/(stick|wheat_seeds)\.png$/.test(path)){imageEntered=true;await imageGate}
+    return read(path)
+  }
+  const p=presentation(),sample={name:'minecraft:wheat_seeds',count:2,snbt:'{id:"minecraft:wheat_seeds",count:2}'}
+  p.inventory.slots[36].item=sample
+  const registry=JSON.parse(await readFile(new URL(ORIGINAL_ITEM_COLORS_PATH,directory),'utf8'))
+  const name='minecraft:stick',reference={name,count:4,reference:{schemaVersion:1,source:'vanilla_recipe_catalog',minecraftVersion:'1.21.1',appearance:'original_default',id:name,registryId:registry.items.find(row=>row.name===name).id}}
+  p.activity={schemaVersion:1,playerUuid:UUID,entityId:7,revision:1,sampledAt:1000,events:[],items:[{item:sample,delta:2,at:1000}],recipes:[{output:reference,missing:[],materials:[],craftable:true}],server:{},entities:[]}
+  const running=bootNativeConsole({document,window,startStatus:()=>()=>{},createInterface:options=>createNativeInterface({...options,previewFactory:()=>{
+    preview={attach(host){this.host=host;attaches++},setVisible(value){if(!value)releases++},reset(){},dispose(){}};return preview
+  }}),mount:async options=>{
+    hooks=options
+    options.onIdentity({confirmed:true,playerUuid:UUID,entityId:7,epoch:1});states++;options.onState({type:'snapshot',epoch:1,presentation:p})
+    document.getElementById('corti-inventory-toggle').dispatch('click')
+    return {assetReader:source,setView(){},dispose(){},renderer:{setPixelRatio(){}}}
+  }})
+  const wait=async check=>{for(let n=0;n<400&&!check();n++)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(check())}
+  await wait(()=>registryEntered)
+  const inspector=document.querySelector('.native-live-inspector'),slots=inspector.querySelectorAll('.corti-menu-slot')
+  const referenceSlot=slots.find(slot=>slot.dataset.itemContext==='catalogue-default-reference')
+  assert.equal(referenceSlot.dataset.modelState,'loading');assert.equal(referenceSlot.querySelector('img'),null)
+  hooks.onIdentity({confirmed:true,playerUuid:UUID,entityId:7,epoch:1})
+  releaseRegistry();const console=await running
+  const body=document.querySelector('[data-menu-body]'),replace=body.replaceChildren.bind(body),host=preview.host
+  let rebuilds=0;attaches=0;releases=0;body.replaceChildren=(...args)=>{rebuilds++;replace(...args)}
+  releaseImages();await wait(()=>slots.every(slot=>slot.dataset.modelState==='verified'))
+  assert.equal(states,1);assert.ok(imageEntered);assert.equal(inspector.querySelectorAll('.corti-menu-slot')[0],slots[0])
+  assert.deepEqual({rebuilds,attaches,releases},{rebuilds:0,attaches:0,releases:0});assert.equal(preview.host,host)
+  assert.match(referenceSlot.title,/默认外观参考.*尚未执行合成/)
+  console.dispose();assert.equal(document.querySelector('.native-live-inspector'),null)
+})
+
+test('console readiness after identity epoch replacement, unavailability or disposal cannot revive the previous inspector state',async()=>{
+  const directory=new URL('../../../asset-packs/vanilla-1.21.1/',import.meta.url)
+  const manifest=JSON.parse(await readFile(new URL('native-assets.json',directory),'utf8'))
+  for(const transition of ['epoch','unavailable','dispose']){
+    const {document,window}=fullShell(),source=new NativeAssetReader(manifest,path=>readFile(new URL(path,directory))),read=source.bytes.bind(source)
+    let release,entered=false,hooks,states=0
+    const gate=new Promise(resolve=>{release=resolve})
+    source.bytes=async path=>{if(path===ORIGINAL_ITEM_COLORS_PATH){entered=true;await gate}return read(path)}
+    const p=presentation(),item={name:'minecraft:wheat_seeds',count:2,snbt:'{id:"minecraft:wheat_seeds",count:2}'}
+    p.activity={schemaVersion:1,playerUuid:UUID,entityId:7,revision:1,sampledAt:1000,items:[{item,delta:2,at:1000}],recipes:[],server:{}}
+    const running=bootNativeConsole({document,window,startStatus:()=>()=>{},mount:async options=>{
+      hooks=options;options.onIdentity({confirmed:true,playerUuid:UUID,entityId:7,epoch:1})
+      states++;options.onState({type:'snapshot',epoch:1,presentation:p})
+      return {assetReader:source,setView(){},dispose(){},renderer:{setPixelRatio(){}}}
+    }})
+    for(let n=0;n<400&&!entered;n++)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(entered)
+    const row=document.querySelector('.native-inspector-item');assert.ok(row)
+    if(transition==='epoch')hooks.onIdentity({confirmed:true,playerUuid:UUID,entityId:7,epoch:2})
+    else if(transition==='unavailable')hooks.onUnavailable('closed action connection')
+    else window.dispatch('pagehide')
+    release();const console=await running
+    await new Promise(resolve=>setTimeout(resolve,20))
+    assert.equal(states,1);assert.equal(row.isConnected,false)
+    assert.equal(document.querySelector('.native-inspector-item'),null,transition)
+    console.dispose();assert.equal(document.querySelector('.native-live-inspector'),null)
+  }
+})
 
 test('generated native page carries only validated local appearance into the real console boot', async () => {
   for (const defaultAppearance of ['server', 'bundled:yui-ysm', 'native:misc/3_default_boy:red']) {

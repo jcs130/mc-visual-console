@@ -363,10 +363,15 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
     }
     image.addEventListener('error', () => {
       if (image.parentNode !== iconContainer || (iconContainer !== slot && iconContainer.parentNode !== slot)) return
+      const state=renderedSlots.get(slot),annotations=state&&slot.title?.startsWith(state.title)?slot.title.slice(state.title.length):''
       if (iconContainer === slot) image.remove(); else iconContainer.remove()
       slot.dataset.modelState = 'unavailable'; delete slot.dataset.animationFrames; delete slot.dataset.effectReason
       slot.dataset.modelReason = 'NATIVE_ITEM_ICON_IMAGE_DECODE_FAILED'
-      slot.title = `${identity} · 原生物品图标解码失败（${slot.dataset.modelReason}）`; slot.setAttribute('aria-label', slot.title)
+      const diagnostic=`${identity} · 原生物品图标解码失败（${slot.dataset.modelReason}）`
+      // Decode diagnostics belong to this renderer, not to the caller's menu
+      // annotations. A different successful blob must replace the diagnostic.
+      if(state)state.title=diagnostic
+      slot.title = diagnostic+annotations; slot.setAttribute('aria-label', slot.title)
       slot.prepend(node(document, 'span', 'corti-item-fallback', displayName))
     }, { once: true })
     if (iconContainer === slot) slot.append(image)
@@ -419,7 +424,7 @@ export class NativeFishingCatchHud extends FishingCatchHud {
 
 export function createNativeInterface ({ document = globalThis.document,
   previewFactory = options => new InventoryPlayerPreview(options), now = Date.now,
-  setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason, language = new NativeLanguage() } = {}) {
+  setTimer = setTimeout, clearTimer = clearTimeout, resolveItemIcon, resolveItemIconReason, language = new NativeLanguage(),onIconRevision=()=>{} } = {}) {
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   const survivalUi=createNativeSurvivalUi({document,translate:key=>language.translate(key)})
@@ -894,7 +899,7 @@ export function createNativeInterface ({ document = globalThis.document,
       assets?.dispose(); itemIcons?.dispose(); assets = new NativeUiAssets(reader)
       itemIcons = new NativeItemIcons(reader, { onChange: () => {
         if (disposed || sequence !== assetsSequence) return
-        iconRevision++; renderHud(); refreshMenuItems()
+        iconRevision++; renderHud(); refreshMenuItems(); onIconRevision(iconRevision)
       } })
       const nextLanguage = new NativeLanguage(reader)
       const [result,,registry] = await Promise.all([assets.prepare(), nextLanguage.prepare(),loadOriginalItemColors(reader)
@@ -909,7 +914,8 @@ export function createNativeInterface ({ document = globalThis.document,
         background('.corti-hotbar-selection', 'hotbar_selection'), background('.corti-xp', 'experience_bar_background'),
         background('.corti-xp-fill', 'experience_bar_progress'), NATIVE_SOUL_SLAB_KEYFRAMES].join('\n')
       q('style[data-native-hud-assets]')?.remove(); document.head?.append(style)
-      lastMenuSignature = null; hudSignature = null; renderHud(); renderMenu(); survivalUi.update(presentation,assets); return result
+      lastMenuSignature = null; hudSignature = null; renderHud(); renderMenu(); survivalUi.update(presentation,assets)
+      onIconRevision(iconRevision);return result
     },
     update (state) {
       if (disposed) return
