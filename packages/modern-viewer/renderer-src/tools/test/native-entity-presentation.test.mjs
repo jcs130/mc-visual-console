@@ -25,3 +25,22 @@ test('teleport, new buffer and long stream gaps snap without an invented crossin
   assert.ok(buffer.samples.length <= 16)
   assert.equal(new NativeEntityPresentation().sample(entity(0), 3000).position.x, 0)
 })
+
+const aquatic=(tick,counter)=>{const e=entity(tick/10);e.motion={...e.motion,tick,sampledAt:tick*50,aquatic:{tail:counter,tailOld:counter-1,spikes:counter/20,spikesOld:(counter-1)/20,tentacleAngle:counter/10,tentacleAngleOld:(counter-1)/10,xBodyRot:counter,xBodyRotOld:counter-1,zBodyRot:counter*2,zBodyRotOld:(counter-1)*2,bodyYaw:counter,attackTime:counter,targetId:8}};return e}
+test('aquatic animation projects the bounded received interval independently of endpoint position projection',()=>{
+ const buffer=new NativeEntityPresentation(),a=aquatic(10,10),b=aquatic(14,14),saved=JSON.stringify(b)
+ buffer.push(a,1000);buffer.push(b,1200)
+ const samples=[1150,1200,1250,1300,1400,5000].map(now=>buffer.sample(b,now))
+ assert.deepEqual(samples.map(e=>e.motion.displayAnimation?.age),[10,10,11,12,14,14])
+ assert.deepEqual(samples.map(e=>e.motion.tick),[14,14,14,14,14,14],'raw authoritative tick remains latest')
+ assert.deepEqual(samples.map(e=>e.motion.displayAnimation.aquatic.tail),[10,10,11,12,14,14])
+ assert.deepEqual(samples.map(e=>e.motion.displayAnimation.aquatic.tailOld),[10,10,11,12,14,14],'already-projected counters are not interpolated twice')
+ assert.deepEqual(samples.map(e=>e.motion.displayAnimation.aquatic.attackTime),[10,10,11,12,14,14])
+ assert.equal(JSON.stringify(b),saved)
+ const single=new NativeEntityPresentation();single.push(a,1000);assert.equal(single.sample(a,100000).motion.displayAnimation.age,10,'one sample cannot extrapolate an animation tick')
+})
+test('aquatic target-reset counters do not blend a previous target into the received new target',()=>{
+ const buffer=new NativeEntityPresentation(),a=aquatic(10,40),b=aquatic(14,0);b.motion.aquatic.targetId=9
+ buffer.push(a,1000);buffer.push(b,1200)
+ assert.equal(buffer.sample(b,1300).motion.displayAnimation?.aquatic.attackTime,0)
+})

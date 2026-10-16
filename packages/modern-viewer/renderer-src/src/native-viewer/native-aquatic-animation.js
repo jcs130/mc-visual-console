@@ -78,8 +78,9 @@ export function animateNativeAquatic(model,state,{age,partial,pitch,headYaw,walk
     if(!water&&motion.onGround===true){const rate=state.layingEgg?4:1,strength=state.layingEgg?2:1
       for(const [side,offset]of [['right',PI],['left',0]]){const front=b.get(side+'_front_leg'),hind=b.get(side+'_hind_leg');front.rotation.y=F(F(F(cos(F(F(F(rate*walk)*5)+offset))*8)*speed)*strength);front.rotation.z=0;hind.rotation.y=F(F(cos(F(F(walk*5)+offset))*3)*speed);hind.rotation.x=0}
     }
-    b.get('egg_belly').visible=!state.baby&&state.hasEgg
   }
+  // fxs.setupAnim assigns the metadata-driven egg pass independently of gait.
+  if(leaf==='turtle')b.get('egg_belly').visible=!state.baby&&state.hasEgg
   if(env?.available&&leaf==='axolotl')animateAxolotl(b,state,{age,pitch,headYaw,water:env.inWaterOrBubble,moving:speed>1e-5||motion.yaw!==motion.previous.yaw||motion.pitch!==motion.previous.pitch,onGround:motion.onGround})
 }
 

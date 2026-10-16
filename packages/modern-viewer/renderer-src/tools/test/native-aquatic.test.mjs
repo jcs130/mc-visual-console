@@ -179,3 +179,45 @@ test('old epoch and revision cannot resurrect reused native entity IDs',async()=
 test('missing water does not suppress independent original fin/velocity animations',async()=>{
  for(const leaf of ['pufferfish','dolphin']){const e=entity('minecraft:'+leaf);e.motion=createNativeEntityMotion(e).current();e.motion.tick=5;const a=await createNativeEntityActor(reader,e,{loadTexture:decode});assert.equal(a.root.userData.nativeAquatic.animationInputs.waterOccupancy,'unavailable');assert.equal(a.root.userData.nativeAquatic.animationAvailable,true);assert.ok(Math.abs(bone(a,leaf==='dolphin'?'tail':'right_fin').rotation[leaf==='dolphin'?'x':'z'])>0);a.dispose()}
 })
+
+
+test('production NativeEntityLayer animates aquatic frames between received endpoints without extrapolation',async()=>{
+ let receipt=1000
+ const layer=new NativeEntityLayer(reader,{now:()=>receipt,createActor:(r,e)=>createNativeEntityActor(r,e,{loadTexture:decode})})
+ const a=entity('minecraft:pufferfish');motionFor(a);a.motion={...a.motion,tick:10,sampledAt:1000}
+ const b={...a,motion:{...a.motion,tick:14,sampledAt:1200}}
+ layer.stage({available:true,epoch:1,revision:1,entities:[a]});await finish(layer)
+ const endpointA=bone(layer.actors.get(12).actor,'right_fin').rotation.z
+ receipt=1200;layer.stage({available:true,epoch:1,revision:2,entities:[b]});await finish(layer)
+ const values=[];for(const now of [1200,1250,1300,1400,5000]){layer.frame(now);const actor=layer.actors.get(12).actor;values.push({fin:bone(actor,'right_fin').rotation.z,age:actor.root.userData.nativeAquatic.animationAge})}
+ assert.notEqual(values[1].fin,values[2].fin,'in-between received frames must not pin at latestTick+1')
+ close(values[0].fin,endpointA,'old received endpoint')
+ const direct=await createNativeEntityActor(reader,b,{loadTexture:decode});close(values[3].fin,bone(direct,'right_fin').rotation.z,'new received endpoint');direct.dispose()
+ assert.deepEqual(values.map(row=>row.age),[10,11,12,14,14]);assert.equal(values[4].fin,values[3].fin,'late frame is bounded to latest received sample')
+ assert.equal(b.motion.tick,14);layer.dispose()
+ for(const leaf of ['squid','guardian']){
+  receipt=1000;const stages=new NativeEntityLayer(reader,{now:()=>receipt,createActor:(r,e)=>createNativeEntityActor(r,e,{loadTexture:decode})}),first=entity('minecraft:'+leaf);motionFor(first)
+  first.motion={...first.motion,tick:10,sampledAt:1000,aquatic:{...first.motion.aquatic,tail:.2,tailOld:.1,tentacleAngle:.2,tentacleAngleOld:.1,spikes:.2,spikesOld:.1}}
+  const last={...first,motion:{...first.motion,tick:14,sampledAt:1200,aquatic:{...first.motion.aquatic,tail:1,tailOld:.9,tentacleAngle:1,tentacleAngleOld:.9,spikes:.6,spikesOld:.5}}}
+  stages.stage({available:true,epoch:1,revision:1,entities:[first]});await finish(stages);receipt=1200;stages.stage({available:true,epoch:1,revision:2,entities:[last]});await finish(stages)
+  const rotations=[];for(const now of [1200,1250,1300,1400,5000]){stages.frame(now);rotations.push(bone(stages.actors.get(12).actor,leaf==='squid'?'tentacle0':'tail0').rotation[leaf==='squid'?'x':'y'])}
+  assert.notEqual(rotations[1],rotations[2],leaf+' old/current counters need presentation interpolation');assert.equal(rotations[3],rotations[4],leaf+' cannot extrapolate counters')
+  if(leaf==='squid')rotations.forEach((v,i)=>close(v,[.2,.4,.6,1,1][i],'squid received counter endpoint'))
+  stages.dispose()
+ }
+})
+
+test('turtle egg visibility follows actual metadata through missing water and baby changes in production layer',async()=>{
+ const e=entity('minecraft:turtle');e.motion=createNativeEntityMotion(e).current()
+ const initial=await createNativeEntityActor(reader,e,{loadTexture:decode});assert.equal(bone(initial,'egg_belly').visible,false,'new unknown-water adult without egg');initial.dispose()
+ let receipt=1000,revision=0
+ const layer=new NativeEntityLayer(reader,{now:()=>receipt,createActor:(r,e)=>createNativeEntityActor(r,e,{loadTexture:decode})})
+ const show=async(metadata,motion=e.motion)=>{receipt+=50;layer.stage({available:true,epoch:1,revision:++revision,entities:[{...e,metadata,motion}]});await finish(layer);layer.frame(receipt);return layer.actors.get(12).actor}
+ let actor=await show([entry(18,'boolean',true)]);assert.equal(bone(actor,'egg_belly').visible,true);const retained=actor
+ actor=await show([entry(18,'boolean',false)]);assert.equal(actor,retained);assert.equal(bone(actor,'egg_belly').visible,false,'egg removal remains independent of missing water')
+ actor=await show([entry(18,'boolean',true),entry(16,'boolean',true)]);assert.equal(bone(actor,'egg_belly').visible,false,'baby never renders egg belly')
+ actor=await show([entry(18,'boolean',true),entry(16,'boolean',false)]);assert.equal(bone(actor,'egg_belly').visible,true,'adult transition while water unavailable')
+ const known={...e.motion,aquaticEnvironment:nativeAquaticEnvironment(e,()=>water)}
+ actor=await show([entry(18,'boolean',true)],known);assert.equal(bone(actor,'egg_belly').visible,true)
+ actor=await show([entry(18,'boolean',false)]);assert.equal(bone(actor,'egg_belly').visible,false,'losing known water cannot retain obsolete egg state');layer.dispose()
+})

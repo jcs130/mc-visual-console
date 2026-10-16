@@ -3,6 +3,26 @@ const point = value => value && axes.every(key => Number.isFinite(value[key]))
 const mix = (a, b, t) => a + (b - a) * t
 const angle = (a, b, t) => a + ((b - a + 540) % 360 - 180) * t
 
+// Position projection is already an endpoint. Aquatic model time/counters
+// instead follow this same bounded received interval; never rewrite native ticks.
+function aquaticAnimation(old,next,live,t) {
+  if(!live.aquatic)return null
+  if(!old.aquatic||!next.aquatic||![old.tick,next.tick,live.tick].every(v=>Number.isSafeInteger(v)&&v>=0)||old.tick>next.tick||next.tick>live.tick)throw Error('NATIVE_ENTITY_PRESENTATION_CLOCK_INVALID')
+  const aquatic={...live.aquatic}
+  for(const [previous,current]of [['tailOld','tail'],['spikesOld','spikes'],['tentacleAngleOld','tentacleAngle'],['xBodyRotOld','xBodyRot'],['zBodyRotOld','zBodyRot']]){
+    if(![old.aquatic[current],next.aquatic[current]].every(Number.isFinite))throw Error('NATIVE_ENTITY_PRESENTATION_COUNTER_INVALID')
+    aquatic[previous]=aquatic[current]=mix(old.aquatic[current],next.aquatic[current],t)
+  }
+  if(![old.aquatic.bodyYaw,next.aquatic.bodyYaw].every(Number.isFinite))throw Error('NATIVE_ENTITY_PRESENTATION_COUNTER_INVALID')
+  aquatic.bodyYaw=angle(old.aquatic.bodyYaw,next.aquatic.bodyYaw,t)
+  // A new target is an actual received event, not a blended old-target beam.
+  if(old.aquatic.targetId===next.aquatic.targetId&&next.aquatic.targetId===live.aquatic.targetId){
+    if(![old.aquatic.attackTime,next.aquatic.attackTime].every(Number.isFinite))throw Error('NATIVE_ENTITY_PRESENTATION_COUNTER_INVALID')
+    aquatic.attackTime=mix(old.aquatic.attackTime,next.aquatic.attackTime,t)
+  }
+  return {source:'buffered_received_native_animation',fromTick:old.tick,toTick:next.tick,fraction:t,age:mix(old.tick,next.tick,t),aquatic}
+}
+
 // Browser-only jitter buffer. Raw entities, native ticks and metadata remain
 // untouched. Play received position/limb samples; never predict future motion.
 export class NativeEntityPresentation {
@@ -28,12 +48,14 @@ export class NativeEntityPresentation {
         !['bodyYaw', 'headYaw', 'pitch'].every(k => Number.isFinite(old[k]) && Number.isFinite(next[k])) ||
         (live.walk&&![old.walk?.position, next.walk?.position, old.walk?.speed, next.walk?.speed].every(Number.isFinite))) return current
     const pose = Object.fromEntries(['bodyYaw', 'headYaw', 'pitch'].map(k => [k, k === 'pitch' ? mix(old[k], next[k], t) : angle(old[k], next[k], t)]))
+    const animation=aquaticAnimation(old,next,live,t)
     const speed = live.walk?mix(old.walk.speed, next.walk.speed, t):null
     // Existing actors render one native 50ms interval. Supply an explicitly
     // marked display projection at its endpoint, using received walk phases.
     return { ...current, position, motion: { ...live, ...pose, position,
       previous: { ...live.previous, ...pose, position }, sampledAt: now - 50,
       ...(live.walk?{walk: { ...live.walk, position: mix(old.walk.position, next.walk.position, t), speed, speedOld: speed }}:{}),
+      ...(animation?{displayAnimation:animation}:{}),
       displayProjection: 'buffered_received_entity_samples' } }
   }
 }

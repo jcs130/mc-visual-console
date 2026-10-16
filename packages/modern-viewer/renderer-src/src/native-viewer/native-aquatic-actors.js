@@ -44,12 +44,15 @@ export async function createNativeAquaticActor(reader,entity,{loadTexture}={}){
       const state=nativeAquaticState(next),m=next.motion,living=m?.living
       if(variantKey(state)!==variantKey(initial))throw Error('NATIVE_ENTITY_RENDER_VARIANT_CHANGED')
       if(m?.source!=='same_connection_entity_ticks'||m.tickMs!==50||!Number.isSafeInteger(m.tick)||m.tick<0||!m.aquatic||!living||![m.sampledAt,m.bodyYaw,m.yaw,m.headYaw,m.pitch,m.previous?.bodyYaw,m.previous?.yaw,m.previous?.headYaw,m.previous?.pitch,living.hurtTime,living.deathTime,living.attackAnim,living.attackAnimOld,...['x','y','z'].flatMap(a=>[m.position?.[a],m.previous?.position?.[a]])].every(Number.isFinite))throw Error('NATIVE_ENTITY_MOTION_UNAVAILABLE')
-      const partial=Math.max(0,Math.min(1,(now-m.sampledAt)/50)),age=F(m.tick+partial),yaw=angle(m.previous.bodyYaw,m.bodyYaw,partial),headYaw=angle(m.previous.headYaw,m.headYaw,partial),pitch=mix(m.previous.pitch,m.pitch,partial),env=m.aquaticEnvironment
+      const animation=m.displayAnimation
+      if(animation&&(animation.source!=='buffered_received_native_animation'||![animation.fromTick,animation.toTick].every(v=>Number.isSafeInteger(v)&&v>=0)||animation.fromTick>animation.toTick||animation.toTick>m.tick||!Number.isFinite(animation.fraction)||animation.fraction<0||animation.fraction>1||!animation.aquatic))throw Error('NATIVE_ENTITY_PRESENTATION_CLOCK_INVALID')
+      const aquatic=animation?.aquatic??m.aquatic,animationMotion=animation?{...m,aquatic}:m
+      const partial=Math.max(0,Math.min(1,(now-m.sampledAt)/50)),animationPartial=animation?0:partial,age=F(animation?mix(animation.fromTick,animation.toTick,animation.fraction):m.tick+partial),yaw=angle(m.previous.bodyYaw,m.bodyYaw,partial),headYaw=angle(m.previous.headYaw,m.headYaw,partial),pitch=mix(m.previous.pitch,m.pitch,partial),env=m.aquaticEnvironment
       const walk=m.walk?mix(m.walk.position-m.walk.speed,m.walk.position,partial)*(state.baby?3:1):0,speed=m.walk?mix(m.walk.speedOld,m.walk.speed,partial):0
       root.position.set(...['x','y','z'].map(a=>mix(m.previous.position[a],m.position[a],partial)));root.visible=!state.invisible||leaf.endsWith('guardian')&&state.targetId!==0;content.visible=!state.invisible
       rotations.position.set(0,0,0);rotations.rotation.set(0,Math.PI-yaw*RAD,0);transform.position.set(0,0,0);transform.rotation.set(0,0,0);orientation.scale.set(-1,-1,1);content.position.y=-1.501
       if(living.deathTime>0)rotations.rotateZ(Math.min(1,Math.sqrt(Math.max(0,((living.deathTime+partial-1)/20)*1.6)))*Math.PI/2)
-      if(Object.values(m.aquatic).some(value=>typeof value==='number'&&!Number.isFinite(value)))throw Error('NATIVE_ENTITY_MOTION_UNAVAILABLE')
+      if(Object.values(aquatic).some(value=>typeof value==='number'&&!Number.isFinite(value)))throw Error('NATIVE_ENTITY_MOTION_UNAVAILABLE')
       if(env?.available&&(!['inWater','inWaterOrBubble'].every(k=>typeof env[k]==='boolean')||!Number.isFinite(env.waterHeight)))throw Error('NATIVE_AQUATIC_ENVIRONMENT_INVALID')
       const dynamic=[...state.issues,...(env?.issues??[]),'NATIVE_AQUATIC_ORIGINAL_LIGHTMAP_UNAVAILABLE']
       if(!next.renderScale)dynamic.push('NATIVE_AQUATIC_SCALE_OVERRIDE_TELEMETRY_UNCONFIRMED')
@@ -63,7 +66,7 @@ export async function createNativeAquaticActor(reader,entity,{loadTexture}={}){
       }
       if(leaf==='pufferfish')rotations.position.y=F(cos(F(age*F(.05)))*F(.08))
       if(leaf==='elder_guardian'){const scale=Math.fround(Math.fround(1.9975)/Math.fround(.85));orientation.scale.set(-scale,-scale,scale)}
-      if(leaf.endsWith('squid')){rotations.position.y=.5;rotations.rotation.set(0,Math.PI-m.aquatic.bodyYaw*RAD,0);rotations.rotateX(mix(m.aquatic.xBodyRotOld,m.aquatic.xBodyRot,partial)*RAD);rotations.rotateY(mix(m.aquatic.zBodyRotOld,m.aquatic.zBodyRot,partial)*RAD);transform.position.y=-1.2;if(!m.velocity)dynamic.push('NATIVE_SQUID_VELOCITY_UNAVAILABLE')}
+      if(leaf.endsWith('squid')){rotations.position.y=.5;rotations.rotation.set(0,Math.PI-aquatic.bodyYaw*RAD,0);rotations.rotateX(mix(aquatic.xBodyRotOld,aquatic.xBodyRot,animationPartial)*RAD);rotations.rotateY(mix(aquatic.zBodyRotOld,aquatic.zBodyRot,animationPartial)*RAD);transform.position.y=-1.2;if(!m.velocity)dynamic.push('NATIVE_SQUID_VELOCITY_UNAVAILABLE')}
       orientation.scale.multiplyScalar(nativeAquaticDimensions(next).scale)
       if(leaf==='glow_squid')dynamic.push('NATIVE_GLOW_SQUID_ORIGINAL_BLOCK_LIGHTMAP_UNAVAILABLE:'+Math.trunc(Math.max(0,Math.min(15,15*(1-m.aquatic.glowDarkTicks/10)))))
       if(m.aquatic.randomPhaseSource?.includes('not_shared'))dynamic.push(leaf.endsWith('squid')?'NATIVE_SQUID_LOCAL_RANDOM_PHASE_DIFFERS_FROM_REFERENCE_CLIENT':'NATIVE_GUARDIAN_LOCAL_RANDOM_PHASE_DIFFERS_FROM_REFERENCE_CLIENT')
@@ -71,7 +74,7 @@ export async function createNativeAquaticActor(reader,entity,{loadTexture}={}){
         entry.overlay.set(living.hurtTime>0||living.deathTime>0)
         if(leaf==='axolotl'){entry.body.scale.setScalar(state.baby?.5:1);entry.body.position.y=state.baby?12:0}
         if(leaf==='turtle'){entry.heads.scale.setScalar(state.baby?1/6:1);entry.heads.position.y=state.baby?20:0;entry.body.scale.setScalar(state.baby?1/6:1);entry.body.position.y=state.baby?20:0;if(!state.baby&&state.hasEgg)content.position.y-=.08}
-        animateNativeAquatic(entry.model,state,{age,partial,pitch,headYaw:wrap(headYaw-yaw),walk,speed,motion:m})
+        animateNativeAquatic(entry.model,state,{age,partial:animationPartial,pitch,headYaw:wrap(headYaw-yaw),walk,speed,motion:animationMotion})
       }
       if(leaf.endsWith('guardian')){
         if(state.targetId!==targetId){targetId=state.targetId;targetIdentity=null}
@@ -92,13 +95,13 @@ export async function createNativeAquaticActor(reader,entity,{loadTexture}={}){
         if(state.targetId){
           if(target?.position&&targetBounds){
             const tm=target.motion,targetPosition=tm?.previous?.position?Object.fromEntries(['x','y','z'].map(a=>[a,mix(tm.previous.position[a],tm.position[a],partial)])):target.position
-            updateGuardianBeam(beam,root.position,nativeAquaticDimensions(next).eyeHeight,targetPosition,targetBounds.height,m.aquatic.attackTime,partial,m.tick,leaf==='elder_guardian'?60:80);beam.visible=true
+            updateGuardianBeam(beam,root.position,nativeAquaticDimensions(next).eyeHeight,targetPosition,targetBounds.height,aquatic.attackTime,animationPartial,Math.floor(age),leaf==='elder_guardian'?60:80);beam.visible=true
             if(!tm?.previous?.position)dynamic.push('NATIVE_GUARDIAN_BEAM_TARGET_INTERPOLATION_UNAVAILABLE')
           }else dynamic.push('NATIVE_GUARDIAN_BEAM_TARGET_BOUNDS_UNAVAILABLE:'+state.targetId)
         }
       }
       root.userData.nativeLiving={type:state.name,health:state.health,tick:m.tick,hurtTime:living.hurtTime,deathTime:living.deathTime,attackAnim:mix(living.attackAnimOld,living.attackAnim,partial),issues:dynamic}
-      root.userData.nativeAquatic={environment:env,originalModelKeys:layers.map(entry=>entry.key),animationAvailable:(env?.available===true||leaf==='pufferfish'||leaf==='dolphin'&&!!m.velocity)&&state.pose===0,animationInputs:{waterOccupancy:env?.available===true?'available':'unavailable',velocity:m.velocity?'received':'unavailable',livingCounters:'received_cues_and_connection_ticks',scale:next.renderScale?.source??'original_constructor_baseline_override_telemetry_unconfirmed'}}
+      root.userData.nativeAquatic={environment:env,animationAge:age,animationClock:animation?.source??'same_connection_native_partial_tick',originalModelKeys:layers.map(entry=>entry.key),animationAvailable:(env?.available===true||leaf==='pufferfish'||leaf==='dolphin'&&!!m.velocity)&&state.pose===0,animationInputs:{waterOccupancy:env?.available===true?'available':'unavailable',velocity:m.velocity?'received':'unavailable',livingCounters:'received_cues_and_connection_ticks',scale:next.renderScale?.source??'original_constructor_baseline_override_telemetry_unconfirmed'}}
       issues.splice(0,issues.length,...dynamic);assetInfo.motionSource=m.source;assetInfo.motionTick=m.tick;return actor
     },dispose(){if(disposed)return;disposed=true;root.removeFromParent();root.visible=false;for(const model of models)model.dispose();for(const resource of resources)resource.dispose();root.clear()}}
     actor.update(entity,entity.motion?.sampledAt??entity.spawnedAt);return actor
