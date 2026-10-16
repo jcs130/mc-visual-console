@@ -12,6 +12,8 @@
 
 `bootNativeConsole`、`mountNativeWorld` 和 `NativeSelfPlayerController` 接受 `defaultAppearance`、`selectionStorage`、`selectionScope`。默认外观仍为 `server`；薄宿主可提供 `bundled:yui-ysm` 默认值，已保存的明确选择（包括 `server`）优先。存储只包含选择 ID，不含动作、账号名称或凭据。模型资源按 actor 生命周期释放，偏好按账号隔离。
 
+原生宿主 `prepareNativeWorldPreviewHost` 的 `defaultAppearance` 经校验后写入页面的本地外观属性，实际浏览器启动读取它；根路径与嵌套 `basePath` 使用相同接线。默认仍为 `server`，属性仅包含外观 ID，不包含宿主配置、账号或凭据。无效 ID 拒绝生成页面；资源不在清单内时沿用选择器的服务器外观回退。
+
 没有恢复旧 VRM 下拉菜单：旧构建关闭它时，相应资源并未随部署包提供。本功能复用现有 YSM 渲染器，不增加任意文件上传、下载或私有 `.ysm` 解密入口。人物朝向、运动、隐身及身份绑定仍来自同一玩家；不适配的动画、装备和第一人称能力仍沿用现有提示，完整 Java 渲染一致性不因外观选择而变为已验收。
 
 ## 接入边界

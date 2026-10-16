@@ -161,6 +161,26 @@ function playerEntity (bot) {
   return bot.entity
 }
 
+test('prepared native host carries its local appearance default through root and nested pages', async t => {
+  const preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0, defaultAppearance: 'bundled:yui-ysm' })
+  for (const basePath of ['/', '/neko/']) {
+    const { host } = attachment(t, { preparedHost, basePath })
+    await host.listen()
+    for (const route of ['', 'third/', '3dview/']) {
+      // basePath describes the outer reverse-proxy mount; upstream requests
+      // arrive with that prefix stripped, while emitted links retain it.
+      const page = await request(host, route)
+      assert.equal(page.status, 200)
+      assert.match(page.body, /data-native-default-appearance="bundled:yui-ysm"/)
+      assert.ok(page.body.includes(`src="${basePath}index.js"`))
+    }
+    await host.close()
+  }
+  const { host } = attachment(t)
+  await host.listen()
+  assert.match((await request(host, '3dview/')).body, /data-native-default-appearance="server"/)
+})
+
 function ownPlayerInfo (bot, properties = []) {
   bot._client.emit('player_info', { action: { add_player: true }, data: [{ uuid: bot._client.uuid,
     player: { name: bot.username, properties } }] })

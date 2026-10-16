@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { bootNativeConsole, consoleViewMode } from '../../src/native-viewer/native-console.js'
 import { createNativeInterface } from '../../src/native-viewer/native-ui-adapter.js'
 import { Element, shell } from './fixtures/native-console-dom.mjs'
+import { renderViewerPage } from '../../src/viewer-page.mjs'
 
 const UUID = 'e371227c-09fa-3722-84f4-f3228a552c3c'
 function fullShell () {
@@ -24,6 +25,28 @@ const presentation = () => ({ schemaVersion: 1, playerUuid: UUID, available: tru
   inventory: { windowId: 0, inventoryStart: 9, hotbarStart: 36, offhandSlot: 45, selectedHotbarSlot: 0,
     slots: Array.from({ length: 46 }, (_, slot) => ({ slot, item: null })) },
   nativeMenu: { windowId: 0, stateId: 1, menuType: 'minecraft:inventory', slots: [] }, skills: null, gameMessages: [] })
+
+test('generated native page carries only validated local appearance into the real console boot', async () => {
+  for (const defaultAppearance of ['server', 'bundled:yui-ysm', 'native:misc/3_default_boy:red']) {
+    for (const basePath of ['/', '/neko/']) {
+      const html = renderViewerPage('3dview', { basePath, defaultAppearance })
+      const { document, window } = fullShell()
+      document.body.dataset.nativeDefaultAppearance = html.match(/data-native-default-appearance="([^"]+)"/)[1]
+      let mounted
+      const console = await bootNativeConsole({ document, window, startStatus: () => () => {}, mount: async options => {
+        mounted = options
+        return { renderer: { setPixelRatio () {} }, setView () {}, dispose () {} }
+      } })
+      assert.equal(mounted.defaultAppearance, defaultAppearance)
+      assert.equal(mounted.selectionScope, undefined) // Existing account/manifest preference scope is retained.
+      console.dispose()
+    }
+  }
+  assert.match(renderViewerPage(), /data-native-default-appearance="server"/)
+  for (const value of ['\"><script>alert(1)</script>', 'bundled:<bad>', 'server\n', 'a'.repeat(129), null]) {
+    assert.throws(() => renderViewerPage('3dview', { defaultAppearance: value }), TypeError)
+  }
+})
 
 test('all original view routes select the actual native first/third/dungeon camera', () => {
   assert.equal(consoleViewMode('/'), 'first')

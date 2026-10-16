@@ -390,7 +390,7 @@ function injectedAgentStatus (getAgentStatus, now) {
 
 // Prepare before createBot(), then attach synchronously before login packets.
 // Preparation creates no Minecraft client, listening socket or signal handler.
-export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '' }) {
+export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server' }) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('NATIVE_WORLD_PORT_INVALID')
   const access = nativePreviewAccess(lanAddress)
   const root = await fs.realpath(assetDirectory)
@@ -423,7 +423,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   const viewerBuild=nativeViewerBuildSignature(buildInfo.buildSource.sourceSha256,appearanceBuildSha256)
   buildInfo.viewerBuild=viewerBuild
   const pages = new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['3dview/', '3dview'], ['3dview', '3dview']]
-    .map(([route, mode]) => [route, Buffer.from(withNativeViewerBuild(renderViewerPage(mode),viewerBuild))]))
+    .map(([route, mode]) => [route, Buffer.from(withNativeViewerBuild(renderViewerPage(mode, { defaultAppearance }),viewerBuild))]))
   const diagnosticBytes=Buffer.from(withNativeViewerBuild(diagnosticsPage.toString(),viewerBuild))
   return {
     registrySha256: hash,
@@ -431,7 +431,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       sourceMode = 'live_same_player_connection', basePath = '/' }) {
       if (!['live_same_player_connection', 'numen_server_body'].includes(sourceMode)) throw Error('NATIVE_WORLD_SOURCE_INVALID')
       const scopedPages = basePath === '/' ? pages : new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['3dview/', '3dview'], ['3dview', '3dview']]
-        .map(([route, mode]) => [route, Buffer.from(withNativeViewerBuild(renderViewerPage(mode, { basePath }),viewerBuild))]))
+        .map(([route, mode]) => [route, Buffer.from(withNativeViewerBuild(renderViewerPage(mode, { basePath, defaultAppearance }),viewerBuild))]))
       // Mineflayer 4.37.1 fills bot.username in its login plugin. Attach before
       // that packet using the caller's createBot username, then verify it.
       const username = bot?.username || expectedUsername
