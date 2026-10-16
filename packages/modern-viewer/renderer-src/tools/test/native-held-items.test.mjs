@@ -27,6 +27,7 @@ for (const firstPersonOnly of [false, true]) test(`observed same-body swing anim
   held.apply(frame(raw(), { entityId:7, velocity:{x:.1,y:0,z:0}, swinging:true, attackAnim:.16, handAnimation:animation }))
   await until(() => held.state().hands.right.status !== 'loading')
   assert.equal(held.firstPersonState().available, true)
+  assert.equal(held.hands.get('right').plan.appearance.context.kind, firstPersonOnly ? 'firstperson_righthand' : 'thirdperson_righthand')
   assert.equal(!!held.hands.get('right').object, !firstPersonOnly)
   assert.equal(!!held.hands.get('right').mount, !firstPersonOnly)
   const a = held.hands.get('right').firstMount.matrix.clone()

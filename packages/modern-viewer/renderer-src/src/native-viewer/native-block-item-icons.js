@@ -20,10 +20,19 @@ const BLOCK_ITEMS = new Set(NATIVE_GUI_BLOCK_ITEMS)
 export const nativeBlockItemEligible = name => BLOCK_ITEMS.has(name)
 const record = value => value && typeof value === 'object' && !Array.isArray(value)
 
-export async function resolveNativeBlockItemModel(reader, id, ancestry = []) {
+export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { generatedOnly = false } = {}) {
   const path = resourcePath(id, 'models', '.json')
-  if (ancestry.length >= 32 || ancestry.includes(path)) throw Error('NATIVE_BLOCK_ITEM_PARENT_CYCLE')
+  if (ancestry.length >= 32 || ancestry.includes(path)) throw Error(generatedOnly ? 'NATIVE_HELD_PARENT_CYCLE' : 'NATIVE_BLOCK_ITEM_PARENT_CYCLE')
   const own = await reader.json(path)
+  // The existing held-generated contract is narrower than JSON block models.
+  // Share inheritance/namespace resolution without widening either admission.
+  if (generatedOnly) {
+    if (!record(own) || own.loader || own.elements?.length || own.overrides?.length ||
+        (own.overrides !== undefined && !Array.isArray(own.overrides)) ||
+        (own.elements !== undefined && !Array.isArray(own.elements)) || !record(own.textures ?? {}) ||
+        !record(own.display ?? {})) throw Error('NATIVE_HELD_DYNAMIC_MODEL_UNSUPPORTED')
+    if (!own.parent) throw Error('NATIVE_HELD_GENERATED_PARENT_REQUIRED')
+  }
   if (!record(own) || own.loader || own.overrides?.length ||
       (own.overrides !== undefined && !Array.isArray(own.overrides)) ||
       (own.parent && /^(?:minecraft:)?builtin\//.test(own.parent) && !/^(?:minecraft:)?builtin\/generated$/.test(own.parent))) throw Error('NATIVE_BLOCK_ITEM_DYNAMIC_MODEL_UNSUPPORTED')
@@ -31,7 +40,7 @@ export async function resolveNativeBlockItemModel(reader, id, ancestry = []) {
   if (own.textures !== undefined && !record(own.textures)) throw Error('NATIVE_BLOCK_ITEM_TEXTURES_INVALID')
   if (own.elements !== undefined && (!Array.isArray(own.elements) || own.elements.length > 128)) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
   const generated = /^(?:minecraft:)?builtin\/generated$/.test(own.parent ?? '')
-  const parent = own.parent && !generated ? await resolveNativeBlockItemModel(reader, own.parent, [...ancestry, path]) : {}
+  const parent = own.parent && !generated ? await resolveNativeBlockItemModel(reader, own.parent, [...ancestry, path], { generatedOnly }) : {}
   return { ...parent, ...own, textures: { ...parent.textures, ...own.textures },
     display: { ...parent.display, ...own.display }, elements: own.elements ?? parent.elements ?? [],
     nativeGenerated: generated || Boolean(parent.nativeGenerated),
@@ -235,18 +244,18 @@ export class NativeBlockItemIconRenderer {
     this.loadTexture = options.loadTexture ?? loadOpaqueTexture; this.encode = options.encode ?? encodeCanvas
     this.renderer = null; this.pending = Promise.resolve(); this.disposed = false
   }
-  render(name) {
+  render(name, preparedPlan) {
     // A single small context is reused; concurrent icon requests never race its
     // framebuffer or retain a scene/model after PNG encoding.
-    const result = this.pending.then(() => this.renderOne(name))
+    const result = this.pending.then(() => this.renderOne(name, preparedPlan))
     this.pending = result.catch(() => {})
     return result
   }
-  async renderOne(name) {
+  async renderOne(name, preparedPlan) {
     let object; const textures = new Map(); let pixels = 0
     const ensureOpen = () => { if (this.disposed) throw Error('NATIVE_BLOCK_ITEM_DISPOSED') }
     try {
-      ensureOpen(); const plan = await this.preparePlan(this.reader, name); ensureOpen()
+      ensureOpen(); const plan = preparedPlan ?? await this.preparePlan(this.reader, name); ensureOpen()
       for (const path of plan.texturePaths) {
         const bytes = await this.reader.bytes(path); ensureOpen()
         const texture = await this.loadTexture(bytes); textures.set(path, texture); ensureOpen()

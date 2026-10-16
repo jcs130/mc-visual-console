@@ -38,7 +38,7 @@ export async function createNativeDroppedItemActor(reader,entity,{loadTexture=te
   const state=entity.itemState
   if(entity.name!=='minecraft:item'||state?.available!==true||state.source!=='same_player_vanilla_item_registry'||state.minecraftVersion!=='1.21.1'||
     !Number.isSafeInteger(state.registryId)||!state.item?.snbt)throw Error(state?.reason??'NATIVE_DROPPED_ITEM_STACK_UNAVAILABLE')
-  const plan=await prepareNativeHeldItem(reader,state.item,'right',{...(readPixels?{readPixels}:{})}),ground=plan.groundTransform
+  const plan=await prepareNativeHeldItem(reader,state.item,'right',{contextInput:{kind:'ground'},...(readPixels?{readPixels}:{})}),ground=plan.groundTransform
   if(!ground)throw Error('NATIVE_DROPPED_ITEM_GROUND_MODEL_UNAVAILABLE')
   const root=new THREE.Group(),spin=new THREE.Group(),textures=new Map();root.add(spin)
   let original,disposed=false
@@ -54,7 +54,7 @@ export async function createNativeDroppedItemActor(reader,entity,{loadTexture=te
       model.rotation.set(...ground.radians,'XYZ');model.scale.fromArray(ground.scale);copy.add(model);spin.add(copy)
     }
     const assetInfo={type:'minecraft:item',item:state.item.name,count:state.item.count,copies:offsets.length,
-      geometrySource:plan.geometry,sourcePaths:plan.sourcePaths,ageSource:'viewer_client_lifetime_not_server_despawn_age',
+      geometrySource:plan.geometry,sourcePaths:plan.sourcePaths,itemContext:plan.appearance.context.kind,ageSource:'viewer_client_lifetime_not_server_despawn_age',
       completeEntityParityVerified:false,pixelParityVerified:false}
     const actor={root,assetInfo,update(next,now=Date.now()){
       if(disposed||next.entityId!==entity.entityId||next.uuid!==entity.uuid||next.itemState?.item?.snbt!==state.item.snbt)throw Error('NATIVE_DROPPED_ITEM_BINDING_MISMATCH')

@@ -1,14 +1,16 @@
 import { resourcePath, textureId } from './model-loader.js'
-import { NativeBlockItemIconRenderer, nativeBlockItemEligible, resolveNativeBlockItemModel, nativeGuiItemTransform, loadNativeCutoutItemTexture } from './native-block-item-icons.js'
+import { NativeBlockItemIconRenderer, loadNativeCutoutItemTexture } from './native-block-item-icons.js'
 import { parseNativeItemStack } from './native-item-stack.js'
-import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
+import { nativeGuideItemEligible } from './native-guide-item-icons.js'
 import { nativeArsItemEligible, NativeArsItemIconRenderer } from './native-ars-item-icons.js'
-import { nativeStaticItemState, verifyNativeStaticItemEvidence } from './native-static-item-providers.js'
+import { nativeStaticItemState } from './native-static-item-providers.js'
 import { nativeDomumItemEligible, nativeDomumItemState, NativeDomumItemIconRenderer } from './native-domum-item-icons.js'
 import { nativeSoulSlabEligible, nativeSoulSlabState, prepareNativeSoulSlabIcon } from './native-soul-slab-icons.js'
 import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 import {nativePotionItemEligible,validateNativePotionItem} from './native-potion-items.js'
 import {renderNativePotionIcon} from './native-potion-icons.js'
+import { resolveNativeItemAppearance } from './native-item-appearance.js'
+export { resolveNativeFlatItemTexture } from './native-item-appearance.js'
 
 export function nativeItemIconEligible(item) {
   try {
@@ -19,17 +21,6 @@ export function nativeItemIconEligible(item) {
     else nativeStaticItemState(stack)
     return true
   } catch { return false }
-}
-
-export async function resolveNativeFlatItemTexture(reader, id, ancestry = []) {
-  const model = await resolveNativeBlockItemModel(reader, id, ancestry)
-  if (!model.nativeGenerated || model.elements.length) throw Error('NATIVE_ITEM_GENERATED_PARENT_REQUIRED')
-  if ((model.gui_light ?? 'front') !== 'front') throw Error('NATIVE_ITEM_GENERATED_LIGHT_UNSUPPORTED')
-  const gui = nativeGuiItemTransform(model.display.gui)
-  if (gui.rotation.some(x => x !== 0) || gui.translation.some(x => x !== 0) || gui.scale.some(x => x !== 1)) throw Error('NATIVE_ITEM_GUI_TRANSFORM_UNSUPPORTED')
-  // Intermediate generated/handheld parents have no layer; validate the leaf
-  // after all texture references and namespace-preserving inheritance resolve.
-  return model
 }
 
 export class NativeItemIcons {
@@ -106,46 +97,47 @@ export class NativeItemIcons {
     entry.loading = true
     const name = entry.name
     try {
-      if(entry.provider==='potion'){
-        const {blob,...info}=await renderNativePotionIcon(this.reader,entry.stack,this.potionIconOptions)
+      const appearance = await resolveNativeItemAppearance(this.reader, entry.stack, { kind: 'gui' })
+      if (this.disposed) return
+      const provider = appearance.family
+      if(provider==='potion'){
+        const {blob,...info}=await renderNativePotionIcon(this.reader,entry.stack,{...this.potionIconOptions,appearance})
         if(this.disposed)return
         entry.result={verified:true,url:this.createUrl(blob),sourcePath:info.sourcePaths.find(path=>path.includes('/models/item/')),...info}
         entry.reason=null;return
       }
-      if (entry.provider === 'soul-slab') {
-        const { blob, ...info } = await prepareNativeSoulSlabIcon(this.reader, entry.stack)
+      if (provider === 'soul-slab') {
+        const { blob, ...info } = await prepareNativeSoulSlabIcon(this.reader, entry.stack, appearance.prepared)
         if (this.disposed) return
         entry.result = { verified: true, url: this.createUrl(blob), ...info,
           animation: { ...info.animation, epochMs: this.animationEpochMs } }
         entry.reason = null
         return
       }
-      if (entry.provider === 'ars' || entry.provider === 'domum') {
-        const renderer = entry.provider === 'ars' ? this.arsRenderer : this.domumRenderer
-        const { blob, ...info } = await renderer.render(entry.stack)
+      if (provider === 'ars' || provider === 'domum') {
+        const renderer = provider === 'ars' ? this.arsRenderer : this.domumRenderer
+        const { blob, ...info } = await renderer.render(entry.stack, appearance.prepared)
         if (this.disposed) return
         entry.result = { verified: true, url: this.createUrl(blob), sourcePath: info.sourcePaths.find(path => path.includes('/models/item/')), ...info }
         entry.reason = null
         return
       }
-      const evidence = entry.provider === 'static' ? verifyNativeStaticItemEvidence(this.reader,name) : null
-      if(evidence?.kind==='chest') {
-        const {blob,...info}=await this.chestRenderer.render(name)
+      const evidence = appearance.evidence
+      if(provider==='chest') {
+        const {blob,...info}=await this.chestRenderer.render(name, appearance.prepared)
         if(this.disposed)return
         entry.result={verified:true,url:this.createUrl(blob),sourcePath:info.sourcePaths.find(path=>path.includes('/models/item/')),...info}
         entry.reason=null;return
       }
-      const blockModel = nativeBlockItemEligible(name) ? await resolveNativeBlockItemModel(this.reader,name.replace(':',':item/')) : null
-      if (blockModel && !blockModel.nativeGenerated) {
-        const { blob, ...info } = await this.blockRenderer.render(name)
+      if (appearance.geometry === 'block') {
+        const { blob, ...info } = await this.blockRenderer.render(name, appearance.prepared)
         if (this.disposed) return
         entry.result = { verified: true, url: this.createUrl(blob), sourcePath: info.sourcePaths.find(path => path.includes('/models/item/')), ...info }
         entry.reason = null
         return
       }
-      const [namespace, leaf] = name.split(':')
-      const guide = entry.provider === 'guide' ? await prepareNativeGuideItemIcon(this.reader, entry.stack) : null
-      const model = await resolveNativeFlatItemTexture(this.reader, guide?.modelId ?? `${namespace}:item/${leaf}`)
+      const guide = provider === 'guide' ? appearance.prepared : null
+      const model = appearance.model
       if (Object.keys(model.textures).some(key => /^layer/.test(key) && key !== 'layer0') || !model.textures.layer0) throw Error('NATIVE_ITEM_LAYERS_UNSUPPORTED')
       const png = resourcePath(textureId(model, model.textures.layer0), 'textures', '.png')
       if (this.reader.manifest.assets[`${png}.mcmeta`]) throw Error('NATIVE_ITEM_ANIMATION_UNSUPPORTED')

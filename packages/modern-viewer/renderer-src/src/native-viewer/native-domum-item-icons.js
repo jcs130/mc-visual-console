@@ -174,7 +174,7 @@ export async function prepareNativeDomumItemIcon(reader, input) {
     evidence: { source: DOMUM_ITEM_SOURCE, ...(variant.leaf === 'panel' ? { itemClass: 'PanelBlockItem' } : { variantKind: variant.leaf }), type: state.type, materialId: state.materialId,
       selection: 'original_trapdoor_type_ordinal_override', materialSource: material.evidence },
     sourcePaths: [itemPath, parentPath, ...base.sourcePaths, ...material.sourcePaths] })
-  return { ...plan, kind: variant.leaf === 'panel' ? 'native-domum-panel-gui' : 'native-domum-variant-gui' }
+  return { ...plan, selectedModelId: modelId, kind: variant.leaf === 'panel' ? 'native-domum-panel-gui' : 'native-domum-variant-gui' }
 }
 
 export class NativeDomumItemIconRenderer extends NativeBlockItemIconRenderer {

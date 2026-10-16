@@ -11,6 +11,7 @@ const DOUBLE = /^[-+]?(?:[0-9]+[.]|[0-9]*[.][0-9]+)(?:e[-+]?[0-9]+)?$/i
 const INTEGER_SUFFIX = /^([-+]?(?:0|[1-9][0-9]*))([bsl])$/i
 const WORD = /[A-Za-z0-9_.+\-]/
 const TAG = Symbol('native-snbt-tag')
+const parsedStacks = new WeakSet()
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const fail = code => { throw Error(`NATIVE_ITEM_STACK_${code}`) }
 const tagged = (type, value) => {
@@ -208,5 +209,21 @@ export function parseNativeItemStack (item) {
   if (stack.components !== undefined && (!record(stack.components) || typeOf(stack.components) !== 'compound')) fail('COMPONENTS')
   // An omitted components compound means the observed serialized patch is
   // empty. A provider still needs the locked mod's default item/render rules.
-  return { id: stack.id, count: stack.count, components: stack.components ?? {} }
+  const result = { id: stack.id, count: stack.count, components: stack.components ?? {} }
+  // Selection accepts only parser-produced values. Freeze the bounded tree so
+  // callers cannot replace a genuine numeric tag with a lookalike compound
+  // after validation, including while an asynchronous asset read is pending.
+  const freeze = value => {
+    if (value && typeof value === 'object') {
+      for (const child of Object.values(value)) freeze(child)
+      Object.freeze(value)
+    }
+  }
+  freeze(result); parsedStacks.add(result)
+  return result
+}
+
+export function assertNativeItemStack(stack) {
+  if (!parsedStacks.has(stack)) fail('PARSED_REQUIRED')
+  return stack
 }

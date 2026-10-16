@@ -1,14 +1,11 @@
 import * as THREE from 'three'
 import { NativeAssetReader, bakeFaces, resourcePath, textureId } from './model-loader.js'
-import { parseNativeItemStack, nativeNumericValue } from './native-item-stack.js'
-import { nativeArsItemEligible, prepareNativeArsItemIcon, bakeNativeArsGeoFaces } from './native-ars-item-icons.js'
-import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
-import { verifyNativeStaticItemEvidence, nativeStaticItemState, nativeStaticItemEvidence } from './native-static-item-providers.js'
-import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
-import { nativeBlockItemEligible, resolveNativeBlockItemModel, bakeNativeBlockItemFaces } from './native-block-item-icons.js'
+import { parseNativeItemStack } from './native-item-stack.js'
+import { bakeNativeArsGeoFaces } from './native-ars-item-icons.js'
+import { bakeNativeBlockItemFaces } from './native-block-item-icons.js'
 import { nativeHumanoidWalkAngles, nativePlayerCos, nativePlayerSin, toSkinviewLimbRotation } from './native-player-motion.js'
 import { nativeHandAnimation, nativeHandUse, nativeFirstPersonConsumeMatrix, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from './native-first-person-motion.js'
-import {nativePotionItemEligible,prepareNativePotionItem} from './native-potion-items.js'
+import { resolveNativeItemAppearance } from './native-item-appearance.js'
 
 // Locked 1.21.1 ItemModelGenerator / ItemInHandLayer / ItemTransform and
 // PlayerModel.translateToHand; Ars 5.13.2 SpellBookModel/TatteredTomeModel and
@@ -16,13 +13,10 @@ import {nativePotionItemEligible,prepareNativePotionItem} from './native-potion-
 export const HELD_ITEM_CLIENT_SHA256 = '499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99'
 export const ARS_OPEN_MODEL_SHA256 = '38d9ad24e4b8fe06dd36bccb6f618fb9998a13218341e8e4ca320f298f6f673e'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const TOOL = /^minecraft:(wooden|stone|iron|golden|diamond|netherite)_(sword|pickaxe|axe|shovel|hoe)$/
 const record = value => value && typeof value === 'object' && !Array.isArray(value)
 const F = Math.fround
 const mul = (a, b) => F(F(a) * F(b)), add = (a, b) => F(F(a) + F(b))
 const MAX_PIXELS = 262144
-const NON_VISUAL = new Set(['minecraft:damage', 'minecraft:custom_name', 'minecraft:item_name', 'minecraft:lore',
-  'minecraft:rarity', 'minecraft:repair_cost', 'minecraft:unbreakable', 'minecraft:hide_additional_tooltip', 'minecraft:hide_tooltip'])
 
 function normalizeUuid(value) {
   if (typeof value !== 'string' || !UUID.test(value)) throw Error('NATIVE_HELD_PLAYER_UUID_INVALID')
@@ -239,32 +233,6 @@ export function nativeGeneratedItemElements({ width, height, pixels } = {}, laye
   return elements
 }
 
-async function generatedModel(reader, id, ancestry = []) {
-  const path = resourcePath(id, 'models', '.json')
-  if (ancestry.length >= 32 || ancestry.includes(path)) throw Error('NATIVE_HELD_PARENT_CYCLE')
-  const own = await reader.json(path)
-  if (!record(own) || own.loader || own.elements?.length || own.overrides?.length ||
-      (own.overrides !== undefined && !Array.isArray(own.overrides)) ||
-      (own.elements !== undefined && !Array.isArray(own.elements)) || !record(own.textures ?? {}) ||
-      !record(own.display ?? {})) throw Error('NATIVE_HELD_DYNAMIC_MODEL_UNSUPPORTED')
-  const generated = /^(?:minecraft:)?builtin\/generated$/.test(own.parent)
-  if (!own.parent) throw Error('NATIVE_HELD_GENERATED_PARENT_REQUIRED')
-  const parent = generated ? { textures: {}, display: {}, sourcePaths: [] } : await generatedModel(reader, own.parent, [...ancestry, path])
-  return { ...parent, ...own, textures: { ...parent.textures, ...own.textures }, display: { ...parent.display, ...own.display },
-    sourcePaths: [...parent.sourcePaths, path] }
-}
-
-function validateStaticStack(stack) {
-  if (!TOOL.test(stack.id) && stack.id !== 'minecraft:stick') throw Error('NATIVE_HELD_ITEM_PROVIDER_UNSUPPORTED')
-  for (const [key, value] of Object.entries(stack.components)) {
-    if (!NON_VISUAL.has(key)) throw Error(`NATIVE_HELD_ITEM_COMPONENT_UNSUPPORTED:${key}`)
-    if (key === 'minecraft:damage') {
-      const damage = nativeNumericValue(value)
-      if (!Number.isSafeInteger(damage) || damage < 0 || damage > 2147483647) throw Error('NATIVE_HELD_DAMAGE_INVALID')
-    }
-  }
-}
-
 function textureDimensions(bytes) {
   if (bytes.length < 33 || [137, 80, 78, 71, 13, 10, 26, 10].some((v, i) => bytes[i] !== v)) throw Error('NATIVE_HELD_TEXTURE_PNG_INVALID')
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -286,13 +254,14 @@ async function readPngPixels(bytes) {
   } finally { bitmap.close() }
 }
 
-export async function prepareNativeHeldItem(reader, input, arm, { readPixels = readPngPixels } = {}) {
+export async function prepareNativeHeldItem(reader, input, arm, { readPixels = readPngPixels, contextInput = { kind: `thirdperson_${arm}hand` } } = {}) {
   if (!(reader instanceof NativeAssetReader) || reader.manifest.clientJarSha256 !== HELD_ITEM_CLIENT_SHA256) throw Error('NATIVE_HELD_CLIENT_UNVERIFIED')
   if (!['left', 'right'].includes(arm)) throw Error('NATIVE_HELD_ARM_INVALID')
   const stack = input?.id ? input : parseNativeItemStack(input)
-  if(nativeStaticItemEvidence(stack.id)?.kind==='chest') {
-    nativeStaticItemState(stack)
-    const plan=await prepareNativeChestItemIcon(reader,stack.id),textureLayers=new Map()
+  const appearance = await resolveNativeItemAppearance(reader, stack, contextInput)
+  if (appearance.context.kind === 'gui' || (appearance.context.kind !== 'ground' && !appearance.context.kind.endsWith(`_${arm}hand`))) throw Error('NATIVE_HELD_CONTEXT_INVALID')
+  if(appearance.family==='chest') {
+    const plan=appearance.prepared,textureLayers=new Map()
     for(const path of plan.texturePaths) {
       const bytes=await reader.bytes(path),dimensions=textureDimensions(bytes),decoded=await readPixels(bytes)
       if(dimensions.width!==64||dimensions.height!==64||decoded?.width!==64||decoded?.height!==64||decoded.pixels?.length!==64*64*4)throw Error('NATIVE_HELD_TEXTURE_DECODE_INVALID')
@@ -300,7 +269,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
       textureLayers.set(path,{bytes,dimensions})
     }
     const display=plan.model.display??{}
-    return {stack,arm,kind:'native-block-held',faces:plan.faces,textureLayers,
+    return {stack,arm,appearance,kind:'native-block-held',faces:plan.faces,textureLayers,
       transform:nativeHeldItemTransform(display[`thirdperson_${arm}hand`]??display.thirdperson_righthand??{},arm),
       firstPersonTransform:nativeHeldItemTransform(display[`firstperson_${arm}hand`]??display.firstperson_righthand??{},arm,'firstperson'),
       groundTransform:nativeHeldItemTransform(display.ground??{},'right','ground'),sourcePaths:plan.sourcePaths,
@@ -308,29 +277,27 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
       worldLightingParityVerified:false,pixelParityVerified:false}
   }
   if (!record(stack.components) || !Number.isSafeInteger(stack.count) || stack.count <= 0) throw Error('NATIVE_HELD_STACK_INVALID')
-  if (nativeArsItemEligible(stack.id)) {
+  if (appearance.family === 'ars') {
     // Shared provider validates complete components, source JARs, PNG/model
     // bytes and resource conflicts. GUI faces/transform are NOT used here.
-    const checked = await prepareNativeArsItemIcon(reader, stack)
-    const itemPath = resourcePath(`${stack.id.split(':')[0]}:item/${stack.id.split(':')[1]}`, 'models', '.json')
-    const model = await reader.json(itemPath)
-    const open = checked.leaf !== 'worn_notebook'
+    const checked = appearance.prepared
+    const model = appearance.model
+    const open = appearance.geometryId === 'ars_nouveau:spellbook_open'
     const geoPath = `assets/ars_nouveau/geo/spellbook_${open ? 'open' : 'closed'}.geo.json`
     if (open && reader.manifest.assets[geoPath]?.sha256 !== ARS_OPEN_MODEL_SHA256) throw Error('NATIVE_HELD_ARS_OPEN_MODEL_UNVERIFIED')
     const faces = bakeNativeArsGeoFaces(await reader.json(geoPath), checked.tier)
     const display = model.display?.[`thirdperson_${arm}hand`] ?? model.display?.thirdperson_righthand ?? {}
     const firstDisplay = model.display?.[`firstperson_${arm}hand`] ?? model.display?.firstperson_righthand ?? {}
     const textureBytes = await reader.bytes(checked.texturePath), dimensions = textureDimensions(textureBytes)
-    return { stack, arm, kind: 'native-ars-held', faces, texturePath: checked.texturePath, textureBytes, dimensions,
+    return { stack, arm, appearance, kind: 'native-ars-held', faces, texturePath: checked.texturePath, textureBytes, dimensions,
       transform: nativeHeldItemTransform(display, arm), firstPersonTransform: nativeHeldItemTransform(firstDisplay, arm, 'firstperson'),
       sourcePaths: [...new Set([...checked.sourcePaths, geoPath])],
       geometry: open ? 'ars_nouveau:spellbook_open' : 'ars_nouveau:spellbook_closed', tier: checked.tier, color: checked.color,
       geoOffsetY: F(0.51) - 0.5, material: 'entityTranslucent', animationControllerCount: 0,
       geometrySourceVerified: true, worldLightingParityVerified: false, pixelParityVerified: false }
   }
-  if (nativeBlockItemEligible(stack.id)) {
-    nativeStaticItemState(stack); verifyNativeStaticItemEvidence(reader, stack.id)
-    const model = await resolveNativeBlockItemModel(reader, `${stack.id.split(':')[0]}:item/${stack.id.split(':')[1]}`)
+  if (appearance.geometry === 'block') {
+    const model = appearance.model
     // Some BlockItems (plants, for example) use original generated sprites.
     // Those still go through the existing generated provider below.
     if (!model.nativeGenerated) {
@@ -353,7 +320,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
       }
       const display = model.display?.[`thirdperson_${arm}hand`] ?? model.display?.thirdperson_righthand ?? {}
       const firstDisplay = model.display?.[`firstperson_${arm}hand`] ?? model.display?.firstperson_righthand ?? {}
-      return { stack, arm, kind: 'native-block-held', faces, textureLayers,
+      return { stack, arm, appearance, kind: 'native-block-held', faces, textureLayers,
         transform: nativeHeldItemTransform(display, arm), firstPersonTransform: nativeHeldItemTransform(firstDisplay, arm, 'firstperson'),
         groundTransform:nativeHeldItemTransform(model.display?.ground??{},'right','ground'),
         sourcePaths: [...new Set([...model.sourcePaths, ...paths])],
@@ -361,19 +328,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
         geometrySourceVerified: true, atlasUvShrinkAvailable: false, worldLightingParityVerified: false, pixelParityVerified: false }
     }
   }
-  let modelId = `${stack.id.split(':')[0]}:item/${stack.id.split(':')[1]}`, provider = null
-  if (nativeGuideItemEligible(stack.id)) {
-    provider = await prepareNativeGuideItemIcon(reader, stack)
-    modelId = provider.modelId
-  } else if(nativePotionItemEligible(stack.id)) provider=await prepareNativePotionItem(reader,stack)
-  else if (TOOL.test(stack.id) || stack.id === 'minecraft:stick') validateStaticStack(stack)
-  else {
-    // Registration/ItemColors/ItemProperties evidence is positive and bound
-    // to the exact JARs, not inferred from a conveniently named JSON file.
-    const checked = nativeStaticItemState(stack)
-    verifyNativeStaticItemEvidence(reader, checked.stack.id)
-  }
-  const model = await generatedModel(reader, modelId)
+  const model = appearance.model, provider = appearance.prepared
   if (!model.textures.layer0||Object.keys(model.textures).some(key=>/^layer/.test(key)&&!/^layer[0-4]$/.test(key)))throw Error('NATIVE_HELD_LAYERS_UNSUPPORTED')
   const textureLayers=new Map(),faces=[],decodedLayers=[]
   // ItemModelGenerator emits contiguous layers 0..4, each with its own
@@ -395,8 +350,8 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
   }
   const display = model.display[`thirdperson_${arm}hand`] ?? model.display.thirdperson_righthand ?? {}
   const firstDisplay = model.display[`firstperson_${arm}hand`] ?? model.display.firstperson_righthand ?? {}
-  return { stack, arm, kind: 'native-generated-held', faces, texturePath, textureBytes, dimensions,
-    ...(decodedLayers.length>1?{textureLayers}:{}),...(nativePotionItemEligible(stack.id)?{tintColors:{0:provider.color}}:{}),
+  return { stack, arm, appearance, kind: 'native-generated-held', faces, texturePath, textureBytes, dimensions,
+    ...(decodedLayers.length>1?{textureLayers}:{}),...(appearance.requirements.tintColors?{tintColors:appearance.requirements.tintColors}:{}),
     transform: nativeHeldItemTransform(display, arm), firstPersonTransform: nativeHeldItemTransform(firstDisplay, arm, 'firstperson'),
     groundTransform:nativeHeldItemTransform(model.display?.ground??{},'right','ground'),
     sourcePaths: [...new Set([...(provider?.sourcePaths ?? []), ...model.sourcePaths, ...textureLayers.keys()])],
@@ -579,7 +534,8 @@ export class NativeHeldItems {
     const current = () => !this.disposed && !entry.cancelled && this.hands.get(arm) === entry
     try {
       const stack = parseNativeItemStack(entry.raw)
-      const plan = await prepareNativeHeldItem(this.reader, stack, arm, { readPixels: this.readPixels })
+      const plan = await prepareNativeHeldItem(this.reader, stack, arm, { readPixels: this.readPixels,
+        contextInput: { kind: `${this.firstPersonOnly ? 'firstperson' : 'thirdperson'}_${arm}hand` } })
       if (!current()) return
       const layers = plan.textureLayers ?? new Map([[plan.texturePath, { bytes: plan.textureBytes }]])
       for (const [path, layer] of layers) {

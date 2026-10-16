@@ -159,7 +159,7 @@ export async function prepareNativeArsItemIcon(reader, input) {
   const model = await reader.json(itemPath)
   if (model.parent !== 'builtin/entity' || model.loader || model.elements?.length || model.overrides?.length) throw Error('NATIVE_ARS_ITEM_MODEL_UNSUPPORTED')
   const faces = bakeNativeArsGeoFaces(await reader.json('assets/ars_nouveau/geo/spellbook_closed.geo.json'), state.tier)
-  return { ...state, faces, guiTransform: nativeGuiItemTransform(model.display?.gui), sourcePaths: Object.keys(hashes),
+  return { ...state, model, faces, guiTransform: nativeGuiItemTransform(model.display?.gui), sourcePaths: Object.keys(hashes),
     animationControllerCount: 0, originalMaterial: 'entityTranslucent', geometry: 'ars_nouveau:spellbook_closed' }
 }
 
@@ -235,14 +235,14 @@ export class NativeArsItemIconRenderer {
     this.reader=reader; this.loadTexture=options.loadTexture??decodeTexture; this.createRenderer=options.createRenderer??rendererFactory
     this.encode=options.encode??encodeCanvas; this.renderer=null; this.disposed=false; this.pending=Promise.resolve()
   }
-  render(stack) {
-    const result=this.pending.then(()=>this.renderOne(stack)); this.pending=result.catch(()=>{}); return result
+  render(stack, preparedPlan) {
+    const result=this.pending.then(()=>this.renderOne(stack, preparedPlan)); this.pending=result.catch(()=>{}); return result
   }
-  async renderOne(stack) {
+  async renderOne(stack, preparedPlan) {
     let object, texture
     const ensureOpen=()=>{if(this.disposed)throw Error('NATIVE_ARS_ITEM_DISPOSED')}
     try {
-      ensureOpen(); const plan=await prepareNativeArsItemIcon(this.reader,stack); ensureOpen()
+      ensureOpen(); const plan=preparedPlan ?? await prepareNativeArsItemIcon(this.reader,stack); ensureOpen()
       const bytes=await this.reader.bytes(plan.texturePath); ensureOpen()
       texture=await this.loadTexture(bytes); ensureOpen()
       if (texture.image?.width!==128 || texture.image?.height!==128) throw Error('NATIVE_ARS_ITEM_TEXTURE_SIZE_INVALID')

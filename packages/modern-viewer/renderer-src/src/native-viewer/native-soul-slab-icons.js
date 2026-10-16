@@ -46,7 +46,7 @@ function requireAsset(reader, path, sha, bytes = null) {
   if (!entry || entry.source !== SOURCE.name || entry.sha256 !== sha || (bytes !== null && entry.bytes !== bytes) ||
       entry.variants?.some(variant => variant.sha256 !== sha)) throw Error('NATIVE_SOUL_SLAB_ASSET_SOURCE_UNVERIFIED')
 }
-export async function prepareNativeSoulSlabIcon(reader, stack) {
+export async function prepareNativeSoulSlabAppearance(reader, stack) {
   const state = nativeSoulSlabState(stack), manifest = reader?.manifest
   const sources = manifest?.sources?.filter(source => source.name === SOURCE.name)
   if (manifest?.minecraftVersion !== '1.21.1' || manifest.clientJarSha256 !== CLIENT || !manifest.assetIntegrityVerified ||
@@ -66,13 +66,18 @@ export async function prepareNativeSoulSlabIcon(reader, stack) {
   const frames = animationFrames(meta, 16, 112)
   if (frames.frameWidth !== 16 || frames.frameHeight !== 16 || frames.interpolate || frames.frames.length !== 7 ||
       frames.frames.some((f,i) => f.index !== i || f.time !== 2)) throw Error('NATIVE_SOUL_SLAB_ANIMATION_RULE_CHANGED')
-  return { blob: new Blob([bytes], { type: 'image/png' }), kind: 'native-soul-slab-sheet', modelId: state.modelId,
+  return { bytes, model, kind: 'native-soul-slab-sheet', modelId: state.modelId,
     sourcePath: PNG, sourcePaths: [...new Set([...model.sourcePaths, PNG, META])],
     animation: { kind: 'native-soul-slab-sheet-v1', frameCount: 7, frameTicks: 2, tickMs: 50, frameWidth: 16, frameHeight: 16, sheetHeight: 112 },
     foil: state.foil, glintVerified: !state.foil, pixelParityVerified: false,
     // Native ItemRenderer forwards atlas UVs to the glint pass. The original
     // atlas placement is unavailable; do not invent a normalized-UV shimmer.
     effectUnavailableReason: state.foil ? 'NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE' : null }
+}
+
+export async function prepareNativeSoulSlabIcon(reader, stack, preparedPlan) {
+  const { bytes, model, ...info } = preparedPlan ?? await prepareNativeSoulSlabAppearance(reader, stack)
+  return { blob: new Blob([bytes], { type: 'image/png' }), ...info }
 }
 
 export const NATIVE_SOUL_SLAB_KEYFRAMES = '@keyframes corti-native-soul-slab{from{transform:translateY(0)}to{transform:translateY(-100%)}}'

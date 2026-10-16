@@ -23,8 +23,8 @@ async function encode({width,height,pixels}){
 // original potion sprites use binary alpha: later layers replace their opaque
 // pixels, with ItemColors' tint only on layer zero. Unsupported transforms,
 // animation or nonbinary alpha remain explicit, never an approximate flat icon.
-export async function renderNativePotionIcon(reader,stack,{readPixels=pixels,encodePixels=encode}={}){
-  const checked=await prepareNativePotionItem(reader,stack),model=await resolveNativeBlockItemModel(reader,stack.id.replace(':',':item/'))
+export async function renderNativePotionIcon(reader,stack,{readPixels=pixels,encodePixels=encode,appearance}={}){
+  const checked=appearance?.prepared??await prepareNativePotionItem(reader,stack),model=appearance?.model??await resolveNativeBlockItemModel(reader,stack.id.replace(':',':item/'))
   if(!model.nativeGenerated||model.elements.length||(model.gui_light??'front')!=='front')throw Error('NATIVE_POTION_GUI_MODEL_UNSUPPORTED')
   const transform=nativeGuiItemTransform(model.display?.gui)
   if(transform.rotation.some(n=>n!==0)||transform.translation.some(n=>n!==0)||transform.scale.some(n=>n!==1))throw Error('NATIVE_POTION_GUI_TRANSFORM_UNSUPPORTED')
