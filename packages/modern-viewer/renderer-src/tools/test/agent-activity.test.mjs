@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { AgentActivityHistory, normalizeAgentActivity } from '../../src/modern-viewer/agent-activity.js';
 import { installAgentActivity } from '../../src/modern-viewer/agent-activity-ui.js';
-import { createViewerAgentBridge, createViewerAgentHub } from '../../host/viewer-agent.mjs';
+import { createViewerAgentBridge, createViewerAgentHub, publishAgentActivity } from '../../host/viewer-agent.mjs';
 import { Document, Element } from './fixtures/native-console-dom.mjs';
 const row = (id, extra = {}) => ({ id, at: '2026-10-17T17:00:00Z', source: 'system2', kind: 'tool', title: '整理背包', status: 'started', ...extra });
 test('bounded records redact structured secrets and authentication commands without changing tool identities', () => {
@@ -41,4 +41,11 @@ test('UI distinguishes sources, preserves expansion, renders text safely and nev
   assert.match(list.children[2].textContent, /未返回可展示/);
   send([row('r', { kind: 'reasoning', text: 'updated actual text' })]); assert.equal(list.children[0], first); assert.equal(first.open, true);
   ui.dispose(); assert.equal(socket.listenerCount('agentActivity'), 0);
+});
+test('actual host records published before viewer attachment survive bootstrap without replaying actions', () => {
+  const bot = Object.assign(new EventEmitter(), { username: 'demo', uuid: '00000000-0000-0000-0000-000000000002',
+    _client: { state: 'play', write() {} }, game: { gameMode: 'survival' }, entity: { id: 2, position: { x: 0, y: 64, z: 0 } }, controlState: {} });
+  publishAgentActivity(bot, row('before-viewer')); const bridge = createViewerAgentBridge(bot, { timers: false, hub: createViewerAgentHub() });
+  const socket = new EventEmitter(); socket.connected = true; const frames = []; socket.on('agentActivity', f => frames.push(f)); bridge.subscribeSocket(socket);
+  assert.equal(frames.at(-1).records[0].id, 'before-viewer'); bridge.dispose();
 });

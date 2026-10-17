@@ -22,6 +22,14 @@ export function createViewerAgentHub({ maximum = 64 } = {}) {
 }
 export const viewerAgentHub = createViewerAgentHub();
 const publishers = new WeakMap(), dispatchers = new WeakMap();
+const activityHistories = new WeakMap();
+/** Retain bounded host records even when the renderer has not attached yet. */
+export function publishAgentActivity(bot, value) {
+  if (!bot || typeof bot.emit !== 'function') return false;
+  let history = activityHistories.get(bot); if (!history) { history = new AgentActivityHistory(); activityHistories.set(bot, history); }
+  if (!history.put(value)) return false;
+  bot.emit('viewer:activity', value); return true;
+}
 
 /** Attach once per actual bot, then call this from an Agent/developer tool.
  * The acknowledgement confirms display acceptance, NOT a Minecraft action. */
@@ -66,8 +74,9 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     if (!subject) { hub.remove(owner); record = null; return null; }
     if (!sameVisualSubject(record?.subject, subject)) {
       hub.remove(owner);
+      const activity = activityHistories.get(bot) ?? new AgentActivityHistory(); activityHistories.set(bot, activity);
       record = { subject, epoch: randomUUID(), dimension: bot.game?.dimension ?? null, intent: null, route: null,
-        candidates: [], markers: [], decisions: [], activity: new AgentActivityHistory(), pointer: null, camera: null, presentation: null, presentationRevision: 0, trail: [], operations: [], input: {} };
+        candidates: [], markers: [], decisions: [], activity, pointer: null, camera: null, presentation: null, presentationRevision: 0, trail: [], operations: [], input: {} };
       if (!hub.put(owner, record)) { record = null; return null; }
     }
     return record;
