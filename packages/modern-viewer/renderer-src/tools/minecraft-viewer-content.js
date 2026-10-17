@@ -2,7 +2,7 @@ import { ServerParticles, loadViewerContentAssets } from './server-particles.js'
 import { MapPhotos, heldMapId } from './map-photos.js';
 import {TextDisplays} from './text-displays.js';
 import {loadTextDisplayFont} from './text-display-font.js';
-import {PaperYsmPlayers,paperYsmAvailabilityText} from './paper-ysm.js';
+import {PaperYsmPlayers,paperYsmAvailabilityText,installPaperYsmRenderGuard} from './paper-ysm.js';
 import {installAppearanceSettings} from './appearance-settings.js';
 import {loadPaperBundledAppearances,PaperBundledAppearanceSelection} from './paper-bundled-appearance.js';
 import paperYsmItemModels from 'mc-assets/dist/blockStatesModels.json';
@@ -19,6 +19,7 @@ let cortiContentDisposed = false;
 let cortiContentError = null;
 const cortiAppearances=new Map();
 const cortiYsmPlayers=new PaperYsmPlayers({itemModels:paperYsmItemModels.models.latest,entity:id=>entityCache.get(String(id))??(pendingAvatarState?.entity?.id===id?pendingAvatarState.entity:null),rendered:id=>globalThis.world?.entities?.entities?.[String(id)],presentation:()=>activeScenePolicy});
+let cortiYsmRenderGuard=null;
 let appearanceSubject=null,appearanceUiAt=-Infinity,cortiLocalAppearance=null,cortiLocalAppearanceError=null,cortiOwnAppearanceEntity=null;
 const appearanceUi=installAppearanceSettings({document,window,hidden:isPhotoView||isObsOverlay,
   onChange:id=>{if(appearanceSubject){if(cortiLocalAppearance)cortiLocalAppearance.select(cortiYsmPlayers,appearanceSubject,id);else cortiYsmPlayers.select(appearanceSubject,id);}updateAppearanceUi();},
@@ -111,6 +112,7 @@ loadViewerContentAssets(fetch,{minecraftVersion:cortiContentMinecraftVersion}).t
 let cortiContentStatsAt = -Infinity;
 function cortiAnimateNativeContent(now) {
   if(cortiContentDisposed)return;
+  if(cortiYsmRenderGuard?.world!==globalThis.world){cortiYsmRenderGuard?.dispose();cortiYsmRenderGuard=installPaperYsmRenderGuard(globalThis.world,cortiYsmPlayers);}
   if(!document.hidden){cortiNativeParticles.tick(now);cortiMapPhotos.tick();cortiTextDisplays.tick();cortiYsmPlayers.tick(now);cortiUpdateHeldMap();}
   if(!document.hidden && now-appearanceUiAt>=500){appearanceUiAt=now;updateAppearanceUi();}
   // Keep nested diagnostics and DOM writes off the animation's frame budget.
@@ -138,5 +140,5 @@ function cortiAnimateNativeContent(now) {
   requestAnimationFrame(cortiAnimateNativeContent);
 }
 if (typeof isObsOverlay === 'undefined' || !isObsOverlay) requestAnimationFrame(cortiAnimateNativeContent);
-window.cortiViewerContent={stats:()=>({ysm:cortiYsmPlayers.stats(),particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
-window.addEventListener('pagehide',()=>{cortiContentDisposed=true;appearanceUi.dispose();cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});
+window.cortiViewerContent={stats:()=>({ysm:cortiYsmPlayers.stats(),bodyVisibility:cortiYsmRenderGuard?.diagnostics??null,particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
+window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiYsmRenderGuard?.dispose();cortiYsmRenderGuard=null;appearanceUi.dispose();cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});

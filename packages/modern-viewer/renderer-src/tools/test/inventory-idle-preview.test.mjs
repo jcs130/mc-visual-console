@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createContext, runInContext } from 'node:vm';
+import { AgentVisualState } from '../../src/modern-viewer/agent-visual-state.js';
 
 const source = readFileSync(new URL('../minecraft-viewer-panels.js', import.meta.url), 'utf8');
 
@@ -20,6 +21,7 @@ function browser() {
   let now = 0;
   let sequence = 0;
   const timers = new Map();
+  const visualState = new AgentVisualState({ now: () => now });
   const context = createContext({
     latestPosition: { pos: { x: 1, y: 64, z: 1 } },
     document: { body: { dataset: {} }, head: { append() {} }, createElement: () => ({}),
@@ -27,6 +29,7 @@ function browser() {
       querySelector: () => null },
     window: { localStorage: { getItem: () => null }, addEventListener: (name, listener) => keys.set(name, listener) },
     socket: { on: (name, listener) => events.set(name, listener) },
+    agentVisualization: { snapshot: () => visualState.snapshot() },
     performance: { now: () => now },
     setInterval() {},
     setTimeout(callback, delay) {
@@ -39,7 +42,8 @@ function browser() {
   runInContext(source, context);
   runInContext('cortiRenderInventory = function(parent, inventory) { parent.inventory = inventory; };', context);
   const inventory = [{ name: 'diamond_sword' }];
-  events.get('avatarState')({ inventory });
+  const subject = { playerUuid: '00000000-0000-3000-8000-000000000001', playerName: 'Player', entityId: 3 };
+  events.get('avatarState')({ inventory, entity: { id: subject.entityId, uuid: subject.playerUuid } });
   const emit = (name, value) => events.get(name)?.(value);
   const preview = () => emit('inventoryPreview', { open: true, ttlMs: 2400, source: 'idle' });
   const advance = (ms) => {
@@ -50,8 +54,49 @@ function browser() {
     }
   };
   const key = (code) => keys.get('keydown')({ code, preventDefault() {} });
-  return { emit, preview, advance, menu, button, close, key, label, body, inventory, timers };
+  const operation = (id = 1, windowId = 0, override = {}) => {
+    const frame = { schemaVersion: 1, available: true, subject, epoch: 'actual-connection', sequence: id,
+      ttlMs: 3500, input: { operations: [{ id, kind: 'inventory', slot: 9, windowId, remainingMs: 3200 }] }, ...override };
+    visualState.accept(frame); emit('agentVisualization', frame);
+  };
+  return { emit, preview, advance, menu, button, close, key, label, body, inventory, timers, operation, subject };
 }
+
+test('a real container remains displayed while the same player moves; a close receipt still closes it', () => {
+  const h = browser();
+  h.emit('containerState', { id: 6, type: 'inventory', title: '真实窗口', slots: [] });
+  h.emit('position', { pos: { x: 8, y: 65, z: 8 } });
+  assert.equal(h.menu.hidden, false);
+  assert.equal(h.menu.dataset.inventorySource, 'container');
+  h.emit('containerState', null);
+  assert.equal(h.menu.hidden, true);
+});
+
+test('an actual window-0 click opens the same player inventory once and expires without replaying it', () => {
+  const h = browser();
+  h.operation();
+  assert.equal(h.menu.hidden, false);
+  assert.equal(h.menu.dataset.inventorySource, 'operation');
+  assert.equal(h.label.textContent, '物品操作已发送 · 只读');
+  assert.equal(h.body.inventory, h.inventory);
+  h.advance(2400);
+  assert.equal(h.menu.hidden, true);
+  h.operation(1);
+  assert.equal(h.menu.hidden, true, 'replayed transport frames do not reopen the menu');
+  h.operation(2);
+  assert.equal(h.menu.hidden, false, 'a new actual click opens a new preview');
+});
+
+test('another player or a workbench click without a real container snapshot does not invent an inventory screen', () => {
+  const h = browser();
+  h.operation(1, 0, { subject: { ...h.subject, entityId: 7 } });
+  assert.equal(h.menu.hidden, true);
+  h.operation(2, 4);
+  assert.equal(h.menu.hidden, true);
+  h.emit('containerState', { id: 4, type: 'inventory', title: '真实窗口', slots: [] });
+  assert.equal(h.menu.hidden, false);
+  assert.equal(h.menu.dataset.inventorySource, 'container');
+});
 
 for (const event of ['disconnect', 'viewerReset']) test(`${event} clears a persistent game container`, () => {
   const h = browser();
@@ -63,12 +108,14 @@ for (const event of ['disconnect', 'viewerReset']) test(`${event} clears a persi
   assert.equal(h.menu.hidden, true);
 });
 
-test('walking dismisses a real window, looking around and position jitter do not', () => {
+test('explicit browser dismissal persists across updates to the same real window', () => {
   const h = browser();
   h.emit('containerState', { id: 6, type: 'inventory', title: '交易', slots: [] });
   h.emit('position', { pos: { x: 1.1, y: 64, z: 1 }, yaw: 2 });
   assert.equal(h.menu.hidden, false);
   h.emit('position', { pos: { x: 1.4, y: 64, z: 1 } });
+  assert.equal(h.menu.hidden, false);
+  h.close.click();
   assert.equal(h.menu.hidden, true);
   h.emit('containerState', { id: 6, type: 'inventory', title: '交易', slots: [] });
   assert.equal(h.menu.hidden, true, 'same stale window must stay dismissed');

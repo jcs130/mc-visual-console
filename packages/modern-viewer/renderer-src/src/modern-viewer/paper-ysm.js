@@ -256,6 +256,19 @@ export class PaperYsmPlayers {
     return motion;
   }
   restore(actor){actor.actor.dispose();for(const [child,visible]of actor.hidden)child.visible=visible;actor.rendered.traverse(part=>{const position=this.nametags.get(part);if(position){part.position.copy(position);this.nametags.delete(part);}});}
+  /** Native entity updates can reveal the original body again after our
+   * animation RAF. Reapply ownership immediately before the scene is drawn. */
+  syncNativeVisibility() {
+    let resets=0;
+    for (const [uuid,current] of this.actors) {
+      const state=this.states.get(uuid),entity=this.entity(state?.entityId);
+      if (!state || entity?.uuid?.toLowerCase()!==uuid || this.rendered(state.entityId)!==current.rendered || current.actor.root.parent!==current.rendered) continue;
+      if(current.rendered.children.some(child=>child!==current.actor.root &&
+        (child.name==='mesh'?child.children.some(part=>part.name!=='nametag'&&part.visible):child.name.startsWith('geometry_armor_')&&child.visible)))resets++;
+      this.hideVanilla(current.rendered,current.actor.root,current.hidden);
+    }
+    return resets;
+  }
   unmount(uuid){const actor=this.actors.get(uuid);if(actor){this.restore(actor);this.actors.delete(uuid);}this.pending.delete(uuid);this.failures.delete(uuid);}
   remove(uuid){this.unmount(uuid);this.states.delete(uuid);this.motions.delete(uuid);this.fallback.delete(uuid);this.overrides.delete(uuid);this.selectionNotices.delete(uuid);}
   clear(){for(const uuid of [...this.states.keys()])this.remove(uuid);this.assets.clear();this.assetSizes.clear();this.assetBytes=0;this.sequence++;}
@@ -303,4 +316,14 @@ export class PaperYsmPlayers {
     }
   }
   stats(){return {states:this.states.size,rendered:this.actors.size,pending:this.pending.size,failed:this.failures.size,unavailable:[...this.states.values()].map(r=>this.effective(r)).filter(r=>r.available&&!r.renderAvailable).length,errors:[...this.failures.values()],animationUnavailable:[...this.actors.values()].map(a=>a.actor.animationReason).filter(Boolean),heldUnavailable:[...this.actors.values()].flatMap(a=>Object.values(a.actor.heldState??{}).filter(hand=>hand.status==='unavailable')),actors:[...this.actors].map(([uuid,a])=>({uuid,animation:a.actor.animationState,held:a.actor.heldState})),assets:[...this.actors.values()].map(a=>a.actor.assetInfo)};}
+}
+
+export function installPaperYsmRenderGuard(world, players) {
+  const entities=world?.entities;
+  if(typeof entities?.render!=='function')return null;
+  const original=entities.render;
+  const diagnostics={draws:0,nativeVisibilityResets:0};
+  const render=function(...args){const result=original.apply(this,args);diagnostics.draws++;diagnostics.nativeVisibilityResets+=players.syncNativeVisibility();return result;};
+  entities.render=render;
+  return {world,diagnostics,dispose(){if(entities.render===render)entities.render=original;}};
 }

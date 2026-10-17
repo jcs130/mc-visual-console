@@ -4,6 +4,8 @@ let cortiPanelWindow = null;
 let cortiInventoryOpen = false;
 let cortiIdleInventoryOpen = false;
 let cortiIdleInventoryTimer = null;
+let cortiInventoryPreviewSource = 'idle';
+let cortiInventoryOperationKey = null;
 let cortiPanelMap = null;
 let cortiSceneMap = null;
 const cortiMapCells = new Map();
@@ -28,12 +30,11 @@ let cortiCombatTimer = null;
 let cortiInventoryPlayerPreview = null;
 let cortiViewerSessionKey = null;
 let cortiViewerSessionAt = 0;
-let cortiWindowAnchor = null;
 
 function cortiResetViewerPanels(clearSubject = false) {
   cortiCancelInventoryPreview(false);
   cortiPanelWindow = null; cortiInventoryOpen = false; cortiDismissedWindowId = null;
-  cortiWindowAnchor = null;
+  cortiInventoryOperationKey = null;
   cortiMenuSignature = ''; cortiInventoryPlayerPreview?.reset();
   if (clearSubject) {
     cortiPanelAvatar = null; cortiPanelSkills = null;
@@ -236,22 +237,15 @@ function cortiInstallPanels(socket) {
   socket.on('containerState', (state) => {
     const previousId = cortiPanelWindow?.id;
     cortiPanelWindow = state && typeof state === 'object' ? state : null;
-    if (!cortiPanelWindow) cortiWindowAnchor = null;
-    else if (previousId !== cortiPanelWindow.id && latestPosition?.pos)
-      cortiWindowAnchor = { x: latestPosition.pos.x, y: latestPosition.pos.y, z: latestPosition.pos.z };
     if (cortiPanelWindow) cortiCancelInventoryPreview(false);
     if (!cortiPanelWindow || cortiPanelWindow.id !== previousId) cortiDismissedWindowId = null;
     if (cortiPanelWindow || previousId !== undefined || cortiInventoryOpen) cortiRenderMenu();
   });
-  socket.on('position', (state) => {
-    const pos = state?.pos;
-    if (!cortiPanelWindow || !pos) return;
-    if (!cortiWindowAnchor) { cortiWindowAnchor = { ...pos }; return; }
-    if (Math.hypot(pos.x - cortiWindowAnchor.x, pos.z - cortiWindowAnchor.z) > 0.35
-        || Math.abs(pos.y - cortiWindowAnchor.y) > 0.5) {
-      cortiDismissedWindowId = cortiPanelWindow.id;
-      cortiInventoryOpen = false; cortiCancelInventoryPreview(false); cortiRenderMenu();
-    }
+  // Movement is not a server window-close receipt. Keep the actual window
+  // until its lifecycle ends or this browser explicitly dismisses it.
+  socket.on('agentVisualization', () => {
+    const frame = typeof agentVisualization !== 'undefined' ? agentVisualization.snapshot() : null;
+    cortiInventoryOperationPreview(frame);
   });
   socket.on('viewerSession', (state) => {
     cortiViewerSessionAt = Date.now();
@@ -376,6 +370,7 @@ function cortiInventoryPreview(event) {
   if (event?.open === true && !cortiInventoryOpen && !cortiPanelWindow &&
       performance.now() >= cortiCombatUntil) {
     cortiIdleInventoryOpen = true;
+    cortiInventoryPreviewSource = 'idle';
     const ttlMs = Number.isFinite(event.ttlMs) && event.ttlMs > 0
       ? Math.min(event.ttlMs, 2_400) : 2_400;
     cortiIdleInventoryTimer = setTimeout(() => {
@@ -384,6 +379,29 @@ function cortiInventoryPreview(event) {
       cortiRenderMenu();
     }, ttlMs);
   }
+  cortiRenderMenu();
+}
+
+function cortiInventoryOperationPreview(frame) {
+  const entity = cortiPanelAvatar?.entity;
+  if (!entity || frame?.subject?.entityId !== entity.id ||
+      frame.subject.playerUuid?.toLowerCase() !== entity.uuid?.toLowerCase()) return;
+  const operation = frame.input?.operations?.findLast(row => row.kind === 'inventory');
+  if (!operation || operation.windowId !== 0) return;
+  const key = `${frame.subject.playerUuid}:${frame.subject.entityId}:${operation.id}`;
+  if (key === cortiInventoryOperationKey) return;
+  cortiInventoryOperationKey = key;
+  // Only a real sent click for the same player's window 0 opens this preview.
+  // Workbench/container windows require their own actual slot snapshot.
+  if (cortiInventoryOpen || cortiPanelWindow) return;
+  cortiCancelInventoryPreview(false);
+  cortiIdleInventoryOpen = true;
+  cortiInventoryPreviewSource = 'operation';
+  cortiIdleInventoryTimer = setTimeout(() => {
+    cortiIdleInventoryTimer = null;
+    cortiIdleInventoryOpen = false;
+    cortiRenderMenu();
+  }, 2400);
   cortiRenderMenu();
 }
 
@@ -397,7 +415,7 @@ function cortiRenderMenu() {
     cortiSyncInventoryPlayerPreview();
     return;
   }
-  const source = container ? 'container' : cortiInventoryOpen ? 'manual' : 'idle';
+  const source = container ? 'container' : cortiInventoryOpen ? 'manual' : cortiInventoryPreviewSource;
   root.dataset.windowId = String(container?.id ?? 0);
   root.dataset.inventorySource = source;
   root.dataset.compact = String(performance.now() < cortiCombatUntil);
@@ -408,7 +426,7 @@ function cortiRenderMenu() {
   cortiMenuSignature = signature;
   root.querySelector('[data-menu-title]').textContent = container?.title || '背包';
   root.querySelector('[data-menu-source]').textContent = container ? '游戏窗口 · 只读'
-    : source === 'idle' ? '待机预览 · 只读' : '玩家物品 · 只读';
+    : source === 'idle' ? '待机预览 · 只读' : source === 'operation' ? '物品操作已发送 · 只读' : '玩家物品 · 只读';
   const target = root.querySelector('[data-menu-body]');
   cortiInventoryPlayerPreview?.setVisible(false);
   target.replaceChildren();
