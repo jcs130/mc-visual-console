@@ -4,6 +4,31 @@ import {NativeSelfDisplayPose,NativeFrameGaps,writeChanged,createTargetSignature
 import {nativeCameraTarget} from '../../src/native-viewer/native-camera.js'
 import {createNativePlayerMotionTracker} from '../../src/native-viewer/native-player-motion.js'
 const pose=(x=0,yaw=0)=>({x,y:64,z:0,yaw,pitch:0,eyeHeight:1.62})
+
+test('observed 60ms delivery keeps moving between packets instead of freezing at the 50ms endpoint',()=>{
+ const d=new NativeSelfDisplayPose(),raw=[pose(),pose(1),pose(2)],before=structuredClone(raw)
+ d.receive(raw[0],0,'a',{tick:0});d.receive(raw[1],60,'a',{tick:1})
+ assert.equal(d.delayMs,60)
+ assert.ok(Math.abs(d.sample(80).x-1/3)<1e-12)
+ assert.ok(Math.abs(d.sample(100).x-2/3)<1e-12)
+ assert.equal(d.sample(120).x,1)
+ d.receive(raw[2],120,'a',{tick:2})
+ assert.ok(Math.abs(d.sample(140).x-4/3)<1e-12)
+ assert.equal(d.sample(180).x,2);assert.equal(d.sample(240).x,2,'never predicts another step')
+ assert.deepEqual(raw,before)
+})
+
+test('cadence changes are bounded and never rewind the display playhead; duplicate tick frames do not change the rate',()=>{
+ const d=new NativeSelfDisplayPose();d.receive(pose(),0,'a',{tick:0});d.receive(pose(1),50,'a',{tick:1})
+ assert.equal(d.sample(99).x,.98)
+ d.receive(pose(1),55,'a',{tick:1});assert.equal(d.delayMs,50)
+ d.receive(pose(2),150,'a',{tick:2});assert.equal(d.delayMs,100)
+ let previous=.98
+ for(let now=150;now<=350;now+=10){const x=d.sample(now).x;assert.ok(x>=previous);previous=x;assert.ok(x<=2)}
+ for(let i=1;i<40;i++)d.receive(pose(2),150+i*240,'a',{tick:2+i})
+ assert.ok(d.delayMs<=200);assert.ok(d.samples.length<=8);assert.ok(d.arrivalGaps.length<=16)
+ d.receive(pose(10),10000,'b',{tick:1});assert.equal(d.delayMs,50);assert.equal(d.sample(10000).x,10)
+})
 test('50ms observed display produces intermediate 60Hz poses without modifying raw inputs or extrapolating',()=>{
  const d=new NativeSelfDisplayPose(),raw=[pose(),pose(1)],before=structuredClone(raw)
  d.receive(raw[0],0,'a');d.receive(raw[1],50,'a')

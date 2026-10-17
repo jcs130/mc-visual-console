@@ -6,14 +6,17 @@ import { nativeAppearanceChoices, nativeWebAppearanceBinding, assertNativeAppear
 
 // Preserve the server's own motion row, including its native tick counter.
 // Minecraft's existing walking projection has a separate input contract.
-export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Date.now() } = {}) {
+export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Date.now(), displayPose = null } = {}) {
   if (!actor?.applyMotion) return null
   if (actor.assetInfo?.kind === 'ysm') {
     const self = current?.presentation?.self ?? null
     const playerUuid = actor.assetInfo.uuid?.toLowerCase()
     if (self && (typeof (self.playerUuid ?? self.uuid) !== 'string' ||
         (self.playerUuid ?? self.uuid).toLowerCase() !== playerUuid)) throw Error('NATIVE_YSM_MOTION_IDENTITY_MISMATCH')
-    return actor.applyMotion({ self, current, dt: Number.isFinite(dt) ? Math.max(0, Math.min(.1, dt)) : 0, now })
+    // The bundled model derives heading from pose. Keep its animation layer
+    // from overwriting the received, interpolated actor/camera orientation.
+    const frame=displayPose?{...current,pose:displayPose}:current
+    return actor.applyMotion({ self, current:frame, dt: Number.isFinite(dt) ? Math.max(0, Math.min(.1, dt)) : 0, now })
   }
   const crouching = current?.presentation?.self?.crouching ?? current?.selfPlayer?.sneaking
   return actor.applyMotion(current?.selfPlayer?.onGround === true && crouching === false ? current.motion : null, now)

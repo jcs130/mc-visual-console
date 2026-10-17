@@ -24,6 +24,19 @@ async function originals() {
 }
 const close = (a, b, eps = 1e-7) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`)
 
+test('actual bundled YSM preserves the interpolated display heading through its animation controller', { skip: !catalog }, async () => {
+ const {actor}=await originals()
+ try {
+  const f=frame(1000,{velocity:{x:.1,y:0,z:0}},{pose:{x:2,y:64,z:0,yaw:1,pitch:.5}}),before=structuredClone(f)
+  const display={...f.pose,x:1.5,yaw:.5,pitch:.25}
+  actor.applyPose(display)
+  const state=applyNativeSelfPlayerMotion(actor,f,{now:1000,dt:.016,displayPose:display})
+  assert.equal(state.available,true);assert.equal(state.clip,'walk')
+  close(actor.root.rotation.y,.5);close(actor.root.position.x,1.5)
+  assert.deepEqual(f,before)
+ } finally {actor.dispose()}
+})
+
 test('actual bundled actor accepts ordinary Mineflayer state, cardinal heading and independent look', { skip: !catalog }, async () => {
   const { actor } = await originals()
   try {

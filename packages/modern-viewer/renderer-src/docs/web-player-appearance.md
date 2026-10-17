@@ -13,6 +13,8 @@
 
 `bootNativeConsole`、`mountNativeWorld` 和 `NativeSelfPlayerController` 接受 `defaultAppearance`、`selectionStorage`、`selectionScope`。默认外观仍为 `server`；薄宿主可提供 `bundled:yui-ysm` 默认值，已保存的明确选择（包括 `server`）优先。存储只包含选择 ID，不含动作、账号名称或凭据。模型资源按 actor 生命周期释放，偏好按账号隔离。
 
+本人显示在 50–200 ms 内按最近最多 16 个实际到包间隔调整缓冲，而不是把 50 ms 物理 tick 当作浏览器收包周期。位置与最短路径朝向只在已收到的样本间插值，不预测未收到的移动；延迟增大不倒退播放时刻，断线、重生、传送与陈旧采样继续清空或保持已知位置。自带 YSM 的 look-yaw 回退使用同一显示朝向，避免动画层重新覆盖平滑结果。此调整不改变游戏物理、原始姿态、模型或动画文件，也不证明所有长帧已经消除；原生诊断保留帧间隔和地形阶段耗时。
+
 原生宿主 `prepareNativeWorldPreviewHost` 的 `defaultAppearance` 经校验后写入页面的本地外观属性，实际浏览器启动读取它；根路径与嵌套 `basePath` 使用相同接线。默认仍为 `server`，属性仅包含外观 ID，不包含宿主配置、账号或凭据。无效 ID 拒绝生成页面；资源不在清单内时沿用选择器的服务器外观回退。
 
 宿主可另传 `selectionScope`（24–64 位小写十六进制不透明摘要）隔离服务器/账号；未传时沿用清单 URL 作用域。Neko 采用已有 Settings.identity，不改变身份计算或游戏状态。旧清单 URL 偏好没有服务器来源，保留原条目且不自动搬入新作用域；升级后请在人物模型中重新选择一次（包括「跟随服务器」）。新作用域内的明确选择随后优先于宿主默认，并在相同身份重连、重生、刷新后恢复。
