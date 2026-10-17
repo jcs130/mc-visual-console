@@ -4,7 +4,7 @@ export const OBS_COMPONENTS = Object.freeze([
   ['minimap', '小地图', '#corti-minimap, #native-terrain-map'],
   ['gameActivity', '游戏操作与任务进程', '#native-live-inspector'],
   ['agentIntent', 'Agent 意图和行动说明', '#agent-intent'],
-  ['agentRoute', '寻路和候选轨迹图', '#agent-route-map'],
+  ['agentRoute', '轨迹颜色图例', '#agent-route-map'],
   ['agentOperations', 'Agent 按键和鼠标操作', '#agent-operations'],
   ['agentDecisions', '系统一与系统二的决策', '#agent-decisions'],
   ['worldPaths', '场景中的路径和流动箭头', '#corti-tactical-canvas, #corti-tactical-legend'],

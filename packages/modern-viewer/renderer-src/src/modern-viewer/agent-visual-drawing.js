@@ -13,8 +13,7 @@ export function clipVisualSegment(a, b, width, height) {
   return [{ x: a.x + dx * lo, y: a.y + dy * lo }, { x: a.x + dx * hi, y: a.y + dy * hi }];
 }
 
-/** Projected markers never bridge invisible/behind-camera vertices. The same
- * primitives drive the north-up route card and the camera-aligned OBS layer. */
+/** Projected markers never bridge invisible/behind-camera vertices. */
 export function drawVisualMarkers(ctx, markers, { project, width, height, time = 0, screen = true }) {
   let arrows = 256;
   ctx.font = '12px system-ui'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -74,7 +73,17 @@ export function frameVisualMarkers(frame) {
     result.push({ id: `decision-target-${decision.id}`, kind: 'point', space: 'world', role: 'info',
       points: [decision.target], label, color, width: 3, radius: 10, group: 'action' });
   }
-  if (frame.trail.length > 1) result.push(line('actual-trail', 'trail', frame.trail));
+  // Display only a short, continuous tail. Keep the received history intact and
+  // never bridge a large position jump or trim planned/candidate paths.
+  const trail = frame.trail;
+  let start = trail.length - 1, distance = 0;
+  while (start > 0 && trail.length - start < 12) {
+    const a = trail[start - 1], b = trail[start];
+    distance += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    if (distance > 8) break;
+    start--;
+  }
+  if (trail.length - start > 1) result.push(line('actual-trail', 'trail', trail.slice(start)));
   for (const candidate of frame.candidates) result.push(line(candidate.id, 'candidate', candidate.points, candidate.label, true));
   if (frame.route?.points.length > 1) result.push(line('chosen-route', 'path', frame.route.points, '', true));
   for (const operation of frame.input.operations) if (operation.from && operation.target) {

@@ -91,6 +91,8 @@ test('actual host packets reach the mounted overlay: route/candidate/gather colo
     assert.equal(h.byId('agent-intent').hidden, false); assert.match(h.byId('agent-intent').textContent, /收集木材.*<script>/s);
     assert.equal(h.byId('agent-intent').querySelector('script'), null);
     assert.equal(h.byId('agent-route-map').hidden, false);
+    assert.equal(h.byId('agent-route-map').querySelector('canvas'), null, 'legend does not duplicate the world path drawing');
+    assert.match(h.byId('agent-route-map').textContent, /寻路.*最近已走.*候选/s);
     assert.equal(h.byId('agent-operations').querySelector('.agent-recent-operations').dataset.role, 'gather');
     assert.equal(h.byId('agent-operations').querySelector('.agent-mouse').children[0].dataset.active, 'true');
     const pointer=h.byId('agent-pointer'),click=h.byId('agent-click-marker');

@@ -61,6 +61,22 @@ test('camera projections split at hidden vertices and never fill a partially beh
   drawVisualMarkers(ctx, markers, { project: v => v.x === 1 ? null : { x: v.x * 10, y: 20 }, width: 300, height: 150 });
   assert.equal(ctx.calls.some(row => row[0] === 'line'), false); assert.equal(ctx.calls.some(row => row[0] === 'fill'), false);
 });
+
+test('historical trail displays a short continuous tail without changing input or planned paths', () => {
+  const trail = Array.from({ length: 64 }, (_, x) => p(x, 0)), original = structuredClone(trail);
+  const route = { points: [p(0), p(100)] }, candidates = [{ id: 'c', points: [p(0), p(200)] }];
+  const input = { trail, route, candidates, input: { operations: [] }, markers: [] };
+  const markers = frameVisualMarkers(input), actual = markers.find(m => m.id === 'actual-trail').points;
+  assert.deepEqual(actual, trail.slice(-9), 'the cumulative displayed length is at most eight blocks');
+  assert.deepEqual(actual.at(-1), trail.at(-1));
+  assert.deepEqual(trail, original, 'received history remains intact');
+  assert.deepEqual(markers.find(m => m.id === 'chosen-route').points, route.points);
+  assert.deepEqual(markers.find(m => m.role === 'candidate').points, candidates[0].points);
+  const dense = Array.from({ length: 64 }, (_, x) => p(x / 10));
+  assert.deepEqual(frameVisualMarkers({ ...input, trail: dense }).find(m => m.id === 'actual-trail').points, dense.slice(-12));
+  assert.equal(frameVisualMarkers({ ...input, trail: [p(0), p(100)] }).some(m => m.id === 'actual-trail'), false,
+    'a discontinuous jump cannot become a long walked trail');
+});
 test('north-up route projection includes alternatives and puts north above south', () => {
   const markers = normalizeVisualMarkers([{ id: 'l', kind: 'line', points: [p(0, -5), p(5, 5)] }]);
   const project = routeMapProjection(markers, p(0), 300, 156);

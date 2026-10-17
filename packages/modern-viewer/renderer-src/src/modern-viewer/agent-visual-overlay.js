@@ -1,6 +1,6 @@
 import { AgentVisualState } from './agent-visual-state.js';
 import { AGENT_VISUAL_COLORS as COLORS, AGENT_DECISION_COLORS, AGENT_DECISION_LABELS, normalizeVisualRoute, visualPoint } from './agent-visual-protocol.js';
-import { drawVisualMarkers, frameVisualMarkers, routeMapProjection, drawVisualScene } from './agent-visual-drawing.js';
+import { drawVisualMarkers, frameVisualMarkers, drawVisualScene } from './agent-visual-drawing.js';
 import { resolveAgentPointer, visibleInventorySlot, createAgentPointerMotion } from './agent-pointer.js';
 
 const STATUS = { planning: '规划中', acting: '执行中', waiting: '等待中', blocked: '遇到阻碍', done: '已完成',
@@ -28,11 +28,10 @@ export function installAgentVisualization({ socket, document = globalThis.docume
   const intentHeader = make('header', '', intent), name = make('strong', '', intentHeader), status = make('span', 'agent-status-tag', intentHeader);
   const goal = make('p', 'agent-intent-goal', intent), step = make('p', 'agent-intent-step', intent), summary = make('p', 'agent-intent-summary', intent);
   const progress = make('progress', '', intent); progress.max = 1;
-  const route = panel('agent-route-map', '寻路轨迹与候选方案');
+  const route = panel('agent-route-map', '轨迹颜色图例与行动状态');
   const routeHeader = make('header', '', route); make('strong', '', routeHeader, '轨迹'); const routeStatus = make('span', '', routeHeader);
-  const map = make('canvas', '', route); map.width = 300; map.height = 156;
   const mapLegend = make('div', 'agent-marker-legend', route);
-  for (const [role, label] of [['path', '寻路'], ['trail', '已走'], ['candidate', '候选'], ['attack', '攻击'], ['gather', '采集'], ['interact', '交互']]) {
+  for (const [role, label] of [['path', '寻路'], ['trail', '最近已走'], ['candidate', '候选'], ['attack', '攻击'], ['gather', '采集'], ['interact', '交互']]) {
     const item = make('span', '', mapLegend, `${role === 'candidate' ? '┄' : '●'} ${label}`); item.style.color = COLORS[role];
   }
   const operations = panel('agent-operations', 'Agent 按键和鼠标操作');
@@ -205,19 +204,6 @@ export function installAgentVisualization({ socket, document = globalThis.docume
       }
       const ctx = canvasContext(canvas, width, height, dpr); if (!ctx) continue;
       drawVisualMarkers(ctx, subset, { project, width, height, time });
-    }
-    if (!route.hidden && visible('agentRoute')) {
-      const ctx = canvasContext(map, 300, 156, dpr), projectMap = routeMapProjection(markers, frame.input.position, 300, 156);
-      if (ctx && projectMap) {
-        ctx.strokeStyle = '#ffffff12'; ctx.lineWidth = 1;
-        for (let x = 0; x < 300; x += 25) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 156); ctx.stroke(); }
-        for (let y = 0; y < 156; y += 26) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(300, y); ctx.stroke(); }
-        drawVisualMarkers(ctx, markers, { project: projectMap, width: 300, height: 156, time, screen: false });
-        if (frame.input.position) {
-          const p = projectMap(frame.input.position); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.fillStyle = '#ced9e8'; ctx.fillText('↑ 北', 264, 16);
-      }
     }
     if (scene && !presentation.hidden && visible('agentPresentation')) {
       const ctx = scene.canvas.getContext('2d'); if (ctx) drawVisualScene(ctx, scene.data, time - sceneAt);

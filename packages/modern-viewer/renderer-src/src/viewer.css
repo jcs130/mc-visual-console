@@ -21,8 +21,7 @@ body[data-obs-overlay=true] #viewer-canvas{background:transparent;pointer-events
 .agent-status-tag{padding:1px 7px;border-radius:12px;background:#4ee6b118;color:#7beccc!important;white-space:nowrap}
 .agent-intent-goal{font-size:15px;font-weight:600;color:#fff}.agent-intent-step{color:#a6d6ed}.agent-intent-summary{max-height:180px;overflow:hidden;color:#b8c9d8;font-size:12px}
 #agent-intent progress{display:block;width:100%;height:5px;margin-top:10px;accent-color:#4ee6b1;border:0;border-radius:4px;overflow:hidden}#agent-intent progress[hidden]{display:none}
-#agent-route-map{right:255px;bottom:80px;width:330px;max-width:calc(100vw - 36px);padding-bottom:10px}
-#agent-route-map canvas{display:block;width:100%;height:156px;margin-top:7px;border-radius:8px;background:#ffffff05}
+#agent-route-map{right:255px;bottom:80px;width:240px;max-width:calc(100vw - 36px);padding:10px 12px}
 .agent-marker-legend{display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:7px;font-size:10px}
 #agent-operations{left:18px;bottom:16px;width:min(220px,calc(100vw - 36px))}
 #agent-decisions{left:18px;top:260px;width:min(260px,calc(100vw - 36px))}
