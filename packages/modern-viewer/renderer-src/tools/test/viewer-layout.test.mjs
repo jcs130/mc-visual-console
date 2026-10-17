@@ -35,6 +35,21 @@ test('photo and OBS keep independent layouts; loading saved preferences survives
   assert.equal(ui.visible('minimap'),false);assert.equal(ui.snapshot().clean,true);ui.dispose();
 });
 
+for (const mapId of ['native-terrain-map','corti-minimap']) {
+  test(`late ${mapId} stays above decisions and repeated adoption does not reflow panels`,()=>{
+    const h=browser(),decisions=h.add('agent-decisions'),ui=installViewerLayout(h);
+    const map=h.add(mapId);h.mutate();
+    const rail=map.parentNode;
+    assert.deepEqual(rail.children.map(el=>el.id),[mapId,'agent-decisions']);
+    let mutations=0;const append=rail.append.bind(rail);rail.append=(...nodes)=>{mutations++;append(...nodes);};
+    ui.adopt();ui.adopt();assert.equal(mutations,0,'stable frames must not move the existing map canvas');
+    map.remove();const replacement=h.add(mapId);h.mutate();
+    assert.deepEqual(rail.children.map(el=>el.id),[mapId,'agent-decisions']);
+    assert.equal(rail.children[0],replacement);assert.equal(rail.children[1],decisions);
+    ui.dispose();assert.equal(replacement.parentNode,h.document.body);
+  });
+}
+
 test('transient messages cannot move the Agent input panel inside a flowing rail',()=>{
   const h=browser(),map=h.add('corti-minimap'),inputs=h.add('agent-operations'),messages=h.add('corti-event-feed',true);
   const ui=installViewerLayout(h);
