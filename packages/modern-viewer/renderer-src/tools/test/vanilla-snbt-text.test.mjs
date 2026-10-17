@@ -19,3 +19,9 @@ test('a protocol-767 player head retains its exact profile and texture propertie
   assert.equal(result.reason,null);const profile=parseNativeItemStack(result.item).components['minecraft:profile'];
   assert.equal(profile.properties[0].value,texture);assert.equal(profile.properties[0].name,'textures');
 });
+
+test('UUID-only custom heads preserve a protocol-767 empty profile name',()=>{
+  const result=vanillaItemStack({name:'player_head',count:1,components:[{type:'profile',data:{name:'',uuid:'6e8b395e-4349-3d44-99f5-b7488825e426',properties:[]}}],removedComponents:[]});
+  assert.equal(result.reason,null);
+  assert.equal(parseNativeItemStack(result.item).components['minecraft:profile'].name,'');
+});

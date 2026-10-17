@@ -46,9 +46,11 @@ function componentValue(type, data, registry) {
     if(!data||typeof data!=='object'||Object.keys(data).some(k=>!['name','uuid','properties'].includes(k))||!Array.isArray(data.properties)||data.properties.length>16)
       throw Error('VANILLA_PROFILE_COMPONENT_INVALID');
     const fields=[];
-    if(data.name!=null){if(typeof data.name!=='string'||!/^\w{1,16}$/.test(data.name))throw Error('VANILLA_PROFILE_COMPONENT_INVALID');fields.push('name:'+snbtString(data.name));}
+    // Protocol 767 permits an empty optional profile name (e.g. a UUID-only
+    // Bukkit custom head). Preserve it; texture identity comes from properties.
+    if(data.name!=null){if(typeof data.name!=='string'||!/^\w{0,16}$/.test(data.name))throw Error('VANILLA_PROFILE_NAME_INVALID');fields.push('name:'+snbtString(data.name));}
     if(data.uuid!=null){
-      if(typeof data.uuid!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(data.uuid))throw Error('VANILLA_PROFILE_COMPONENT_INVALID');
+      if(typeof data.uuid!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(data.uuid))throw Error('VANILLA_PROFILE_UUID_INVALID');
       const hex=data.uuid.replaceAll('-','');fields.push('id:[I;'+[0,8,16,24].map(i=>parseInt(hex.slice(i,i+8),16)|0).join(',')+']');
     }
     fields.push('properties:['+data.properties.map(row=>{

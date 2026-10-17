@@ -113,6 +113,16 @@ test('observes the same action connection, preserving native bytes and contiguou
   assert.equal(bot._client.listenerCount('packet'), 0);
 });
 
+test('raw max-health evidence is owned by the current body and survives no respawn or foreign packet',()=>{
+  const bot={version:'1.21.1',_client:new EventEmitter(),entity:{id:42}};bot._client.uuid='own';
+  const stream=observeVanillaNativeStream(bot,'a'.repeat(64));
+  const send=entityId=>bot._client.emit('packet',{entityId,properties:[{key:'generic.max_health',value:0,modifiers:[]}]},{name:'entity_update_attributes',state:'play'});
+  send(43);assert.equal(stream.attributeState(),null);send(42);
+  assert.equal(stream.attributeState().properties[0].value,0);assert.equal(stream.attributeState().entityId,42);
+  const copy=stream.attributeState();copy.properties[0].value=999;assert.equal(stream.attributeState().properties[0].value,0);
+  bot._client.emit('packet',{}, {name:'respawn',state:'play'});assert.equal(stream.attributeState(),null);stream.close();
+});
+
 test('vanilla inventory belongs to this body and does not invent item components', () => {
   const bot = { version: '1.21.1', _client: { uuid: 'player-a' }, quickBarSlot: 2,
     inventory: { slots: [null, { name: 'oak_planks', count: 18 }] } };

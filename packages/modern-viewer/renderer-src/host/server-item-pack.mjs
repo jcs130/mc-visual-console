@@ -15,8 +15,9 @@ export async function loadServerItemPack(file,sha256) {
     throw Error('SERVER_ITEM_PACK_INVALID');
   const selectors=new Set();
   for(const row of data.items){
-    const key=row.baseId+':'+row.customModelData;
-    if(!/^minecraft:[a-z_]+$/.test(row.baseId??'')||!Number.isSafeInteger(row.customModelData)||selectors.has(key)||!resource(row.icon))throw Error('SERVER_ITEM_PACK_SELECTOR_INVALID');
+    const profile=row.baseId==='minecraft:player_head'&&/^[a-f0-9]{40,64}$/.test(row.profileTextureHash??'')&&row.customModelData===undefined;
+    const key=row.baseId+':'+(profile?row.profileTextureHash:row.customModelData);
+    if(!/^minecraft:[a-z_]+$/.test(row.baseId??'')||!profile&&(!Number.isSafeInteger(row.customModelData)||row.profileTextureHash!==undefined)||selectors.has(key)||!resource(row.icon))throw Error('SERVER_ITEM_PACK_SELECTOR_INVALID');
     selectors.add(key);
     const expected=data.assets?.[row.icon];
     if(!expected||!Number.isInteger(expected.bytes)||expected.bytes<24||expected.bytes>262144||!/^[a-f0-9]{64}$/.test(expected.sha256??''))throw Error('SERVER_ITEM_PACK_ASSET_INVALID');
@@ -24,10 +25,11 @@ export async function loadServerItemPack(file,sha256) {
     if(!absolute.startsWith(root+path.sep))throw Error('SERVER_ITEM_PACK_ASSET_ESCAPE');
     const image=await fs.readFile(absolute);
     if(image.length!==expected.bytes||digest(image)!==expected.sha256||image.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')throw Error('SERVER_ITEM_PACK_ASSET_HASH_MISMATCH');
+    if(profile&&(image.readUInt32BE(16)!==64||image.readUInt32BE(20)!==64))throw Error('SERVER_PROFILE_TEXTURE_SIZE_INVALID');
     assets.set(row.icon,image);
   }
   return {metadata:{available:true,schemaVersion:1,id:data.id,minecraftVersion:data.minecraftVersion,catalogSha256:sha256,
     representation:'original_server_catalog_icon',pixelParityVerified:false,
-    items:data.items.map(({baseId,customModelData,icon})=>({baseId,customModelData,icon})),
+    items:data.items.map(({baseId,customModelData,profileTextureHash,icon})=>({baseId,customModelData,profileTextureHash,icon})),
     assets:Object.fromEntries([...assets.keys()].map(key=>[key,data.assets[key]]))},assets};
 }

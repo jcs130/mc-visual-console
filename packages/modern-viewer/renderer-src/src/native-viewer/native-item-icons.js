@@ -28,7 +28,7 @@ export class NativeItemIcons {
   constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {},potionIconOptions={} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
-    this.serverIcons=new ServerItemIcons({onChange,createUrl,revokeUrl})
+    this.serverIcons=new ServerItemIcons({reader,onChange,createUrl,revokeUrl})
     this.potionIconOptions=potionIconOptions
     this.animationEpochMs = Date.now()
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)

@@ -542,7 +542,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const entityState = world.entitySnapshot(cachedSnapshot?.bounds)
         return { schemaVersion: 1, mode: sourceMode, readOnly: true, build: buildInfo, identity: identity(),
         selfPlayer: selfPlayer(), presentation: presentation(),
-        attributeEvidence: {source:'same_player_mineflayer_attributes',
+        attributeEvidence: {source:'same_player_mineflayer_attributes',packet:nativeStream.attributeState?.()??null,
           maxHealth:Object.entries(bot.entity?.attributes??{}).filter(([key])=>/(?:^|[.:])max_health$/.test(key)).slice(0,4)
             .map(([key,row])=>({key,value:finiteNumber(row?.value),modifiers:Array.isArray(row?.modifiers)?row.modifiers.slice(0,16).map(m=>({amount:finiteNumber(m?.amount),operation:Number.isInteger(m?.operation)?m.operation:null})):null}))},
         connection: { ended: connectionEnded, playerEntityAvailable: Boolean(bot.entity) },

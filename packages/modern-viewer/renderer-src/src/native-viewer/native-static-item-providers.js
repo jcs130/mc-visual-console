@@ -244,6 +244,9 @@ add('minecraft','chest','net.minecraft.world.item.BlockItem',`chest trapped_ches
 // original static JSON GUI path; override, tint and component guards still apply.
 add('minecraft','flat','net.minecraft.world.item.BottleItem','glass_bottle')
 add('minecraft','flat','net.minecraft.world.item.BoneMealItem','bone_meal')
+// InkSacItem cuh.class SHA256 da94ade9913ffce10fe062a49a48a6d604b11d7337b53184a807989abaa9c832:
+// only use-on-sign behavior, no ItemProperties/ItemColors override in gps/fhu.
+add('minecraft','flat','net.minecraft.world.item.InkSacItem','ink_sac')
 // ArmorItem csf.class SHA256 b70f2de931112790b123a7946e4403850e6466fc1448caac31db4f4659df25c4,
 // locked 1.21.1 Items registrations. No dye or trim is
 // substituted: the existing component guard refuses those visual inputs.
