@@ -818,7 +818,14 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           // Both the action bot and native packet stream belong to the caller.
           closing = (async () => {
             if (listening) await listening.catch(() => {})
-            if (server.listening) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+            if (server.listening) await new Promise((resolve, reject) => {
+              server.close(error => error ? reject(error) : resolve())
+              // Retire only this viewer's HTTP sockets, including incomplete
+              // requests that never entered clients. Otherwise close() can
+              // hold the next same-port viewer behind a browser connection.
+              // Stop accepting first so no new socket escapes this cleanup.
+              server.closeAllConnections()
+            })
           })()
           return closing
         }
