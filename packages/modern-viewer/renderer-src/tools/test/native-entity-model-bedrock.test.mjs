@@ -103,6 +103,47 @@ test('Bedrock root Y=24, absolute child pivots, cube rotations and original rese
   model.dispose(); model.dispose(); assert.equal(disposed, 12); material.dispose()
 })
 
+test('source up/down UVs stay on the crown/chin after Java Y conversion, including rotated cubes', () => {
+  const material = new THREE.MeshBasicMaterial()
+  for (const rotated of [false, true]) {
+    const cube = { origin: [-4, 24, -4], size: [8, 8, 8], uv: {
+      up: { uv: [8, 0], uv_size: [8, 8] },
+      down: { uv: [16, 8], uv_size: [8, -8] }
+    }, ...(rotated ? { pivot: [0, 24, 0], rotation: [0, 25, 0] } : {}) }
+    const source = definition([{ name: 'Head', pivot: [0, 24, 0], cubes: [cube] }]), original = structuredClone(source)
+    const model = createNativeBedrockModel(source, material)
+    // Same Java -> world orientation used by createPaperYsmActor.
+    const world = new THREE.Group(); world.scale.set(-1, -1, 1); world.add(model.root); world.updateMatrixWorld(true)
+    const head = new THREE.Box3().setFromObject(world), ray = new THREE.Raycaster()
+    for (const [side, y, direction, u] of [['crown', head.max.y + 1, -1, 12 / 128], ['chin', head.min.y - 1, 1, 20 / 128]]) {
+      ray.set(new THREE.Vector3(0, y, 0), new THREE.Vector3(0, direction, 0))
+      const hit = ray.intersectObject(world, true)[0]
+      assert.ok(hit, side)
+      assert.ok(Math.abs(hit.uv.x - u) < 1e-7, `${side} must sample its authored UV island`)
+      assert.ok(Math.abs(hit.uv.y - (1 - 4 / 128)) < 1e-7)
+    }
+    assert.deepEqual(source, original, 'render conversion never mutates uploaded resources')
+    model.dispose()
+  }
+  material.dispose()
+})
+
+test('omitted and empty source vertical faces remain omitted after Y conversion', () => {
+  const material = new THREE.MeshBasicMaterial()
+  for (const uv of [
+    { up: { uv: [8, 0], uv_size: [8, 8] } },
+    { up: { uv: [8, 0], uv_size: [8, 8] }, down: { uv: [0, 0], uv_size: [0, 0] } }
+  ]) {
+    const model = createNativeBedrockModel(definition([{ name: 'cap', pivot: [0, 24, 0], cubes: [{ origin: [-4, 24, -4], size: [8, 8, 8], uv }] }]), material)
+    assert.equal(model.faceCount, 1)
+    const face = model.bones.get('cap').children[0]
+    assert.equal(face.userData.nativeFace, 'down', 'source up occupies the minimum Java Y plane')
+    assert.ok([...face.geometry.attributes.position.array].filter((_, i) => i % 3 === 1).every(y => y === -.5))
+    model.dispose()
+  }
+  material.dispose()
+})
+
 test('unsupported Bedrock fields and malformed hierarchy fail without simplified geometry', () => {
   const material = new THREE.MeshBasicMaterial()
   assert.throws(() => createNativeBedrockModel(definition([{ name: 'head', pivot: [0, 0, 0], binding: 'unknown' }]), material), /BONE_INVALID/)

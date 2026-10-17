@@ -1,5 +1,33 @@
 # Paper YSM: automatic original model assets
 
+## 2026-10-17: NEKO crown / per-face vertical UV correction
+
+The original `neko_yui` head already has an opaque dark hair texture. An
+overhead browser review reproduced the reported pink rectangle: the source
+`down` (chin) UV was on the visible crown. `createNativeBedrockModel` converted
+source Y-up positions to Java Y-down positions without converting the named
+`up`/`down` faces. Convert these two face names once, with the cube positions.
+Box UV tables already use Java's vertical face order and remain unchanged.
+This also applies to other uploaded per-face models, rotated cubes, omitted
+faces and empty masks. Original PNG, geometry files, dimensions, bindings and
+animation resources are not rewritten to hide the renderer error.
+
+Two new regression tests fail with the previous engine and pass with the fix:
+world-space crown/chin ray hits (including rotated cubes), and omitted/empty
+vertical faces. The related 68-test Paper/native appearance suite passes with
+the pinned native v15 asset fixtures, without skips. Browser captures using
+the actual 49-bone/168-cube NEKO resource show the corrected crown from four
+angles. This is an isolated production-renderer review, not a native Java or
+remote LAN pixel-parity claim.
+
+Consumers must rebuild their existing assets with their original Minecraft
+version/preset and reload the page. The game camera uses a separate pinned
+runtime: updating this repository alone does not update that runtime or a
+different computer's viewer. No Paper restart or player-model rebinding is
+required for this renderer correction.
+
+Coordinate reference: [Bedrock geometry 1.12 per-face definitions](https://learn.microsoft.com/en-us/minecraft/creator/reference/content/visualreference/geometry.v1.12.0?view=minecraft-bedrock-stable).
+
 ## 2026-10-13: third-person look pitch
 
 The `same_connection_java_protocol` motion wire retains Java pitch degrees

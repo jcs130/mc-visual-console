@@ -94,7 +94,15 @@ export function createNativeBedrockModel (definition, material, { maxBones = 128
             (input.rotation !== undefined && (!vector(input.rotation) || !vector(input.pivot)))) throw Error('NATIVE_BEDROCK_CUBE_INVALID')
         cubeCount++; if (input.size.includes(0)) zeroThicknessCubes++
         const cubePivot = (input.rotation === undefined ? item.pivot : input.pivot).map(F)
+        // Bedrock source Y points up; the Java model coordinates below point
+        // down. Flip named vertical faces with their positions, once. Box UVs
+        // already encode Java's top/bottom order in BOX_UV/MIRROR_UV. Leaving
+        // per-face UVs unchanged put NEKO's chin texture on her crown.
+        const uv = input.uv && typeof input.uv === 'object' && !Array.isArray(input.uv)
+          ? Object.fromEntries(Object.entries(input.uv).map(([face, value]) => [face === 'up' ? 'down' : face === 'down' ? 'up' : face, value]))
+          : input.uv
         const cube = { ...input, mirror: input.mirror ?? item.mirror ?? false,
+          uv,
           origin: input.origin.map((value, axis) => axis === 1 ? F(F(cubePivot[axis] - F(value)) - F(input.size[axis])) : F(F(value) - cubePivot[axis])) }
         if (input.rotation === undefined) meshCube(bone, cube)
         else {
