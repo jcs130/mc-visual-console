@@ -73,6 +73,12 @@ function cortiSetNightVisionMode(mode) {
   cortiUpdateNightVisionButton();
 }
 
+function cortiApplyNightVisionLight(world) {
+  const ambient = viewer?.playerState?.reactive?.ambientLight;
+  if (typeof ambient !== 'number' || !Number.isFinite(ambient) || !world?.ambientLight) return;
+  world.ambientLight.intensity = (ambient + 0.38 * cortiNightVisionCurrent) * Math.PI;
+}
+
 if (typeof socket !== 'undefined') socket.on('lightingState', cortiSetViewerLight);
 
 function cortiSetBiome(event) {
@@ -122,6 +128,16 @@ function cortiInitializeBiomeStyle() {
 
   const updateSky = skybox.updateSkyColors.bind(skybox);
   const originalSun = world.directionalLight.color.clone(), originalFill = world.ambientLight.color.clone();
+  // The native reactive listener writes base ambient light when server time
+  // changes. Apply the current night-vision projection at the draw boundary,
+  // after other callbacks, so frames between 250ms blend ticks cannot flash
+  // entities back to the unboosted intensity while terrain stays bright.
+  const scene = world.scene, previousBeforeRender = scene?.onBeforeRender;
+  const beforeRender = function (...args) {
+    previousBeforeRender?.apply(this, args);
+    cortiApplyNightVisionLight(world);
+  };
+  if (scene) scene.onBeforeRender = beforeRender;
   skybox.updateSkyColors = (...args) => {
     const result = updateSky(...args);
     // Keep the renderer's server-time sky and fog range on either side of water.
@@ -173,10 +189,7 @@ function cortiInitializeBiomeStyle() {
       curve: 0.08,
       gamma: 0.98 - 0.10 * cortiNightVisionCurrent,
     });
-    const ambient = Number(viewer?.playerState?.reactive?.ambientLight);
-    if (Number.isFinite(ambient) && world.ambientLight) {
-      world.ambientLight.intensity = (ambient + 0.38 * cortiNightVisionCurrent) * Math.PI;
-    }
+    cortiApplyNightVisionLight(world);
     if (canvas) {
       const rain = pendingWeather.raining ? 0.95 : 1;
       const filter = sceneColourFilter(current, activeScenePolicy, rain);
@@ -186,6 +199,7 @@ function cortiInitializeBiomeStyle() {
   window.addEventListener('beforeunload', () => {
     if (cortiBiomeTimer !== null) clearInterval(cortiBiomeTimer);
     cortiBiomeTimer = null;
+    if (scene?.onBeforeRender === beforeRender) scene.onBeforeRender = previousBeforeRender;
   }, { once: true });
 }
 
@@ -196,5 +210,6 @@ globalThis.__cortiBiomeStyle = {
   get lightmapFloor() { return globalThis.world?.chunkMeshManager?.legacyShaderMaterial?.uniforms?.u_minBrightness?.value ?? null; },
   get nightVisionMode() { return cortiNightVisionMode; },
   get nightVisionStrength() { return cortiNightVisionCurrent; },
+  get avatarAmbientIntensity() { return globalThis.world?.ambientLight?.intensity ?? null; },
   get playerLight() { return cortiViewerLight; },
 };
