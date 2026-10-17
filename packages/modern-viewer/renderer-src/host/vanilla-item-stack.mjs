@@ -1,6 +1,7 @@
 // Explicit 1.21.1 wire-component to ItemStack codec subset. Missing/unsupported
 // patches stay unavailable; never turn an unknown item into a default icon.
 import {componentSnbt,enchantmentSnbt} from './vanilla-component-nbt.mjs';
+import {bookComponentSnbt} from './vanilla-book-components.mjs';
 const INTEGER = new Set(['max_stack_size', 'max_damage', 'damage', 'repair_cost', 'custom_model_data']);
 const UNIT = new Set(['hide_additional_tooltip', 'hide_tooltip', 'fire_resistant', 'intangible_projectile']);
 const quote = value => JSON.stringify(value);
@@ -41,6 +42,7 @@ function potionComponent(data,registry){
 }
 
 function componentValue(type, data, registry) {
+  if(['written_book_content','writable_book_content'].includes(type))return bookComponentSnbt(type,data);
   if(['custom_name','item_name','custom_data'].includes(type))return componentSnbt(data);
   if(type==='lore'){
     if(!Array.isArray(data)||data.length>256)throw Error('VANILLA_NBT_LIMIT');

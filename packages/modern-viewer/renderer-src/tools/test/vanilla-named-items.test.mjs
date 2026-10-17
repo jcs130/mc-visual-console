@@ -24,3 +24,19 @@ test('unsupported registry entries and over-depth typed NBT do not silently beco
   let value={type:'int',value:1};for(let i=0;i<25;i++)value={type:'compound',value:{child:value}};
   assert.match(stack([{type:'custom_data',data:value}]).reason,/LIMIT/);
 });
+test('standard bottles, bone meal and both gourd seed items have original GUI providers',()=>{
+  for(const name of ['glass_bottle','bone_meal','pumpkin_seeds','melon_seeds']){
+    const value=vanillaItemStack({name,count:1,components:[],removedComponents:[]},registry);
+    assert.equal(value.reason,null);assert.equal(nativeItemIconEligible(value.item),true,name);
+  }
+});
+test('written and writable books keep raw and filtered pages without dropping their whole item stack',()=>{
+  const value=vanillaItemStack({name:'written_book',count:1,removedComponents:[],components:[{type:'written_book_content',data:{
+    rawTitle:'服务器指南',filteredTitle:null,author:'Guide',generation:0,resolved:true,
+    pages:[{content:{type:'string',value:'{"text":"查看玩法资料"}'},filteredContent:{type:'string',value:'{"text":"指南"}'}}]}}]},registry);
+  assert.equal(value.reason,null);assert.equal(nativeItemIconEligible(value.item),true);
+  const book=parseNativeItemStack(value.item).components['minecraft:written_book_content'];
+  assert.equal(book.title.raw,'服务器指南');assert.equal(book.pages[0].filtered,'{"text":"指南"}');
+  const writable=stack([{type:'writable_book_content',data:{pages:[{content:'原稿',filteredContent:'可见稿'}]}}]);
+  assert.equal(writable.reason,null);assert.equal(parseNativeItemStack(writable.item).components['minecraft:writable_book_content'].pages[0].raw,'原稿');
+});

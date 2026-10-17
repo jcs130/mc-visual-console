@@ -240,6 +240,11 @@ add('minecraft','flat','net.minecraft.world.item.FireChargeItem',`fire_charge`)
 // BlockEntityWithoutLevelRenderer uses the original closed single chest model,
 // not JSON block elements. Keep this provider separate from JSON BlockItems.
 add('minecraft','chest','net.minecraft.world.item.BlockItem',`chest trapped_chest ender_chest`)
+// Confirmed by the locked 1.21.1 BuiltInRegistries class export. These use the
+// original static JSON GUI path; override, tint and component guards still apply.
+add('minecraft','flat','net.minecraft.world.item.BottleItem','glass_bottle')
+add('minecraft','flat','net.minecraft.world.item.BoneMealItem','bone_meal')
+add('minecraft','flat','net.minecraft.world.item.ItemNameBlockItem','pumpkin_seeds melon_seeds')
 export const NATIVE_STATIC_ITEM_NAMES = Object.freeze([...table.keys()])
 export const NATIVE_STATIC_BLOCK_ITEM_NAMES = Object.freeze([...table].filter(([,e])=>e.kind==='json').map(([id])=>id))
 export const nativeStaticItemEvidence = name => table.get(name) ?? null
