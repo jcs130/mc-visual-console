@@ -1,3 +1,6 @@
+// Mojang SNBT is not JSON: Brigadier escapes only quote and backslash.
+// Keep literal line/control characters inside the quoted tag string.
+export const snbtString=value=>'"'+value.replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"';
 /** Preserve the actual protocol-767 typed NBT; never stringify a simplified tag. */
 export function componentSnbt(input) {
   let nodes=0;
@@ -5,10 +8,10 @@ export function componentSnbt(input) {
     if(++nodes>4096||depth>16)throw Error('VANILLA_NBT_LIMIT');
     if(!value||typeof value!=='object'||!Object.hasOwn(value,'type')||!Object.hasOwn(value,'value'))throw Error('VANILLA_NBT_INVALID');
     const v=value.value,type=value.type;
-    if(type==='string'){if(typeof v!=='string'||Buffer.byteLength(v)>65536)throw Error('VANILLA_NBT_LIMIT');return JSON.stringify(v);}
+    if(type==='string'){if(typeof v!=='string'||Buffer.byteLength(v)>65536)throw Error('VANILLA_NBT_LIMIT');return snbtString(v);}
     if(type==='compound'){
       if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).length>512)throw Error('VANILLA_NBT_LIMIT');
-      return '{'+Object.entries(v).map(([key,part])=>{if(key.length>1024)throw Error('VANILLA_NBT_LIMIT');return JSON.stringify(key)+':'+tag(part,depth+1);}).join(',')+'}';
+      return '{'+Object.entries(v).map(([key,part])=>{if(key.length>1024)throw Error('VANILLA_NBT_LIMIT');return snbtString(key)+':'+tag(part,depth+1);}).join(',')+'}';
     }
     if(type==='list'){
       if(!v||!Array.isArray(v.value)||v.value.length>4096||typeof v.type!=='string')throw Error('VANILLA_NBT_LIMIT');

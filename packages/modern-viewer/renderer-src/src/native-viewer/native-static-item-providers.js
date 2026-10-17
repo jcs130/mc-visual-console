@@ -244,6 +244,14 @@ add('minecraft','chest','net.minecraft.world.item.BlockItem',`chest trapped_ches
 // original static JSON GUI path; override, tint and component guards still apply.
 add('minecraft','flat','net.minecraft.world.item.BottleItem','glass_bottle')
 add('minecraft','flat','net.minecraft.world.item.BoneMealItem','bone_meal')
+// ArmorItem csf.class SHA256 b70f2de931112790b123a7946e4403850e6466fc1448caac31db4f4659df25c4,
+// locked 1.21.1 Items registrations. No dye or trim is
+// substituted: the existing component guard refuses those visual inputs.
+add('minecraft','flat','net.minecraft.world.item.ArmorItem',`
+turtle_helmet chainmail_helmet chainmail_chestplate chainmail_leggings chainmail_boots
+iron_helmet iron_chestplate iron_leggings iron_boots golden_helmet golden_chestplate golden_leggings golden_boots
+diamond_helmet diamond_chestplate diamond_leggings diamond_boots netherite_helmet netherite_chestplate netherite_leggings netherite_boots
+`)
 add('minecraft','flat','net.minecraft.world.item.ItemNameBlockItem','pumpkin_seeds melon_seeds')
 export const NATIVE_STATIC_ITEM_NAMES = Object.freeze([...table.keys()])
 export const NATIVE_STATIC_BLOCK_ITEM_NAMES = Object.freeze([...table].filter(([,e])=>e.kind==='json').map(([id])=>id))

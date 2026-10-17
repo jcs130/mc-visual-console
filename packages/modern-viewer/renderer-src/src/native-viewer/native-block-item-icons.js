@@ -20,10 +20,26 @@ const BLOCK_ITEMS = new Set(NATIVE_GUI_BLOCK_ITEMS)
 export const nativeBlockItemEligible = name => BLOCK_ITEMS.has(name)
 const record = value => value && typeof value === 'object' && !Array.isArray(value)
 
-export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { generatedOnly = false } = {}) {
+export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { generatedOnly = false, properties = null } = {}) {
   const path = resourcePath(id, 'models', '.json')
   if (ancestry.length >= 32 || ancestry.includes(path)) throw Error(generatedOnly ? 'NATIVE_HELD_PARENT_CYCLE' : 'NATIVE_BLOCK_ITEM_PARENT_CYCLE')
-  const own = await reader.json(path)
+  let own = await reader.json(path)
+  if (properties && Array.isArray(own?.overrides) && own.overrides.length) {
+    if (own.overrides.length>64) throw Error('NATIVE_ITEM_OVERRIDE_LIMIT')
+    let selected=null
+    for (const row of own.overrides) {
+      if (!record(row) || typeof row.model!=='string' || !record(row.predicate) || !Object.keys(row.predicate).length
+        || Object.keys(row).some(key=>!['model','predicate'].includes(key))
+        || Object.entries(row.predicate).some(([key,value])=>!Object.hasOwn(properties,key)||!Number.isFinite(value)||value<0||value>1))
+        throw Error('NATIVE_ITEM_PROPERTY_UNAVAILABLE')
+      if (Object.entries(row.predicate).every(([key,value])=>properties[key]>=value)) selected=row.model
+    }
+    if (selected) {
+      const model=await resolveNativeBlockItemModel(reader,selected,[...ancestry,path],{generatedOnly,properties})
+      return {...model,sourcePaths:[path,...model.sourcePaths]}
+    }
+    const {overrides: _overrides,...base}=own; own=base
+  }
   // The existing held-generated contract is narrower than JSON block models.
   // Share inheritance/namespace resolution without widening either admission.
   if (generatedOnly) {
@@ -40,7 +56,7 @@ export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { g
   if (own.textures !== undefined && !record(own.textures)) throw Error('NATIVE_BLOCK_ITEM_TEXTURES_INVALID')
   if (own.elements !== undefined && (!Array.isArray(own.elements) || own.elements.length > 128)) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
   const generated = /^(?:minecraft:)?builtin\/generated$/.test(own.parent ?? '')
-  const parent = own.parent && !generated ? await resolveNativeBlockItemModel(reader, own.parent, [...ancestry, path], { generatedOnly }) : {}
+  const parent = own.parent && !generated ? await resolveNativeBlockItemModel(reader, own.parent, [...ancestry, path], { generatedOnly, properties }) : {}
   return { ...parent, ...own, textures: { ...parent.textures, ...own.textures },
     display: { ...parent.display, ...own.display }, elements: own.elements ?? parent.elements ?? [],
     nativeGenerated: generated || Boolean(parent.nativeGenerated),

@@ -889,6 +889,7 @@ export function createNativeInterface ({ document = globalThis.document,
     renderIcon: (target, item) => renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName }) }) : null
   const reset = () => {
     current = null; actor = null; actorReason = null; presentation = unavailable('本人状态不可用')
+    itemIcons?.serverIcons.setPack(null)
     manualOpen = false; cancelIdle(); clearRecent(); dismissedMenu = null; lastMenuSignature = null; hudSignature = null; skillsSignature = null
     for (const timer of timers) clearTimer(timer)
     timers.clear(); seenMessages.clear(); seenTitles.clear(); fishing?.reset(); preview?.reset()
@@ -935,6 +936,7 @@ export function createNativeInterface ({ document = globalThis.document,
       current = state
       const previousWindow=actualContainer()
       presentation = nativePresentationView(state?.presentation, expectedUuid)
+      itemIcons?.serverIcons.setPack(presentation.available?presentation.serverItemPackId:null)
       if(actualContainer()||!presentation.available||now()<combatUntil||presentation.self?.health===0)clearRecent()
       else if(previousWindow){
         clearRecent();recentWindow=previousWindow

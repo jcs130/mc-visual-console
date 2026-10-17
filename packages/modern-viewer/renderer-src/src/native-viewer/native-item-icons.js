@@ -10,6 +10,7 @@ import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 import {nativePotionItemEligible,validateNativePotionItem} from './native-potion-items.js'
 import {renderNativePotionIcon} from './native-potion-icons.js'
 import { resolveNativeItemAppearance } from './native-item-appearance.js'
+import { ServerItemIcons } from './server-item-icons.js'
 export { resolveNativeFlatItemTexture } from './native-item-appearance.js'
 
 export function nativeItemIconEligible(item) {
@@ -27,6 +28,7 @@ export class NativeItemIcons {
   constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {},potionIconOptions={} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
+    this.serverIcons=new ServerItemIcons({onChange,createUrl,revokeUrl})
     this.potionIconOptions=potionIconOptions
     this.animationEpochMs = Date.now()
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
@@ -36,6 +38,7 @@ export class NativeItemIcons {
   }
   resolve(item) {
     if (this.disposed) return null
+    if(this.serverIcons.selector(item))return this.serverIcons.resolve(item)
     let provider = null, stack = null, key = item?.name
     try { stack = parseNativeItemStack(item) } catch { return null }
     if (nativeSoulSlabEligible(key)) {
@@ -75,6 +78,7 @@ export class NativeItemIcons {
   }
   reason(item) {
     if(this.disposed) return 'NATIVE_ITEM_ICONS_DISPOSED'
+    if(this.serverIcons.selector(item))return this.serverIcons.reason(item)
     try {
       const stack=parseNativeItemStack(item)
       if (nativeSoulSlabEligible(item.name)) nativeSoulSlabState(stack)
@@ -159,6 +163,7 @@ export class NativeItemIcons {
   dispose() {
     if (this.disposed) return
     this.disposed = true; this.queue.length = 0
+    this.serverIcons.dispose()
     this.blockRenderer.dispose()
     this.arsRenderer.dispose()
     this.domumRenderer.dispose()

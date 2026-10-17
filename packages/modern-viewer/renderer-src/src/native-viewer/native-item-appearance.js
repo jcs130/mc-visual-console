@@ -98,7 +98,9 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     if (family === 'chest') { prepared = await prepareNativeChestItemIcon(reader, stack.id); model = prepared.model }
   }
   if (!model) {
-    if (gui) model = await resolveNativeBlockItemModel(reader, modelId)
+    if (gui) model = await resolveNativeBlockItemModel(reader, modelId, [], {
+      properties:evidence?.itemClass==='net.minecraft.world.item.ArmorItem'?{trim_type:-1}:null
+    })
     else {
       if (nativeBlockItemEligible(stack.id)) model = await resolveNativeBlockItemModel(reader, modelId)
       if (!model || model.nativeGenerated) model = await resolveNativeBlockItemModel(reader, modelId, [], { generatedOnly: true })

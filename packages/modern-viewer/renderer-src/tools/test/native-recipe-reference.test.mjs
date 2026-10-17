@@ -32,8 +32,8 @@ test('reference defaults validate the original registry and every admitted stati
     try{const result=nativeRecipeReferenceItem(reader(),ref(name),original);assert.equal(parseNativeItemStack(result.item).id,name);admitted++}
     catch(error){assert.equal(error.message,'NATIVE_ITEM_GLINT_UNSUPPORTED');unavailable++}
   }
-  assert.equal(admitted,949);assert.equal(unavailable,3)
-  console.log('catalogue default contract',JSON.stringify({registered:1333,static:952,admitted,defaultGlintUnavailable:unavailable,remainingNonAirFamilies:376}))
+  assert.equal(admitted,970);assert.equal(unavailable,3)
+  console.log('catalogue default contract',JSON.stringify({registered:1333,static:973,admitted,defaultGlintUnavailable:unavailable,remainingNonAirFamilies:355}))
   for(const value of [{name:'minecraft:chest',count:1},{...ref('minecraft:chest'),components:{}},{...ref('minecraft:chest'),snbt:'{}'},
     ref('minecraft:chest',0),ref('unknown:item'),{...ref('minecraft:chest'),reference:{...ref('minecraft:chest').reference,minecraftVersion:'1.20.6'}},
     {...ref('minecraft:chest'),reference:{...ref('minecraft:chest').reference,source:'observed'}},
