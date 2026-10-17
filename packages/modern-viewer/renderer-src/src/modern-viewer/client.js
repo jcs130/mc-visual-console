@@ -22,6 +22,7 @@ import { installChatHistory } from './chat-history.js';
 import { installViewerControlClient } from './viewer-control-client.js';
 import { ensureManualControlUi } from './manual-control-ui.js';
 import { installAgentVisualization } from "./agent-visual-overlay.js";
+import { installAgentActivity } from "./agent-activity-ui.js";
 import { createAgentWorldProjector } from "./agent-visual-projection.js";
 import { resolveObsCamera, horizontalFov } from "./obs-camera.js";
 import { installObsHandsRenderer, HeldItemUseClock, installHeldItemUseMotion, obsHandAvatarState } from "./obs-hands.js";
@@ -689,6 +690,8 @@ const socket = io({
   transports: ["websocket", "polling"],
 });
 installAgentViewGallery({document,window,hidden:isPhotoView||isObsOverlay});
+if (!isPhotoView) installAgentActivity({ socket, document, window,
+  visible: id => obsLayout?.visible(id) !== false && viewerLayout.visible(id) });
 
 const agentVisualization = installAgentVisualization({
   socket, document, window, photo: isPhotoView,

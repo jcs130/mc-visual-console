@@ -1,4 +1,5 @@
 export const OBS_COMPONENTS = Object.freeze([
+  ['agentActivity', '思考与工具记录', '#agent-activity'],
   ['hands', '第一人称手和物品', '#viewer-canvas'],
   ['survival', '血量、魔力和快捷物品栏', '#corti-survival'],
   ['minimap', '小地图', '#corti-minimap, #native-terrain-map'],
