@@ -6,6 +6,8 @@ let cortiIdleInventoryOpen = false;
 let cortiIdleInventoryTimer = null;
 let cortiInventoryPreviewSource = 'idle';
 let cortiInventoryOperationKey = null;
+let cortiClosedCraftingWindow = null;
+let cortiClosedCraftingTimer = null;
 let cortiPanelMap = null;
 let cortiSceneMap = null;
 const cortiMapCells = new Map();
@@ -234,13 +236,7 @@ function cortiInstallPanels(socket) {
       cortiDrawMinimap();
     }
   });
-  socket.on('containerState', (state) => {
-    const previousId = cortiPanelWindow?.id;
-    cortiPanelWindow = state && typeof state === 'object' ? state : null;
-    if (cortiPanelWindow) cortiCancelInventoryPreview(false);
-    if (!cortiPanelWindow || cortiPanelWindow.id !== previousId) cortiDismissedWindowId = null;
-    if (cortiPanelWindow || previousId !== undefined || cortiInventoryOpen) cortiRenderMenu();
-  });
+  socket.on('containerState', cortiContainerState);
   // Movement is not a server window-close receipt. Keep the actual window
   // until its lifecycle ends or this browser explicitly dismisses it.
   socket.on('agentVisualization', () => {
@@ -253,7 +249,7 @@ function cortiInstallPanels(socket) {
     if (key !== cortiViewerSessionKey || !state?.attached) cortiResetViewerPanels(true);
     cortiViewerSessionKey = key;
     if (!state?.windowOpen && cortiPanelWindow) {
-      cortiPanelWindow = null; cortiCancelInventoryPreview(false); cortiRenderMenu();
+      cortiContainerState(null);
     }
     document.body.dataset.observedPlayer = state?.attached ? state.playerName : '';
   });
@@ -362,7 +358,32 @@ function cortiCancelInventoryPreview(render = true) {
   cortiIdleInventoryOpen = false;
   if (cortiIdleInventoryTimer !== null) clearTimeout(cortiIdleInventoryTimer);
   cortiIdleInventoryTimer = null;
+  cortiClosedCraftingWindow = null;
+  if (cortiClosedCraftingTimer !== null) clearTimeout(cortiClosedCraftingTimer);
+  cortiClosedCraftingTimer = null;
   if (render) cortiRenderMenu();
+}
+
+function cortiContainerState(state) {
+  const previous = cortiPanelWindow;
+  cortiPanelWindow = state && typeof state === 'object' ? state : null;
+  if (cortiPanelWindow) cortiCancelInventoryPreview(false);
+  else if (previous) {
+    const dismissed = cortiDismissedWindowId === previous.id;
+    cortiCancelInventoryPreview(false);
+    const type = String(previous.type || '').replace(/^minecraft:/, '');
+    if (!dismissed && !cortiInventoryOpen && ['crafting', 'crafting_table'].includes(type)) {
+      // Fast headless crafts can open and close before one animation frame.
+      // Briefly show the actual received slots, explicitly as a closed snapshot.
+      cortiClosedCraftingWindow = previous;
+      cortiClosedCraftingTimer = setTimeout(() => {
+        cortiClosedCraftingTimer = null; cortiClosedCraftingWindow = null;
+        cortiRenderMenu();
+      }, 2400);
+    }
+  }
+  if (!cortiPanelWindow || cortiPanelWindow.id !== previous?.id) cortiDismissedWindowId = null;
+  if (cortiPanelWindow || previous || cortiInventoryOpen || cortiClosedCraftingWindow) cortiRenderMenu();
 }
 
 function cortiInventoryPreview(event) {
@@ -408,14 +429,15 @@ function cortiInventoryOperationPreview(frame) {
 function cortiRenderMenu() {
   const root = document.getElementById('corti-menu');
   if (!root) return;
-  const container = cortiPanelWindow;
+  const closedCrafting = !cortiPanelWindow && !cortiInventoryOpen && cortiClosedCraftingWindow;
+  const container = cortiPanelWindow || closedCrafting;
   if ((!container && !cortiInventoryOpen && !cortiIdleInventoryOpen) ||
       (container && cortiDismissedWindowId === container.id && !cortiInventoryOpen)) {
     root.hidden = true;
     cortiSyncInventoryPlayerPreview();
     return;
   }
-  const source = container ? 'container' : cortiInventoryOpen ? 'manual' : cortiInventoryPreviewSource;
+  const source = closedCrafting ? 'closed-crafting' : container ? 'container' : cortiInventoryOpen ? 'manual' : cortiInventoryPreviewSource;
   root.dataset.windowId = String(container?.id ?? 0);
   root.dataset.inventorySource = source;
   root.dataset.compact = String(performance.now() < cortiCombatUntil);
@@ -425,7 +447,7 @@ function cortiRenderMenu() {
   if (!wasHidden && signature === cortiMenuSignature) { cortiSyncInventoryPlayerPreview(); return; }
   cortiMenuSignature = signature;
   root.querySelector('[data-menu-title]').textContent = container?.title || '背包';
-  root.querySelector('[data-menu-source]').textContent = container ? '游戏窗口 · 只读'
+  root.querySelector('[data-menu-source]').textContent = closedCrafting ? '刚才的合成窗口 · 已关闭 · 只读' : container ? '游戏窗口 · 只读'
     : source === 'idle' ? '待机预览 · 只读' : source === 'operation' ? '物品操作已发送 · 只读' : '玩家物品 · 只读';
   const target = root.querySelector('[data-menu-body]');
   cortiInventoryPlayerPreview?.setVisible(false);

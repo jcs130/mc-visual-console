@@ -41,6 +41,7 @@ function browser() {
   });
   runInContext(source, context);
   runInContext('cortiRenderInventory = function(parent, inventory) { parent.inventory = inventory; };', context);
+  runInContext('cortiRenderCrafting = function(parent, container) { parent.crafting = container; };', context);
   const inventory = [{ name: 'diamond_sword' }];
   const subject = { playerUuid: '00000000-0000-3000-8000-000000000001', playerName: 'Player', entityId: 3 };
   events.get('avatarState')({ inventory, entity: { id: subject.entityId, uuid: subject.playerUuid } });
@@ -85,6 +86,43 @@ test('an actual window-0 click opens the same player inventory once and expires 
   assert.equal(h.menu.hidden, true, 'replayed transport frames do not reopen the menu');
   h.operation(2);
   assert.equal(h.menu.hidden, false, 'a new actual click opens a new preview');
+});
+
+test('a craft closed before the first draw remains briefly as its actual closed slot snapshot', () => {
+  const h = browser(), crafting = { id: 5, type: 'minecraft:crafting', title: '合成', slots: [{ name: 'oak_boat' }] };
+  h.emit('containerState', crafting);
+  h.emit('containerState', null);
+  assert.equal(h.menu.hidden, false);
+  assert.equal(h.menu.dataset.inventorySource, 'closed-crafting');
+  assert.equal(h.label.textContent, '刚才的合成窗口 · 已关闭 · 只读');
+  assert.equal(h.body.crafting, crafting, 'only actual received slots are retained');
+  h.advance(2399);
+  assert.equal(h.menu.hidden, false);
+  h.advance(1);
+  assert.equal(h.menu.hidden, true);
+});
+
+test('manual inventory and a newer real window supersede the closed crafting preview', () => {
+  const h = browser();
+  h.emit('containerState', { id: 5, type: 'crafting_table', slots: [] });
+  h.emit('containerState', null);
+  h.button.click();
+  assert.equal(h.menu.dataset.inventorySource, 'manual');
+  h.advance(5000);
+  assert.equal(h.menu.hidden, false);
+  h.emit('containerState', { id: 6, type: 'inventory', slots: [] });
+  assert.equal(h.menu.dataset.inventorySource, 'container');
+});
+
+for (const event of ['disconnect', 'viewerReset']) test(`${event} clears closed crafting snapshots and their timer`, () => {
+  const h = browser();
+  h.emit('containerState', { id: 5, type: 'crafting', slots: [] });
+  h.emit('containerState', null);
+  h.emit(event);
+  assert.equal(h.menu.hidden, true);
+  assert.equal(h.timers.size, 0);
+  h.advance(5000);
+  assert.equal(h.menu.hidden, true);
 });
 
 test('another player or a workbench click without a real container snapshot does not invent an inventory screen', () => {
