@@ -123,6 +123,14 @@ test('raw max-health evidence is owned by the current body and survives no respa
   bot._client.emit('packet',{}, {name:'respawn',state:'play'});assert.equal(stream.attributeState(),null);stream.close();
 });
 
+test('compass state uses only an actually received spawn position, never Mineflayer default zero',()=>{
+  const bot={version:'1.21.1',_client:new EventEmitter(),spawnPoint:{x:0,y:0,z:0}};bot._client.uuid='own';
+  const stream=observeVanillaNativeStream(bot,'a'.repeat(64));assert.equal(stream.itemPropertyState(),null);
+  bot._client.emit('packet',{location:{x:5,y:64,z:-9}},{name:'spawn_position',state:'play'});
+  assert.deepEqual(stream.itemPropertyState().spawn,{x:5,y:64,z:-9});
+  bot._client.emit('packet',{}, {name:'respawn',state:'play'});assert.equal(stream.itemPropertyState(),null);stream.close();
+});
+
 test('vanilla inventory belongs to this body and does not invent item components', () => {
   const bot = { version: '1.21.1', _client: { uuid: 'player-a' }, quickBarSlot: 2,
     inventory: { slots: [null, { name: 'oak_planks', count: 18 }] } };

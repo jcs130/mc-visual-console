@@ -526,6 +526,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, modOperations: injected.modOperations ?? [], nativeState: injected.nativeState,
           profile:injected.profile??null,serverItemPackId:injected.serverItemPackId??null,effects:injected.effects??[],bossBars:injected.bossBars??[],
           activity: nativeStream.activityState?.() ?? null,
+          itemProperties:{playerUuid:player.uuid,entityId:player.entityId,dimension:world.dimension?.name??null,
+            ...(nativeStream.itemPropertyState?.()??{})},
           agentPlayback: injectedAgentStatus(getAgentStatus, now).details?.playback ?? null,
           renderRegistries: injected.renderRegistries,
           entityRenderStates: injected.entityRenderStates,

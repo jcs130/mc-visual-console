@@ -34,7 +34,9 @@ export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { g
         throw Error('NATIVE_ITEM_PROPERTY_UNAVAILABLE')
       if (Object.entries(row.predicate).every(([key,value])=>properties[key]>=value)) selected=row.model
     }
-    if (selected) {
+    // ItemOverrides resolves a self-reference to the original base model.
+    // Compass deliberately uses this for its wrap-around frame.
+    if (selected && resourcePath(selected,'models','.json')!==path) {
       const model=await resolveNativeBlockItemModel(reader,selected,[...ancestry,path],{generatedOnly,properties})
       return {...model,sourcePaths:[path,...model.sourcePaths]}
     }

@@ -11,6 +11,7 @@ import {nativePotionItemEligible,validateNativePotionItem} from './native-potion
 import {renderNativePotionIcon} from './native-potion-icons.js'
 import { resolveNativeItemAppearance } from './native-item-appearance.js'
 import { ServerItemIcons } from './server-item-icons.js'
+import {nativeDynamicGuiEligible,nativeDynamicGuiState,prepareNativeDynamicGuiIcon,NativeCompassWobble} from './native-dynamic-gui-icons.js'
 export { resolveNativeFlatItemTexture } from './native-item-appearance.js'
 
 export function nativeItemIconEligible(item) {
@@ -29,6 +30,7 @@ export class NativeItemIcons {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
     this.serverIcons=new ServerItemIcons({reader,onChange,createUrl,revokeUrl})
+    this.context=null;this.compassWobble=new NativeCompassWobble()
     this.potionIconOptions=potionIconOptions
     this.animationEpochMs = Date.now()
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
@@ -36,12 +38,22 @@ export class NativeItemIcons {
     this.domumRenderer = new NativeDomumItemIconRenderer(reader, domumRendererOptions)
     this.chestRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeChestItemIcon,loadTexture:loadNativeCutoutItemTexture,...chestRendererOptions})
   }
+  setContext(view){
+    if(this.context?.self?.entityId!==view?.self?.entityId||this.context?.playerUuid!==view?.playerUuid)this.compassWobble=new NativeCompassWobble()
+    this.context=view?.available?view:null
+    let compass='unavailable'
+    try{compass=nativeDynamicGuiState({id:'minecraft:compass',count:1,components:{}},this.context,this.compassWobble).variant}catch{}
+    const next=JSON.stringify([compass,this.context?.self?.usingItem??null]),changed=next!==this.dynamicSignature
+    this.dynamicSignature=next;return changed
+  }
   resolve(item) {
     if (this.disposed) return null
     if(this.serverIcons.selector(item))return this.serverIcons.resolve(item)
-    let provider = null, stack = null, key = item?.name
+    let provider = null, stack = null, dynamic = null, key = item?.name
     try { stack = parseNativeItemStack(item) } catch { return null }
-    if (nativeSoulSlabEligible(key)) {
+    if(nativeDynamicGuiEligible(key)){
+      try{dynamic=nativeDynamicGuiState(stack,this.context,this.compassWobble);provider='dynamic-gui'}catch{return null}
+    } else if (nativeSoulSlabEligible(key)) {
       try { nativeSoulSlabState(stack); provider = 'soul-slab' } catch { return null }
     } else if (nativeGuideItemEligible(key) || nativeArsItemEligible(key)) {
       provider = nativeGuideItemEligible(key) ? 'guide' : 'ars'
@@ -59,9 +71,10 @@ export class NativeItemIcons {
     // Every provider binds to complete authoritative SNBT, including visual
     // inputs, removal patches and tag types. No name-only generic icon cache.
     key += '#' + item.snbt
+    if(dynamic)key+='#'+dynamic.variant
     if (!this.entries.has(key)) {
       if (this.entries.size >= 128 && !this.evictOldest()) return null
-      this.entries.set(key, { result: null, reason: 'loading', name: item.name, provider, stack }); this.queue.push(key); this.pump()
+      this.entries.set(key, { result: null, reason: 'loading', name: item.name, provider, stack, dynamic }); this.queue.push(key); this.pump()
     }
     const entry = this.entries.get(key)
     this.entries.delete(key); this.entries.set(key, entry)
@@ -81,11 +94,13 @@ export class NativeItemIcons {
     if(this.serverIcons.selector(item))return this.serverIcons.reason(item)
     try {
       const stack=parseNativeItemStack(item)
-      if (nativeSoulSlabEligible(item.name)) nativeSoulSlabState(stack)
+      let dynamic=null
+      if(nativeDynamicGuiEligible(item.name))dynamic=nativeDynamicGuiState(stack,this.context,this.compassWobble)
+      else if (nativeSoulSlabEligible(item.name)) nativeSoulSlabState(stack)
       else if (nativeDomumItemEligible(item.name)) nativeDomumItemState(stack)
       else if(nativePotionItemEligible(item.name))validateNativePotionItem(stack)
       else if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack,{allowPartialGlint:true})
-      const entry=this.entries.get(item.name+'#'+item.snbt)
+      const entry=this.entries.get(item.name+'#'+item.snbt+(dynamic?'#'+dynamic.variant:''))
       return entry ? entry.reason : this.entries.size>=128?'NATIVE_ITEM_ICON_CACHE_LIMIT':'not_requested'
     } catch(error) { return error.message }
   }
@@ -101,7 +116,7 @@ export class NativeItemIcons {
     entry.loading = true
     const name = entry.name
     try {
-      const appearance = await resolveNativeItemAppearance(this.reader, entry.stack, { kind: 'gui' })
+      const appearance = entry.dynamic?await prepareNativeDynamicGuiIcon(this.reader,entry.dynamic):await resolveNativeItemAppearance(this.reader, entry.stack, { kind: 'gui' })
       if (this.disposed) return
       const provider = appearance.family
       if(provider==='potion'){
@@ -155,7 +170,7 @@ export class NativeItemIcons {
       entry.reason = null
     } catch(error) { entry.reason = error.message }
     finally {
-      if(entry.result&&entry.provider==='static'&&nativeStaticItemState(entry.stack,{allowPartialGlint:true}).foil)
+      if(entry.result&&(entry.dynamic?.foil||entry.provider==='static'&&nativeStaticItemState(entry.stack,{allowPartialGlint:true}).foil))
         entry.result.effectUnavailableReason='NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE';
       entry.loading=false;if(!this.disposed&&this.entries.get(key)===entry)this.onChange();
     }

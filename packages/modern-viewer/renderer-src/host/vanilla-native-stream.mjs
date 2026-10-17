@@ -34,10 +34,12 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
   const hands = observeVanillaHands(bot);
   const menus = observeVanillaMenus(bot, { onChange: () => events.emit('presentation') });
   const activity = observeVanillaActivity(bot, { onChange: () => events.emit('presentation') });
-  let sequence = 0, closed = false, abilities = null, attributes = null;
+  let sequence = 0, closed = false, abilities = null, attributes = null, spawn = null;
   const receive = (params, meta) => {
     if (closed || meta.state !== 'play') return;
-    if (['login','respawn'].includes(meta.name)) {abilities = null;attributes=null;}
+    if (['login','respawn'].includes(meta.name)) {abilities = null;attributes=null;spawn=null;}
+    if(meta.name==='spawn_position'&&['x','y','z'].every(k=>Number.isInteger(params.location?.[k])&&Math.abs(params.location[k])<=30000000))
+      spawn={...params.location};
     if(meta.name==='entity_update_attributes'&&params.entityId===bot.entity?.id&&Array.isArray(params.properties)){
       const rows=params.properties.filter(p=>/(?:^|[.:])max_health$/.test(p?.key??'')).slice(0,4);
       if(rows.length)attributes={source:'same_player_decoded_entity_update_attributes',playerUuid:bot._client.uuid,entityId:params.entityId,observedAt:Date.now(),
@@ -60,6 +62,7 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
     return typeof name==='string'?`minecraft:${name.replace(/[A-Z]/g,(c,i)=>(i?'_':'')+c.toLowerCase())}`:null;
   };
   return { events, resolveItemStack, resolveEffect, configureItemRegistries:data=>configureVanillaItemRegistries(bot.registry,data),
+    itemPropertyState:()=>!closed&&spawn?{playerUuid:bot._client.uuid,source:'same_player_spawn_position',spawn:{...spawn}}:null,
     attributeState:()=>attributes&&attributes.entityId===bot.entity?.id?structuredClone(attributes):null,
     selfState: () => abilities, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; attributes=null; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
 }

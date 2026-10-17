@@ -890,6 +890,7 @@ export function createNativeInterface ({ document = globalThis.document,
   const reset = () => {
     current = null; actor = null; actorReason = null; presentation = unavailable('本人状态不可用')
     itemIcons?.serverIcons.setPack(null)
+    itemIcons?.setContext(null)
     manualOpen = false; cancelIdle(); clearRecent(); dismissedMenu = null; lastMenuSignature = null; hudSignature = null; skillsSignature = null
     for (const timer of timers) clearTimer(timer)
     timers.clear(); seenMessages.clear(); seenTitles.clear(); fishing?.reset(); preview?.reset()
@@ -915,6 +916,7 @@ export function createNativeInterface ({ document = globalThis.document,
         finally { transitionTiming?.finish(timing) }
       } })
       const nextLanguage = new NativeLanguage(reader)
+      itemIcons.setContext(presentation)
       const [result,,registry] = await Promise.all([assets.prepare(), nextLanguage.prepare(),loadOriginalItemColors(reader)
         .then(data=>({data}),error=>({reason:error.message}))])
       if (disposed || sequence !== assetsSequence) return result
@@ -936,6 +938,7 @@ export function createNativeInterface ({ document = globalThis.document,
       current = state
       const previousWindow=actualContainer()
       presentation = nativePresentationView(state?.presentation, expectedUuid)
+      if(itemIcons?.setContext(presentation)){iconRevision++;hudSignature=null;lastMenuSignature=null}
       itemIcons?.serverIcons.setPack(presentation.available?presentation.serverItemPackId:null)
       if(actualContainer()||!presentation.available||now()<combatUntil||presentation.self?.health===0)clearRecent()
       else if(previousWindow){

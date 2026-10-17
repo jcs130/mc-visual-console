@@ -19,3 +19,13 @@ Protocol 767 allows an empty optional profile name; the codec preserves it.
 Raw same-player max_health attribute packets are exposed separately from the
 Mineflayer attribute projection so server state contradictions can be diagnosed.
 No default maximum health is manufactured from an unavailable extension status.
+
+Vanilla compass GUI icons use the action connection's observed spawn_position,
+same-body position/yaw, world dimension and game tick, with original gpr$b wobble
+and all 32 original predicate textures. Mineflayer's initialized zero spawn is
+not evidence. The special self-model wrap predicate resolves the original base
+model as in ItemOverrides. Missing spawn, other dimensions and the random-target
+case stay unavailable. Frame cache keys use the original frame plus complete SNBT.
+Uncharged crossbows with observed inactive use display their original standby
+texture. Active use and charged-projectile patches remain explicitly unsupported;
+unknown custom model components cannot borrow these ordinary vanilla icons.

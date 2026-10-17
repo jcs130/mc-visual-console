@@ -285,6 +285,12 @@ const record=value=>value&&typeof value==='object'&&!Array.isArray(value)
 export function nativeStaticItemState(input,{allowPartialGlint=false}={}) {
   const stack=input?.id?input:parseNativeItemStack(input),evidence=nativeStaticItemEvidence(stack.id)
   if(!evidence||!Number.isSafeInteger(stack.count)||stack.count<=0||!record(stack.components)) throw Error('NATIVE_ITEM_STATIC_PROVIDER_UNVERIFIED')
+  return {...nativeItemComponentState(stack,{allowPartialGlint}),evidence}
+}
+// Component validation is shared with positively registered dynamic GUI items;
+// accepting components alone never registers a new rendering provider.
+export function nativeItemComponentState(stack,{allowPartialGlint=false}={}) {
+  if(!stack||!Number.isSafeInteger(stack.count)||stack.count<=0||!record(stack.components))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID')
   const components=stack.components
   for(const [key,value] of Object.entries(components)) {
     const name=key.startsWith('!')?key.slice(1):key
@@ -308,5 +314,5 @@ export function nativeStaticItemState(input,{allowPartialGlint=false}={}) {
       if(!allowPartialGlint)throw Error('NATIVE_ITEM_GLINT_UNSUPPORTED');foil=true
     }
   }
-  return {stack,evidence,foil:foil===true}
+  return {stack,foil:foil===true}
 }
