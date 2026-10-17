@@ -300,12 +300,13 @@ export function injectTrackedMaidPresentation (entityState, presentation, dimens
 // import; addon paths retain their normal package resolution.
 async function browserBundle (entry) {
   const require = createRequire(import.meta.url)
+  const workingDirectory = path.resolve(SOURCE, '../..')
   const threeRoot = path.dirname(path.dirname(require.resolve('three')))
   const threeModule = path.join(threeRoot, 'build/three.module.js')
-  const result = await build({ entryPoints: [entry], bundle: true, write: false, platform: 'browser', format: 'esm', target: 'es2022', metafile: true,
+  const result = await build({ absWorkingDir: workingDirectory, entryPoints: [entry], bundle: true, write: false, platform: 'browser', format: 'esm', target: 'es2022', metafile: true,
     plugins: [{ name: 'native-single-three', setup (builder) { builder.onResolve({ filter: /^three$/ }, () => ({ path: threeModule })) } }] })
   for (const input of Object.keys(result.metafile.inputs)) {
-    const absolute = path.resolve(input)
+    const absolute = path.resolve(workingDirectory, input)
     if (/[\\/]node_modules[\\/]three[\\/]/.test(absolute) && !absolute.startsWith(threeRoot + path.sep)) throw Error('NATIVE_WORLD_DUPLICATE_THREE')
   }
   return result.outputFiles[0].contents

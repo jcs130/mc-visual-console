@@ -196,6 +196,22 @@ test('closing a native host retires incomplete browser connections before rebind
   assert.equal((await request(replacement.host)).status, 200)
 })
 
+test('native browser bundle receipts are independent of the consuming host working directory', async t => {
+  const { host } = attachment(t)
+  const expected = host.status().build
+  const previous = process.cwd()
+  let preparedHost
+  try {
+    process.chdir(directory)
+    preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0 })
+  } finally {
+    process.chdir(previous)
+  }
+  const actual = attachment(t, { preparedHost }).host.status().build
+  assert.equal(actual.browserBundleSha256, expected.browserBundleSha256)
+  assert.equal(actual.consoleBundleSha256, expected.consoleBundleSha256)
+})
+
 test('prepared native host carries its local appearance default through root and nested pages', async t => {
   const preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0, defaultAppearance: 'bundled:yui-ysm', selectionScope: 'a'.repeat(24) })
   for (const basePath of ['/', '/neko/']) {
