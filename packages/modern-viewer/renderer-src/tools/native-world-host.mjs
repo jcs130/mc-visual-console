@@ -3,6 +3,8 @@ import { EventEmitter } from 'node:events'
 import { NativeSnapshotCadence } from './native-snapshot-cadence.mjs'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
+import { serialize } from 'node:v8'
+import { NativeColumnCache } from './native-column-cache.mjs'
 import chunkFactory from 'prismarine-chunk'
 import { Vec3 } from 'vec3'
 import { CUTTING_BOARD_ID, cuttingBoardContent } from '../src/native-viewer/cutting-board.js'
@@ -143,12 +145,16 @@ export function nativeChunk (options, states, biomeCount) {
 // Receives only already-verified native packets from the action bot's own
 // connection. Never queries disk worlds, generates chunks or decodes proxy IDs.
 export class NativeWorldState extends EventEmitter {
-  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveEffect = null, resolveSelf = null, soundRegistry = null, particleCollisions = null, resolveDimension, simplifyNBT, makeChunk, now = Date.now }) {
+  constructor ({ states, registrySha256, entityRegistry = null, entityRegistrySha256 = null, resolveItemStack = null, resolveEffect = null, resolveSelf = null, soundRegistry = null, particleCollisions = null, resolveDimension, simplifyNBT, makeChunk, columnLimits = {}, now = Date.now }) {
     super()
     this.states = states; this.registrySha256 = registrySha256
     this.resolveDimension = resolveDimension; this.simplifyNBT = simplifyNBT; this.makeChunk = makeChunk || (options => nativeChunk(options, this.states, this.biomes.size)); this.now = now
     this.biomes = new Map(); this.biomeSeed = null
-    this.columns = new Map(); this.blockEntities = new Map(); this.dimension = null; this.pose = null
+    this.blockEntities = new Map(); this.dimension = null; this.pose = null
+    this.columnCache = new NativeColumnCache({ ...columnLimits,
+      makeChunk: () => this.makeChunk({ minY: this.dimension.minY, worldHeight: this.dimension.height }), center: () => this.pose,
+      onEvict: k => { const [x,z]=k.split(',').map(Number); this.removeBlockEntities(x,z); this.revision++; this.emit('world',{column:{x,z},reason:'cache_budget'}) } })
+    this.columns = this.columnCache.decoded
     this.epoch = 0; this.revision = 0; this.lastSequence = 0; this.packetCount = 0; this.error = null; this.time = null
     this.entityRegistry = entityRegistry; this.entityRegistrySha256 = entityRegistrySha256
     if(resolveItemStack!==null&&typeof resolveItemStack!=='function')throw Error('NATIVE_ITEM_RESOLVER_INVALID')
@@ -165,7 +171,7 @@ export class NativeWorldState extends EventEmitter {
   unavailable (error) {
     if (this.error) return
     this.error = error.message || String(error)
-    this.columns.clear(); this.blockEntities.clear(); this.pose = null
+    this.columnCache.clear(); this.blockEntities.clear(); this.pose = null
     this.clearEntities(); this.entityRevision++
     this.emit('unavailable', this.error)
   }
@@ -180,7 +186,7 @@ export class NativeWorldState extends EventEmitter {
         case 'login': case 'respawn': {
           const d = this.resolveDimension(p.worldState || p)
           if (!d || !Number.isInteger(d.minY) || !Number.isInteger(d.height) || d.height <= 0 || d.height > 4096 || d.minY % 16 || d.height % 16 || typeof d.name !== 'string') throw Error('NATIVE_WORLD_DIMENSION_UNAVAILABLE')
-          this.dimension = d; this.columns.clear(); this.blockEntities.clear(); this.pose = null; this.time = null
+          this.dimension = d; this.columnCache.clear(); this.blockEntities.clear(); this.pose = null; this.time = null
           this.clearEntities(); this.entityRevision++; this.entityError = null; this.entityErrorDetails = null
           this.biomeSeed = (p.worldState || p).hashedSeed !== undefined ? longBigInt((p.worldState || p).hashedSeed).toString() : null
           this.epoch++; this.revision++; this.emit('reset', this.epoch); break
@@ -188,16 +194,13 @@ export class NativeWorldState extends EventEmitter {
         case 'map_chunk': {
           if (!this.dimension) throw Error('NATIVE_WORLD_DIMENSION_UNAVAILABLE')
           if (![p.x, p.z].every(Number.isInteger) || !Buffer.isBuffer(p.chunkData)) throw Error('NATIVE_WORLD_CHUNK_INVALID')
-          if (!this.columns.has(columnKey(p.x, p.z)) && this.columns.size >= 512) throw Error('NATIVE_WORLD_LOADED_CHUNK_LIMIT')
-          const chunk = this.makeChunk({ minY: this.dimension.minY, worldHeight: this.dimension.height })
-          chunk.load(p.chunkData)
-          this.columns.set(columnKey(p.x, p.z), chunk)
           this.removeBlockEntities(p.x, p.z)
-          for (const be of p.blockEntities || []) this.setBlockEntity({ x: p.x * 16 + be.x, y: be.y, z: p.z * 16 + be.z }, be.nbtData ?? be.nbt)
+          if (this.columnCache.put(columnKey(p.x,p.z),p.chunkData))
+            for (const be of p.blockEntities || []) this.setBlockEntity({ x: p.x * 16 + be.x, y: be.y, z: p.z * 16 + be.z }, be.nbtData ?? be.nbt)
           this.revision++; this.emit('world', {column:{x:p.x,z:p.z}}); break
         }
         case 'unload_chunk': {
-          this.columns.delete(columnKey(p.chunkX, p.chunkZ)); this.removeBlockEntities(p.chunkX, p.chunkZ)
+          this.removeBlockEntities(p.chunkX, p.chunkZ); this.columnCache.delete(columnKey(p.chunkX, p.chunkZ))
           this.revision++; this.emit('world', {column:{x:p.chunkX,z:p.chunkZ}}); break
         }
         case 'block_change': this.changeBlock(p.location, p.type); break
@@ -463,24 +466,31 @@ export class NativeWorldState extends EventEmitter {
   }
 
   removeBlockEntities (x, z) {
-    for (const [k, be] of this.blockEntities) if (Math.floor(be.position.x / 16) === x && Math.floor(be.position.z / 16) === z) this.blockEntities.delete(k)
+    let removed = 0
+    for (const [k, be] of this.blockEntities) if (Math.floor(be.position.x / 16) === x && Math.floor(be.position.z / 16) === z) { removed += serialize(be).length; this.blockEntities.delete(k) }
+    if (removed) this.columnCache.metadata(columnKey(x,z),-removed)
   }
 
   setBlockEntity (position, tag) {
     if (!finite(position) || ![position.x, position.y, position.z].every(Number.isInteger)) throw Error('NATIVE_WORLD_BLOCK_ENTITY_POSITION_INVALID')
+    const column=columnKey(Math.floor(position.x/16),Math.floor(position.z/16))
+    if (!this.columnCache.has(column)) return
+    const old=this.blockEntities.get(key(position)),before=old?serialize(old).length:0
     const value = tag?.type ? this.simplifyNBT(tag) : tag
     if (value && typeof value === 'object') this.blockEntities.set(key(position), { position: { ...position }, data: value })
     else this.blockEntities.delete(key(position)) // Missing new data cannot reuse an older verified empty inventory.
+    const current=this.blockEntities.get(key(position))
+    this.columnCache.metadata(column,(current?serialize(current).length:0)-before)
   }
 
   stateIdAt (p) {
     const cx = Math.floor(p.x / 16), cz = Math.floor(p.z / 16)
-    const chunk = this.columns.get(columnKey(cx, cz))
+    const chunk = this.columnCache.get(columnKey(cx, cz))
     return chunk?.getBlockStateId(new Vec3(p.x - cx * 16, p.y, p.z - cz * 16)) ?? null
   }
 
   biomeIdAtQuart (x, y, z) {
-    const cx = Math.floor(x / 4), cz = Math.floor(z / 4), chunk = this.columns.get(columnKey(cx, cz))
+    const cx = Math.floor(x / 4), cz = Math.floor(z / 4), chunk = this.columnCache.get(columnKey(cx, cz))
     y = Math.max(this.dimension.minY / 4, Math.min((this.dimension.minY + this.dimension.height) / 4 - 1, y))
     return chunk?.getBiome(new Vec3((x - cx * 4) * 4, y * 4, (z - cz * 4) * 4)) ?? null
   }
@@ -488,11 +498,12 @@ export class NativeWorldState extends EventEmitter {
   changeBlock (p, stateId) {
     if (!finite(p) || ![p.x, p.y, p.z, stateId].every(Number.isInteger) || !this.states.has(stateId)) throw Error('NATIVE_WORLD_BLOCK_INVALID')
     const cx = Math.floor(p.x / 16), cz = Math.floor(p.z / 16)
-    const chunk = this.columns.get(columnKey(cx, cz))
+    const chunk = this.columnCache.get(columnKey(cx, cz))
     if (!chunk) return // A late update for an unloaded column does not load it.
     const old = this.stateIdAt(p)
     chunk.setBlockStateId(new Vec3(p.x - cx * 16, p.y, p.z - cz * 16), stateId)
-    if (old !== stateId) this.blockEntities.delete(key(p))
+    if (old !== stateId) this.setBlockEntity(p,null)
+    this.columnCache.changed(columnKey(cx,cz))
     this.revision++; if(old !== stateId)this.emit('world', {position:p})
   }
 
@@ -593,7 +604,7 @@ export class NativeWorldState extends EventEmitter {
     for (let cz = Math.floor(bounds.minZ / 16); cz <= Math.floor(bounds.maxZ / 16); cz++)
       for (let cx = Math.floor(bounds.minX / 16); cx <= Math.floor(bounds.maxX / 16); cx++) {
         const ck = columnKey(cx, cz)
-        if (this.columns.has(ck)) receivedColumns.push(ck)
+        if (this.columnCache.has(ck)) receivedColumns.push(ck)
         else missingColumns.add(ck)
       }
     const worldMinY = this.dimension.minY / 4, worldMaxY = (this.dimension.minY + this.dimension.height) / 4 - 1
@@ -656,7 +667,7 @@ export class NativeWorldState extends EventEmitter {
       neighbors, biomeSeed: this.biomeSeed, biomeGrid, biomes: [...usedBiomes].map(id => this.biomes.get(id)).filter(Boolean),
       viewCoverage: { source: 'received_native_chunks', policy: 'complete_bounded_volume', receivedColumns, missingColumns: [...missingColumns],
         scannedVoxels, nonAirBlocks, renderBlocks, occludedBlocks, visibilityPolicy: 'exposed_surfaces_with_lossless_hidden_solid_runs', fluidNeighborVoxels: neighbors.length / 4, neighborCoverage: 'fluid_stencil_only',
-        outsideBounds: 'not_in_snapshot', unloadedColumns: 'unknown' },
+        outsideBounds: 'not_in_snapshot', unloadedColumns: 'unknown', cache: this.columnCache.stats() },
       entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false }
   }
 }

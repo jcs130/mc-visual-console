@@ -4,16 +4,17 @@ import {NativeWorldState} from '../native-world-host.mjs'
 import {NativeSnapshotCadence} from '../native-snapshot-cadence.mjs'
 const bounds={minX:-2,maxX:2,minY:60,maxY:68,minZ:-2,maxZ:2},pose={x:0,y:64,z:0}
 export function fixture(){
- const world=new NativeWorldState({states:new Map([[0,{}],[1,{}],[2,{}]]),registrySha256:'a'.repeat(64),resolveDimension:()=>({minY:0,height:256,name:'test'}),simplifyNBT:v=>v})
- let state=1;const chunk={getBlockStateId:()=>state,setBlockStateId:(p,v)=>{state=v},load:()=>{}}
- world.columns.set('10,10',chunk);world.columns.set('0,0',chunk);world.columns.set('-1,0',chunk)
+ let state=1;const chunk={getBlockStateId:()=>state,setBlockStateId:(p,v)=>{state=v},load:()=>{},dump:()=>Buffer.alloc(0)}
+ const world=new NativeWorldState({states:new Map([[0,{}],[1,{}],[2,{}]]),registrySha256:'a'.repeat(64),resolveDimension:()=>({minY:0,height:256,name:'test'}),simplifyNBT:v=>v,makeChunk:()=>chunk})
+ let sequence=0;const packet=(name,params)=>world.handle({registrySha256:world.registrySha256,sequence:++sequence,name,params})
+ packet('login',{});for(const [x,z] of [[10,10],[0,0],[-1,0]])packet('map_chunk',{x,z,chunkData:Buffer.alloc(0)})
  const cadence=new NativeSnapshotCadence();cadence.completed(pose,0,true,bounds);world.on('world',c=>cadence.invalidate(c))
  return {world,cadence,chunk}
 }
 test('real world thousands of remote/no-op updates preserve state and do not require builds',()=>{
- const {world,cadence}=fixture()
+ const {world,cadence}=fixture(),revision=world.revision
  for(let i=0;i<5000;i++)world.changeBlock({x:160,y:64,z:160},i%2+1)
- assert.equal(world.stateIdAt({x:160,y:64,z:160}),2);assert.equal(world.revision,5000);assert.equal(cadence.required(pose,1000),false)
+ assert.equal(world.stateIdAt({x:160,y:64,z:160}),2);assert.equal(world.revision,revision+5000);assert.equal(cadence.required(pose,1000),false)
  for(let i=0;i<5000;i++)world.changeBlock({x:0,y:64,z:0},2)
  assert.equal(cadence.required(pose,1000),false)
  world.changeBlock({x:3,y:64,z:0},1);assert.equal(cadence.required(pose,1000),true)
@@ -28,7 +29,7 @@ test('local block entities, complete biome quart halo, new coverage/unload and u
 
 test('real packet load/unload, biomes, block entities and fluid neighbors update exact snapshot output',()=>{
  const states=new Map([[0,{stateId:0,name:'minecraft:air'}],[1,{stateId:1,name:'create:millstone'}],[2,{stateId:2,name:'minecraft:water',fluid:{empty:false}}]])
- const makeChunk=()=>{const cells=new Map();return {load(){},getBlockStateId:p=>cells.get(`${p.x},${p.y},${p.z}`)??0,setBlockStateId:(p,v)=>cells.set(`${p.x},${p.y},${p.z}`,v),getBiome:()=>0}}
+ const makeChunk=()=>{const cells=new Map();return {load(data){if(data.length)for(const [k,v] of JSON.parse(data))cells.set(k,v)},dump:()=>Buffer.from(JSON.stringify([...cells])),getBlockStateId:p=>cells.get(`${p.x},${p.y},${p.z}`)??0,setBlockStateId:(p,v)=>cells.set(`${p.x},${p.y},${p.z}`,v),getBiome:()=>0}}
  const world=new NativeWorldState({states,registrySha256:'a'.repeat(64),makeChunk,resolveDimension:()=>({minY:0,height:256,name:'fixture'}),simplifyNBT:v=>v}),cadence=new NativeSnapshotCadence()
  let seq=0;const packet=(name,params)=>{world.handle({registrySha256:world.registrySha256,sequence:++seq,name,params});assert.equal(world.error,null)}
  packet('login',{});world.setPose({...pose,yaw:0,pitch:0,eyeHeight:1.62});world.biomes.set(0,{id:0,name:'test:biome'})
