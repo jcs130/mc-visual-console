@@ -1,5 +1,6 @@
 import { ServerParticles, loadViewerContentAssets } from './server-particles.js';
 import { MapPhotos, heldMapId } from './map-photos.js';
+import {createHeldMapPreview} from './held-map-preview.js';
 import {TextDisplays} from './text-displays.js';
 import {loadTextDisplayFont} from './text-display-font.js';
 import {PaperYsmPlayers,paperYsmAvailabilityText,installPaperYsmRenderGuard} from './paper-ysm.js';
@@ -56,33 +57,17 @@ const cortiContentStatus = document.createElement('div');
 cortiContentStatus.id = 'corti-content-status';
 cortiContentStatus.style.cssText = 'position:fixed;left:12px;bottom:36px;max-width:360px;padding:5px 8px;background:#17222cdd;color:#ffe2a3;font:12px sans-serif;pointer-events:none;z-index:8;display:none';
 document.body.append(cortiContentStatus);
-const cortiHeldMap = document.createElement('aside');
-cortiHeldMap.id='corti-held-map';
-cortiHeldMap.style.cssText='position:fixed;left:12px;bottom:116px;max-width:calc(100vw - 24px);background:#17222cee;color:#fff;padding:8px;border-radius:6px;font:12px sans-serif;z-index:8;pointer-events:none;display:none';
-const cortiHeldMapLabel=document.createElement('div'),cortiHeldMapCanvas=document.createElement('canvas');
-cortiHeldMapCanvas.width=cortiHeldMapCanvas.height=128;
-cortiHeldMapCanvas.style.cssText='position:static;inset:auto;display:block;width:min(192px,36vw,32vh);height:auto;image-rendering:pixelated;margin-top:6px';
-cortiHeldMap.append(cortiHeldMapLabel,cortiHeldMapCanvas);document.body.append(cortiHeldMap);
-let cortiHeldMapKey=null;
+const cortiHeldMapPreview=createHeldMapPreview({document});
+document.body.append(cortiHeldMapPreview.element);
 function cortiUpdateHeldMap() {
   const state=typeof isObsOverlay !== 'undefined' && isObsOverlay ? currentObsHandState() : pendingAvatarState;
   const selected=state ? selectedHotbarItem(state) : null;
   const id=heldMapId(selected)??heldMapId(state?.offhand);
-  if(id===null){cortiHeldMap.style.display='none';cortiHeldMapKey=null;return;}
-  const map=cortiMapPhotos.maps.get(id);
-  cortiHeldMap.dataset.mapId=String(id);cortiHeldMap.dataset.receivedPixels=String(map?.received??0);
-  cortiHeldMap.style.display='block';
-  cortiHeldMapLabel.textContent=!map?.received?'手持地图 · 等待服务器像素':map.icons.length?'手持地图 · 标记图层暂未适配':'手持地图／照片';
-  cortiHeldMapCanvas.style.display=map?.received?'block':'none';
-  const key=`${cortiContentEpoch}:${id}:${cortiMapPhotos.diagnostics.patches}`;
-  if(map?.received&&key!==cortiHeldMapKey){
-    cortiHeldMapCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(map.rgba),128,128),0,0);
-    cortiHeldMapKey=key;
-  }
+  cortiHeldMapPreview.update({id,map:cortiMapPhotos.maps.get(id),epoch:cortiContentEpoch,revision:cortiMapPhotos.diagnostics.patches});
 }
 function cortiContentClear(epoch=null) {
   cortiContentEpoch=epoch;cortiNativeParticles.clear();cortiMapPhotos.reset(epoch);cortiTextDisplays.reset(epoch);
-  cortiHeldMap.style.display='none';cortiHeldMapKey=null;
+  cortiHeldMapPreview.reset();
 }
 socket.on('contentReset', event => {
   if(event?.schemaVersion!==1||!Number.isSafeInteger(event.epoch)||event.epoch<0)return;
@@ -141,4 +126,4 @@ function cortiAnimateNativeContent(now) {
 }
 if (typeof isObsOverlay === 'undefined' || !isObsOverlay) requestAnimationFrame(cortiAnimateNativeContent);
 window.cortiViewerContent={stats:()=>({ysm:cortiYsmPlayers.stats(),bodyVisibility:cortiYsmRenderGuard?.diagnostics??null,particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
-window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiYsmRenderGuard?.dispose();cortiYsmRenderGuard=null;appearanceUi.dispose();cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMap.remove();},{once:true});
+window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiYsmRenderGuard?.dispose();cortiYsmRenderGuard=null;appearanceUi.dispose();cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMapPreview.dispose();},{once:true});
