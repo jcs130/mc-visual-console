@@ -18,7 +18,7 @@ export function nativeItemIconEligible(item) {
     if (nativeSoulSlabEligible(stack.id)) nativeSoulSlabState(stack)
     else if (nativeDomumItemEligible(stack.id)) nativeDomumItemState(stack)
     else if(nativePotionItemEligible(stack.id))validateNativePotionItem(stack)
-    else nativeStaticItemState(stack)
+    else nativeStaticItemState(stack,{allowPartialGlint:true})
     return true
   } catch { return false }
 }
@@ -51,7 +51,7 @@ export class NativeItemIcons {
     } else if(nativePotionItemEligible(key)){
       try{validateNativePotionItem(stack);provider='potion'}catch{return null}
     } else {
-      try { nativeStaticItemState(stack); provider = 'static' } catch { return null }
+      try { nativeStaticItemState(stack,{allowPartialGlint:true}); provider = 'static' } catch { return null }
     }
     // Every provider binds to complete authoritative SNBT, including visual
     // inputs, removal patches and tag types. No name-only generic icon cache.
@@ -80,7 +80,7 @@ export class NativeItemIcons {
       if (nativeSoulSlabEligible(item.name)) nativeSoulSlabState(stack)
       else if (nativeDomumItemEligible(item.name)) nativeDomumItemState(stack)
       else if(nativePotionItemEligible(item.name))validateNativePotionItem(stack)
-      else if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack)
+      else if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack,{allowPartialGlint:true})
       const entry=this.entries.get(item.name+'#'+item.snbt)
       return entry ? entry.reason : this.entries.size>=128?'NATIVE_ITEM_ICON_CACHE_LIMIT':'not_requested'
     } catch(error) { return error.message }
@@ -150,7 +150,11 @@ export class NativeItemIcons {
           : { kind:'native-json-flat',sourcePaths:[...model.sourcePaths,png],providerEvidence:evidence,pixelParityVerified:false }) }
       entry.reason = null
     } catch(error) { entry.reason = error.message }
-    finally { entry.loading = false; if (!this.disposed && this.entries.get(key) === entry) this.onChange() }
+    finally {
+      if(entry.result&&entry.provider==='static'&&nativeStaticItemState(entry.stack,{allowPartialGlint:true}).foil)
+        entry.result.effectUnavailableReason='NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE';
+      entry.loading=false;if(!this.disposed&&this.entries.get(key)===entry)this.onChange();
+    }
   }
   dispose() {
     if (this.disposed) return

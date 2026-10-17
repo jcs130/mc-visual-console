@@ -258,7 +258,7 @@ export function verifyNativeStaticItemEvidence(reader,name) {
 }
 // These inputs affect tooltip/gameplay/overlays, not the audited static Item
 // model. Keep every value and NBT type in the authoritative stack/cache key.
-const NON_VISUAL=new Set(['minecraft:custom_name','minecraft:item_name','minecraft:lore','minecraft:rarity',
+const NON_VISUAL=new Set(['minecraft:custom_name','minecraft:item_name','minecraft:lore','minecraft:rarity','minecraft:custom_data',
   'minecraft:damage','minecraft:max_damage','minecraft:max_stack_size','minecraft:unbreakable','minecraft:repair_cost',
   'minecraft:hide_tooltip','minecraft:hide_additional_tooltip','minecraft:food','minecraft:fire_resistant',
   'minecraft:attribute_modifiers','minecraft:can_break','minecraft:can_place_on',
@@ -266,7 +266,7 @@ const NON_VISUAL=new Set(['minecraft:custom_name','minecraft:item_name','minecra
 const KNOWN=new Set([...NON_VISUAL,'minecraft:enchantments','minecraft:stored_enchantments','minecraft:enchantment_glint_override'])
 const DEFAULT_GLINT=new Set(['minecraft:enchanted_golden_apple','minecraft:nether_star','minecraft:written_book'])
 const record=value=>value&&typeof value==='object'&&!Array.isArray(value)
-export function nativeStaticItemState(input) {
+export function nativeStaticItemState(input,{allowPartialGlint=false}={}) {
   const stack=input?.id?input:parseNativeItemStack(input),evidence=nativeStaticItemEvidence(stack.id)
   if(!evidence||!Number.isSafeInteger(stack.count)||stack.count<=0||!record(stack.components)) throw Error('NATIVE_ITEM_STATIC_PROVIDER_UNVERIFIED')
   const components=stack.components
@@ -282,13 +282,15 @@ export function nativeStaticItemState(input) {
     else if(value===false||n===0)foil=false
     else throw Error('NATIVE_ITEM_GLINT_STATE_INVALID')
   }
-  if(foil===true)throw Error('NATIVE_ITEM_GLINT_UNSUPPORTED')
+  if(foil===true&&!allowPartialGlint)throw Error('NATIVE_ITEM_GLINT_UNSUPPORTED')
   for(const key of ['minecraft:enchantments','minecraft:stored_enchantments']) {
     if(!Object.hasOwn(components,key))continue
     const value=components[key]
     if(!record(value)||Object.keys(value).some(name=>!['levels','show_in_tooltip'].includes(name))||
       (value.levels!==undefined&&!record(value.levels)))throw Error('NATIVE_ITEM_ENCHANTMENTS_INVALID')
-    if(Object.keys(value.levels??{}).length&&foil!==false)throw Error('NATIVE_ITEM_GLINT_UNSUPPORTED')
+    if(Object.keys(value.levels??{}).length&&foil!==false){
+      if(!allowPartialGlint)throw Error('NATIVE_ITEM_GLINT_UNSUPPORTED');foil=true
+    }
   }
-  return {stack,evidence}
+  return {stack,evidence,foil:foil===true}
 }

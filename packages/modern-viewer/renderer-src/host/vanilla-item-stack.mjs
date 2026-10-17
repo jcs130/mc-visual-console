@@ -1,5 +1,6 @@
 // Explicit 1.21.1 wire-component to ItemStack codec subset. Missing/unsupported
 // patches stay unavailable; never turn an unknown item into a default icon.
+import {componentSnbt,enchantmentSnbt} from './vanilla-component-nbt.mjs';
 const INTEGER = new Set(['max_stack_size', 'max_damage', 'damage', 'repair_cost', 'custom_model_data']);
 const UNIT = new Set(['hide_additional_tooltip', 'hide_tooltip', 'fire_resistant', 'intangible_projectile']);
 const quote = value => JSON.stringify(value);
@@ -40,6 +41,12 @@ function potionComponent(data,registry){
 }
 
 function componentValue(type, data, registry) {
+  if(['custom_name','item_name','custom_data'].includes(type))return componentSnbt(data);
+  if(type==='lore'){
+    if(!Array.isArray(data)||data.length>256)throw Error('VANILLA_NBT_LIMIT');
+    return '['+data.map(row=>componentSnbt(row)).join(',')+']';
+  }
+  if(['enchantments','stored_enchantments'].includes(type))return enchantmentSnbt(data,registry);
   if(type==='potion_contents')return potionComponent(data,registry);
   if (INTEGER.has(type)) {
     if (!Number.isSafeInteger(data) || data < -2147483648 || data > 2147483647 ||
@@ -89,6 +96,7 @@ export function vanillaItemStack(item, registry) {
     }
     const components = [...patch].map(([key, value]) => quote(key) + ':' + value).join(',');
     const snbt = `{id:${quote(name)},count:${item.count}${components ? ',components:{' + components + '}' : ''}}`;
+    if(Buffer.byteLength(snbt)>65536)throw Error('VANILLA_NBT_LIMIT');
     const leaf = name.slice('minecraft:'.length);
     const descriptionId = (registry?.blocksByName?.[leaf] ? 'block.' : 'item.') + 'minecraft.' + leaf;
     return { item: { ...base, snbt, descriptionId,

@@ -118,13 +118,12 @@ test('complete SNBT permits proven nonvisual state and empty/removal patches whi
   assert.equal(nativeItemIconEligible(source),true)
   assert.equal(nativeItemIconEligible(raw('minecraft:iron_pickaxe','"!minecraft:custom_name":{}')),true)
   for(const components of ['"minecraft:custom_model_data":1','"minecraft:dyed_color":{rgb:1}','"minecraft:profile":{}',
-    '"minecraft:block_state":{lit:"true"}','"mod:unknown":{}','"minecraft:enchantment_glint_override":true',
-    '"minecraft:enchantments":{levels:{"minecraft:unbreaking":1}}','"minecraft:enchantment_glint_override":{type:"byte",value:0}',
+    '"minecraft:block_state":{lit:"true"}','"mod:unknown":{}','"minecraft:enchantment_glint_override":{type:"byte",value:0}',
     '"minecraft:custom_name":"x","!minecraft:custom_name":{}']){
     assert.equal(nativeItemIconEligible(raw('minecraft:iron_pickaxe',components)),false)
   }
   for(const name of ['minecraft:written_book','minecraft:nether_star','minecraft:enchanted_golden_apple']){
-    assert.equal(nativeItemIconEligible(raw(name)),false,'native default glint may not become a plain icon')
+    assert.equal(nativeItemIconEligible(raw(name)),true,'base texture remains available with explicit partial glint metadata')
     assert.equal(nativeItemIconEligible(raw(name,'"minecraft:enchantment_glint_override":false')),true)
     assert.equal(nativeItemIconEligible(raw(name,'"!minecraft:enchantment_glint_override":{}')),true)
   }
@@ -191,7 +190,7 @@ test('cooked rice uses its original flat texture with complete FOOD patches and 
   assert.notEqual(icons.resolve(a).url,icons.resolve(b).url);assert.equal(created,2)
   assert.equal(icons.resolve({...a,food:{nutrition:99},displayName:'原服务端显示名'}).url,icons.resolve(a).url,'summary and name never replace full SNBT')
   for(const components of ['"minecraft:custom_model_data":1','"minecraft:dyed_color":{rgb:1}',
-    '"farmersdelight:unknown_visual_input":{}','"minecraft:enchantment_glint_override":true']){
+    '"farmersdelight:unknown_visual_input":{}']){
     const unsupported=raw(name,components);assert.equal(icons.resolve(unsupported),null);assert.match(icons.reason(unsupported),/UNSUPPORTED/)
   }
   icons.dispose();assert.equal(released.length,2)

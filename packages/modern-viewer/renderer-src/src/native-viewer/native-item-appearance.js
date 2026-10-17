@@ -91,7 +91,7 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     // Preserve the established GUI/held eligibility difference. GUI-only mod
     // providers reach the same existing explicit unavailable diagnosis in hand.
     if (!gui && (TOOL.test(stack.id) || stack.id === 'minecraft:stick')) validateHeldTool(stack)
-    else nativeStaticItemState(stack)
+    else nativeStaticItemState(stack,{allowPartialGlint:gui})
     family = nativeStaticItemEvidence(stack.id)?.kind === 'chest' ? 'chest' : 'static'
     if (gui || !(TOOL.test(stack.id) || stack.id === 'minecraft:stick')) evidence = verifyNativeStaticItemEvidence(reader, stack.id)
     else evidence = nativeStaticItemEvidence(stack.id)
