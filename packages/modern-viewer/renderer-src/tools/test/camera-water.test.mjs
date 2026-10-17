@@ -102,3 +102,23 @@ test('water blending does not accumulate and preserves a fresh external sky or d
   assert.equal(scene.fog.color.getHex(),new Color(.2,.3,.4).getHex());assert.equal(scene.fog.far,80);
   assert.equal(scene.background.getHex(),new Color(.1,.2,.3).getHex());
 });
+
+test('observer presentation can omit full-scene blue while retaining the actual water medium',()=>{
+  const scene=new Scene(),camera=new PerspectiveCamera();scene.add(camera);camera.position.y=64.5;
+  scene.fog=new Fog(new Color(.7,.8,.9),2,128);scene.background=new Color(.6,.7,.8);
+  const sky={material:{color:new Color(.4,.5,.6)}},voidMesh={material:{color:new Color(.1,.2,.3)}};
+  const original={fog:scene.fog.color.getHex(),background:scene.background.getHex(),sky:sky.material.color.getHex(),void:voidMesh.material.color.getHex()};
+  const world={scene,camera,viewDistance:4,sceneOrigin:{toWorldX:x=>x,toWorldY:y=>y,toWorldZ:z=>z},skyboxRenderer:{skyMesh:sky,voidMesh}};
+  let now=0;installCameraWater(world,()=>water,()=>now,{observer:true,effects:false});
+  for(;now<2000;now+=16)scene.onBeforeRender(null,scene,camera);
+  assert.equal(world.cameraMedium.submerged,true,'presentation does not alter measured water contact');
+  assert.equal(world.cameraMedium.amount,1);
+  assert.equal(world.cameraMedium.visualAmount,0);
+  assert.equal(world.cameraMedium.waterFog.enabled,false);
+  assert.equal(scene.fog.near,2);assert.equal(scene.fog.far,128);
+  assert.deepEqual({fog:scene.fog.color.getHex(),background:scene.background.getHex(),sky:sky.material.color.getHex(),void:voidMesh.material.color.getHex()},original);
+  camera.position.set(512,85,-300);now+=16;scene.onBeforeRender(null,scene,camera);
+  assert.equal(world.cameraMedium.visualAmount,0);
+  const client=readFileSync(new URL('../../src/modern-viewer/client.js',import.meta.url),'utf8');
+  assert.match(client,/observer: usesWorldAvatar, effects: !usesWorldAvatar/);
+});

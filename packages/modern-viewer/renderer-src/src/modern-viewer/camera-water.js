@@ -95,6 +95,10 @@ export function installCameraWater(world, blockAt, now = () => performance.now()
     const teleported = hasPosition && lastPosition.distanceToSquared(position) > 16 * 16;
     lastPosition.set(position.x, position.y, position.z); hasPosition = true;
     const at = now(), amount = teleported ? transition.reset(depth, at) : transition.update(depth, at);
+    // A free observation camera can pass through water while watching a dry
+    // player. Keep measured medium facts, but allow that view to omit the
+    // full-scene underwater colour/range overlay. Water meshes stay intact.
+    const visualAmount = options.effects === false ? 0 : amount;
     // Sky updates may pause (for example with a custom/disabled skybox).
     // Blend from the unpainted base rather than accumulating blue each frame.
     const fog = world.scene.fog;
@@ -106,16 +110,16 @@ export function installCameraWater(world, blockAt, now = () => performance.now()
     paintedFog = fog;
     if (fog) {
       baseNear = fog.near; baseFar = fog.far;
-      fog.near += (range.near - fog.near) * amount;
-      fog.far += (range.far - fog.far) * amount;
+      fog.near += (range.near - fog.near) * visualAmount;
+      fog.far += (range.far - fog.far) * visualAmount;
       paintedNear = fog.near; paintedFar = fog.far;
     }
-    fogLayer.paint(fog?.color, waterColor, amount); backgroundLayer.paint(scene.background, waterColor, amount);
-    skyLayer.paint(skybox?.skyMesh?.material?.color, waterColor, amount);
-    voidLayer.paint(skybox?.voidMesh?.material?.color, voidColor, amount);
+    fogLayer.paint(fog?.color, waterColor, visualAmount); backgroundLayer.paint(scene.background, waterColor, visualAmount);
+    skyLayer.paint(skybox?.skyMesh?.material?.color, waterColor, visualAmount);
+    voidLayer.paint(skybox?.voidMesh?.material?.color, voidColor, visualAmount);
     world.cameraMedium = { source: 'camera-streamed-block', known: depth !== null, submerged: transition.submerged, amount, position,
-      discontinuityReset: teleported,
-      waterFog: { ...range, rangeSource: 'java-1.21.1-FogRenderer', colourSource: 'legacy-renderer-palette',
+      discontinuityReset: teleported, visualAmount,
+      waterFog: { ...range, enabled: options.effects !== false, rangeSource: 'java-1.21.1-FogRenderer', colourSource: 'legacy-renderer-palette',
         biomeColourParityVerified: false } };
   };
   return transition;
