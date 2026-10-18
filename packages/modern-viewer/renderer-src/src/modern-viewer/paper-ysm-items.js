@@ -135,7 +135,13 @@ export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTex
       group.add(new THREE.Mesh(merged,materials.get(id)));
     }
     const display=model.display['thirdperson_'+arm+'hand']??model.display.thirdperson_righthand??{};
-    group.applyMatrix4(paperYsmItemMount(display,arm));group.name='paper-ysm-held-'+arm;
+    const mount=paperYsmItemMount(display,arm);
+    // YSM's crossbow hand pose and Java's generated crossbow sprite use
+    // opposite stock-to-muzzle axes. Roll the centred sprite in its own plane;
+    // preserve the original display/grip translation, UVs and handedness.
+    // Custom geometric appearances and other held items keep their own frames.
+    if(name==='crossbow' && model.generated)mount.multiply(new THREE.Matrix4().makeRotationZ(Math.PI));
+    group.applyMatrix4(mount);group.name='paper-ysm-held-'+arm;
     group.userData={item:name,sourceModels:model.sourceModels,source:'minecraft_1.20.6_original_models',completeEntityParityVerified:false};
     let disposed=false;
     return {root:group,dispose(){if(disposed)return;disposed=true;group.removeFromParent();group.traverse(p=>p.geometry?.dispose());for(const m of materials.values())m.dispose();for(const t of textures.values())t.dispose();group.clear();}};
