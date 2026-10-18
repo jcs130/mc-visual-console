@@ -66,7 +66,7 @@ export class BundledYsmHeldItems {
         .multiply(new Matrix4().makeTranslation(0, 0, -.25)).multiply(new Matrix4().makeRotationY(Math.PI))
         .multiply(new Matrix4().makeTranslation(.5, .5, .5))
       mount.add(object); mount.visible = this.visible; locator.add(mount)
-      Object.assign(row, { object, mount, textures, status: 'ready', reason: null, effectUnavailableReason: plan.appearance.requirements.effectUnavailableReason }); retained = true
+      Object.assign(row, { object, mount, textures, status: 'ready', reason: null, glint: object.userData.glint, effectUnavailableReason: plan.appearance.requirements.effectUnavailableReason }); retained = true
     } catch (error) {
       if (object) disposeNativeHeldItemObject(object)
       if (current()) { row.status = 'unavailable'; row.reason = error.message }
@@ -76,7 +76,7 @@ export class BundledYsmHeldItems {
   state() { const rows = [...this.hands.values()], available = rows.some(row => row.status === 'ready' && row.mount.visible)
     return { available, reason: available ? null : this.reason ?? rows.find(row => row.reason)?.reason ??
       (rows.some(row => row.status === 'loading') ? 'NATIVE_HELD_ITEMS_LOADING' : rows.some(row => row.status === 'ready') ? 'BUNDLED_YSM_HELD_POSE_HIDDEN' : 'NATIVE_HELD_HANDS_EMPTY'),
-    hands: Object.fromEntries([...this.hands].map(([arm, row]) => [arm, { status: row.status, reason: row.reason ?? null, effectUnavailableReason: row.effectUnavailableReason ?? null, name: row.name, slot: row.slot, visible: !!row.mount?.visible }])),
+    hands: Object.fromEntries([...this.hands].map(([arm, row]) => [arm, { status: row.status, reason: row.reason ?? null, glint: row.glint ?? null, effectUnavailableReason: row.effectUnavailableReason ?? null, name: row.name, slot: row.slot, visible: !!row.mount?.visible }])),
     source: 'native_item_stack_original_ysm_locator', completeEntityParityVerified: false } }
   dispose() { if (this.disposed) return; this.disposed = true; for (const arm of ['right', 'left']) this.retire(arm) }
 }

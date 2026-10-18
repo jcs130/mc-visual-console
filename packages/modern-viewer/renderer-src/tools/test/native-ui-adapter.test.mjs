@@ -136,7 +136,7 @@ test('soul slab displays the original clipped animated image, discloses missing 
   assert.equal(slot.querySelector('.corti-native-animated-icon').style.overflow,'hidden')
   assert.equal(slot.querySelector('.corti-item-fallback'),null)
   assert.equal(slot.dataset.modelState,'partial'); assert.equal(slot.dataset.animationFrames,'7')
-  assert.match(slot.title,/附魔光效未适配/)
+  assert.match(slot.title,/附魔光效暂不可用/)
   assert.match(nativeSoulSlabAnimationStyle(animation).animation,/700ms steps\(7,end\)/)
   renderNativeItemSlot(document,slot,null)
   assert.equal(slot.dataset.modelState,'empty'); assert.equal(slot.dataset.effectReason,undefined)
@@ -363,6 +363,17 @@ test('the real window zero supplies inventory state without automatically openin
     menuType: 'mod:container', slots: [{ slot: 0, item: null }] } }) })
   assert.equal(h.document.getElementById('corti-menu').dataset.inventorySource, 'container')
 })
+test('real icon bindings keep accessible base image, report effect decode failures and cannot overwrite a replacement item', () => {
+  const document=shell(),slot=document.createElement('div');document.body.append(slot)
+  const item={name:'minecraft:iron_sword',count:1},icon={verified:true,url:'blob:sword',liveGlint:{source:'original_test_glint',bind:()=>true}}
+  renderNativeItemSlot(document,slot,item,{resolveItemIcon:()=>icon})
+  const canvas=slot.querySelector('canvas');assert.ok(canvas);assert.equal(slot.querySelector('img').alt,item.name)
+  assert.equal(slot.dataset.glintSource,'original_test_glint')
+  canvas.dispatch('native-glint-error');assert.equal(slot.dataset.modelState,'partial');assert.match(slot.title,/解码失败/)
+  renderNativeItemSlot(document,slot,{name:'minecraft:stick',count:1},{resolveItemIcon:()=>({verified:true,url:'blob:stick'})})
+  canvas.dispatch('native-glint-error');assert.equal(slot.dataset.glintSource,undefined);assert.match(slot.title,/minecraft:stick/);assert.doesNotMatch(slot.title,/解码失败/)
+})
+
 test('long skills stay in closed disclosures with a bounded preview and keep expansion across updated readings', () => {
   const h = harness(), skills = { source: 'plugin', skills: Array.from({ length: 11 }, (_, i) => ({ name: `等级${i}`, level: i })),
     abilities: Array.from({ length: 40 }, (_, i) => ({ id: `extension:${i}`, name: `能力${i}`, cooldownRemainingMs: null })) }

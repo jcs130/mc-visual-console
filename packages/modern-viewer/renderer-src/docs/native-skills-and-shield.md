@@ -10,8 +10,9 @@ guess active/passive classes, costs, cooldowns or casting controls.
 Confirmed inventory stacks control bundled YUI hand visibility. Missing animation
 physics no longer hides an independently verified item. Complete inventory-0,
 UUID, selected-slot and main-arm checks remain; death, sleep, removed stacks and
-invalid identity clear/hide the items. Enchantments retain base geometry and an
-explicit missing-glint diagnostic, rather than hiding the whole tool.
+invalid identity clear/hide the items. Enchantments retain base geometry and
+use the original glint when their atlas inputs are verified; otherwise the
+effect has an explicit unavailable diagnostic rather than hiding the tool.
 
 The shield provider ports the 1.21.1 `ShieldModel.createLayer` plate
 (-6,-11,-2; 12,22,1; UV 0,0) and handle (-1,-3,-1; 2,6,6; UV 26,0),
@@ -31,6 +32,7 @@ Mojang client mappings SHA1: `2244b6f072256667bcd9a73df124d6c58de77992`.
 Tests use exported original assets, complete received item stacks and the actual
 YUI actor, covering both handedness values, temporary missing physics, enchantment
 diagnostics, death, replacement/removal, foreign identity and long skill lists.
-Banner-coloured/patterned shields, active blocking pose, glint and exact Java GUI
+Banner-coloured/patterned shields, active blocking pose and exact Java GUI
 lighting/pixel parity remain unverified/unavailable; complete parity stays false.
+See [original glint](native-item-glint.md) for the item/shield atlas scope.
 No resource bytes, game actions, Neko code, speech or server state are changed.

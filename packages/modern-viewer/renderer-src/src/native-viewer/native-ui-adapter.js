@@ -330,6 +330,7 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
   slot.dataset.modelState = item ? 'unavailable' : 'empty'
   delete slot.dataset.modelReason
   delete slot.dataset.effectReason; delete slot.dataset.animationFrames
+  delete slot.dataset.glintSource
   // Localize the original same-player Component, retaining the native ID and
   // complete SNBT. Unknown/custom names keep the authoritative server text.
   const displayName = text(resolveItemName?.(item), 256) || text(item?.displayName, 256) || item?.name
@@ -360,7 +361,7 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
     }
     if (icon.effectUnavailableReason) {
       slot.dataset.effectReason = icon.effectUnavailableReason
-      slot.title += ' · 附魔光效未适配（原生图集坐标未同步）'
+      slot.title += ` · 附魔光效暂不可用（${icon.effectUnavailableReason}）`
     }
     image.addEventListener('error', () => {
       if (image.parentNode !== iconContainer || (iconContainer !== slot && iconContainer.parentNode !== slot)) return
@@ -375,7 +376,18 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
       slot.title = diagnostic+annotations; slot.setAttribute('aria-label', slot.title)
       slot.prepend(node(document, 'span', 'corti-item-fallback', displayName))
     }, { once: true })
-    if (iconContainer === slot) slot.append(image)
+    if (icon.liveGlint?.bind) {
+      const wrapper=node(document,'span','corti-native-glint-icon'),canvas=node(document,'canvas','corti-native-glint')
+      canvas.setAttribute('aria-hidden','true');wrapper.append(image,canvas)
+      if(imageStyle)Object.assign(wrapper.style,imageStyle)
+      iconContainer=wrapper;slot.append(wrapper)
+      if(icon.liveGlint.bind(canvas)){slot.dataset.glintSource=icon.liveGlint.source;slot.title += ' · 原版附魔流光'}
+      canvas.addEventListener('native-glint-error',()=>{if(wrapper.parentNode!==slot)return
+        slot.dataset.modelState='partial';slot.dataset.effectReason='NATIVE_GLINT_ICON_DECODE_FAILED';delete slot.dataset.glintSource
+        slot.title=identity+' · 附魔光效暂不可用（图标解码失败）';slot.setAttribute('aria-label',slot.title)
+      },{once:true})
+    }
+    else if (iconContainer === slot) slot.append(image)
     else { iconContainer.append(image); slot.append(iconContainer) }
   } else {
     const failure = animationError || reason

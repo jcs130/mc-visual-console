@@ -3,6 +3,7 @@ import { nativeStaticItemState, nativeStaticItemEvidence, verifyNativeStaticItem
 import { nativeBlockItemEligible, resolveNativeBlockItemModel, nativeGuiItemTransform, prepareNativeBlockGuiPlan, BLOCK_ICON_CLIENT_SHA256 } from './native-block-item-icons.js'
 import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 import { prepareNativeShieldItem } from './native-shield-items.js'
+import { prepareNativeGlint } from './native-item-glint.js'
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
 import { nativeArsItemEligible, prepareNativeArsItemIcon } from './native-ars-item-icons.js'
 import { nativeDomumItemEligible, prepareNativeDomumItemIcon } from './native-domum-item-icons.js'
@@ -118,12 +119,16 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
   if (gui && geometry === 'block') prepared = await prepareNativeBlockGuiPlan(reader, { name: stack.id, model, evidence })
   const display = model.display ?? {}, right = context.kind.replace('_lefthand', '_righthand')
   const geometryId = family === 'ars' ? `ars_nouveau:spellbook_${gui || prepared.leaf === 'worn_notebook' ? 'closed' : 'open'}` : modelId
+  let glint = null, effectUnavailableReason = prepared?.effectUnavailableReason ?? (effect?.foil ? gui ? 'NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE' : 'NATIVE_HELD_GLINT_ATLAS_UV_UNAVAILABLE' : null)
+  if (effect?.foil && ['static','shield'].includes(family) && stack.id.startsWith('minecraft:')) {
+    try { glint = await prepareNativeGlint(reader); effectUnavailableReason = null } catch (error) { effectUnavailableReason = error.message }
+  }
   return { stack, context, family, geometry, geometryId, modelId, model, display,
     selectedDisplay: display[context.kind] ?? display[right] ?? {}, prepared, evidence,
     sourcePaths: [...new Set([...(prepared?.sourcePaths ?? []), ...(model.sourcePaths ?? [])])],
     sourceVerification: !gui && (TOOL.test(stack.id) || stack.id === 'minecraft:stick') ? 'held_client_sha_and_asset_reader' : 'provider_source_and_asset_reader',
     requirements: { material: prepared?.originalMaterial ?? (gui && ['block', 'specialized'].includes(geometry) && family !== 'chest' ? 'original_opaque_gui' : 'entityCutout'),
       tintColors: family === 'potion' ? { 0: prepared.color } : null,
-      effectUnavailableReason: prepared?.effectUnavailableReason ?? (effect?.foil ? gui ? 'NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE' : 'NATIVE_HELD_GLINT_ATLAS_UV_UNAVAILABLE' : null),
+      glint, effectUnavailableReason,
       propertyEvaluation: 'not_implemented', pixelParityVerified: false } }
 }

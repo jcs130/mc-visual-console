@@ -171,7 +171,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       d?.heldItems ? `第三人称持物：${d.heldItems.available ? '原始模型已接入' : d.heldItems.reason || '未支持'}` : '',
       pendingMode === 'first' && d?.firstPersonItems ? `第一人称持物：${d.firstPersonItems.available ? (d.firstPersonItems.swingAnimationAvailable ? '本人挥手与持物动画' : '原始静止持物姿态') : d.firstPersonItems.reason || '未支持'}；装备切换与完整使用动画待适配` : '',
       ...Object.entries((pendingMode === 'first' ? d?.firstPersonItems : d?.heldItems)?.hands ?? {}).map(([arm, hand]) =>
-        `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}${hand.effectUnavailableReason ? `；${hand.effectUnavailableReason}` : ''}`),
+        `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}${hand.glint?.available ? '；原版附魔流光' : hand.effectUnavailableReason ? `；${hand.effectUnavailableReason}` : ''}`),
       presentation.available ? '背包/菜单/技能：同一玩家原生状态；原生物品图标已接入，未支持的专用模型/组件及装备明确标注' : `展示数据：${presentation.reason}`,
       pendingMode === '3dview' ? '3D观战跟随相机；原遮挡切面、旋转、缩放已接入' : '',
       '小地图：本人原场景与移动轨迹；第三人称已接入原运镜设置', d?.audio?.available?'声音：原始资源与本人实际事件；观战配乐为本机选择':'声音：'+(d?.audio?.reason??'等待原版音效包'), '完整场景一致性尚未验收',

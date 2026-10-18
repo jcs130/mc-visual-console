@@ -594,6 +594,11 @@ body[data-viewer-layout=docked]{--viewer-rail-width:220px;--viewer-top:60px;--vi
 .viewer-rail .corti-skills [data-ability-list],.viewer-rail .corti-skills [data-skill-list]{grid-template-columns:repeat(2,minmax(0,1fr));max-height:min(260px,30vh);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .corti-skills [data-ability-list]>.corti-skill{min-width:0;padding:5px;border-radius:4px;background:#92b5ad0b;overflow-wrap:anywhere;font-size:11px}
 .corti-skills [hidden]{display:none!important}
+.corti-native-glint-icon{position:relative;display:block;width:32px;height:32px;flex-shrink:0}
+.corti-native-glint-icon>img{position:absolute!important;inset:0;width:100%!important;height:100%!important}
+.corti-native-glint{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;pointer-events:none;opacity:0}
+.corti-native-glint[data-native-glint=animated]{opacity:1}
+.corti-native-glint[hidden]{display:none!important}
 .viewer-rail .corti-effects:empty{display:none}.viewer-rail .corti-effects{display:flex;flex-wrap:wrap;gap:6px}
 .viewer-rail #corti-held-map canvas{max-width:100%}
 body[data-viewer-clean=true] .viewer-rail{display:none}

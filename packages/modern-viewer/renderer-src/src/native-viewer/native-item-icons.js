@@ -8,6 +8,8 @@ import { nativeDomumItemEligible, nativeDomumItemState, NativeDomumItemIconRende
 import { nativeSoulSlabEligible, nativeSoulSlabState, prepareNativeSoulSlabIcon } from './native-soul-slab-icons.js'
 import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 import { prepareNativeShieldItem } from './native-shield-items.js'
+import { prepareNativeGlint } from './native-item-glint.js'
+import { NativeIconGlintClock } from './native-icon-glint.js'
 import {nativePotionItemEligible,validateNativePotionItem} from './native-potion-items.js'
 import {renderNativePotionIcon} from './native-potion-icons.js'
 import { resolveNativeItemAppearance } from './native-item-appearance.js'
@@ -27,11 +29,12 @@ export function nativeItemIconEligible(item) {
 }
 
 export class NativeItemIcons {
-  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {}, shieldRendererOptions = {},potionIconOptions={} } = {}) {
+  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {}, shieldRendererOptions = {},glintOptions={},potionIconOptions={} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
     this.serverIcons=new ServerItemIcons({reader,onChange,createUrl,revokeUrl})
     this.context=null;this.compassWobble=new NativeCompassWobble()
+    this.glintClock = new NativeIconGlintClock(glintOptions)
     this.potionIconOptions=potionIconOptions
     this.animationEpochMs = Date.now()
     this.blockRenderer = new NativeBlockItemIconRenderer(reader, blockRendererOptions)
@@ -86,6 +89,7 @@ export class NativeItemIcons {
     for (const [key, entry] of this.entries) {
       if (entry.loading) continue // An in-flight decoder owns its resources.
       this.entries.delete(key); this.queue = this.queue.filter(value => value !== key)
+      entry.result?.liveGlint?.dispose()
       if (entry.result) this.revokeUrl(entry.result.url)
       return true
     }
@@ -119,6 +123,7 @@ export class NativeItemIcons {
     const name = entry.name
     try {
       const appearance = entry.dynamic?await prepareNativeDynamicGuiIcon(this.reader,entry.dynamic):await resolveNativeItemAppearance(this.reader, entry.stack, { kind: 'gui' })
+      entry.appearance = appearance
       if (this.disposed) return
       const provider = appearance.family
       if(provider==='potion'){
@@ -172,8 +177,15 @@ export class NativeItemIcons {
       entry.reason = null
     } catch(error) { entry.reason = error.message }
     finally {
-      if(entry.result&&(entry.dynamic?.foil||entry.provider==='static'&&nativeStaticItemState(entry.stack,{allowPartialGlint:true}).foil))
-        entry.result.effectUnavailableReason='NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE';
+      if(entry.result&&(entry.dynamic?.foil||entry.provider==='static'&&nativeStaticItemState(entry.stack,{allowPartialGlint:true}).foil)) {
+        try {
+          const glint=entry.appearance?.requirements?.glint ?? (entry.dynamic?.foil?await prepareNativeGlint(this.reader):null)
+          if(!glint)throw Error(entry.appearance?.requirements?.effectUnavailableReason??'NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE')
+          entry.result.liveGlint=this.glintClock.add(entry.result,entry.appearance,glint)
+          entry.result.glint={available:true,source:glint.source,pixelParityVerified:false}
+          delete entry.result.effectUnavailableReason
+        } catch(error) {entry.result.effectUnavailableReason=error.message}
+      }
       entry.loading=false;if(!this.disposed&&this.entries.get(key)===entry)this.onChange();
     }
   }
@@ -186,6 +198,8 @@ export class NativeItemIcons {
     this.domumRenderer.dispose()
     this.chestRenderer.dispose()
     this.shieldRenderer.dispose()
+    this.glintClock.dispose()
+    for (const entry of this.entries.values()) entry.result?.liveGlint?.dispose()
     for (const entry of this.entries.values()) if (entry.result) this.revokeUrl(entry.result.url)
     this.entries.clear()
   }

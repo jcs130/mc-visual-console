@@ -58,6 +58,12 @@ test('observed furnace and ordinary bucket/saddle stacks retain their original v
   }
 })
 
+test('enchanted tool binds original glint with verified sprite atlas instead of a permanently missing effect', async () => {
+  const plan = await prepareNativeHeldItem(await reader(), item('minecraft:iron_sword', '"minecraft:enchantments":{levels:{"minecraft:sharpness":1}}'), 'right', { readPixels: decode })
+  assert.ok(plan.appearance.requirements.glint)
+  assert.equal(plan.appearance.requirements.effectUnavailableReason, null)
+})
+
 test('YSM holds observed enchanted main item and shield independently of motion freshness, swaps hands and clears removed stacks', async () => {
   const model = { bones: new Map(['RightHandLocator', 'LeftHandLocator'].map(name => [name, new THREE.Group()])) }
   const held = new BundledYsmHeldItems(await reader(), model, uuid, texture, { readPixels: decode })
@@ -65,7 +71,7 @@ test('YSM holds observed enchanted main item and shield independently of motion 
     held.apply(frame(arm)); await settle(() => [...held.hands.values()].every(row => row.status !== 'loading'))
     const state = held.state(), off = arm === 'right' ? 'left' : 'right'
     assert.equal(state.hands[arm].status, 'ready', JSON.stringify(state)); assert.equal(state.hands[arm].visible, true)
-    assert.equal(state.hands[arm].effectUnavailableReason, 'NATIVE_HELD_GLINT_ATLAS_UV_UNAVAILABLE')
+    assert.equal(state.hands[arm].effectUnavailableReason, null); assert.equal(state.hands[arm].glint?.available, true)
     assert.equal(state.hands[off].name, 'minecraft:shield'); assert.equal(state.hands[off].visible, true)
     assert.equal(held.hands.get(arm).mount.parent, model.bones.get(arm === 'right' ? 'RightHandLocator' : 'LeftHandLocator'))
   }
