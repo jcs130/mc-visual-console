@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import fs from 'node:fs/promises'
 import * as THREE from 'three'
 import { loadBundledAppearances } from '../../host/native-bundled-appearances.mjs'
 import { BundledAppearanceReader } from '../../src/native-viewer/native-bundled-appearance.js'
@@ -9,6 +10,8 @@ import { NativeSelfPlayerController } from '../../src/native-viewer/native-self-
 import { createNativeBedrockModel } from '../../src/native-viewer/native-entity-model-bedrock.js'
 import { createBundledYsmFirstPersonArms, bundledYsmFirstPersonArmMatrix } from '../../src/native-viewer/native-bundled-ysm-first-person.js'
 import { nativeFirstPersonEmptyArmMatrix, nativeFirstPersonPlayerArmMatrix } from '../../src/native-viewer/native-first-person-motion.js'
+import { NativeAssetReader } from '../../src/native-viewer/model-loader.js'
+import { pngRgba } from './fixtures/png-rgba.mjs'
 
 const catalog = process.env.NATIVE_BUNDLED_APPEARANCE_CATALOG
 const uuid = '01234567-89ab-cdef-0123-456789abcdef'
@@ -45,6 +48,22 @@ test('vanilla V factoring preserves pinned a22b3f3b matrices at rest and swing f
     assert.deepEqual(nativeFirstPersonEmptyArmMatrix(progress, arm).elements, expected[i])
     assert.deepEqual(nativeFirstPersonPlayerArmMatrix(progress, arm).multiply(new THREE.Matrix4().makeScale(1/16, -1/16, -1/16)).elements, expected[i++])
   }
+})
+
+test('actual YUI actor retains both received items when animation physics is temporarily missing', { skip: !catalog }, async () => {
+  const { reader } = await originals(), root = new URL('../../../asset-packs/vanilla-1.21.1/', import.meta.url)
+  const native = new NativeAssetReader(JSON.parse(await fs.readFile(new URL('native-assets.json', root), 'utf8')), p => fs.readFile(new URL(p, root)))
+  const actor = await createNativeBundledYsmPlayerActor(native, { uuid, bundledAppearance: { reader, id: 'bundled:yui-ysm' },
+    loadTexture: async bytes => { const { width, height } = pngRgba(bytes); return new THREE.Texture({ width, height }) },
+    heldItemOptions: { readPixels: async bytes => pngRgba(bytes) } })
+  const f = frame(); f.self.health = 20
+  for (const [slot, name] of [[36, 'iron_sword'], [45, 'shield']]) f.inventory.slots[slot].item = { name: `minecraft:${name}`, count: 1, snbt: `{id:"minecraft:${name}",count:1}` }
+  actor.applyPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }); actor.applyHeldItems(f)
+  while (Object.values(actor.heldItemsState().hands).some(row => row.status === 'loading')) await new Promise(resolve => setImmediate(resolve))
+  actor.applyMotion({ current: { presentation: f }, now: 1000 })
+  assert.equal(actor.motionState().available, false)
+  assert.equal(actor.heldItemsState().hands.right.visible, true); assert.equal(actor.heldItemsState().hands.left.visible, true)
+  actor.dispose()
 })
 
 test('original arm bytes, UVs and complete per-side geometry survive partition; no shared material disposal', { skip: !catalog }, async () => {

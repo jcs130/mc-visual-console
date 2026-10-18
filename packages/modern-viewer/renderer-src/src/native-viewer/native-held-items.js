@@ -260,7 +260,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
   const stack = input?.id ? input : parseNativeItemStack(input)
   const appearance = await resolveNativeItemAppearance(reader, stack, contextInput)
   if (appearance.context.kind === 'gui' || (appearance.context.kind !== 'ground' && !appearance.context.kind.endsWith(`_${arm}hand`))) throw Error('NATIVE_HELD_CONTEXT_INVALID')
-  if(appearance.family==='chest') {
+  if(['chest','shield'].includes(appearance.family)) {
     const plan=appearance.prepared,textureLayers=new Map()
     for(const path of plan.texturePaths) {
       const bytes=await reader.bytes(path),dimensions=textureDimensions(bytes),decoded=await readPixels(bytes)
@@ -273,7 +273,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
       transform:nativeHeldItemTransform(display[`thirdperson_${arm}hand`]??display.thirdperson_righthand??{},arm),
       firstPersonTransform:nativeHeldItemTransform(display[`firstperson_${arm}hand`]??display.firstperson_righthand??{},arm,'firstperson'),
       groundTransform:nativeHeldItemTransform(display.ground??{},'right','ground'),sourcePaths:plan.sourcePaths,
-      geometry:'Minecraft 1.21.1 ChestRenderer single body',geoOffsetY:0,material:'entityCutout',geometrySourceVerified:true,
+      geometry:appearance.family==='shield'?'Minecraft 1.21.1 ShieldModel plate and handle':'Minecraft 1.21.1 ChestRenderer single body',geoOffsetY:0,material:'entityCutout',geometrySourceVerified:true,
       worldLightingParityVerified:false,pixelParityVerified:false}
   }
   if (!record(stack.components) || !Number.isSafeInteger(stack.count) || stack.count <= 0) throw Error('NATIVE_HELD_STACK_INVALID')
@@ -456,7 +456,7 @@ export class NativeHeldItems {
       hands: Object.fromEntries(['right', 'left'].map(arm => {
         const value = this.hands.get(arm)
         return [arm, value ? { slot: value.slot, name: value.raw?.name ?? null, status: value.status, reason: value.reason ?? null,
-          geometry: value.plan?.geometry ?? null, componentSource: value.componentSource ?? null, visible: value.mount?.visible ?? false,
+          geometry: value.plan?.geometry ?? null, effectUnavailableReason: value.plan?.appearance?.requirements?.effectUnavailableReason ?? null, componentSource: value.componentSource ?? null, visible: value.mount?.visible ?? false,
           armPoseAvailable: !thirdPersonPoseReason(this.selection?.self, this.now()) } : { status: 'unknown', reason: this.reason }]
       })), equipmentRenderingAvailable: false, worldLightingParityVerified: false, pixelParityVerified: false }
   }

@@ -363,6 +363,20 @@ test('the real window zero supplies inventory state without automatically openin
     menuType: 'mod:container', slots: [{ slot: 0, item: null }] } }) })
   assert.equal(h.document.getElementById('corti-menu').dataset.inventorySource, 'container')
 })
+test('long skills stay in closed disclosures with a bounded preview and keep expansion across updated readings', () => {
+  const h = harness(), skills = { source: 'plugin', skills: Array.from({ length: 11 }, (_, i) => ({ name: `等级${i}`, level: i })),
+    abilities: Array.from({ length: 40 }, (_, i) => ({ id: `extension:${i}`, name: `能力${i}`, cooldownRemainingMs: null })) }
+  h.ui.update({ epoch: 1, presentation: presentation({ skills }) })
+  const panel = h.document.getElementById('corti-skills'), more = panel.querySelector('[data-skill-details]')
+  assert.equal(more?.tagName, 'DETAILS'); assert.notEqual(more.open, true)
+  assert.equal(panel.querySelector('[data-skill-preview]').children.length, 4)
+  assert.equal(panel.querySelector('[data-ability-list]').children.length, 40)
+  assert.equal(panel.querySelector('[data-skill-list]').parentNode.tagName, 'DETAILS')
+  more.open = true
+  h.ui.update({ epoch: 1, presentation: presentation({ skills: { ...skills, observedAt: 2 } }) })
+  assert.equal(panel.querySelector('[data-skill-details]'), more); assert.equal(more.open, true)
+})
+
 test('skills do not invent cooldown readiness; hostile message text is literal and deduped; reset drops stale data', () => {
   const h = harness()
   const state = { epoch: 1, presentation: presentation({ skills: { source: 'ars_nouveau_receipt', mana: { current: 110, max: 200 }, abilities: [{ id: 'self:heal', name: 'Heal', manaCost: null, cooldownRemainingMs: null }] },

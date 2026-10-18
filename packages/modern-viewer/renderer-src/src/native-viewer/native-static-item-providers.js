@@ -240,6 +240,12 @@ add('minecraft','flat','net.minecraft.world.item.FireChargeItem',`fire_charge`)
 // BlockEntityWithoutLevelRenderer uses the original closed single chest model,
 // not JSON block elements. Keep this provider separate from JSON BlockItems.
 add('minecraft','chest','net.minecraft.world.item.BlockItem',`chest trapped_chest ender_chest`)
+add('minecraft','shield','net.minecraft.world.item.ShieldItem','shield')
+// Locked Items registration: ordinary BlockItem models (lit state is not an
+// item property). BucketItem/SaddleItem change use behaviour, not their model.
+add('minecraft','json','net.minecraft.world.item.BlockItem','furnace blast_furnace smoker')
+add('minecraft','flat','net.minecraft.world.item.BucketItem','bucket')
+add('minecraft','flat','net.minecraft.world.item.SaddleItem','saddle')
 // Confirmed by the locked 1.21.1 BuiltInRegistries class export. These use the
 // original static JSON GUI path; override, tint and component guards still apply.
 add('minecraft','flat','net.minecraft.world.item.BottleItem','glass_bottle')

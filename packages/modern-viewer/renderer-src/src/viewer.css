@@ -587,6 +587,13 @@ body[data-viewer-layout=docked]{--viewer-rail-width:220px;--viewer-top:60px;--vi
 .viewer-rail #agent-route-map canvas{height:auto;aspect-ratio:300/156}
 .viewer-rail .agent-intent-goal{font-size:13px}.viewer-rail .agent-intent-summary{max-height:100px;overflow:auto}
 .viewer-rail .corti-skills [data-skill-list]{gap:4px 8px}.viewer-rail .corti-skills [data-ability-list]{gap:5px}
+.corti-skills [data-skill-preview]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin-top:8px}
+.corti-skills [data-skill-preview]>span{padding:5px 6px;border:1px solid #849e9855;border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.corti-skills details{margin-top:7px;border-top:1px solid #849e9855;padding-top:6px}
+.corti-skills details summary{cursor:pointer;font-size:11px;color:#c3d9d5;padding:3px 0}
+.viewer-rail .corti-skills [data-ability-list],.viewer-rail .corti-skills [data-skill-list]{grid-template-columns:repeat(2,minmax(0,1fr));max-height:min(260px,30vh);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.corti-skills [data-ability-list]>.corti-skill{min-width:0;padding:5px;border-radius:4px;background:#92b5ad0b;overflow-wrap:anywhere;font-size:11px}
+.corti-skills [hidden]{display:none!important}
 .viewer-rail .corti-effects:empty{display:none}.viewer-rail .corti-effects{display:flex;flex-wrap:wrap;gap:6px}
 .viewer-rail #corti-held-map canvas{max-width:100%}
 body[data-viewer-clean=true] .viewer-rail{display:none}

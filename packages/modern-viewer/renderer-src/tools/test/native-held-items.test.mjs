@@ -344,7 +344,7 @@ test('damaged ordinary tool uses its real generated PNG geometry and third-perso
 })
 
 test('source hashes, animated PNG, wrong components and custom/dynamic models reject instead of approximating', async () => {
-  for (const component of ['"minecraft:custom_model_data":7','"minecraft:enchantments":{levels:{"minecraft:sharpness":1}}','"foreign:state":{}']) {
+  for (const component of ['"minecraft:custom_model_data":7','"foreign:state":{}']) {
     await assert.rejects(prepareNativeHeldItem(staticReader().reader,raw(undefined,component),'right',{readPixels:async()=>pixels()}),/COMPONENT_UNSUPPORTED/)
   }
   const {reader,bytes}=staticReader();bytes['assets/minecraft/textures/item/wooden_pickaxe.png']=png(8,8)

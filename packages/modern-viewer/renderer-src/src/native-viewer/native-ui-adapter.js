@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { renderNativeSkillLists } from './native-skill-panel.js'
 import { InventoryPlayerPreview } from '../modern-viewer/inventory-player-preview.js'
 import { FishingCatchHud } from '../modern-viewer/fishing-catch.js'
 import { NativeItemIcons } from './native-item-icons.js'
@@ -824,21 +825,8 @@ export function createNativeInterface ({ document = globalThis.document,
     const value = known ? `${Math.round(mana.current)}/${Math.round(mana.max)}` : '--/--'
     for (const selector of ['[data-mana]', '[data-corti-mana-label]']) { const target = q(selector); if (target) target.textContent = `✦ 魔力 ${value}` }
     for (const selector of ['[data-mana-fill]', '[data-corti-mana-fill]']) { const target = q(selector); if (target) target.style.width = known ? `${clamp(mana.current / mana.max, 0, 1) * 100}%` : '0%' }
-    const list = q('[data-skill-list]'), abilities = q('[data-ability-list]'), status = q('[data-skill-status]')
-    list?.replaceChildren(); abilities?.replaceChildren()
-    for (const skill of (Array.isArray(skills?.skills) ? skills.skills : []).slice(0, 64)) {
-      if (typeof skill?.name !== 'string') continue
-      list?.append(node(document, 'div', 'corti-skill', `${text(skill.name, 80)}${finite(skill.level) ? ` Lv.${skill.level}` : ''}`))
-    }
-    for (const ability of (Array.isArray(skills?.abilities) ? skills.abilities : []).slice(0, 64)) {
-      if (typeof ability?.name !== 'string') continue
-      // Plain read-only rows: these are observed spells, not clickable casts.
-      const row = node(document, 'div', 'corti-skill')
-      row.textContent = text(ability.name, 80)
-      const cooldown = finite(ability.cooldownRemainingMs) ? `冷却 ${ability.cooldownRemainingMs / 1000}秒` : '冷却未同步'
-      row.title = `${text(ability.id, 128)} · ${finite(ability.manaCost) ? `${ability.manaCost}魔力` : '消耗未同步'} · ${cooldown}`
-      row.append(node(document, 'small', '', cooldown)); abilities?.append(row)
-    }
+    renderNativeSkillLists(document, skills)
+    const status = q('[data-skill-status]')
     if (status) status.textContent = skills ? `${text(skills.source, 80)} · ${skills.stale ? '上次读数，等待更新' : '本人回执'}${finite(skills.observedAt) ? ` · ${new Date(skills.observedAt).toLocaleTimeString()}` : ''}` : '本人法术与魔力未同步'
   }
   const showMessages = () => {
