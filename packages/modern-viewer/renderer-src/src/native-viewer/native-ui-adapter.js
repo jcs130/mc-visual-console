@@ -495,14 +495,17 @@ export function createNativeInterface ({ document = globalThis.document,
       self.experienceLevel, self.experienceProgress, presentation.inventory, assetsSequence, iconRevision])
     if (hudSignature === signature) return
     hudSignature = signature
-    iconRow('[data-corti-hearts]', finite(maxHealth) && maxHealth > 0 ? Math.ceil(clamp(maxHealth, 1, 160) / 2) : null,
+    // Current health and the attribute can arrive separately. Never crop real
+    // health to a smaller capacity reading or silently invent a new maximum.
+    iconRow('[data-corti-hearts]', finite(maxHealth) && maxHealth > 0 ? Math.ceil(clamp(Math.max(maxHealth, finite(health) ? health : 0), 1, 160) / 2) : null,
       health, 'heart/full', 'heart/half', 'heart/container', finite(health) ? `生命 ${health} · 上限或纹理未同步` : '生命未同步')
     const hearts = q('[data-corti-hearts]')
     if (hearts?.dataset.state === 'available') {
       hearts.style.display = 'grid'; hearts.style.gridTemplateColumns = 'repeat(10, 16px)'
       const rows = Math.max(1, Math.ceil(hearts.children.length / 10))
       hearts.style.gridAutoRows = '18px'; hearts.style.height = `${rows * 18}px`
-      hearts.title = `生命 ${health}/${maxHealth}`
+      hearts.title = health > maxHealth ? `生命 ${health} · 上限读数 ${maxHealth}（与当前生命不一致）` : `生命 ${health}/${maxHealth}`
+      if (health > maxHealth) hearts.setAttribute('aria-label', hearts.title)
     }
     iconRow('[data-corti-food]', 10, self.food, 'food_full', 'food_half', 'food_empty', finite(self.food) ? `饥饿 ${self.food}/20 · 纹理未同步` : '饥饿未同步')
     iconRow('[data-corti-armor]', finite(self.armor) && self.armor > 0 ? 10 : 0, self.armor,

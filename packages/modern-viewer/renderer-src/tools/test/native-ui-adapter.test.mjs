@@ -240,6 +240,28 @@ test('verified asset preparation draws original heart/food sprites; no default U
   assert.equal(h.document.querySelector('[data-corti-armor]').dataset.state, 'unavailable')
   h.ui.dispose()
 })
+
+test('current health is not clipped by a lower received maximum, without rewriting either reading', async () => {
+  const h = harness(), self = { uuid: UUID, health: 22, maxHealth: 1, food: 20 }
+  await h.ui.setAssets({ bytes: async () => new Uint8Array([137,80,78,71]) })
+  h.ui.update({ epoch: 1, presentation: presentation({ self }) })
+  const hearts = h.document.querySelector('[data-corti-hearts]')
+  assert.equal(hearts.children.length, 11)
+  assert.match(hearts.title, /生命 22.*上限读数 1.*不一致/)
+  assert.equal(hearts.getAttribute('aria-label'), hearts.title)
+  assert.deepEqual(self, { uuid: UUID, health: 22, maxHealth: 1, food: 20 })
+  h.ui.update({ epoch: 1, presentation: presentation({ self: { ...self, health: 23, maxHealth: 20 } }) })
+  assert.equal(hearts.children.length, 12)
+  assert.notEqual(hearts.children[10].style.backgroundImage, hearts.children[11].style.backgroundImage)
+  h.ui.update({ epoch: 1, presentation: presentation({ self: { ...self, health: 0, maxHealth: 20 } }) })
+  assert.equal(hearts.children.length, 10)
+  assert.equal(hearts.title, '生命 0/20')
+  assert.equal(hearts.getAttribute('aria-label'), null)
+  h.ui.update({ epoch: 1, presentation: presentation({ self: { ...self, maxHealth: null } }) })
+  assert.equal(hearts.dataset.state, 'unavailable')
+  assert.match(hearts.textContent, /生命 22.*上限或纹理未同步/)
+  h.ui.dispose()
+})
 test('fresh native slots clear stale unavailable ARIA/title and inventory note stays outside its image', async () => {
   const h = harness()
   h.ui.reset()
