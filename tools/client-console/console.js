@@ -1,13 +1,45 @@
+import { renderMetrics } from './metrics.js';
 const $ = selector => document.querySelector(selector);
 const labels = { disconnected:'未连接', starting:'正在连接', started:'环境已启动', stopping:'正在关闭', idle:'待连接',
   'not-required':'离线账号', authenticating:'正在验证', 'awaiting-user':'等待微软授权', ready:'正版验证完成', failed:'验证失败', stopped:'已停止' };
-let controlToken = '', inFlight = false;
+let controlToken = '', instanceId = '', inFlight = false, selectedView = 'game', latestState;
 const node = (tag, text, className) => { const item = document.createElement(tag); if (text !== undefined) item.textContent = text; if (className) item.className = className; return item; };
 function actionButton(label, action, disabled) { const button = node('button', label, 'quiet'); button.dataset.action = action; button.disabled = disabled; return button; }
 function safeLink(url) { try { const value = new URL(url); return ['http:', 'https:'].includes(value.protocol) && !value.username && !value.password ? value.href : null; } catch { return null; } }
+export function viewerUrl(state) {
+  if (state.host?.paused || state.runtime?.phase !== 'started' || state.connection?.connection?.ready !== true) return null;
+  for (const link of state.links ?? []) {
+    try { const url = new URL(link.href); if (url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port && !url.username && !url.password
+      && url.pathname === '/' && !url.search && !url.hash) return url.href; } catch { /* Unavailable is preferable to an unrelated frame. */ }
+  }
+  return null;
+}
+export function showView(view) {
+  if (!['game', 'connection', 'metrics'].includes(view)) return;
+  selectedView = view;
+  for (const name of ['game', 'connection', 'metrics']) {
+    $(`#${name}-panel`).hidden = view !== name;
+    $(`#tab-${name}`).setAttribute('aria-selected', String(view === name));
+  }
+  renderViewer(latestState);
+  if (view === 'metrics') void refreshMetrics();
+}
+function renderViewer(state) {
+  const frame = $('#game-frame'), href = state && selectedView === 'game' ? viewerUrl(state) : null;
+  if (href && frame.getAttribute('src') !== href) frame.setAttribute('src', href);
+  if (!href) frame.removeAttribute('src'); // No background WebGL/socket or stale disconnected scene.
+  frame.hidden = !href; $('#game-empty').hidden = !!href;
+}
 export function renderClientState(state) {
+  latestState = state;
   const connection = state.connection ?? {}, server = connection.server ?? {}, accounts = connection.accounts ?? {};
-  $('#phase').textContent = labels[state.runtime?.phase] ?? '状态未知';
+  $('#phase').textContent = state.host?.paused ? '已暂停' : labels[state.runtime?.phase] ?? '状态未知';
+  $('#agent-name').textContent = state.host?.name || 'Minecraft Agent';
+  const effort = state.host?.reasoningEffort;
+  $('#host-model').textContent = `${state.host?.model ?? '模型未知'} · ${effort === 'off' || effort === 'none' ? '无思考' : effort ? `思考 ${effort}` : '思考设置未知'}`;
+  $('#host-note').textContent = state.host?.paused ? 'Agent 已暂停。连接与账号中可恢复；会话、目标和记忆保留。' : `Agent 状态：${state.host?.state ?? '未知'} · 画面来自执行动作的同一连接。`;
+  $('#build-version').textContent = `核心 ${state.host?.coreVersion ?? '未知'} · 适配器 ${state.host?.adapterVersion ?? '未知'}`;
+  renderViewer(state);
   $('#address').textContent = server.host ? `${server.host}:${server.port}` : '请配置服务器';
   $('#version').textContent = `${server.actualVersion ? `已协商 Java ${server.actualVersion}` : '协议尚未验证'} · ${server.requestedVersion === 'auto' ? '自动识别版本' : `指定 ${server.requestedVersion ?? '—'}`}`;
   const target = $('#accounts'); target.replaceChildren();
@@ -36,23 +68,32 @@ export function renderClientState(state) {
   const views = $('#views'); views.replaceChildren();
   for (const value of state.links ?? []) { const href = safeLink(value.href); if (!href) continue; const link = node('a', value.label || '游戏画面'); link.href = href; link.target = '_blank'; link.rel = 'noreferrer noopener'; views.append(link); }
   if (!views.children.length) views.append(node('span', '画面就绪后显示入口', 'empty'));
-  $('#asset-note').textContent = '随包现代画面资源：Java 1.20.6。其他版本需匹配的资源包或使用基础画面。';
+  $('#asset-note').textContent = '主要维护 Java 1.21.1；画面须匹配实际连接版本与资源包。协议未验证时不宣称画面兼容。';
   $('[data-action="connect"]').disabled = state.runtime?.phase !== 'disconnected';
   $('[data-action="disconnect"]').disabled = state.runtime?.phase === 'disconnected' || state.runtime?.phase === 'stopping';
   const failed = Object.values(state.operations ?? {}).find(value => value.status === 'failed');
   $('#notice').textContent = failed?.error ?? '';
+  for (const button of document.querySelectorAll('button[data-action]')) if (state.operations?.[button.dataset.action]?.status === 'running') button.disabled = true;
   $('#updated').textContent = `采样 ${new Date().toLocaleTimeString()}`;
 }
 async function refresh() {
   if (inFlight) return; inFlight = true;
-  try { const response = await fetch('/api/client', { cache:'no-store' }); if (!response.ok) throw Error(); const state = await response.json(); controlToken = state.controlToken; renderClientState(state); }
-  catch { $('#notice').textContent = '连接台暂时不可用，当前游戏状态未验证。'; }
+  try { const response = await fetch('/api/client', { cache:'no-store' }); if (!response.ok) throw Error(); const state = await response.json(); controlToken = state.controlToken; instanceId = state.instanceId; renderClientState(state); }
+  catch { controlToken = ''; latestState = undefined; renderViewer(); $('#phase').textContent = '状态未知'; $('#host-model').textContent = '数据已过期 · 等待连接恢复'; $('#notice').textContent = '连接台暂时不可用，当前游戏状态未验证。'; }
   finally { inFlight = false; }
 }
 document.addEventListener('click', async event => {
+  const tab = event.target.closest?.('button[data-view]'); if (tab) { showView(tab.dataset.view); return; }
   const button = event.target.closest?.('button[data-action]'); if (!button || button.disabled || !controlToken) return;
   button.disabled = true;
-  try { const response = await fetch('/api/client/action', { method:'POST', headers:{'content-type':'application/json','x-mc-control':controlToken}, body:JSON.stringify({action:button.dataset.action}) }); if (!response.ok) throw Error(); await refresh(); }
+  try { const response = await fetch('/api/client/action', { method:'POST', headers:{'content-type':'application/json','x-mc-control':controlToken,'x-mc-instance':instanceId}, body:JSON.stringify({action:button.dataset.action}) }); if (!response.ok) throw Error(); await refresh(); }
   catch { $('#notice').textContent = '操作未受理，请重新读取状态。'; }
 });
-if (!globalThis.__MC_CONSOLE_TEST__) { await refresh(); setInterval(refresh, 1500); }
+let metricsPending = false;
+async function refreshMetrics() {
+  if (metricsPending || globalThis.__MC_CONSOLE_TEST__) return; metricsPending = true;
+  try { const response = await fetch('/api/harness/metrics', { cache:'no-store' }); if (!response.ok) throw Error(); renderMetrics(await response.json()); }
+  catch { $('#models').replaceChildren(); $('#tools').replaceChildren(); $('#coverage').textContent = '指标未知：连接已中断或数据已过期。'; }
+  finally { metricsPending = false; }
+}
+if (!globalThis.__MC_CONSOLE_TEST__) { await refresh(); setInterval(refresh, 1500); setInterval(() => { if (selectedView === 'metrics' && !document.hidden) void refreshMetrics(); }, 2000); }

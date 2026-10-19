@@ -3,17 +3,20 @@ import { test } from 'node:test';
 
 // A small DOM port verifies data rendering without a game/account in CI.
 class Element {
-  constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.disabled = false; this.textContent = ''; }
+  constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.disabled = false; this.textContent = ''; this.attributes = new Map(); this.writes = 0; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
+  setAttribute(name, value) { this.attributes.set(name, value); this.writes++; }
+  getAttribute(name) { return this.attributes.get(name) ?? null; }
+  removeAttribute(name) { this.attributes.delete(name); }
 }
 const elements = new Map();
 globalThis.document = {
   querySelector: selector => { if (!elements.has(selector)) elements.set(selector, new Element('div')); return elements.get(selector); },
-  createElement: tag => new Element(tag), addEventListener() {},
+  createElement: tag => new Element(tag), addEventListener() {}, querySelectorAll: () => [],
 };
 globalThis.__MC_CONSOLE_TEST__ = true;
-const { renderClientState } = await import('../console.js');
+const { renderClientState, viewerUrl, showView } = await import('../console.js');
 const descendants = element => [element, ...element.children.flatMap(descendants)];
 const all = selector => descendants(elements.get(selector));
 const base = { runtime: { phase: 'started' }, configuredAccounts: { agent: 'AccountAlias' },
@@ -53,4 +56,26 @@ test('disconnect removes stale challenges, ready profiles and viewer links', () 
   assert.equal(elements.get('[data-action="disconnect"]').disabled, true);
   assert.equal(all('#accounts').filter(n => n.tagName === 'a' || n.tagName === 'code').length, 0);
   assert.match(elements.get('#version').textContent, /未验证/);
+});
+test('embeds only an actually ready same-agent local viewer and does not reconnect it on each poll', () => {
+  const state = {...base, host:{model:'deepseek-flash',reasoningEffort:'off',name:'Fixture',coreVersion:'fixture-core',adapterVersion:'fixture-host'},
+    connection:{...base.connection,connection:{ready:true}}, links:[{href:'http://127.0.0.1:17852/'}]};
+  renderClientState(state); const frame = elements.get('#game-frame'), writes = frame.writes;
+  assert.equal(frame.getAttribute('src'), 'http://127.0.0.1:17852/');
+  renderClientState(state); assert.equal(frame.writes,writes);
+  assert.match(elements.get('#host-model').textContent,/deepseek-flash · 无思考/);
+  for(const bad of ['http://remote.test:1234/','javascript:alert(1)','http://127.0.0.1:1234/metrics','http://user:pass@127.0.0.1:1234/'])
+    assert.equal(viewerUrl({...state,links:[{href:bad}]}),null);
+  assert.equal(viewerUrl({...state,host:{paused:true}}),null);
+  assert.equal(viewerUrl({...state,connection:{connection:{ready:false}}}),null);
+  showView('metrics'); assert.equal(frame.getAttribute('src'),null);
+  showView('game'); assert.equal(frame.getAttribute('src'),'http://127.0.0.1:17852/');
+  renderClientState({...state,runtime:{phase:'disconnected'},host:{paused:true}});
+  assert.equal(frame.getAttribute('src'),null); assert.equal(frame.hidden,true);
+  assert.equal(elements.get('#phase').textContent,'已暂停');
+});
+test('missing model settings remain unknown and connection help uses the primary version',()=>{
+  renderClientState({runtime:{phase:'disconnected'}});
+  assert.match(elements.get('#host-model').textContent,/模型未知.*设置未知/);
+  assert.match(elements.get('#asset-note').textContent,/Java 1.21.1/);
 });

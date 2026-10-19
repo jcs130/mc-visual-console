@@ -15,5 +15,5 @@ export function renderMetrics(data){
 }
 let pending=false;
 async function refresh(){if(pending)return;pending=true;try{const r=await fetch('/api/harness/metrics',{cache:'no-store'});if(!r.ok)throw Error();renderMetrics(await r.json());$('#notice').textContent='';}catch{$('#notice').textContent='指标暂不可用，之前的读数可能已过期。';}finally{pending=false;}}
-void refresh();setInterval(refresh,2000);
+if (!globalThis.__MC_CONSOLE_TEST__ && document.querySelector('#metrics-panel') === null) { void refresh();setInterval(refresh,2000); }
 

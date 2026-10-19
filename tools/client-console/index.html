@@ -1,11 +1,16 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Agent MC · 连接台</title><link rel="stylesheet" href="/console.css"></head>
+<title>Agent MC · 游戏面板</title><link rel="stylesheet" href="/metrics.css"><link rel="stylesheet" href="/console.css"></head>
 <body><main>
-<header><a class="brand" href="/">A<span>MC</span></a><div><h1>连接台</h1><p>让你的 Agent 进入 Minecraft</p></div><span id="phase" class="badge">读取中</span></header>
+<header><a class="brand" href="/">A<span>MC</span></a><div><h1 id="agent-name">Minecraft Agent</h1><p id="host-model">正在读取模型与运行状态</p></div><span id="phase" class="badge">读取中</span></header>
+<div class="workbench-nav" role="tablist" aria-label="Minecraft 面板"><button id="tab-game" role="tab" data-view="game" aria-selected="true" aria-controls="game-panel">游戏画面</button><button id="tab-connection" role="tab" data-view="connection" aria-selected="false" aria-controls="connection-panel">连接与账号</button><button id="tab-metrics" role="tab" data-view="metrics" aria-selected="false" aria-controls="metrics-panel">系统一 / 系统二</button><a href="/metrics" target="_blank" rel="noopener noreferrer">独立指标页 ↗</a></div>
+<p id="host-note" class="note"></p>
+<section id="game-panel" class="game-panel" role="tabpanel" aria-labelledby="tab-game"><div id="game-empty" class="game-empty"><strong>尚未连接游戏</strong><p>连接后显示同一 Agent 的实时画面；打开面板不会发起模型推理。</p></div><iframe id="game-frame" title="Agent 实时游戏画面" hidden allow="fullscreen" referrerpolicy="no-referrer"></iframe></section>
+<div id="connection-panel" role="tabpanel" aria-labelledby="tab-connection" hidden>
 <section class="server"><div><span class="eyebrow">JAVA SERVER</span><h2 id="address">—</h2><p id="version">正在读取连接</p></div><div class="actions"><button data-action="connect" class="primary">连接服务器</button><button data-action="disconnect" class="quiet">断开连接</button></div></section>
 <div class="grid"><section class="accounts"><div class="section-title"><h2>账号与客户端</h2><span>各账号分别授权</span></div><div id="accounts"></div></section>
 <aside><section><div class="section-title"><h2>游戏画面</h2><span>WEB / OBS</span></div><div id="views" class="view-links"></div><p id="asset-note" class="note"></p></section>
 <section class="help"><h2>首次接入</h2><ol><li>在私有配置文件填写服务器、验证方式和账号标识。</li><li>正版账号首次连接时，在微软页面输入登录码。</li><li>需要原生游戏窗口时，先用官方或可信启动器安装对应版本，再设置游戏目录与 Java。</li></ol><p>账号标识用于本地缓存；实际游戏名以验证结果为准。Agent、观察者和玩家同时进服需要不同账号。观察者附身由服务器权限或插件决定。</p></section></aside></div>
-<footer><span id="updated">尚未采样</span><span id="notice" role="status"></span><a href="/metrics">模型与执行</a><span>Agent MC World · 本机控制</span></footer>
+ </div><div id="metrics-panel" role="tabpanel" aria-labelledby="tab-metrics" hidden><section id="models" class="grid"></section><section class="panel"><h2>游戏工具</h2><div id="tools" class="stats"></div><p class="muted">工具返回不代表游戏任务或目标成功；推理延迟不代表游戏反应时间。</p></section><p id="coverage"></p></div>
+<footer><span id="updated">尚未采样</span><span id="notice" role="status" aria-live="polite"></span><span id="build-version">Agent MC World · 本机控制</span></footer>
 </main><script type="module" src="/console.js"></script></body></html>
