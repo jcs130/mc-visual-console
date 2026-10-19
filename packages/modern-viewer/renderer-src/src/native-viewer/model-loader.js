@@ -113,7 +113,7 @@ const defaultUV = (direction, a, b) => ({
   west: [a[2], 16 - b[1], b[2], 16 - a[1]], east: [16 - b[2], 16 - b[1], 16 - a[2], 16 - a[1]]
 })[direction]
 
-export function bakeFaces (model, variant = {}, { allowTint = false } = {}) {
+export function bakeFaces (model, variant = {}, { allowTint = false, resolveTexture = textureId } = {}) {
   const faces = []
   for (const element of model.elements) {
     const a = element.from, b = element.to
@@ -147,7 +147,7 @@ export function bakeFaces (model, variant = {}, { allowTint = false } = {}) {
         const index = (i + rotation / 90) % 4
         uv.push(rect[index === 0 || index === 1 ? 0 : 2] / 16, 1 - rect[index === 0 || index === 3 ? 1 : 3] / 16)
       }
-      faces.push({ texture: textureId(model, face.texture), direction, position, uv, indices: [0, 1, 2, 0, 2, 3],
+      faces.push({ texture: resolveTexture(model, face.texture), direction, position, uv, indices: [0, 1, 2, 0, 2, 3],
         cullface: face.cullface ?? null, shade: element.shade !== false, tintIndex: face.tintindex ?? -1 })
     }
   }

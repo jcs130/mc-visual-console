@@ -1,0 +1,100 @@
+<!doctype html><html><meta charset="utf-8"><style>html,body{margin:0}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"/three.module.js"}}</script>
+<canvas id="film" width="1280" height="704"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import {bakeFaces} from '../native-viewer/model-loader.js';
+import {selectProxyModels,atlasFaceUV} from './voxel-proxy-catalog.mjs';
+const [snapshot,definitions,config,assetEvidence]=await Promise.all(['/scene.json','/catalog.json','/render.json','/asset-evidence.json'].map(async p=>(await fetch(p)).json()));
+if(snapshot.schema!=='agent-mc-voxel-scene/v1'||snapshot.order!=='x-y-z')throw Error('Unsupported scene protocol');
+const canvas=document.querySelector('#film'),renderer=new THREE.WebGLRenderer({canvas,antialias:false,preserveDrawingBuffer:true});
+renderer.setSize(1280,704,false);renderer.toneMapping=THREE.NoToneMapping;
+const world=new THREE.Scene(),light=new THREE.DirectionalLight(0xffffff,1.65);light.position.set(1,2,1);
+world.add(light,new THREE.AmbientLight(0xffffff,1.3));
+const camera=new THREE.PerspectiveCamera(snapshot.camera.fovDegrees,1280/704,.05,160);
+const air=new Set(['minecraft:air','minecraft:cave_air','minecraft:void_air']);
+const names=[...new Set(snapshot.palette.map(p=>p.name).filter(n=>!air.has(n)))].sort();
+if(config.showSelf)names.push('agent:self');
+const legend=names.map((name,i)=>{const c=new THREE.Color().setHSL((i*.61803398875)%1,.7,.48);return {name,id:i+1,color:'#'+c.getHexString(THREE.LinearSRGBColorSpace)};});
+const ids=new Map(legend.map(x=>[x.name,x])),approximations=new Set(),unverifiedSeeds=new Set(),tints=new Set();
+const atlas=await new THREE.TextureLoader().loadAsync('/atlas.png');atlas.colorSpace=THREE.SRGBColorSpace;
+atlas.magFilter=THREE.NearestFilter;atlas.minFilter=THREE.NearestFilter;
+const material=new THREE.MeshLambertMaterial({map:atlas,vertexColors:true,alphaTest:.1,side:THREE.DoubleSide});
+// Keep cutout alpha but discard RGB on the semantic pass. The flat class ID is never a DINO input.
+const semanticMaterial=new THREE.MeshBasicMaterial({map:atlas,alphaTest:.1,toneMapped:false,side:THREE.DoubleSide});
+semanticMaterial.onBeforeCompile=shader=>{shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','vec4 sampledDiffuseColor = texture2D( map, vMapUv ); diffuseColor.a *= sampledDiffuseColor.a;');};
+const entries=[],batches=new Map(),templateCache=new Map();
+function addGeometry(key,geometry,name,position){let b=batches.get(key);if(!b)batches.set(key,b={geometry,name,positions:[]});b.positions.push(position);}
+function shapeGeometry(shape){return new THREE.BoxGeometry(shape[3]-shape[0],shape[4]-shape[1],shape[5]-shape[2]).translate((shape[0]+shape[3])/2-.5,(shape[1]+shape[4])/2-.5,(shape[2]+shape[5])/2-.5);}
+function specialized(p){
+ if(!config.allowDocumentedApproximations)throw Error('VOXEL_SPECIAL_RENDERER_UNAVAILABLE:'+p.name);
+ const n=p.name.slice(10);let shapes;
+ if(n==='water'||n==='lava'){
+  approximations.add(p.name+': flat fluid surface; flow, biome and occlusion are not exact');
+  const level=Number(p.properties.level??0);shapes=[[0,0,0,1,level>=8?1:Math.max(.125,1-level/8),1]];
+ }else if(n.endsWith('_banner')){
+  approximations.add(p.name+': cloth proxy; block entity patterns and waving are unavailable');
+  shapes=[[.47,0,.47,.53,1.8,.53],[.22,.6,.49,.78,1.65,.51]];
+ }else throw Error('VOXEL_SPECIAL_RENDERER_UNAVAILABLE:'+p.name);
+ return shapes.map(s=>({geometry:shapeGeometry(s),solidColor:n==='water'?'#4384bf':n==='lava'?'#e36d19':'#77513b'}));
+}
+const [ax,ay,az]=snapshot.bounds.min,[bx,by,bz]=snapshot.bounds.max;let cell=0;
+for(let x=ax;x<=bx;x++)for(let y=ay;y<=by;y++)for(let z=az;z<=bz;z++,cell++){
+ const pi=snapshot.cells[cell];if(pi<0)continue;const p=snapshot.palette[pi];if(air.has(p.name))continue;
+ const selection=selectProxyModels(definitions,p,{x,y,z},{allowUnverifiedTextureVariation:config.allowDocumentedApproximations});
+ if(!selection.exactSeed)unverifiedSeeds.add(p.name);
+ const signature=p.name+JSON.stringify(selection.models);
+ let templates=templateCache.get(signature);
+ if(!templates){
+  templates=[];
+  for(const variant of selection.models){
+   const faces=bakeFaces(variant.model,variant,{allowTint:true,resolveTexture:(_,value)=>value});
+   if(!faces.length)continue;
+   const positions=[],uvs=[],colors=[],indices=[],rotation=new THREE.Euler(-THREE.MathUtils.degToRad(variant.x||0),-THREE.MathUtils.degToRad(variant.y||0),0,'YXZ');
+   for(const f of faces){const base=positions.length/3;for(let i=0;i<f.position.length;i+=3)positions.push(...new THREE.Vector3(...f.position.slice(i,i+3)).applyEuler(rotation).toArray());
+    uvs.push(...atlasFaceUV(f));
+    const tint=f.tintIndex<0?new THREE.Color(1,1,1):new THREE.Color(p.name==='minecraft:redstone_wire'?'#bf2419':'#86a95b');
+    if(f.tintIndex>=0)tints.add(p.name);for(let i=0;i<4;i++)colors.push(tint.r,tint.g,tint.b);
+    indices.push(...f.indices.map(i=>i+base));}
+   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));g.setIndex(indices);g.computeVertexNormals();templates.push({geometry:g});
+  }
+  if(!templates.length&&selection.models.length)templates=specialized(p);
+  templateCache.set(signature,templates);
+ }
+ templates.forEach((t,i)=>{const key=signature+':'+i;addGeometry(key,t.geometry,p.name,[x+.5,y+.5,z+.5]);batches.get(key).solidColor=t.solidColor;});
+}
+for(const b of batches.values()){
+ const rgb=b.solidColor?new THREE.MeshLambertMaterial({color:b.solidColor}):material;
+ const sem=b.solidColor?new THREE.MeshBasicMaterial({toneMapped:false}):semanticMaterial;
+ const mesh=new THREE.InstancedMesh(b.geometry,rgb,b.positions.length),dummy=new THREE.Object3D();
+ b.positions.forEach((position,i)=>{dummy.position.set(...position);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);});
+ entries.push({mesh,rgb,sem,name:b.name});world.add(mesh);
+}
+if(config.showSelf){
+ // Neutral placement marker: identity reference replaces it in the anchor edit.
+ // A pose snapshot cannot establish the actual ongoing limb animation.
+ const actor=new THREE.Group();actor.position.set(...snapshot.camera.feet);actor.rotation.y=snapshot.camera.yaw;
+ const parts=[[[.4,.65,.25],[0,.85,0]],[[.38,.38,.38],[0,1.48,0]],[[.14,.5,.16],[-.28,.87,0]],[[.14,.5,.16],[.28,.87,0]],[[.15,.55,.17],[-.12,.28,0]],[[.15,.55,.17],[.12,.28,0]]];
+ for(const [size,pos] of parts){const rgb=new THREE.MeshLambertMaterial({color:'#d7c7ae'}),sem=new THREE.MeshBasicMaterial({toneMapped:false});const mesh=new THREE.Mesh(new THREE.BoxGeometry(...size),rgb);mesh.position.set(...pos);actor.add(mesh);entries.push({mesh,rgb,sem,name:'agent:self'});}
+ world.add(actor);
+}
+let mode='';function colors(next){if(mode===next)return;mode=next;const semantic=next==='semantic';renderer.outputColorSpace=semantic?THREE.LinearSRGBColorSpace:THREE.SRGBColorSpace;
+ world.background=new THREE.Color(semantic?'#000000':'#aac4dc');
+ for(const e of entries){e.mesh.material=semantic?e.sem:e.rgb;if(semantic){const c=new THREE.Color().setHex(parseInt(ids.get(e.name).color.slice(1),16),THREE.LinearSRGBColorSpace);if(e.mesh.isInstancedMesh){for(let i=0;i<e.mesh.count;i++)e.mesh.setColorAt(i,c);e.mesh.instanceColor.needsUpdate=true;}else e.sem.color.copy(c);}else if(e.mesh.isInstancedMesh&&e.mesh.instanceColor){for(let i=0;i<e.mesh.count;i++)e.mesh.setColorAt(i,new THREE.Color(1,1,1));e.mesh.instanceColor.needsUpdate=true;}}
+}
+window.renderProxy=(offset=0,semantic=false)=>{
+ colors(semantic?'semantic':'rgb');const pose=snapshot.camera;camera.up.set(0,1,0);
+ if(config.cameraOffset){const o=new THREE.Vector3(...config.cameraOffset).applyAxisAngle(new THREE.Vector3(0,1,0),offset);camera.position.set(...pose.feet).add(o);camera.lookAt(new THREE.Vector3(...pose.feet).add(new THREE.Vector3(0,1,0)));}
+ else{camera.position.set(...pose.eye);const yaw=pose.yaw+offset,pitch=pose.pitch,cp=Math.cos(pitch);camera.lookAt(camera.position.clone().add(new THREE.Vector3(-Math.sin(yaw)*cp,Math.sin(pitch),-Math.cos(yaw)*cp)));}
+ renderer.render(world,camera);return canvas.toDataURL('image/png');
+};
+window.proxyDetails=()=>({schema:'agent-mc-proxy-semantics/v1',sceneSchema:snapshot.schema,source:snapshot.source,sourceSampledAt:snapshot.sampledAt,camera:snapshot.camera,
+ virtualCamera:config.cameraOffset?{offset:config.cameraOffset,kind:'explicit-third-person-composition'}:null,bounds:snapshot.bounds,backgroundIsObservedSky:false,coverage:snapshot.coverage,legend,
+ assetEvidence,visualApproximations:[...approximations],unverifiedTextureSeeds:[...unverifiedSeeds],approximateTintClasses:[...tints],unmappedNaturalColors:[],
+ self:config.showSelf?{uuid:snapshot.source.uuid,feet:snapshot.camera.feet,yaw:snapshot.camera.yaw,pose:'neutral-placement-proxy',animationObserved:false,identity:'external-reference-required'}:null,
+ caveat:'Original versioned state models/textures for a bounded scene. Listed fluid/entity/tint approximations are not exact Java scene parity. Semantic image is an anchor reference, not a native EdenLive class-ID channel.'});
+window.semanticPixels=()=>{const gl=renderer.getContext(),pixels=new Uint8Array(1280*704*4);gl.readPixels(0,0,1280,704,gl.RGBA,gl.UNSIGNED_BYTE,pixels);const known=new Map(legend.map(x=>[parseInt(x.color.slice(1),16),{...x,pixels:0}]));let background=0,unmatched=0;
+ for(let i=0;i<pixels.length;i+=4){const key=(pixels[i]<<16)|(pixels[i+1]<<8)|pixels[i+2];if(key===0){background++;continue;}const item=known.get(key);if(item)item.pixels++;else unmatched++;}
+ return {visible:[...known.values()].filter(x=>x.pixels>0).sort((a,b)=>b.pixels-a.pixels),background,unmatched,total:1280*704};};
+window.renderProxy(0,false);window.proxyReady=true;
+</script></html>
