@@ -10,11 +10,19 @@ The default is strict. `allowDocumentedApproximations=true` permits a disclosed 
 
 Optional `showSelf=true` requires an explicit `cameraOffset`. It creates a neutral placement marker at the observed player's feet/yaw. This is a virtual third-person composition, not a game-camera action or observed limb animation. A character setting sheet may replace that marker in the image editor. Its background, panel layout and reference poses do not belong in the scene. First-person mode has no self marker and must not fabricate a character.
 
+## Artistic inputs and relative facing
+
+`surfaceStyle="material-hints"` is an explicit image-model input mode. It averages the original atlas face colors, preserving the exact selected meshes and original texture alpha, while removing the repeating pixel pattern. Its class pass is byte-identical to the corresponding original-material pass. This changes the artistic input, not the game's normal viewer or asset pack. `surfaceStyle="original"` remains the default.
+
+Optional `geometryStyle="organic-hints"` replaces a small named set of original foliage meshes with overlapping rounded volumes, and redstone blocks with crystal markers. Original cell centers/classes and all source evidence remain in the scene; bounded coordinate-derived jitter/scales are deterministic. The receipt lists `organicClasses` and `renderPurpose="artistic-model-input-abstraction"`. This is intentional local shape reinterpretation requested for artwork, **not** native model fidelity. Unknown/modded names have no artistic substitution. `geometryStyle="original"` is the default. The semantic pass follows the chosen artistic geometry and cannot be described as pixel-identical to the original pass in this mode.
+
+The self marker has explicit front/back cues. `placementFacing` computes the view relative to the observed look-yaw and declared virtual camera. It never claims an independently observed body yaw or animation. `projectedHead`, `projectedFeet`, the viewport and per-class visible bounds let the editor request the correct environmental scale and avoid turning a rear view into a portrait. These are soft generative constraints; inspect the actual image before claiming that pose/scale were preserved. Use a matching reference region (e.g. back of hair/coat) instead of a sheet dominated by large frontal faces.
+
 Offline catalog audit:
 
 ```
 node tools/audit-voxel-proxy-catalog.mjs registry.json original-compiled-1.21.1.json new-report.json
-node --test tools/test/voxel-proxy-catalog.test.mjs tools/test/native-model-selection.test.mjs
+node --test tools/test/voxel-proxy-catalog.test.mjs tools/test/native-model-selection.test.mjs tools/test/voxel-proxy-pose.test.mjs tools/test/voxel-proxy-organic.test.mjs
 ```
 
 Resolving all registry states certifies catalog coverage only. Empty/invisible/special-rendered states and seed uncertainties remain in the report; visual fidelity requires separate inspection.
