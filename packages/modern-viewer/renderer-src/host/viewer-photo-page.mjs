@@ -1,8 +1,9 @@
 import { viewerPageHtml } from './viewer-page-assets.mjs';
 
 /** A read-only still camera. No inventory, chat history, controls or extra account. */
-export async function viewerPhotoPage(root) {
-  const page = await viewerPageHtml(root, 'first', '');
+export async function viewerPhotoPage(root, mode = 'first') {
+  if (!['first', 'third', '3dview'].includes(mode)) throw Error('PHOTO_VIEW_MODE_INVALID');
+  const page = await viewerPageHtml(root, mode, '');
   if (!page.includes('/index.js')) throw Error('PHOTO_VIEWER_ASSETS_MISSING');
   return page.replace('</head>', `<style>
     body > :not(#viewer-canvas):not(script):not(style) { display:none !important }

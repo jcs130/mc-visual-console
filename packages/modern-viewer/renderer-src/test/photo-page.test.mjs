@@ -11,6 +11,9 @@ test('clean photography waits for actual meshed chunks and hides UI without dele
     await assert.rejects(viewerPhotoPage(root),/PHOTO_VIEWER_ASSETS_MISSING/);
     await mkdir(root+'/public');await writeFile(root+'/public/index.html','<html><head></head><body><div>HUD</div><script type="module" src="/index.js"></script></body></html>');
     const page=await viewerPhotoPage(root);assert.match(page,/:not\(#viewer-canvas\)/);assert.match(page,/display:none !important/);
+    assert.match(await viewerPhotoPage(root,'third'),/data-view-mode="third"/);
+    assert.match(await viewerPhotoPage(root,'3dview'),/data-view-mode="3dview"/);
+    await assert.rejects(viewerPhotoPage(root,'unexpected'),/PHOTO_VIEW_MODE_INVALID/);
     const context={URLSearchParams,location:{search:'?distance=2'},document:{fonts:{status:'loaded'},getElementById:()=>({width:1536,height:1536})}};
     vm.createContext(context);vm.runInContext(page.match(/<script>([\s\S]*?)<\/script>/)[1],context);
     assert.equal(context.__photoReady(),false);
