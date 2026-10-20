@@ -162,6 +162,38 @@ test('YSM inventory preview retains its facing and never revives the hidden clas
   assert.equal(source.rotation.y,2.1);
 });
 
+test('native held-item matrices stay at the hand in the inventory mirror, including live matrix-only updates', () => {
+  for (const ysm of [false, true]) {
+    const source = avatar();
+    const hand = ysm ? new THREE.Group() : source.playerObject.skin.leftArm;
+    if (ysm) {
+      source.playerObject.visible = false;
+      const custom = new THREE.Group(); custom.name = 'paper-ysm-player';
+      source.add(custom); custom.add(hand); hand.position.set(.4, 1, 0);
+    }
+    const mount = new THREE.Group(); mount.name = 'native-held-left';
+    mount.matrixAutoUpdate = false;
+    mount.matrix.makeTranslation(.2, -.5, -.1).multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(.5, .8, .1), new THREE.MeshBasicMaterial());
+    mount.add(shield); hand.add(mount);
+    const mirror = mirrorInventoryPlayer(THREE, source);
+    for (const offset of [.2, .35]) {
+      mount.matrix.elements[12] = offset;
+      poseInventoryPlayer(mirror); mirror.root.updateMatrixWorld(true);
+      const copy = mirror.nodes.get(mount);
+      assert.equal(copy.matrixAutoUpdate, false, 'native item mounts are authored in matrices, not decomposed TRS');
+      assert.deepEqual(copy.matrix.elements, mount.matrix.elements, 'shield must keep its grip transform after every preview pose');
+      const expected = new THREE.Vector3().setFromMatrixPosition(
+        new THREE.Matrix4().multiplyMatrices(mirror.nodes.get(hand).matrixWorld, mount.matrix));
+      assert.ok(mirror.nodes.get(shield).getWorldPosition(new THREE.Vector3()).distanceTo(expected) < 1e-9,
+        'shield belongs at the current hand locator, not the avatar origin');
+      assert.equal(mount.matrixAutoUpdate, false);
+      assert.equal(mount.matrix.elements[12], offset, 'preview must not modify world equipment');
+    }
+    releaseInventoryMirror(mirror);
+  }
+});
+
 function browserHarness(source = avatar(), options = {}) {
   const frames = new Map();
   let serial = 0;

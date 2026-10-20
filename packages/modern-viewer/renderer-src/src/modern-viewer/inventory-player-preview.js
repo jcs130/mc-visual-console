@@ -23,6 +23,10 @@ export function mirrorInventoryPlayer(THREE, source) {
     copy.position.copy(node.position);
     copy.quaternion.copy(node.quaternion);
     copy.scale.copy(node.scale);
+    // Native item grips (including YSM locators) are matrix-authored. TRS alone
+    // resets their offset/rotation to the avatar origin when the preview draws.
+    copy.matrixAutoUpdate = node.matrixAutoUpdate;
+    copy.matrix.copy(node.matrix);
     copy.visible = node.visible;
     copy.renderOrder = node.renderOrder;
     copy.frustumCulled = false;
@@ -74,6 +78,8 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
     copy.position.copy(node.position);
     copy.quaternion.copy(node.quaternion);
     copy.scale.copy(node.scale);
+    copy.matrixAutoUpdate = node.matrixAutoUpdate;
+    copy.matrix.copy(node.matrix);
     copy.visible = node.visible;
     if (node.morphTargetInfluences) copy.morphTargetInfluences = node.morphTargetInfluences.slice();
   }
