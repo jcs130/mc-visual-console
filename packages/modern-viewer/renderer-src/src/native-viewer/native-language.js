@@ -125,8 +125,13 @@ export class NativeLanguage {
     for (const key of ['minecraft:custom_name', 'minecraft:item_name']) if (Object.hasOwn(stack.components, key)) {
       // A custom literal name is authoritative, even when it is English.
       if (Object.hasOwn(item, 'displayNameComponent')) return this.component(item.displayNameComponent) || original
-      const component = stack.components[key]
-      try { return this.component(typeof component === 'string' ? JSON.parse(component) : component) || original } catch { return original }
+      let component = stack.components[key]
+      // Modern wire NBT may contain a literal StringTag rather than a legacy
+      // JSON-encoded component. Both are server names, not registry fallbacks.
+      if (typeof component === 'string') {
+        try { component = JSON.parse(component) } catch { /* Literal component. */ }
+      }
+      return this.component(component)?.replace(/§[0-9a-fk-or]/gi, '') || original
     }
     if (Object.hasOwn(item, 'displayNameComponent')) return this.component(item.displayNameComponent) || original
     // Legacy snapshots omit the original Component. This locked book.json
