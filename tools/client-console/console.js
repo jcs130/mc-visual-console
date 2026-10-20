@@ -1,4 +1,5 @@
 import { renderMetrics } from './metrics.js';
+import { renderExperiments } from './experiments.js';
 const $ = selector => document.querySelector(selector);
 const labels = { disconnected:'未连接', starting:'正在连接', started:'环境已启动', stopping:'正在关闭', idle:'待连接',
   'not-required':'离线账号', authenticating:'正在验证', 'awaiting-user':'等待微软授权', ready:'正版验证完成', failed:'验证失败', stopped:'已停止' };
@@ -15,14 +16,16 @@ export function viewerUrl(state) {
   return null;
 }
 export function showView(view) {
-  if (!['game', 'connection', 'metrics'].includes(view)) return;
+  if (!['game', 'connection', 'metrics', 'experiments'].includes(view)) return;
   selectedView = view;
-  for (const name of ['game', 'connection', 'metrics']) {
+  for (const name of ['game', 'connection', 'metrics', 'experiments']) {
     $(`#${name}-panel`).hidden = view !== name;
     $(`#tab-${name}`).setAttribute('aria-selected', String(view === name));
   }
   renderViewer(latestState);
   if (view === 'metrics') void refreshMetrics();
+  if (view === 'experiments') void refreshExperiments();
+  if (!globalThis.__MC_CONSOLE_TEST__) history.replaceState(null,'',view==='game'?'/':'/#'+view);
 }
 function renderViewer(state) {
   const frame = $('#game-frame'), href = state && selectedView === 'game' ? viewerUrl(state) : null;
@@ -96,4 +99,10 @@ async function refreshMetrics() {
   catch { $('#models').replaceChildren(); $('#tools').replaceChildren(); $('#coverage').textContent = '指标未知：连接已中断或数据已过期。'; }
   finally { metricsPending = false; }
 }
-if (!globalThis.__MC_CONSOLE_TEST__) { await refresh(); setInterval(refresh, 1500); setInterval(() => { if (selectedView === 'metrics' && !document.hidden) void refreshMetrics(); }, 2000); }
+let experimentsPending = false;
+async function refreshExperiments() {
+  if(experimentsPending || globalThis.__MC_CONSOLE_TEST__) return; experimentsPending=true;
+  try { const r=await fetch('/api/experiments',{cache:'no-store'}); if(!r.ok)throw Error(); renderExperiments(await r.json()); }
+  catch {renderExperiments(null);}finally{experimentsPending=false;}
+}
+if (!globalThis.__MC_CONSOLE_TEST__) { showView(location.hash.slice(1)||'game'); setInterval(()=>{if(selectedView==='experiments'&&!document.hidden)void refreshExperiments();},2000); await refresh(); setInterval(refresh, 1500); setInterval(() => { if (selectedView === 'metrics' && !document.hidden) void refreshMetrics(); }, 2000); }
