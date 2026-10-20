@@ -68,6 +68,10 @@ function componentValue(type, data, registry) {
   }
   if(['enchantments','stored_enchantments'].includes(type))return enchantmentSnbt(data,registry);
   if(type==='potion_contents')return potionComponent(data,registry);
+  // The original default/empty BannerPatternLayers is a real observed patch,
+  // not absent item data. Decorated holders need their actual registry/asset
+  // mapping and remain explicit until that path is supported.
+  if(type==='banner_patterns'&&Array.isArray(data)&&data.length===0)return '[]';
   if (INTEGER.has(type)) {
     if (!Number.isSafeInteger(data) || data < -2147483648 || data > 2147483647 ||
         (type !== 'custom_model_data' && data < 0) ||

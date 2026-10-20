@@ -176,20 +176,21 @@ export function bakeNativeBlockItemFaces(model) {
   return faces
 }
 
-function material(texture) {
+function material(texture,tintColor=0xffffff) {
   return new THREE.ShaderMaterial({ uniforms: {
     iconTexture: { value: texture }, light0: { value: new THREE.Vector3(...NATIVE_GUI_LIGHT_DIRECTIONS[0]) },
-    light1: { value: new THREE.Vector3(...NATIVE_GUI_LIGHT_DIRECTIONS[1]) }
+    light1: { value: new THREE.Vector3(...NATIVE_GUI_LIGHT_DIRECTIONS[1]) },
+    nativeTint:{value:new THREE.Vector3((tintColor>>>16&255)/255,(tintColor>>>8&255)/255,(tintColor&255)/255)}
   }, vertexShader: `varying vec2 nativeUV; varying float nativeLight;
     uniform vec3 light0; uniform vec3 light1;
     void main() {
       vec3 n = normalize(normalMatrix * normal); n.y = -n.y;
       nativeLight = min(1.0, (max(0.0, dot(light0,n)) + max(0.0, dot(light1,n))) * 0.6 + 0.4);
       nativeUV = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-    }`, fragmentShader: `uniform sampler2D iconTexture; varying vec2 nativeUV; varying float nativeLight;
+    }`, fragmentShader: `uniform sampler2D iconTexture; uniform vec3 nativeTint; varying vec2 nativeUV; varying float nativeLight;
     void main() {
       vec4 color = texture2D(iconTexture, nativeUV); if (color.a < 0.1) discard;
-      gl_FragColor = vec4(color.rgb * nativeLight, color.a);
+      gl_FragColor = vec4(color.rgb * nativeTint * nativeLight, color.a);
     }`, toneMapped: false, side: THREE.FrontSide })
 }
 
@@ -199,12 +200,14 @@ export function buildNativeBlockItemObject(plan, textures) {
     for (const face of plan.renderFaces ?? plan.faces) {
       const path = resourcePath(face.texture, 'textures', '.png')
       if (!textures.has(path)) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_MISSING')
-      if (!materials.has(path)) materials.set(path, material(textures.get(path)))
+      const tint=face.tintColor??0xffffff,key=path+'#'+tint;
+      if(!Number.isInteger(tint)||tint<0||tint>0xffffff)throw Error('NATIVE_BLOCK_ITEM_TINT_INVALID')
+      if (!materials.has(key)) materials.set(key, material(textures.get(path),tint))
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(face.position, 3))
       geometry.setAttribute('uv', new THREE.Float32BufferAttribute(face.uv, 2))
       geometry.setIndex(face.indices); geometry.computeVertexNormals()
-      const mesh = new THREE.Mesh(geometry, materials.get(path)); mesh.userData = { ...face, sourcePath: path }
+      const mesh = new THREE.Mesh(geometry, materials.get(key)); mesh.userData = { ...face, sourcePath: path }
       group.add(mesh)
     }
     group.position.fromArray(plan.transform.translation)

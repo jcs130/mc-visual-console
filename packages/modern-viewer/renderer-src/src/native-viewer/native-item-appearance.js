@@ -3,6 +3,7 @@ import { nativeStaticItemState, nativeStaticItemEvidence, verifyNativeStaticItem
 import { nativeBlockItemEligible, resolveNativeBlockItemModel, nativeGuiItemTransform, prepareNativeBlockGuiPlan, BLOCK_ICON_CLIENT_SHA256 } from './native-block-item-icons.js'
 import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 import { prepareNativeShieldItem } from './native-shield-items.js'
+import { prepareNativeBannerItem } from './native-banner-items.js'
 import { prepareNativeGlint } from './native-item-glint.js'
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
 import { nativeArsItemEligible, prepareNativeArsItemIcon } from './native-ars-item-icons.js'
@@ -98,12 +99,13 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     if (!gui && (TOOL.test(stack.id) || stack.id === 'minecraft:stick')) effect = validateHeldTool(stack)
     else effect = nativeStaticItemState(stack,{allowPartialGlint:true})
     const kind = nativeStaticItemEvidence(stack.id)?.kind
-    if (!gui && kind === 'gui-flat') throw Error('NATIVE_ITEM_HELD_SPECIAL_MODEL_UNAVAILABLE')
-    family = ['chest', 'shield'].includes(kind) ? kind : 'static'
+    if (!gui && ['gui-flat','banner'].includes(kind)) throw Error('NATIVE_ITEM_HELD_SPECIAL_MODEL_UNAVAILABLE')
+    family = ['chest', 'shield','banner'].includes(kind) ? kind : 'static'
     if (gui || !(TOOL.test(stack.id) || stack.id === 'minecraft:stick')) evidence = verifyNativeStaticItemEvidence(reader, stack.id)
     else evidence = nativeStaticItemEvidence(stack.id)
     if (family === 'chest') { prepared = await prepareNativeChestItemIcon(reader, stack.id); model = prepared.model }
     if (family === 'shield') { prepared = await prepareNativeShieldItem(reader, stack.id); model = prepared.model }
+    if (family === 'banner') { prepared = await prepareNativeBannerItem(reader, stack.id); model = prepared.model }
   }
   if (!model) {
     if (gui) model = await resolveNativeBlockItemModel(reader, modelId, [], {

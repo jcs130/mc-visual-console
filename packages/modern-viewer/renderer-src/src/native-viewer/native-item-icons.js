@@ -8,6 +8,7 @@ import { nativeDomumItemEligible, nativeDomumItemState, NativeDomumItemIconRende
 import { nativeSoulSlabEligible, nativeSoulSlabState, prepareNativeSoulSlabIcon } from './native-soul-slab-icons.js'
 import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
 import { prepareNativeShieldItem } from './native-shield-items.js'
+import { prepareNativeBannerItem } from './native-banner-items.js'
 import { prepareNativeGlint } from './native-item-glint.js'
 import { NativeIconGlintClock } from './native-icon-glint.js'
 import {nativePotionItemEligible,validateNativePotionItem} from './native-potion-items.js'
@@ -29,7 +30,7 @@ export function nativeItemIconEligible(item) {
 }
 
 export class NativeItemIcons {
-  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {}, shieldRendererOptions = {},glintOptions={},potionIconOptions={} } = {}) {
+  constructor(reader, { onChange = () => {}, createUrl = blob => URL.createObjectURL(blob), revokeUrl = url => URL.revokeObjectURL(url), blockRendererOptions = {}, arsRendererOptions = {}, domumRendererOptions = {}, chestRendererOptions = {}, shieldRendererOptions = {},bannerRendererOptions={},glintOptions={},potionIconOptions={} } = {}) {
     this.reader = reader; this.onChange = onChange; this.createUrl = createUrl; this.revokeUrl = revokeUrl
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
     this.serverIcons=new ServerItemIcons({reader,onChange,createUrl,revokeUrl})
@@ -42,6 +43,7 @@ export class NativeItemIcons {
     this.domumRenderer = new NativeDomumItemIconRenderer(reader, domumRendererOptions)
     this.chestRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeChestItemIcon,loadTexture:loadNativeCutoutItemTexture,...chestRendererOptions})
     this.shieldRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeShieldItem,loadTexture:loadNativeCutoutItemTexture,...shieldRendererOptions})
+    this.bannerRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeBannerItem,loadTexture:loadNativeCutoutItemTexture,...bannerRendererOptions})
   }
   setContext(view){
     if(this.context?.self?.entityId!==view?.self?.entityId||this.context?.playerUuid!==view?.playerUuid)this.compassWobble=new NativeCompassWobble()
@@ -149,8 +151,8 @@ export class NativeItemIcons {
         return
       }
       const evidence = appearance.evidence
-      if(provider==='chest'||provider==='shield') {
-        const {blob,...info}=await (provider==='shield'?this.shieldRenderer:this.chestRenderer).render(name, appearance.prepared)
+      if(['chest','shield','banner'].includes(provider)) {
+        const {blob,...info}=await (provider==='shield'?this.shieldRenderer:provider==='banner'?this.bannerRenderer:this.chestRenderer).render(name, appearance.prepared)
         if(this.disposed)return
         entry.result={verified:true,url:this.createUrl(blob),sourcePath:info.sourcePaths.find(path=>path.includes('/models/item/')),...info}
         entry.reason=null;return
@@ -198,6 +200,7 @@ export class NativeItemIcons {
     this.domumRenderer.dispose()
     this.chestRenderer.dispose()
     this.shieldRenderer.dispose()
+    this.bannerRenderer.dispose()
     this.glintClock.dispose()
     for (const entry of this.entries.values()) entry.result?.liveGlint?.dispose()
     for (const entry of this.entries.values()) if (entry.result) this.revokeUrl(entry.result.url)

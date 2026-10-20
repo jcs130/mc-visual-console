@@ -266,6 +266,10 @@ add('minecraft','flat','net.minecraft.world.item.ItemNameBlockItem','pumpkin_see
 // item/trident for GUI/ground/fixed; the in-hand builtin/entity model is a
 // different provider and must never borrow this flat inventory sprite.
 add('minecraft','gui-flat','net.minecraft.world.item.TridentItem','trident')
+add('minecraft','banner','net.minecraft.world.item.BannerItem',`
+white_banner orange_banner magenta_banner light_blue_banner yellow_banner lime_banner pink_banner gray_banner
+light_gray_banner cyan_banner purple_banner blue_banner brown_banner green_banner red_banner black_banner
+`)
 export const NATIVE_STATIC_ITEM_NAMES = Object.freeze([...table.keys()])
 export const NATIVE_STATIC_BLOCK_ITEM_NAMES = Object.freeze([...table].filter(([,e])=>e.kind==='json').map(([id])=>id))
 export const nativeStaticItemEvidence = name => table.get(name) ?? null
@@ -304,7 +308,9 @@ export function nativeItemComponentState(stack,{allowPartialGlint=false}={}) {
   const components=stack.components
   for(const [key,value] of Object.entries(components)) {
     const name=key.startsWith('!')?key.slice(1):key
-    if(!KNOWN.has(name)) throw Error(`NATIVE_ITEM_VISUAL_COMPONENT_UNSUPPORTED:${key}`)
+    const emptyBanner=name==='minecraft:banner_patterns'&&nativeStaticItemEvidence(stack.id)?.kind==='banner'&&
+      (key.startsWith('!')||Array.isArray(value)&&value.length===0);
+    if(!KNOWN.has(name)&&!emptyBanner) throw Error(`NATIVE_ITEM_VISUAL_COMPONENT_UNSUPPORTED:${key}`)
     if(key.startsWith('!')&&(!record(value)||Object.keys(value).length||Object.hasOwn(components,name))) throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID')
   }
   let foil=Object.hasOwn(components,'!minecraft:enchantment_glint_override')?null:DEFAULT_GLINT.has(stack.id)?true:null

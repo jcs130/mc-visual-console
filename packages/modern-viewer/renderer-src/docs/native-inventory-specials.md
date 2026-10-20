@@ -37,3 +37,23 @@ not claimed.
 the shared icon queue, including enchanted/custom-named tridents, vertical
 spawn alignment, random-spin conditions and cache bounds. These tests do not
 replace each consumer's served-bundle and live inventory acceptance.
+
+## Plain banners found during the inventory audit
+
+An observed empty `banner_patterns` patch is now preserved as the original empty
+SNBT list. All sixteen plain dye variants use `BannerRenderer.createBodyLayer`
+cloth/pole/bar geometry, original `template_banner` GUI transforms,
+`banner_base.png` plus the tinted `banner/base.png` overlay and original
+`DyeColor.textureDiffuseColor`. They share a single bounded 64px icon renderer;
+no generated replacement sprite is shipped. Other icon providers retain white
+material tint.
+
+The original client classes are `ggu.class` SHA-256
+`88ba40e62737975c6f0c7883119082944193edfabc391cfef83173fccdae6bc7`,
+`cti.class` SHA-256
+`9bea743c9ac41568416d8e495cd54d047adfcd4a664cb4c0856a5b6172fc702f`,
+and `gem.class` SHA-256
+`7667fd54fd26c8754f3dd83b7022c49505c8c3100719132e1f2069e0c5a8bcea`.
+The detached GUI banner uses its native initial cloth pose. Decorated banner
+pattern holders and held banners remain explicitly unsupported: a missing
+registry/pattern mapping must not be silently displayed as a plain banner.
