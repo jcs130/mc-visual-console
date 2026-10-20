@@ -24,7 +24,9 @@ export async function viewerPhotoPage(root, mode = 'first') {
         && d.meshed >= footprint && d.masked === 0 && d.pendingSections === 0
         && __photoSkinTasks.size === 0 && !__photoSkinFailed
         && (!heads || heads.pending === 0 && heads.unavailable === 0)
-        && (!ysm || ysm.pending === 0 && ysm.failed === 0 && ysm.unavailable === 0 && ysm.rendered === ysm.states)
+        // Received states also include the hidden first-person self and culled actors.
+        // Actual render jobs must be drained; total states need not equal visible actors.
+        && (!ysm || ysm.pending === 0 && ysm.failed === 0 && ysm.unavailable === 0)
         && document.fonts.status === 'loaded');
     };
   </script></body>`);

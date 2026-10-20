@@ -24,5 +24,7 @@ test('clean photography waits for actual meshed chunks and hides UI without dele
     context.itemHeadDiagnostics=()=>({pending:0,unavailable:1});assert.equal(context.__photoReady(),false);
     context.itemHeadDiagnostics=()=>({pending:0,unavailable:0});assert.equal(context.__photoReady(),true);
     context.cortiViewerContent={stats:()=>({ysm:{pending:1,failed:0,unavailable:0,rendered:0,states:1}})};assert.equal(context.__photoReady(),false);
+    context.cortiViewerContent={stats:()=>({ysm:{pending:0,failed:0,unavailable:0,rendered:1,states:2}})};assert.equal(context.__photoReady(),true);
+    context.cortiViewerContent={stats:()=>({ysm:{pending:0,failed:1,unavailable:0,rendered:1,states:2}})};assert.equal(context.__photoReady(),false);
   } finally {await rm(root,{recursive:true,force:true});}
 });
