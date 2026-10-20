@@ -26,3 +26,32 @@ node --test tools/test/voxel-proxy-catalog.test.mjs tools/test/native-model-sele
 ```
 
 Resolving all registry states certifies catalog coverage only. Empty/invisible/special-rendered states and seed uncertainties remain in the report; visual fidelity requires separate inspection.
+
+## Offline timeline replay and explicit runtime capabilities
+
+`setProxyPose(camera)` accepts an explicit validated scene camera, copies its
+coordinate arrays, updates FOV and the optional neutral self marker. It changes
+only this local rendering instance; it never sends a game camera/control action.
+It does not update block geometry: load the next archived scene when the geometry
+key changes. A replay should retain the original sampled poses and distinguish
+render-time interpolation or virtual projection from observed game motion.
+
+`renderProxy(offset, semantic, {mime, quality})` defaults to lossless PNG. RGB may
+explicitly select `image/jpeg`; semantic output rejects JPEG to retain exact class
+colors. `proxyDetails().renderer` reports `threeRevision` and supported methods
+and formats. Consumers must check this receipt and use the matched Three.js
+runtime, rather than resolving an unrelated recorder's older installation or
+patching renderer HTML at runtime.
+
+2026-10-20 replay verification: the original proxy uses Three.js r186. An r128
+installation resolved through an old recorder dependency rendered only 7 visible
+classes in the artistic-material test; r186 restored all 64. The corrected decoded
+first frame differed from the earlier matched frame by mean 0.81/255, consistent
+with different H.264 quantization. This mismatch was found in the new offline
+entry; the preceding live trial had already explicitly configured r186.
+
+Scene completeness is bounded: `coverage.complete` means all cells *inside the
+exported box* are known. At player Y=108, `below=8` stops at Y=100 and cannot render
+lower terrain. It does not certify camera-frustum coverage or an observed sky.
+Capture appropriate vertical extents or multiple bounded tiles before choosing a
+virtual camera. Do not reinterpret unknown/out-of-box regions as observed air.

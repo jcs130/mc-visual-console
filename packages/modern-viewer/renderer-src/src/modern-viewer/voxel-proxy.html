@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import {bakeFaces} from '../native-viewer/model-loader.js';
 import {selectProxyModels,atlasFaceUV} from './voxel-proxy-catalog.mjs';
-import {proxyFacing} from './voxel-proxy-pose.mjs';
+import {proxyFacing,checkedProxyPose} from './voxel-proxy-pose.mjs';
 import {organicProxyKind,organicProxyTransform} from './voxel-proxy-organic.mjs';
 const [snapshot,definitions,config,assetEvidence]=await Promise.all(['/scene.json','/catalog.json','/render.json','/asset-evidence.json'].map(async p=>(await fetch(p)).json()));
 if(snapshot.schema!=='agent-mc-voxel-scene/v1'||snapshot.order!=='x-y-z')throw Error('Unsupported scene protocol');
@@ -99,10 +99,11 @@ for(const b of batches.values()){
  b.positions.forEach((position,i)=>{dummy.position.set(...position.slice(0,3));dummy.scale.set(...(position.length===6?position.slice(3):[1,1,1]));dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);});
  entries.push({mesh,rgb,sem,name:b.name});world.add(mesh);
 }
+let selfActor;
 if(config.showSelf){
  // Neutral placement marker: identity reference replaces it in the anchor edit.
  // A pose snapshot cannot establish the actual ongoing limb animation.
- const actor=new THREE.Group();actor.position.set(...snapshot.camera.feet);actor.rotation.y=snapshot.camera.yaw;
+ const actor=new THREE.Group();selfActor=actor;actor.position.set(...snapshot.camera.feet);actor.rotation.y=snapshot.camera.yaw;
  const parts=[[[.4,.65,.25],[0,.85,0]],[[.38,.38,.38],[0,1.48,0]],[[.14,.5,.16],[-.28,.87,0]],[[.14,.5,.16],[.28,.87,0]],[[.15,.55,.17],[-.12,.28,0]],[[.15,.55,.17],[.12,.28,0]]];
  for(const [size,pos] of parts){const rgb=new THREE.MeshLambertMaterial({color:'#d7c7ae'}),sem=new THREE.MeshBasicMaterial({toneMapped:false});const mesh=new THREE.Mesh(new THREE.BoxGeometry(...size),rgb);mesh.position.set(...pos);actor.add(mesh);entries.push({mesh,rgb,sem,name:'agent:self'});}
  // A visible front/back distinction prevents a reference-sheet face becoming an implicit pose instruction.
@@ -114,14 +115,16 @@ let mode='';function colors(next){if(mode===next)return;mode=next;const semantic
  world.background=new THREE.Color(semantic?'#000000':'#aac4dc');
  for(const e of entries){e.mesh.material=semantic?e.sem:e.rgb;if(semantic){const c=new THREE.Color().setHex(parseInt(ids.get(e.name).color.slice(1),16),THREE.LinearSRGBColorSpace);if(e.mesh.isInstancedMesh){for(let i=0;i<e.mesh.count;i++)e.mesh.setColorAt(i,c);e.mesh.instanceColor.needsUpdate=true;}else e.sem.color.copy(c);}else if(e.mesh.isInstancedMesh&&e.mesh.instanceColor){for(let i=0;i<e.mesh.count;i++)e.mesh.setColorAt(i,new THREE.Color(1,1,1));e.mesh.instanceColor.needsUpdate=true;}}
 }
-window.renderProxy=(offset=0,semantic=false)=>{
+window.setProxyPose=pose=>{snapshot.camera=checkedProxyPose(pose);camera.fov=snapshot.camera.fovDegrees;camera.updateProjectionMatrix();if(selfActor){selfActor.position.set(...pose.feet);selfActor.rotation.y=pose.yaw;}};
+window.renderProxy=(offset=0,semantic=false,{mime='image/png',quality=.88}={})=>{
+ if(!['image/png','image/jpeg'].includes(mime)||!Number.isFinite(quality)||quality<.1||quality>1||semantic&&mime!=='image/png')throw Error('Lossless semantic PNG or explicit RGB frame encoding required');
  colors(semantic?'semantic':'rgb');const pose=snapshot.camera;camera.up.set(0,1,0);
  if(config.cameraOffset){const o=new THREE.Vector3(...config.cameraOffset).applyAxisAngle(new THREE.Vector3(0,1,0),offset);camera.position.set(...pose.feet).add(o);camera.lookAt(new THREE.Vector3(...pose.feet).add(new THREE.Vector3(0,1,0)));}
  else{camera.position.set(...pose.eye);const yaw=pose.yaw+offset,pitch=pose.pitch,cp=Math.cos(pitch);camera.lookAt(camera.position.clone().add(new THREE.Vector3(-Math.sin(yaw)*cp,Math.sin(pitch),-Math.cos(yaw)*cp)));}
- renderer.render(world,camera);return canvas.toDataURL('image/png');
+ renderer.render(world,camera);return canvas.toDataURL(mime,quality);
 };
 function projectSelf(height){const p=new THREE.Vector3(...snapshot.camera.feet).add(new THREE.Vector3(0,height,0)).project(camera);return {x:(p.x+1)/2,y:(1-p.y)/2};}
-window.proxyDetails=()=>({schema:'agent-mc-proxy-semantics/v1',sceneSchema:snapshot.schema,source:snapshot.source,sourceSampledAt:snapshot.sampledAt,camera:snapshot.camera,
+window.proxyDetails=()=>({schema:'agent-mc-proxy-semantics/v1',renderer:{threeRevision:THREE.REVISION,capabilities:{setProxyPose:true,rgbFrameFormats:['image/png','image/jpeg'],semanticFrameFormats:['image/png']}},sceneSchema:snapshot.schema,source:snapshot.source,sourceSampledAt:snapshot.sampledAt,camera:snapshot.camera,
  surfaceStyle,geometryStyle,organicClasses:[...organicClasses],viewport:{width:1280,height:704},renderPurpose:surfaceStyle==='original'&&geometryStyle==='original'?'original-material-proxy':'artistic-model-input-abstraction',
  virtualCamera:config.cameraOffset?{offset:config.cameraOffset,kind:'explicit-third-person-composition'}:null,bounds:snapshot.bounds,backgroundIsObservedSky:false,coverage:snapshot.coverage,legend,
  assetEvidence,visualApproximations:[...approximations],unverifiedTextureSeeds:[...unverifiedSeeds],approximateTintClasses:[...tints],unmappedNaturalColors:[],

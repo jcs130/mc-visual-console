@@ -11,3 +11,9 @@ export function proxyFacing(yaw,offset){
  const view=angle<30?'front':angle<75?`${side}-front-three-quarter`:angle<105?`${side}-profile`:angle<150?`${side}-rear-three-quarter`:'rear';
  return {view,forward,angleDegrees:angle,bodyOrientationObserved:false,orientationSource:'observed-head-yaw-used-for-neutral-placement'};
 }
+
+/** Validate an explicit historical/virtual pose before updating a proxy camera. */
+export function checkedProxyPose(pose){
+ if(!pose||pose.convention!=='mineflayer-radians'||pose.roll!==0||!Array.isArray(pose.feet)||!Array.isArray(pose.eye)||pose.feet.length!==3||pose.eye.length!==3||![...pose.feet,...pose.eye,pose.yaw,pose.pitch,pose.fovDegrees].every(Number.isFinite)||pose.fovDegrees<10||pose.fovDegrees>150)throw Error('Explicit versioned finite proxy pose required');
+ return {...pose,feet:[...pose.feet],eye:[...pose.eye]};
+}
