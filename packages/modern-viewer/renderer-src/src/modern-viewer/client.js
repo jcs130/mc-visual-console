@@ -6,6 +6,7 @@ import {
 import { io } from "socket.io-client";
 import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { captureOverview } from "./overview-capture.js";
+import { installCaptureControl } from "./capture-control.js";
 import { installSceneMinimap, dimensionLabel } from "./scene-minimap.js";
 import { SightGrid } from "./perception-view.js";
 import { installCameraWater } from './camera-water.js';
@@ -1021,6 +1022,11 @@ async function initializeRenderer(version) {
         width: window.innerWidth, height: window.innerHeight, document,
       });
     };
+    const captureControl = installCaptureControl({
+      enabled: isPhotoView && queryValue('capture') === '1',
+      setRendering: active => viewer.setRendering(active),
+    });
+    if (captureControl) window.addEventListener('beforeunload', () => captureControl.dispose(), { once: true });
     viewerEffectSystem = new ViewerEffectSystem({
       getWorld: () => globalThis.world,
       getEntity: (id) => globalThis.world?.entities?.entities?.[String(id)] ?? null,
