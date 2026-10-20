@@ -105,7 +105,7 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     else evidence = nativeStaticItemEvidence(stack.id)
     if (family === 'chest') { prepared = await prepareNativeChestItemIcon(reader, stack.id); model = prepared.model }
     if (family === 'shield') { prepared = await prepareNativeShieldItem(reader, stack.id); model = prepared.model }
-    if (family === 'banner') { prepared = await prepareNativeBannerItem(reader, stack.id); model = prepared.model }
+    if (family === 'banner') { prepared = await prepareNativeBannerItem(reader, stack.id,stack); model = prepared.model }
   }
   if (!model) {
     if (gui) model = await resolveNativeBlockItemModel(reader, modelId, [], {

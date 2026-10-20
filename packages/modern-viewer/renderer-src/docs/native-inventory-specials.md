@@ -54,6 +54,15 @@ The original client classes are `ggu.class` SHA-256
 `9bea743c9ac41568416d8e495cd54d047adfcd4a664cb4c0856a5b6172fc702f`,
 and `gem.class` SHA-256
 `7667fd54fd26c8754f3dd83b7022c49505c8c3100719132e1f2069e0c5a8bcea`.
-The detached GUI banner uses its native initial cloth pose. Decorated banner
-pattern holders and held banners remain explicitly unsupported: a missing
-registry/pattern mapping must not be silently displayed as a plain banner.
+The detached GUI banner uses its native initial cloth pose. Held banners remain
+explicitly unsupported; GUI acceptance does not prove the equipped model.
+
+Decorated banners consume the same action connection's configuration-phase
+`minecraft:banner_pattern` registry. Numeric holders resolve only against that
+received order and verified original asset/translation definitions. Inline
+holders preserve their actual definition. Forty-three original 1.21.1 patterns
+use their original PNG, diffuse dye color, `entityNoOutline` source-alpha
+blending/no-cull pass and stable layer order. Native display uses the first
+sixteen layers; the full bounded SNBT list remains intact. Registry changes,
+stream disposal, unknown/overridden assets and absent mappings cannot borrow a
+plain banner or an assumed static numeric ID.

@@ -1,5 +1,5 @@
 import { resourcePath, textureId } from './model-loader.js'
-import { NativeBlockItemIconRenderer, loadNativeCutoutItemTexture } from './native-block-item-icons.js'
+import { NativeBlockItemIconRenderer, loadNativeCutoutItemTexture,loadNativeBannerItemTexture } from './native-block-item-icons.js'
 import { parseNativeItemStack } from './native-item-stack.js'
 import { nativeGuideItemEligible } from './native-guide-item-icons.js'
 import { nativeArsItemEligible, NativeArsItemIconRenderer } from './native-ars-item-icons.js'
@@ -43,7 +43,7 @@ export class NativeItemIcons {
     this.domumRenderer = new NativeDomumItemIconRenderer(reader, domumRendererOptions)
     this.chestRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeChestItemIcon,loadTexture:loadNativeCutoutItemTexture,...chestRendererOptions})
     this.shieldRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeShieldItem,loadTexture:loadNativeCutoutItemTexture,...shieldRendererOptions})
-    this.bannerRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeBannerItem,loadTexture:loadNativeCutoutItemTexture,...bannerRendererOptions})
+    this.bannerRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeBannerItem,loadTexture:loadNativeBannerItemTexture,...bannerRendererOptions})
   }
   setContext(view){
     if(this.context?.self?.entityId!==view?.self?.entityId||this.context?.playerUuid!==view?.playerUuid)this.compassWobble=new NativeCompassWobble()

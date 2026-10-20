@@ -10,11 +10,29 @@ import {pngRgba} from './fixtures/png-rgba.mjs';
 import {prepareNativeBannerItem,NATIVE_BANNER_COLORS} from '../../src/native-viewer/native-banner-items.js';
 import {resolveNativeItemAppearance} from '../../src/native-viewer/native-item-appearance.js';
 import {buildNativeBlockItemObject,disposeNativeBlockItemObject} from '../../src/native-viewer/native-block-item-icons.js';
+import {EventEmitter} from 'node:events';
+import {observeVanillaNativeStream} from '../../host/vanilla-native-stream.mjs';
+import {NATIVE_BANNER_PATTERNS} from '../../src/native-viewer/native-banner-data.js';
+import {observeVanillaBannerRegistry,vanillaBannerPatternsSnbt} from '../../host/vanilla-banner-components.mjs';
+import {inspectNativeItemPng} from '../audit-native-item-gui.mjs';
 const root=new URL('../../../asset-packs/vanilla-1.21.1/',import.meta.url);
 const reader=async()=>new NativeAssetReader(JSON.parse(await fs.readFile(new URL('native-assets.json',root),'utf8')),p=>fs.readFile(new URL(p,root)));
 test('an observed empty banner pattern patch retains complete SNBT instead of losing the inventory item',()=>{
  const wire=vanillaItemStack({name:'brown_banner',count:1,components:[{type:'banner_patterns',data:[]}],removedComponents:[]});
  assert.equal(wire.reason,null);assert.deepEqual(parseNativeItemStack(wire.item).components['minecraft:banner_patterns'],[]);
+});
+test('received banner registry order resolves the actual holder and renders that exact pattern, never a guessed vanilla numeric ID',async()=>{
+ const registry={},bot={version:'1.21.1',registry,_client:new EventEmitter()},stream=observeVanillaNativeStream(bot,'a'.repeat(64));
+ const entry=name=>({key:'minecraft:'+name,value:{type:'compound',value:{asset_id:{type:'string',value:'minecraft:'+name},translation_key:{type:'string',value:'block.minecraft.banner.'+name}}}});
+ bot._client.emit('registry_data',{id:'minecraft:banner_pattern',entries:[entry('stripe_top'),entry('creeper')]});
+ const wire=vanillaItemStack({name:'brown_banner',count:1,components:[{type:'banner_patterns',data:[{pattern:{patternId:1},colorId:15}]}],removedComponents:[]},registry);
+ assert.equal(wire.reason,null);const stack=parseNativeItemStack(wire.item);
+ assert.deepEqual(stack.components['minecraft:banner_patterns'],[{pattern:'minecraft:creeper',color:'black'}]);
+ const plan=await prepareNativeBannerItem(await reader(),stack.id,stack);
+ assert.ok(plan.sourcePaths.includes('assets/minecraft/textures/entity/banner/creeper.png'));
+ assert.equal(plan.faces.filter(f=>f.renderOrder===2&&f.tintColor===0x1d1d21).length,6);
+ stream.close();assert.equal(bot._client.listenerCount('registry_data'),0);
+ assert.match(vanillaItemStack({name:'brown_banner',count:1,components:[{type:'banner_patterns',data:[{pattern:{patternId:1},colorId:15}]}],removedComponents:[]},registry).reason,/UNAVAILABLE/);
 });
 test('all sixteen original dyes retain native geometry, texture layers and exact diffuse tint without generic replacements',async()=>{
  const r=await reader();
@@ -32,13 +50,38 @@ test('all sixteen original dyes retain native geometry, texture layers and exact
 });
 test('decorated/unknown banner inputs stay explicit and GUI geometry never impersonates a supported held model',async()=>{
  const wire=vanillaItemStack({name:'brown_banner',count:1,components:[{type:'banner_patterns',data:[{pattern:{patternId:1},colorId:0}]}],removedComponents:[]});
- assert.match(wire.reason,/UNSUPPORTED:banner_patterns/);assert.equal(wire.item.snbt,undefined);
+ assert.match(wire.reason,/REGISTRY_UNAVAILABLE/);assert.equal(wire.item.snbt,undefined);
  const r=await reader(),raw={name:'minecraft:brown_banner',count:1,snbt:'{id:"minecraft:brown_banner",count:1,components:{"minecraft:banner_patterns":[{pattern:"unknown:pattern",color:"red"}]}}'};
- const icons=new NativeItemIcons(r);assert.match(icons.reason(raw),/VISUAL_COMPONENT_UNSUPPORTED/);icons.dispose();
+ const icons=new NativeItemIcons(r);assert.match(icons.reason(raw),/BANNER_PATTERN_UNSUPPORTED/);icons.dispose();
  const plain=parseNativeItemStack({...raw,snbt:'{id:"minecraft:brown_banner",count:1}'});
  await assert.rejects(resolveNativeItemAppearance(r,plain,{kind:'thirdperson_righthand'}),/SPECIAL_MODEL_UNAVAILABLE/);
  const wrong={...r,manifest:{...r.manifest,clientJarSha256:'0'.repeat(64)}};
  await assert.rejects(prepareNativeBannerItem(wrong,'minecraft:brown_banner'),/CLIENT_UNVERIFIED/);
+});
+test('all 43 original pattern assets load with their exact colored layer and native first-sixteen rendering cap',async()=>{
+ const r=await reader();
+ for(const name of NATIVE_BANNER_PATTERNS){
+  const row={pattern:'minecraft:'+name,color:'red'},plan=await prepareNativeBannerItem(r,'minecraft:white_banner',{components:{'minecraft:banner_patterns':[row]}});
+  const path='assets/minecraft/textures/entity/banner/'+name+'.png',decoded=inspectNativeItemPng(await r.bytes(path));
+  assert.deepEqual([decoded.width,decoded.height],[64,64]);assert.equal(decoded.maxAlpha,1,name);
+  assert.equal(plan.faces.filter(f=>f.renderOrder===2&&f.tintColor===NATIVE_BANNER_COLORS.red).length,6);
+  const textures=new Map(plan.texturePaths.map(path=>[path,new THREE.Texture({width:64,height:64})])),object=buildNativeBlockItemObject(plan,textures);
+  const overlay=object.children.find(m=>m.renderOrder===2);assert.equal(overlay.material.transparent,true);assert.equal(overlay.material.side,THREE.DoubleSide);
+  disposeNativeBlockItemObject(object);for(const texture of textures.values())texture.dispose();
+ }
+ const layers=Array.from({length:20},(_,i)=>({pattern:'minecraft:'+NATIVE_BANNER_PATTERNS[i],color:i%2?'white':'black'}));
+ const plan=await prepareNativeBannerItem(r,'minecraft:brown_banner',{components:{'minecraft:banner_patterns':layers}});
+ assert.equal(Math.max(...plan.faces.map(f=>f.renderOrder??0)),17);assert.equal(layers.length,20);
+});
+test('server registry overrides, duplicate keys, foreign registries, invalid colors and excessive layers cannot borrow a plain icon',()=>{
+ const registry={},entry={key:'minecraft:creeper',value:{type:'compound',value:{asset_id:{type:'string',value:'minecraft:skull'},translation_key:{type:'string',value:'block.minecraft.banner.creeper'}}}};
+ observeVanillaBannerRegistry(registry,{id:'minecraft:banner_pattern',entries:[entry]});
+ const row={pattern:{patternId:0},colorId:0};assert.throws(()=>vanillaBannerPatternsSnbt([row],registry),/UNAVAILABLE/);
+ assert.throws(()=>vanillaBannerPatternsSnbt([{...row,colorId:16}],registry),/INVALID/);
+ assert.throws(()=>vanillaBannerPatternsSnbt(Array(65).fill(row),registry),/INVALID/);
+ assert.throws(()=>vanillaBannerPatternsSnbt([row],{}),/UNAVAILABLE/);
+ const inline={pattern:{data:{assetId:'minecraft:creeper',translationKey:'block.minecraft.banner.creeper'}},colorId:1};
+ assert.match(vanillaBannerPatternsSnbt([inline],registry),/asset_id:"minecraft:creeper"/);
 });
 test('the shared icon queue renders the original brown banner cloth, pole and bar with original textures',async()=>{
  let renders=0;

@@ -1,4 +1,5 @@
 import { parseNativeItemStack, nativeNumericValue } from './native-item-stack.js'
+import {nativeBannerLayers} from './native-banner-data.js'
 
 // Positive registration evidence from locked 1.21.1 Items (cut), ItemColors
 // (fhu), ItemProperties (gps), ItemNameBlockItem, BookItem and WritableBookItem.
@@ -308,9 +309,9 @@ export function nativeItemComponentState(stack,{allowPartialGlint=false}={}) {
   const components=stack.components
   for(const [key,value] of Object.entries(components)) {
     const name=key.startsWith('!')?key.slice(1):key
-    const emptyBanner=name==='minecraft:banner_patterns'&&nativeStaticItemEvidence(stack.id)?.kind==='banner'&&
-      (key.startsWith('!')||Array.isArray(value)&&value.length===0);
-    if(!KNOWN.has(name)&&!emptyBanner) throw Error(`NATIVE_ITEM_VISUAL_COMPONENT_UNSUPPORTED:${key}`)
+    const banner=name==='minecraft:banner_patterns'&&nativeStaticItemEvidence(stack.id)?.kind==='banner';
+    if(banner&&!key.startsWith('!'))nativeBannerLayers(stack)
+    if(!KNOWN.has(name)&&!banner) throw Error(`NATIVE_ITEM_VISUAL_COMPONENT_UNSUPPORTED:${key}`)
     if(key.startsWith('!')&&(!record(value)||Object.keys(value).length||Object.hasOwn(components,name))) throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID')
   }
   let foil=Object.hasOwn(components,'!minecraft:enchantment_glint_override')?null:DEFAULT_GLINT.has(stack.id)?true:null

@@ -3,6 +3,7 @@ import { vanillaItemStack,configureVanillaItemRegistries } from './vanilla-item-
 import { observeVanillaHands } from './vanilla-hand-state.mjs';
 import { observeVanillaMenus } from './vanilla-menu-state.mjs';
 import { observeVanillaActivity, vanillaWireItem } from './vanilla-activity.mjs';
+import {observeVanillaBannerRegistry,clearVanillaBannerRegistry} from './vanilla-banner-components.mjs';
 
 // A vanilla client starts with the synchronized registry's attribute default;
 // the server sends changed values/modifiers. Never use this on a mod adapter or
@@ -35,7 +36,10 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
   const menus = observeVanillaMenus(bot, { onChange: () => events.emit('presentation') });
   const activity = observeVanillaActivity(bot, { onChange: () => events.emit('presentation') });
   let sequence = 0, closed = false, abilities = null, attributes = null, spawn = null;
+  const registryPacket=packet=>{if(!closed)observeVanillaBannerRegistry(bot.registry,packet);};
+  bot._client.on('registry_data',registryPacket);
   const receive = (params, meta) => {
+    if(!closed&&meta.name==='start_configuration')clearVanillaBannerRegistry(bot.registry);
     if (closed || meta.state !== 'play') return;
     if (['login','respawn'].includes(meta.name)) {abilities = null;attributes=null;spawn=null;}
     if(meta.name==='spawn_position'&&['x','y','z'].every(k=>Number.isInteger(params.location?.[k])&&Math.abs(params.location[k])<=30000000))
@@ -64,7 +68,7 @@ export function observeVanillaNativeStream(bot, registrySha256, version = '1.21.
   return { events, resolveItemStack, resolveEffect, configureItemRegistries:data=>configureVanillaItemRegistries(bot.registry,data),
     itemPropertyState:()=>!closed&&spawn?{playerUuid:bot._client.uuid,source:'same_player_spawn_position',spawn:{...spawn}}:null,
     attributeState:()=>attributes&&attributes.entityId===bot.entity?.id?structuredClone(attributes):null,
-    selfState: () => abilities, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; attributes=null; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); events.removeAllListeners(); } };
+    selfState: () => abilities, handState: () => hands.snapshot(), menuState: () => menus.snapshot(), activityState: () => activity.snapshot(), close() { closed = true; attributes=null; hands.close(); menus.close(); activity.close(); bot._client.off('packet', receive); bot._client.off('registry_data',registryPacket);clearVanillaBannerRegistry(bot.registry);events.removeAllListeners(); } };
 }
 
 /** Vanilla inventory only. Mod/proxy connections must use their native adapter. */

@@ -176,7 +176,7 @@ export function bakeNativeBlockItemFaces(model) {
   return faces
 }
 
-function material(texture,tintColor=0xffffff) {
+function material(texture,tintColor=0xffffff,translucent=false) {
   return new THREE.ShaderMaterial({ uniforms: {
     iconTexture: { value: texture }, light0: { value: new THREE.Vector3(...NATIVE_GUI_LIGHT_DIRECTIONS[0]) },
     light1: { value: new THREE.Vector3(...NATIVE_GUI_LIGHT_DIRECTIONS[1]) },
@@ -191,7 +191,7 @@ function material(texture,tintColor=0xffffff) {
     void main() {
       vec4 color = texture2D(iconTexture, nativeUV); if (color.a < 0.1) discard;
       gl_FragColor = vec4(color.rgb * nativeTint * nativeLight, color.a);
-    }`, toneMapped: false, side: THREE.FrontSide })
+    }`, toneMapped: false, side: translucent?THREE.DoubleSide:THREE.FrontSide,transparent:translucent })
 }
 
 export function buildNativeBlockItemObject(plan, textures) {
@@ -200,14 +200,15 @@ export function buildNativeBlockItemObject(plan, textures) {
     for (const face of plan.renderFaces ?? plan.faces) {
       const path = resourcePath(face.texture, 'textures', '.png')
       if (!textures.has(path)) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_MISSING')
-      const tint=face.tintColor??0xffffff,key=path+'#'+tint;
+      const tint=face.tintColor??0xffffff,translucent=face.nativeBannerPattern===true,key=path+'#'+tint+'#'+translucent;
       if(!Number.isInteger(tint)||tint<0||tint>0xffffff)throw Error('NATIVE_BLOCK_ITEM_TINT_INVALID')
-      if (!materials.has(key)) materials.set(key, material(textures.get(path),tint))
+      if (!materials.has(key)) materials.set(key, material(textures.get(path),tint,translucent))
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(face.position, 3))
       geometry.setAttribute('uv', new THREE.Float32BufferAttribute(face.uv, 2))
       geometry.setIndex(face.indices); geometry.computeVertexNormals()
       const mesh = new THREE.Mesh(geometry, materials.get(key)); mesh.userData = { ...face, sourcePath: path }
+      if(face.renderOrder!==undefined){if(!Number.isInteger(face.renderOrder)||face.renderOrder<0||face.renderOrder>17)throw Error('NATIVE_BLOCK_ITEM_LAYER_INVALID');mesh.renderOrder=face.renderOrder;}
       group.add(mesh)
     }
     group.position.fromArray(plan.transform.translation)
@@ -224,7 +225,7 @@ export function disposeNativeBlockItemObject(group) {
   for (const value of materials) value.dispose()
 }
 
-async function loadOpaqueTexture(bytes, cutout = false) {
+async function loadOpaqueTexture(bytes, cutout = false, translucent = false) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }))
   let texture
   try {
@@ -236,7 +237,7 @@ async function loadOpaqueTexture(bytes, cutout = false) {
     if (!context) throw Error('NATIVE_BLOCK_ITEM_OPACITY_UNAVAILABLE')
     context.drawImage(texture.image, 0, 0)
     const pixels = context.getImageData(0, 0, width, height).data
-    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] !== 255 && !(cutout && pixels[i] === 0)) throw Error('NATIVE_BLOCK_ITEM_TRANSLUCENT_TEXTURE_UNSUPPORTED')
+    for (let i = 3; i < pixels.length; i += 4) if (!translucent&&pixels[i] !== 255 && !(cutout && pixels[i] === 0)) throw Error('NATIVE_BLOCK_ITEM_TRANSLUCENT_TEXTURE_UNSUPPORTED')
     // Minecraft samples the PNG's stored RGB directly in light.glsl. A Three
     // sRGB-to-linear/tone-mapping round trip would change that GUI shade rule.
     texture.colorSpace = THREE.NoColorSpace; texture.magFilter = THREE.NearestFilter
@@ -248,6 +249,9 @@ async function loadOpaqueTexture(bytes, cutout = false) {
 // Only audited original cutout providers opt in; ordinary JSON icons retain
 // their existing opaque-material guard. Fractional alpha is still unavailable.
 export const loadNativeCutoutItemTexture = bytes => loadOpaqueTexture(bytes, true)
+// Original BannerRenderer pattern passes use entityNoOutline: source alpha,
+// normal blending and no culling. Other JSON/shield providers keep their guards.
+export const loadNativeBannerItemTexture = bytes => loadOpaqueTexture(bytes,true,true)
 
 const createRenderer = () => {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, preserveDrawingBuffer: true })

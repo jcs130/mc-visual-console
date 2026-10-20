@@ -2,6 +2,7 @@
 // patches stay unavailable; never turn an unknown item into a default icon.
 import {componentSnbt,enchantmentSnbt,snbtString} from './vanilla-component-nbt.mjs';
 import {bookComponentSnbt} from './vanilla-book-components.mjs';
+import {vanillaBannerPatternsSnbt} from './vanilla-banner-components.mjs';
 const INTEGER = new Set(['max_stack_size', 'max_damage', 'damage', 'repair_cost', 'custom_model_data']);
 const UNIT = new Set(['hide_additional_tooltip', 'hide_tooltip', 'fire_resistant', 'intangible_projectile']);
 const quote = value => JSON.stringify(value);
@@ -68,10 +69,7 @@ function componentValue(type, data, registry) {
   }
   if(['enchantments','stored_enchantments'].includes(type))return enchantmentSnbt(data,registry);
   if(type==='potion_contents')return potionComponent(data,registry);
-  // The original default/empty BannerPatternLayers is a real observed patch,
-  // not absent item data. Decorated holders need their actual registry/asset
-  // mapping and remain explicit until that path is supported.
-  if(type==='banner_patterns'&&Array.isArray(data)&&data.length===0)return '[]';
+  if(type==='banner_patterns')return vanillaBannerPatternsSnbt(data,registry);
   if (INTEGER.has(type)) {
     if (!Number.isSafeInteger(data) || data < -2147483648 || data > 2147483647 ||
         (type !== 'custom_model_data' && data < 0) ||
