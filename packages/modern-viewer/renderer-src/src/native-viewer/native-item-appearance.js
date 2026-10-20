@@ -98,6 +98,7 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     if (!gui && (TOOL.test(stack.id) || stack.id === 'minecraft:stick')) effect = validateHeldTool(stack)
     else effect = nativeStaticItemState(stack,{allowPartialGlint:true})
     const kind = nativeStaticItemEvidence(stack.id)?.kind
+    if (!gui && kind === 'gui-flat') throw Error('NATIVE_ITEM_HELD_SPECIAL_MODEL_UNAVAILABLE')
     family = ['chest', 'shield'].includes(kind) ? kind : 'static'
     if (gui || !(TOOL.test(stack.id) || stack.id === 'minecraft:stick')) evidence = verifyNativeStaticItemEvidence(reader, stack.id)
     else evidence = nativeStaticItemEvidence(stack.id)

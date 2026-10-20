@@ -262,6 +262,10 @@ iron_helmet iron_chestplate iron_leggings iron_boots golden_helmet golden_chestp
 diamond_helmet diamond_chestplate diamond_leggings diamond_boots netherite_helmet netherite_chestplate netherite_leggings netherite_boots
 `)
 add('minecraft','flat','net.minecraft.world.item.ItemNameBlockItem','pumpkin_seeds melon_seeds')
+// Items.vS constructs TridentItem (cwn). ItemRenderer glh explicitly selects
+// item/trident for GUI/ground/fixed; the in-hand builtin/entity model is a
+// different provider and must never borrow this flat inventory sprite.
+add('minecraft','gui-flat','net.minecraft.world.item.TridentItem','trident')
 export const NATIVE_STATIC_ITEM_NAMES = Object.freeze([...table.keys()])
 export const NATIVE_STATIC_BLOCK_ITEM_NAMES = Object.freeze([...table].filter(([,e])=>e.kind==='json').map(([id])=>id))
 export const nativeStaticItemEvidence = name => table.get(name) ?? null

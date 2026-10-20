@@ -20,7 +20,7 @@ test('every original compass predicate selects its exact texture, including both
 test('native compass wobble updates once per observed game tick and cannot invent absent spawn/context',()=>{
   const wobble=new NativeCompassWobble();assert.ok(Math.abs(wobble.update(1,.25)-.02)<1e-12);assert.ok(Math.abs(wobble.update(1,.8)-.02)<1e-12);
   const v=view(),stack=parseNativeItemStack(item('compass'));assert.ok(nativeDynamicGuiState(stack,v,wobble).variant.startsWith('frame-'));
-  for(const mutate of [v=>delete v.itemProperties.spawn,v=>v.itemProperties.entityId=43,v=>v.itemProperties.dimension='minecraft:the_nether',v=>v.self.uuid='other']){
+  for(const mutate of [v=>delete v.itemProperties.spawn,v=>v.itemProperties.entityId=43,v=>v.itemProperties.dimension='unknown:dimension',v=>v.self.uuid='other']){
     const copy=view();mutate(copy);assert.throws(()=>nativeDynamicGuiState(stack,copy,wobble),/UNAVAILABLE/);
   }
 });
