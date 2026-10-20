@@ -69,7 +69,10 @@ function componentValue(type, data, registry) {
   }
   if(['enchantments','stored_enchantments'].includes(type))return enchantmentSnbt(data,registry);
   if(type==='potion_contents')return potionComponent(data,registry);
-  if(type==='banner_patterns')return vanillaBannerPatternsSnbt(data,registry);
+  if(type==='banner_patterns'){
+    if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).length!==1||!Array.isArray(data.layers))throw Error('VANILLA_BANNER_PATTERNS_INVALID');
+    return vanillaBannerPatternsSnbt(data.layers,registry);
+  }
   if (INTEGER.has(type)) {
     if (!Number.isSafeInteger(data) || data < -2147483648 || data > 2147483647 ||
         (type !== 'custom_model_data' && data < 0) ||

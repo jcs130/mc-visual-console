@@ -66,3 +66,9 @@ blending/no-cull pass and stable layer order. Native display uses the first
 sixteen layers; the full bounded SNBT list remains intact. Registry changes,
 stream disposal, unknown/overridden assets and absent mappings cannot borrow a
 plain banner or an assumed static numeric ID.
+
+The protocol-767 component is the container `{layers:[BannerPatternLayer...]}`,
+while its SNBT codec is a list. The regression round-trips both configuration
+registry packets and `SlotComponent` binary bytes through minecraft-protocol,
+then the actual Prismarine Item constructor, projection and native SNBT parser.
+A directly supplied array is not accepted as a fabricated wire component.
