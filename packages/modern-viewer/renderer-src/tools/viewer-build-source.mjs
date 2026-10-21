@@ -3,7 +3,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 /** A portable digest of the renderer AND its Mineflayer host adapters. */
-export async function viewerSourceDigest(rendererRoot) {
+export async function viewerSourceDigest(rendererRoot, { standaloneNative = false } = {}) {
   const root = path.resolve(rendererRoot), files = [];
   async function walk(folder) {
     for (const entry of await readdir(folder, { withFileTypes: true })) {
@@ -15,7 +15,7 @@ export async function viewerSourceDigest(rendererRoot) {
   }
   await walk(root);
   const host = path.resolve(root, '../src');
-  await walk(host);
+  if (!standaloneNative) await walk(host);
   const preparation = path.resolve(root, '../../../tools/prepare-viewer-assets.mjs');
   if ((await stat(preparation).catch(() => null))?.isFile()) files.push(preparation);
   if (files.length > 2000) throw Error('VIEWER_SOURCE_FILE_BUDGET');
@@ -25,7 +25,8 @@ export async function viewerSourceDigest(rendererRoot) {
     digest.update(path.relative(path.resolve(root, '..'), file).replaceAll('\\', '/') + '\0');
     digest.update(text); digest.update('\0');
   }
-  return { sourceSha256: digest.digest('hex'), sourceFiles: files.length, scope: 'renderer_source_host_adapters_and_asset_preparation' };
+  return { sourceSha256: digest.digest('hex'), sourceFiles: files.length,
+    scope: standaloneNative ? 'native_renderer_and_its_included_host_adapters' : 'renderer_source_host_adapters_and_asset_preparation' };
 }
 
 export async function checkViewerBuild(rendererRoot, assetRoot) {

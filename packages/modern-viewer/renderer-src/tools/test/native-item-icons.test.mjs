@@ -70,6 +70,7 @@ test('positive constructor/provider evidence expands ordinary vanilla and locked
   const cases=[['minecraft:raw_iron','net.minecraft.world.item.Item'],['minecraft:iron_pickaxe','net.minecraft.world.item.PickaxeItem'],
     ['minecraft:carrot','net.minecraft.world.item.ItemNameBlockItem'],['farmersdelight:cabbage','net.minecraft.world.item.Item'],
     ['farmersdelight:straw','net.minecraft.world.item.Item'],['farmersdelight:carrot_crate','net.minecraft.world.item.BlockItem'],
+    ['farmersdelight:rice','vectorwing.farmersdelight.common.item.RiceItem'],['create:andesite_casing','net.minecraft.world.item.BlockItem'],
     ['minecraft:cut_sandstone_slab','net.minecraft.world.item.BlockItem']]
   for(const [name,itemClass] of cases){const e=nativeStaticItemEvidence(name);assert.equal(e.itemClass,itemClass);assert.equal(nativeItemIconEligible(raw(name)),true)}
   for(const name of ['minecraft:potion','minecraft:grass_block','minecraft:bow','minecraft:cut_standstone_slab','farmersdelight:skillet','farmersdelight:cooking_pot','unknown:straw'])

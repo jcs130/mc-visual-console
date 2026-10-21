@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
+import {observeNativeItemAliases,nativeItemIdentity} from '../../host/native-item-identity.mjs';
+const tick=()=>new Promise(resolve=>queueMicrotask(resolve));
+test('native selector aliases preserve wire fields, ignore cursor updates and revoke stale slots',async()=>{
+ const wire={name:'paper',type:100,count:3,components:[{type:'custom_data',data:{token:'private'}}]};
+ const original=structuredClone(wire),bot={_client:new EventEmitter(),inventory:{slots:[wire]}};
+ const events=new EventEmitter();let stateId=5,count=3,available=true;
+ const stream={events,health:()=>({available,registrySha256:'a'.repeat(64)}),inventory:()=>({playerUuid:'own',inventory:{stateId,slots:[{slot:0,item:{name:'create:andesite_casing',nativeId:2401,count}}]}})};
+ const close=observeNativeItemAliases(bot,stream);
+ bot._client.emit('window_items',{windowId:0,stateId:5});await tick();
+ assert.equal(nativeItemIdentity(wire).name,'create:andesite_casing');assert.deepEqual(wire,original);
+ bot._client.emit('set_slot',{windowId:-1,stateId:0,slot:-1});await tick();assert(nativeItemIdentity(wire));
+ bot._client.emit('set_slot',{windowId:0,stateId:6,slot:0});await tick();assert.equal(nativeItemIdentity(wire),null);
+ stateId=6;count=4;bot._client.emit('set_slot',{windowId:0,stateId:6,slot:0});await tick();assert.equal(nativeItemIdentity(wire),null);
+ count=3;bot._client.emit('window_items',{windowId:0,stateId:6});await tick();assert(nativeItemIdentity(wire));
+ events.emit('packet',{name:'open_window'});assert.equal(nativeItemIdentity(wire),null);
+ bot._client.emit('window_items',{windowId:0,stateId:6});await tick();available=false;events.emit('unavailable');assert.equal(nativeItemIdentity(wire),null);
+ close();assert.equal(bot._client.listenerCount('set_slot'),0);assert.equal(events.listenerCount('packet'),0);
+});

@@ -1,6 +1,17 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';import {createHash} from 'node:crypto';
 import {viewerSourceDigest,checkViewerBuild} from '../viewer-build-source.mjs';
+test('standalone native renderer hashes its included host without requiring an unrelated sibling',async()=>{
+ const temp=await mkdtemp(path.join(os.tmpdir(),'native-build-'));
+ try{
+  const source=path.join(temp,'renderer'),host=path.join(source,'host');await mkdir(host,{recursive:true});
+  await writeFile(path.join(source,'entry.js'),'export const renderer=1;');await writeFile(path.join(host,'native.mjs'),'export const schema=1;');
+  const before=await viewerSourceDigest(source,{standaloneNative:true});assert.equal(before.sourceFiles,2);
+  await writeFile(path.join(host,'native.mjs'),'export const schema=2;');
+  assert.notEqual((await viewerSourceDigest(source,{standaloneNative:true})).sourceSha256,before.sourceSha256);
+  await assert.rejects(()=>viewerSourceDigest(source),/ENOENT/);
+ }finally{assert.equal(path.dirname(path.resolve(temp)),path.resolve(os.tmpdir()));assert.match(path.basename(temp),/^native-build-/);await rm(temp,{recursive:true,force:true});}
+});
 test('a changed host adapter or actual deployed bundle fails version verification',async()=>{
  const temp=await mkdtemp(path.join(os.tmpdir(),'viewer-build-'));
  try{

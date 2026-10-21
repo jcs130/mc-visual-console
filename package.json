@@ -25,7 +25,8 @@
     "./mineflayer-control": "./packages/modern-viewer/renderer-src/host/viewer-mineflayer-control.mjs",
     "./agent-visuals": "./packages/modern-viewer/renderer-src/host/viewer-agent.mjs",
     "./performance-relay": "./packages/modern-viewer/renderer-src/host/viewer-performance-relay.mjs",
-    "./java-data-viewer": "./packages/modern-viewer/renderer-src/host/java-data-viewer.mjs"
+    "./java-data-viewer": "./packages/modern-viewer/renderer-src/host/java-data-viewer.mjs",
+    "./native-mineflayer": "./packages/modern-viewer/renderer-src/host/native-mineflayer.mjs"
   },
   "files": [
     "src",

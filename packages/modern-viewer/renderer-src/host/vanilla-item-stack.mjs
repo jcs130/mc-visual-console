@@ -41,7 +41,7 @@ function potionComponent(data,registry){
   return '{'+fields.join(',')+'}';
 }
 
-function componentValue(type, data, registry) {
+export function componentValue(type, data, registry) {
   if(['written_book_content','writable_book_content'].includes(type))return bookComponentSnbt(type,data);
   if(['custom_name','item_name','custom_data'].includes(type))return componentSnbt(data);
   if(type==='lore'){

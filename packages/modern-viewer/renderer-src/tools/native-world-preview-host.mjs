@@ -414,7 +414,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   ])
   const viewerCss = Buffer.from(VIEWER_CSS)
   const manifestBytes = Buffer.from(JSON.stringify(manifest))
-  const buildInfo = { buildSource: await viewerSourceDigest(path.resolve(SOURCE, '../..')),
+  const buildInfo = { buildSource: await viewerSourceDigest(path.resolve(SOURCE, '../..'), { standaloneNative: true }),
     browserBundleSha256: createHash('sha256').update(bundle).digest('hex'),
     consoleBundleSha256: createHash('sha256').update(consoleBundle).digest('hex'), registrySha256: hash,
     assetManifestSha256:createHash('sha256').update(manifestBytes).digest('hex'),
@@ -554,6 +554,10 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           if (!access.allowsRequest(request, currentPort)) { response.writeHead(403); response.end(); return }
           if (request.method !== 'GET') { response.writeHead(405, { Allow: 'GET' }); response.end(); return }
           let requestPath = decodeURIComponent(new URL(request.url, `http://127.0.0.1:${currentPort}`).pathname).slice(1)
+          // The shared page stylesheet requests these original HUD paths
+          // before its hash-checked native UI initializes. Resolve only an
+          // existing resource in this exact pack, with the normal byte checks.
+          if(requestPath.startsWith('textures/gui/')&&Object.hasOwn(manifest.assets,'assets/minecraft/'+requestPath))requestPath='assets/minecraft/'+requestPath
           if (requestPath === 'dungeon' || requestPath.startsWith('dungeon/')) {
             const suffix = requestPath.slice('dungeon'.length);
             response.writeHead(308, { Location: basePath + '3dview' + (suffix || '/') + new URL(request.url, 'http://localhost').search }); response.end(); return

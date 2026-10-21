@@ -20,12 +20,20 @@ import { parseNativeItemStack, nativeNumericValue } from './native-item-stack.js
 // for SKILLET (excluded). No mod ItemColors/ModelEvent registration is present.
 export const STATIC_ITEM_SOURCES = Object.freeze({
   minecraft: Object.freeze({name:'minecraft-1.21.1-client.jar',sha256:'499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99'}),
+  create: Object.freeze({name:'create-1.21.1-6.0.10.jar',sha256:'ef87fe5709f1ba1f5b8bb20a2925b5afb4669e178fd6d8bf10c167759eefe37a'}),
   farmersdelight: Object.freeze({name:'FarmersDelight-1.21.1-1.3.4.jar',sha256:'139ad7696462c89c03eea463f805abffa552526c5dadaadae221dd9624cb197c'})
 })
 const table = new Map()
 const add = (namespace,kind,itemClass,names) => {
   for(const leaf of names.trim().split(/\s+/)) table.set(`${namespace}:${leaf}`,Object.freeze({namespace,kind,itemClass,source:STATIC_ITEM_SOURCES[namespace]}))
 }
+// AllBlocks.ANDESITE_CASING -> BuilderTransformers.casing -> BlockBuilder.item()
+// uses the ordinary BlockItem factory. Keep its original item parent, GUI
+// transform and resource-priority checks; this does not admit other machines.
+add('create','json','net.minecraft.world.item.BlockItem','andesite_casing')
+// ModItems lambda$static$93 constructs RiceItem. Its only override is useOn
+// (placement); it inherits the ordinary ItemNameBlockItem model/colour path.
+add('farmersdelight','flat','vectorwing.farmersdelight.common.item.RiceItem','rice')
 add('minecraft','json','net.minecraft.world.item.BlockItem',`
 stone granite polished_granite diorite polished_diorite andesite polished_andesite deepslate cobbled_deepslate
 polished_deepslate calcite tuff tuff_slab tuff_stairs tuff_wall chiseled_tuff polished_tuff polished_tuff_slab
