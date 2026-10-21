@@ -1,7 +1,10 @@
 import { assertNativeItemStack, nativeNumericValue } from './native-item-stack.js'
-import { nativeStaticItemState, nativeStaticItemEvidence, verifyNativeStaticItemEvidence } from './native-static-item-providers.js'
+import { nativeStaticItemState, nativeStaticItemEvidence, verifyNativeStaticItemEvidence, nativeItemComponentState } from './native-static-item-providers.js'
 import { nativeBlockItemEligible, resolveNativeBlockItemModel, nativeGuiItemTransform, prepareNativeBlockGuiPlan, BLOCK_ICON_CLIENT_SHA256 } from './native-block-item-icons.js'
 import { prepareNativeChestItemIcon } from './native-chest-item-icons.js'
+import { prepareNativeShieldItem } from './native-shield-items.js'
+import { prepareNativeBannerItem } from './native-banner-items.js'
+import { prepareNativeGlint } from './native-item-glint.js'
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from './native-guide-item-icons.js'
 import { nativeArsItemEligible, prepareNativeArsItemIcon } from './native-ars-item-icons.js'
 import { nativeDomumItemEligible, prepareNativeDomumItemIcon } from './native-domum-item-icons.js'
@@ -57,13 +60,16 @@ function validateFlatModel(model) {
 }
 
 function validateHeldTool(stack) {
+  const effect = nativeItemComponentState(stack, { allowPartialGlint: true })
   for (const [key, value] of Object.entries(stack.components)) {
+    if (['minecraft:enchantments', 'minecraft:stored_enchantments', 'minecraft:enchantment_glint_override'].includes(key.replace(/^!/, ''))) continue
     if (!HELD_NON_VISUAL.has(key)) throw Error(`NATIVE_HELD_ITEM_COMPONENT_UNSUPPORTED:${key}`)
     if (key === 'minecraft:damage') {
       const damage = nativeNumericValue(value)
       if (!Number.isSafeInteger(damage) || damage < 0 || damage > 2147483647) throw Error('NATIVE_HELD_DAMAGE_INVALID')
     }
   }
+  return effect
 }
 
 // Selection only: no rasterizer, actor, texture/URL ownership, cache or clock.
@@ -75,7 +81,7 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
   // verifies its two mod JARs); the held path additionally locks the client.
   if (reader?.manifest?.minecraftVersion !== '1.21.1' || reader.manifest.assetIntegrityVerified !== true ||
       (!gui && reader.manifest.clientJarSha256 !== BLOCK_ICON_CLIENT_SHA256) || typeof reader.json !== 'function' || typeof reader.bytes !== 'function') throw Error('NATIVE_ITEM_APPEARANCE_READER_UNVERIFIED')
-  let family, prepared = null, evidence = null, model = null, modelId = stack.id.replace(':', ':item/')
+  let family, prepared = null, evidence = null, model = null, effect = null, modelId = stack.id.replace(':', ':item/')
   if (gui && nativeSoulSlabEligible(stack.id)) {
     family = 'soul-slab'; prepared = await prepareNativeSoulSlabAppearance(reader, stack); model = prepared.model; modelId = prepared.modelId
   } else if (gui && nativeDomumItemEligible(stack.id)) {
@@ -90,15 +96,21 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
   } else {
     // Preserve the established GUI/held eligibility difference. GUI-only mod
     // providers reach the same existing explicit unavailable diagnosis in hand.
-    if (!gui && (TOOL.test(stack.id) || stack.id === 'minecraft:stick')) validateHeldTool(stack)
-    else nativeStaticItemState(stack,{allowPartialGlint:gui})
-    family = nativeStaticItemEvidence(stack.id)?.kind === 'chest' ? 'chest' : 'static'
+    if (!gui && (TOOL.test(stack.id) || stack.id === 'minecraft:stick')) effect = validateHeldTool(stack)
+    else effect = nativeStaticItemState(stack,{allowPartialGlint:true})
+    const kind = nativeStaticItemEvidence(stack.id)?.kind
+    if (!gui && ['gui-flat','banner'].includes(kind)) throw Error('NATIVE_ITEM_HELD_SPECIAL_MODEL_UNAVAILABLE')
+    family = ['chest', 'shield','banner'].includes(kind) ? kind : 'static'
     if (gui || !(TOOL.test(stack.id) || stack.id === 'minecraft:stick')) evidence = verifyNativeStaticItemEvidence(reader, stack.id)
     else evidence = nativeStaticItemEvidence(stack.id)
     if (family === 'chest') { prepared = await prepareNativeChestItemIcon(reader, stack.id); model = prepared.model }
+    if (family === 'shield') { prepared = await prepareNativeShieldItem(reader, stack.id); model = prepared.model }
+    if (family === 'banner') { prepared = await prepareNativeBannerItem(reader, stack.id,stack); model = prepared.model }
   }
   if (!model) {
-    if (gui) model = await resolveNativeBlockItemModel(reader, modelId)
+    if (gui) model = await resolveNativeBlockItemModel(reader, modelId, [], {
+      properties:evidence?.itemClass==='net.minecraft.world.item.ArmorItem'?{trim_type:-1}:null
+    })
     else {
       if (nativeBlockItemEligible(stack.id)) model = await resolveNativeBlockItemModel(reader, modelId)
       if (!model || model.nativeGenerated) model = await resolveNativeBlockItemModel(reader, modelId, [], { generatedOnly: true })
@@ -110,12 +122,16 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
   if (gui && geometry === 'block') prepared = await prepareNativeBlockGuiPlan(reader, { name: stack.id, model, evidence })
   const display = model.display ?? {}, right = context.kind.replace('_lefthand', '_righthand')
   const geometryId = family === 'ars' ? `ars_nouveau:spellbook_${gui || prepared.leaf === 'worn_notebook' ? 'closed' : 'open'}` : modelId
+  let glint = null, effectUnavailableReason = prepared?.effectUnavailableReason ?? (effect?.foil ? gui ? 'NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE' : 'NATIVE_HELD_GLINT_ATLAS_UV_UNAVAILABLE' : null)
+  if (effect?.foil && ['static','shield'].includes(family) && stack.id.startsWith('minecraft:')) {
+    try { glint = await prepareNativeGlint(reader); effectUnavailableReason = null } catch (error) { effectUnavailableReason = error.message }
+  }
   return { stack, context, family, geometry, geometryId, modelId, model, display,
     selectedDisplay: display[context.kind] ?? display[right] ?? {}, prepared, evidence,
     sourcePaths: [...new Set([...(prepared?.sourcePaths ?? []), ...(model.sourcePaths ?? [])])],
     sourceVerification: !gui && (TOOL.test(stack.id) || stack.id === 'minecraft:stick') ? 'held_client_sha_and_asset_reader' : 'provider_source_and_asset_reader',
     requirements: { material: prepared?.originalMaterial ?? (gui && ['block', 'specialized'].includes(geometry) && family !== 'chest' ? 'original_opaque_gui' : 'entityCutout'),
       tintColors: family === 'potion' ? { 0: prepared.color } : null,
-      effectUnavailableReason: prepared?.effectUnavailableReason ?? null,
+      glint, effectUnavailableReason,
       propertyEvaluation: 'not_implemented', pixelParityVerified: false } }
 }

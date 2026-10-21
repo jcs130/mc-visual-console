@@ -32,8 +32,11 @@ test('reference defaults validate the original registry and every admitted stati
     try{const result=nativeRecipeReferenceItem(reader(),ref(name),original);assert.equal(parseNativeItemStack(result.item).id,name);admitted++}
     catch(error){assert.equal(error.message,'NATIVE_ITEM_GLINT_UNSUPPORTED');unavailable++}
   }
-  assert.equal(admitted,949);assert.equal(unavailable,3)
-  console.log('catalogue default contract',JSON.stringify({registered:1333,static:952,admitted,defaultGlintUnavailable:unavailable,remainingNonAirFamilies:376}))
+  // Same-connection banner providers added sixteen colours plus the shield.
+  // Keep this witness in step with the admitted families, not an older release.
+  assert.equal(admitted,994);assert.equal(unavailable,3)
+  assert.equal(admitted+unavailable,NATIVE_STATIC_ITEM_NAMES.filter(name=>name.startsWith('minecraft:')).length)
+  console.log('catalogue default contract',JSON.stringify({registered:original.items.length,static:admitted+unavailable,admitted,defaultGlintUnavailable:unavailable}))
   for(const value of [{name:'minecraft:chest',count:1},{...ref('minecraft:chest'),components:{}},{...ref('minecraft:chest'),snbt:'{}'},
     ref('minecraft:chest',0),ref('unknown:item'),{...ref('minecraft:chest'),reference:{...ref('minecraft:chest').reference,minecraftVersion:'1.20.6'}},
     {...ref('minecraft:chest'),reference:{...ref('minecraft:chest').reference,source:'observed'}},

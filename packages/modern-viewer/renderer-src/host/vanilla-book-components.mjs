@@ -1,8 +1,8 @@
-import {componentSnbt} from './vanilla-component-nbt.mjs';
+import {componentSnbt,snbtString} from './vanilla-component-nbt.mjs';
 const record=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const string=value=>{
   if(typeof value!=='string'||Buffer.byteLength(value)>32768)throw Error('VANILLA_BOOK_TEXT_INVALID');
-  return JSON.stringify(value);
+  return snbtString(value);
 };
 /** Protocol-767 Filterable book fields, preserving both original and filtered text. */
 export function bookComponentSnbt(type,data){

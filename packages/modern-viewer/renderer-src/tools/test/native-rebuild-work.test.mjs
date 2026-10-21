@@ -25,6 +25,36 @@ test('budget checks yield between expensive units and check retirement before an
   await assert.rejects(retired.checkpoint(), isNativeRebuildRetired)
 })
 
+test('default terrain preparation commits even when animation frames are occluded or throttled', async () => {
+  const original = globalThis.requestAnimationFrame
+  let frameRequests = 0, time = 0, timer
+  globalThis.requestAnimationFrame = () => { frameRequests++; return 1 }
+  const queue = new NativeTerrainQueue(), target = new THREE.Group()
+  queue.request({ epoch: 1, groups: Array.from({ length: 24 }, (_, i) => i) })
+  try {
+    await Promise.race([
+      queue.run(async (snapshot, isCurrent) => {
+        const stage = new NativeStaticStage(), work = createNativeRebuildWork({ isCurrent, now: () => time })
+        try {
+          for (const id of snapshot.groups) {
+            const mesh = new THREE.Group(); mesh.userData.id = id; stage.add(mesh)
+            time += 5; await work.checkpoint()
+          }
+          stage.commit(target, isCurrent)
+        } finally { stage.dispose() }
+      }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(Error('terrain preparation waited for a rendering frame')), 500) })
+    ])
+    assert.equal(target.children.length, 24)
+    assert.equal(queue.stats.committed, 1)
+    assert.equal(frameRequests, 0, 'CPU preparation must yield independently of painting')
+  } finally {
+    clearTimeout(timer)
+    if (original === undefined) delete globalThis.requestAnimationFrame
+    else globalThis.requestAnimationFrame = original
+  }
+})
+
 test('a static stage keeps the complete scene until commit and frees only owned resources on retirement', () => {
   const active = new THREE.Group(), previous = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial())
   let oldDisposed = 0, fluidDisposed = 0, sharedDisposed = 0, instanceDisposed = 0

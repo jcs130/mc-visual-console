@@ -1,5 +1,7 @@
 # 原生物品图标与中文显示
 
+2026-10-20：修复同一玩家现代组件中的普通 StringTag 名称。`custom_name` / `item_name` 同时接受原生文字和旧 JSON 文本组件，显示时去掉传统颜色控制码，保持原物品 ID、组件和 SNBT 不变。实际背包样例 `minecraft:player_head` 的 `§e大背包` 曾被无条件 JSON 解析拒绝，退回 `Player Head`。名称与外观分别验证；名称解析成功不代表自定义纹理已加载。
+
 2026-10-09 后续：[魂符原动画图标](native-soul-slab-icons.md)已接通 INIT/HAS_MAID，原七帧/100ms、同缓存相位；默认附魔光效因原图集 UV 未取得仍明确 partial。当前相关测试为157项；以下148项为此前汉化/Domum增量记录。
 
 2026-10-09：网页翻译同一玩家原始 `displayNameComponent`，保留 `translate`、`with`、`extra`；原 `displayName`、`descriptionId`、物品 ID 和完整 SNBT 不变。文字使用 DOM textContent，不执行点击、选择器或 NBT 内容。自定义命名优先，未知组件/翻译保留服务端名称，不按英文名称做字符串替换。

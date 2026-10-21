@@ -2,8 +2,27 @@ import test from 'node:test';import assert from 'node:assert/strict';import {cre
 import {vanillaItemStack} from '../../host/vanilla-item-stack.mjs';
 import {parseNativeItemStack,nativeNumericValue} from '../../src/native-viewer/native-item-stack.js';
 import {nativeItemIconEligible} from '../../src/native-viewer/native-item-icons.js';
+import {NativeLanguage} from '../../src/native-viewer/native-language.js';
+import {renderNativeItemSlot} from '../../src/native-viewer/native-ui-adapter.js';
+import {shell} from './fixtures/native-console-dom.mjs';
 const registry=createRequire(import.meta.url)('minecraft-data')('1.21.1');
 const stack=components=>vanillaItemStack({name:'oak_planks',count:3,components,removedComponents:[]},registry);
+
+test('actual wire string names remain visible instead of reverting to a base player head',()=>{
+  const language=new NativeLanguage();
+  for(const [type,value,expected] of [['custom_name','§e大背包','大背包'],['item_name','普通文字','普通文字'],
+    ['custom_name','{"text":"§b自定义名字"}','自定义名字'],['custom_name','"JSON string name"','JSON string name'],
+    ['custom_name','<script>display only</script>','<script>display only</script>']]){
+    const result=vanillaItemStack({name:'player_head',count:1,displayName:'Player Head',removedComponents:[],
+      components:[{type,data:{type:'string',value}}]},registry);
+    assert.equal(result.reason,null);
+    const before=structuredClone(result.item),document=shell(),slot=document.createElement('div');
+    renderNativeItemSlot(document,slot,result.item,{resolveItemName:item=>language.item(item)});
+    assert.equal(language.item(result.item),expected);assert.match(slot.title,new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+    assert.ok(slot.textContent.includes(expected));assert.equal(slot.dataset.itemName,'minecraft:player_head');
+    assert.deepEqual(result.item,before,'localization never rewrites the authoritative stack');
+  }
+});
 test('real named/lore/custom-data component patches retain the original stack and a standard block icon',()=>{
   const result=stack([{type:'custom_name',data:{type:'string',value:'{"text":"建筑木板"}'}},
     {type:'lore',data:[{type:'string',value:'{"text":"一组材料"}'}]},

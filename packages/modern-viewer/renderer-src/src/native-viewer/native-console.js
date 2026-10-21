@@ -118,7 +118,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     .native-console-diagnostics pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:35vh;overflow:auto}.native-console-diagnostics a{color:#afe2ff}
     .native-unavailable{font:11px/1.4 system-ui;color:#c4d4d3;white-space:nowrap}
     .corti-item-fallback{overflow:hidden;overflow-wrap:anywhere;font-size:8px}
-    .corti-skills [data-ability-list]{grid-template-columns:1fr}.corti-skills [data-ability-list] small{display:block;color:#aebfc1;font-size:10px}
+    .corti-skills [data-ability-list] small{display:block;color:#aebfc1;font-size:10px}
     [data-menu-body]>.corti-menu-note{color:#d4e2e3;margin:8px 0 0;padding:7px 4px;max-width:352px;font:11px/1.5 system-ui}
     .boot.is-compact{bottom:92px;right:14px;max-width:390px;font-size:11px}
     .viewer-camera-settings{right:112px}.viewer-toolbar .viewer-camera-settings{right:auto}
@@ -166,11 +166,12 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
       d?.entities ? `周围实体：原生收到 ${d.entities.received}，已渲染 ${d.entities.rendered}` : '',
       d?.frameGaps ? `可见帧间隔：p50 ${d.frameGaps.p50} / p95 ${d.frameGaps.p95} / p99 ${d.frameGaps.p99} / 最大 ${d.frameGaps.max} ms；>33/>50/>100 ms ${d.frameGaps.over33}/${d.frameGaps.over50}/${d.frameGaps.over100}；${d.frameGaps.sampleCount} 样本 / ${Math.round(d.frameGaps.durationMs)} ms` : '',
       d?.selfDisplay ? `本人显示缓冲 ${d.selfDisplay.delayMs} ms${d.selfDisplay.stale?' · 采样陈旧，保持最后位置':''}` : '',
+      d?.terrainWork?.phases ? `地形更新(CPU)：签名/环境/提交/索引/首次绘制 ${['signatureMs','environmentMs','commitMs','indexMs','firstRenderMs'].map(key=>Number.isFinite(d.terrainWork.phases[key])?d.terrainWork.phases[key].toFixed(1):'等待').join(' / ')} ms` : '',
       d?.frameCost ? `帧耗时(CPU)：更新 ${d.frameCost.updateMs.toFixed(1)} / 主画面 ${d.frameCost.mainMs.toFixed(1)} / 手部 ${d.frameCost.handsMs.toFixed(1)} / 地图 ${d.frameCost.mapMs.toFixed(1)} / HUD ${d.frameCost.uiMs.toFixed(1)} ms；主画面 ${d.frameCost.mainCalls} 次绘制 / ${d.frameCost.mainTriangles} 三角形；地图读回 ${d.frameCost.mapReadback??'等待'}` : '',
       d?.heldItems ? `第三人称持物：${d.heldItems.available ? '原始模型已接入' : d.heldItems.reason || '未支持'}` : '',
       pendingMode === 'first' && d?.firstPersonItems ? `第一人称持物：${d.firstPersonItems.available ? (d.firstPersonItems.swingAnimationAvailable ? '本人挥手与持物动画' : '原始静止持物姿态') : d.firstPersonItems.reason || '未支持'}；装备切换与完整使用动画待适配` : '',
       ...Object.entries((pendingMode === 'first' ? d?.firstPersonItems : d?.heldItems)?.hands ?? {}).map(([arm, hand]) =>
-        `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}`),
+        `${arm === 'right' ? '右手' : '左手'}：${hand.name || '空或未同步'}；${hand.status}；${hand.visible ? '显示' : '未显示'}${hand.reason || hand.projection?.warning ? `；${hand.reason || hand.projection.warning}` : ''}${hand.glint?.available ? '；原版附魔流光' : hand.effectUnavailableReason ? `；${hand.effectUnavailableReason}` : ''}`),
       presentation.available ? '背包/菜单/技能：同一玩家原生状态；原生物品图标已接入，未支持的专用模型/组件及装备明确标注' : `展示数据：${presentation.reason}`,
       pendingMode === '3dview' ? '3D观战跟随相机；原遮挡切面、旋转、缩放已接入' : '',
       '小地图：本人原场景与移动轨迹；第三人称已接入原运镜设置', d?.audio?.available?'声音：原始资源与本人实际事件；观战配乐为本机选择':'声音：'+(d?.audio?.reason??'等待原版音效包'), '完整场景一致性尚未验收',

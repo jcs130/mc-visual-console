@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { renderNativeSkillLists } from './native-skill-panel.js'
 import { InventoryPlayerPreview } from '../modern-viewer/inventory-player-preview.js'
 import { FishingCatchHud } from '../modern-viewer/fishing-catch.js'
 import { NativeItemIcons } from './native-item-icons.js'
@@ -329,6 +330,7 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
   slot.dataset.modelState = item ? 'unavailable' : 'empty'
   delete slot.dataset.modelReason
   delete slot.dataset.effectReason; delete slot.dataset.animationFrames
+  delete slot.dataset.glintSource
   // Localize the original same-player Component, retaining the native ID and
   // complete SNBT. Unknown/custom names keep the authoritative server text.
   const displayName = text(resolveItemName?.(item), 256) || text(item?.displayName, 256) || item?.name
@@ -359,7 +361,7 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
     }
     if (icon.effectUnavailableReason) {
       slot.dataset.effectReason = icon.effectUnavailableReason
-      slot.title += ' · 附魔光效未适配（原生图集坐标未同步）'
+      slot.title += ` · 附魔光效暂不可用（${icon.effectUnavailableReason}）`
     }
     image.addEventListener('error', () => {
       if (image.parentNode !== iconContainer || (iconContainer !== slot && iconContainer.parentNode !== slot)) return
@@ -374,7 +376,18 @@ export function renderNativeItemSlot (document, slot, item, { label = '', resolv
       slot.title = diagnostic+annotations; slot.setAttribute('aria-label', slot.title)
       slot.prepend(node(document, 'span', 'corti-item-fallback', displayName))
     }, { once: true })
-    if (iconContainer === slot) slot.append(image)
+    if (icon.liveGlint?.bind) {
+      const wrapper=node(document,'span','corti-native-glint-icon'),canvas=node(document,'canvas','corti-native-glint')
+      canvas.setAttribute('aria-hidden','true');wrapper.append(image,canvas)
+      if(imageStyle)Object.assign(wrapper.style,imageStyle)
+      iconContainer=wrapper;slot.append(wrapper)
+      if(icon.liveGlint.bind(canvas)){slot.dataset.glintSource=icon.liveGlint.source;slot.title += ' · 原版附魔流光'}
+      canvas.addEventListener('native-glint-error',()=>{if(wrapper.parentNode!==slot)return
+        slot.dataset.modelState='partial';slot.dataset.effectReason='NATIVE_GLINT_ICON_DECODE_FAILED';delete slot.dataset.glintSource
+        slot.title=identity+' · 附魔光效暂不可用（图标解码失败）';slot.setAttribute('aria-label',slot.title)
+      },{once:true})
+    }
+    else if (iconContainer === slot) slot.append(image)
     else { iconContainer.append(image); slot.append(iconContainer) }
   } else {
     const failure = animationError || reason
@@ -482,14 +495,17 @@ export function createNativeInterface ({ document = globalThis.document,
       self.experienceLevel, self.experienceProgress, presentation.inventory, assetsSequence, iconRevision])
     if (hudSignature === signature) return
     hudSignature = signature
-    iconRow('[data-corti-hearts]', finite(maxHealth) && maxHealth > 0 ? Math.ceil(clamp(maxHealth, 1, 160) / 2) : null,
+    // Current health and the attribute can arrive separately. Never crop real
+    // health to a smaller capacity reading or silently invent a new maximum.
+    iconRow('[data-corti-hearts]', finite(maxHealth) && maxHealth > 0 ? Math.ceil(clamp(Math.max(maxHealth, finite(health) ? health : 0), 1, 160) / 2) : null,
       health, 'heart/full', 'heart/half', 'heart/container', finite(health) ? `生命 ${health} · 上限或纹理未同步` : '生命未同步')
     const hearts = q('[data-corti-hearts]')
     if (hearts?.dataset.state === 'available') {
       hearts.style.display = 'grid'; hearts.style.gridTemplateColumns = 'repeat(10, 16px)'
       const rows = Math.max(1, Math.ceil(hearts.children.length / 10))
       hearts.style.gridAutoRows = '18px'; hearts.style.height = `${rows * 18}px`
-      hearts.title = `生命 ${health}/${maxHealth}`
+      hearts.title = health > maxHealth ? `生命 ${health} · 上限读数 ${maxHealth}（与当前生命不一致）` : `生命 ${health}/${maxHealth}`
+      if (health > maxHealth) hearts.setAttribute('aria-label', hearts.title)
     }
     iconRow('[data-corti-food]', 10, self.food, 'food_full', 'food_half', 'food_empty', finite(self.food) ? `饥饿 ${self.food}/20 · 纹理未同步` : '饥饿未同步')
     iconRow('[data-corti-armor]', finite(self.armor) && self.armor > 0 ? 10 : 0, self.armor,
@@ -824,21 +840,8 @@ export function createNativeInterface ({ document = globalThis.document,
     const value = known ? `${Math.round(mana.current)}/${Math.round(mana.max)}` : '--/--'
     for (const selector of ['[data-mana]', '[data-corti-mana-label]']) { const target = q(selector); if (target) target.textContent = `✦ 魔力 ${value}` }
     for (const selector of ['[data-mana-fill]', '[data-corti-mana-fill]']) { const target = q(selector); if (target) target.style.width = known ? `${clamp(mana.current / mana.max, 0, 1) * 100}%` : '0%' }
-    const list = q('[data-skill-list]'), abilities = q('[data-ability-list]'), status = q('[data-skill-status]')
-    list?.replaceChildren(); abilities?.replaceChildren()
-    for (const skill of (Array.isArray(skills?.skills) ? skills.skills : []).slice(0, 64)) {
-      if (typeof skill?.name !== 'string') continue
-      list?.append(node(document, 'div', 'corti-skill', `${text(skill.name, 80)}${finite(skill.level) ? ` Lv.${skill.level}` : ''}`))
-    }
-    for (const ability of (Array.isArray(skills?.abilities) ? skills.abilities : []).slice(0, 64)) {
-      if (typeof ability?.name !== 'string') continue
-      // Plain read-only rows: these are observed spells, not clickable casts.
-      const row = node(document, 'div', 'corti-skill')
-      row.textContent = text(ability.name, 80)
-      const cooldown = finite(ability.cooldownRemainingMs) ? `冷却 ${ability.cooldownRemainingMs / 1000}秒` : '冷却未同步'
-      row.title = `${text(ability.id, 128)} · ${finite(ability.manaCost) ? `${ability.manaCost}魔力` : '消耗未同步'} · ${cooldown}`
-      row.append(node(document, 'small', '', cooldown)); abilities?.append(row)
-    }
+    renderNativeSkillLists(document, skills)
+    const status = q('[data-skill-status]')
     if (status) status.textContent = skills ? `${text(skills.source, 80)} · ${skills.stale ? '上次读数，等待更新' : '本人回执'}${finite(skills.observedAt) ? ` · ${new Date(skills.observedAt).toLocaleTimeString()}` : ''}` : '本人法术与魔力未同步'
   }
   const showMessages = () => {
@@ -889,6 +892,8 @@ export function createNativeInterface ({ document = globalThis.document,
     renderIcon: (target, item) => renderNativeItemSlot(document, target, item, { resolveItemIcon: resolveIcon, resolveItemIconReason: resolveIconReason, resolveItemName: resolveName }) }) : null
   const reset = () => {
     current = null; actor = null; actorReason = null; presentation = unavailable('本人状态不可用')
+    itemIcons?.serverIcons.setPack(null)
+    itemIcons?.setContext(null)
     manualOpen = false; cancelIdle(); clearRecent(); dismissedMenu = null; lastMenuSignature = null; hudSignature = null; skillsSignature = null
     for (const timer of timers) clearTimer(timer)
     timers.clear(); seenMessages.clear(); seenTitles.clear(); fishing?.reset(); preview?.reset()
@@ -914,6 +919,7 @@ export function createNativeInterface ({ document = globalThis.document,
         finally { transitionTiming?.finish(timing) }
       } })
       const nextLanguage = new NativeLanguage(reader)
+      itemIcons.setContext(presentation)
       const [result,,registry] = await Promise.all([assets.prepare(), nextLanguage.prepare(),loadOriginalItemColors(reader)
         .then(data=>({data}),error=>({reason:error.message}))])
       if (disposed || sequence !== assetsSequence) return result
@@ -935,6 +941,8 @@ export function createNativeInterface ({ document = globalThis.document,
       current = state
       const previousWindow=actualContainer()
       presentation = nativePresentationView(state?.presentation, expectedUuid)
+      if(itemIcons?.setContext(presentation)){iconRevision++;hudSignature=null;lastMenuSignature=null}
+      itemIcons?.serverIcons.setPack(presentation.available?presentation.serverItemPackId:null)
       if(actualContainer()||!presentation.available||now()<combatUntil||presentation.self?.health===0)clearRecent()
       else if(previousWindow){
         clearRecent();recentWindow=previousWindow

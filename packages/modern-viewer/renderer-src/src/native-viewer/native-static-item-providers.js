@@ -1,4 +1,5 @@
 import { parseNativeItemStack, nativeNumericValue } from './native-item-stack.js'
+import {nativeBannerLayers} from './native-banner-data.js'
 
 // Positive registration evidence from locked 1.21.1 Items (cut), ItemColors
 // (fhu), ItemProperties (gps), ItemNameBlockItem, BookItem and WritableBookItem.
@@ -248,11 +249,36 @@ add('minecraft','flat','net.minecraft.world.item.FireChargeItem',`fire_charge`)
 // BlockEntityWithoutLevelRenderer uses the original closed single chest model,
 // not JSON block elements. Keep this provider separate from JSON BlockItems.
 add('minecraft','chest','net.minecraft.world.item.BlockItem',`chest trapped_chest ender_chest`)
+add('minecraft','shield','net.minecraft.world.item.ShieldItem','shield')
+// Locked Items registration: ordinary BlockItem models (lit state is not an
+// item property). BucketItem/SaddleItem change use behaviour, not their model.
+add('minecraft','json','net.minecraft.world.item.BlockItem','furnace blast_furnace smoker')
+add('minecraft','flat','net.minecraft.world.item.BucketItem','bucket')
+add('minecraft','flat','net.minecraft.world.item.SaddleItem','saddle')
 // Confirmed by the locked 1.21.1 BuiltInRegistries class export. These use the
 // original static JSON GUI path; override, tint and component guards still apply.
 add('minecraft','flat','net.minecraft.world.item.BottleItem','glass_bottle')
 add('minecraft','flat','net.minecraft.world.item.BoneMealItem','bone_meal')
+// InkSacItem cuh.class SHA256 da94ade9913ffce10fe062a49a48a6d604b11d7337b53184a807989abaa9c832:
+// only use-on-sign behavior, no ItemProperties/ItemColors override in gps/fhu.
+add('minecraft','flat','net.minecraft.world.item.InkSacItem','ink_sac')
+// ArmorItem csf.class SHA256 b70f2de931112790b123a7946e4403850e6466fc1448caac31db4f4659df25c4,
+// locked 1.21.1 Items registrations. No dye or trim is
+// substituted: the existing component guard refuses those visual inputs.
+add('minecraft','flat','net.minecraft.world.item.ArmorItem',`
+turtle_helmet chainmail_helmet chainmail_chestplate chainmail_leggings chainmail_boots
+iron_helmet iron_chestplate iron_leggings iron_boots golden_helmet golden_chestplate golden_leggings golden_boots
+diamond_helmet diamond_chestplate diamond_leggings diamond_boots netherite_helmet netherite_chestplate netherite_leggings netherite_boots
+`)
 add('minecraft','flat','net.minecraft.world.item.ItemNameBlockItem','pumpkin_seeds melon_seeds')
+// Items.vS constructs TridentItem (cwn). ItemRenderer glh explicitly selects
+// item/trident for GUI/ground/fixed; the in-hand builtin/entity model is a
+// different provider and must never borrow this flat inventory sprite.
+add('minecraft','gui-flat','net.minecraft.world.item.TridentItem','trident')
+add('minecraft','banner','net.minecraft.world.item.BannerItem',`
+white_banner orange_banner magenta_banner light_blue_banner yellow_banner lime_banner pink_banner gray_banner
+light_gray_banner cyan_banner purple_banner blue_banner brown_banner green_banner red_banner black_banner
+`)
 export const NATIVE_STATIC_ITEM_NAMES = Object.freeze([...table.keys()])
 export const NATIVE_STATIC_BLOCK_ITEM_NAMES = Object.freeze([...table].filter(([,e])=>e.kind==='json').map(([id])=>id))
 export const nativeStaticItemEvidence = name => table.get(name) ?? null
@@ -282,10 +308,18 @@ const record=value=>value&&typeof value==='object'&&!Array.isArray(value)
 export function nativeStaticItemState(input,{allowPartialGlint=false}={}) {
   const stack=input?.id?input:parseNativeItemStack(input),evidence=nativeStaticItemEvidence(stack.id)
   if(!evidence||!Number.isSafeInteger(stack.count)||stack.count<=0||!record(stack.components)) throw Error('NATIVE_ITEM_STATIC_PROVIDER_UNVERIFIED')
+  return {...nativeItemComponentState(stack,{allowPartialGlint}),evidence}
+}
+// Component validation is shared with positively registered dynamic GUI items;
+// accepting components alone never registers a new rendering provider.
+export function nativeItemComponentState(stack,{allowPartialGlint=false}={}) {
+  if(!stack||!Number.isSafeInteger(stack.count)||stack.count<=0||!record(stack.components))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID')
   const components=stack.components
   for(const [key,value] of Object.entries(components)) {
     const name=key.startsWith('!')?key.slice(1):key
-    if(!KNOWN.has(name)) throw Error(`NATIVE_ITEM_VISUAL_COMPONENT_UNSUPPORTED:${key}`)
+    const banner=name==='minecraft:banner_patterns'&&nativeStaticItemEvidence(stack.id)?.kind==='banner';
+    if(banner&&!key.startsWith('!'))nativeBannerLayers(stack)
+    if(!KNOWN.has(name)&&!banner) throw Error(`NATIVE_ITEM_VISUAL_COMPONENT_UNSUPPORTED:${key}`)
     if(key.startsWith('!')&&(!record(value)||Object.keys(value).length||Object.hasOwn(components,name))) throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID')
   }
   let foil=Object.hasOwn(components,'!minecraft:enchantment_glint_override')?null:DEFAULT_GLINT.has(stack.id)?true:null
@@ -305,5 +339,5 @@ export function nativeStaticItemState(input,{allowPartialGlint=false}={}) {
       if(!allowPartialGlint)throw Error('NATIVE_ITEM_GLINT_UNSUPPORTED');foil=true
     }
   }
-  return {stack,evidence,foil:foil===true}
+  return {stack,foil:foil===true}
 }

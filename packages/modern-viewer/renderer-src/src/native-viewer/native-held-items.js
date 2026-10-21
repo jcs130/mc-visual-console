@@ -6,6 +6,7 @@ import { bakeNativeBlockItemFaces } from './native-block-item-icons.js'
 import { nativeHumanoidWalkAngles, nativePlayerCos, nativePlayerSin, toSkinviewLimbRotation } from './native-player-motion.js'
 import { nativeHandAnimation, nativeHandUse, nativeFirstPersonConsumeMatrix, nativeFirstPersonSwingMatrix, nativeFirstPersonEmptyArmMatrix, nativeThirdPersonSwingPose } from './native-first-person-motion.js'
 import { resolveNativeItemAppearance } from './native-item-appearance.js'
+import { installNativeGlintMaterial } from './native-item-glint.js'
 
 // Locked 1.21.1 ItemModelGenerator / ItemInHandLayer / ItemTransform and
 // PlayerModel.translateToHand; Ars 5.13.2 SpellBookModel/TatteredTomeModel and
@@ -260,7 +261,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
   const stack = input?.id ? input : parseNativeItemStack(input)
   const appearance = await resolveNativeItemAppearance(reader, stack, contextInput)
   if (appearance.context.kind === 'gui' || (appearance.context.kind !== 'ground' && !appearance.context.kind.endsWith(`_${arm}hand`))) throw Error('NATIVE_HELD_CONTEXT_INVALID')
-  if(appearance.family==='chest') {
+  if(['chest','shield'].includes(appearance.family)) {
     const plan=appearance.prepared,textureLayers=new Map()
     for(const path of plan.texturePaths) {
       const bytes=await reader.bytes(path),dimensions=textureDimensions(bytes),decoded=await readPixels(bytes)
@@ -273,7 +274,7 @@ export async function prepareNativeHeldItem(reader, input, arm, { readPixels = r
       transform:nativeHeldItemTransform(display[`thirdperson_${arm}hand`]??display.thirdperson_righthand??{},arm),
       firstPersonTransform:nativeHeldItemTransform(display[`firstperson_${arm}hand`]??display.firstperson_righthand??{},arm,'firstperson'),
       groundTransform:nativeHeldItemTransform(display.ground??{},'right','ground'),sourcePaths:plan.sourcePaths,
-      geometry:'Minecraft 1.21.1 ChestRenderer single body',geoOffsetY:0,material:'entityCutout',geometrySourceVerified:true,
+      geometry:appearance.family==='shield'?'Minecraft 1.21.1 ShieldModel plate and handle':'Minecraft 1.21.1 ChestRenderer single body',geoOffsetY:0,material:'entityCutout',geometrySourceVerified:true,
       worldLightingParityVerified:false,pixelParityVerified:false}
   }
   if (!record(stack.components) || !Number.isSafeInteger(stack.count) || stack.count <= 0) throw Error('NATIVE_HELD_STACK_INVALID')
@@ -375,6 +376,8 @@ export function buildNativeHeldItemObject(plan, texture) {
     fragmentShader: 'uniform sampler2D nativeTexture; uniform vec3 nativeTint; varying vec2 nativeUV; void main(){ vec4 c=texture2D(nativeTexture,nativeUV); if(c.a<0.1)discard; gl_FragColor=vec4(c.rgb*nativeTint,c.a); }',
       side: plan.kind === 'native-block-held' ? THREE.FrontSide : THREE.DoubleSide,
       transparent: plan.material === 'entityTranslucent', depthWrite: true, toneMapped: false, forceSinglePass: true })
+    const glint = plan.appearance?.requirements?.glint
+    if (glint?.sprites[path]) installNativeGlintMaterial(material, glint, glint.sprites[path])
     materials.set(key, material); return material
   }
   try {
@@ -386,8 +389,10 @@ export function buildNativeHeldItemObject(plan, texture) {
       if (face.normal) geometry.setAttribute('normal', new THREE.Float32BufferAttribute(Array(4).fill(face.normal).flat(), 3))
       else geometry.computeVertexNormals()
       const mesh = new THREE.Mesh(geometry, material); mesh.userData.nativeFace = face; group.add(mesh)
+      if (material.userData.updateNativeGlint) mesh.onBeforeRender = () => { material.userData.updateNativeGlint(Date.now()); material.uniformsNeedUpdate = true }
     }
     group.userData = { nativeItem: plan.stack.id, kind: plan.kind, geometry: plan.geometry, sourcePaths: plan.sourcePaths,
+      glint: [...materials.values()].some(material => material.userData.nativeGlint) ? { available: true, source: plan.appearance.requirements.glint.source } : null,
       worldLightingParityVerified: false, pixelParityVerified: false, atlasUvShrinkAvailable: plan.atlasUvShrinkAvailable ?? null }
     return group
   } catch (error) { disposeNativeHeldItemObject(group); throw error }
@@ -456,7 +461,7 @@ export class NativeHeldItems {
       hands: Object.fromEntries(['right', 'left'].map(arm => {
         const value = this.hands.get(arm)
         return [arm, value ? { slot: value.slot, name: value.raw?.name ?? null, status: value.status, reason: value.reason ?? null,
-          geometry: value.plan?.geometry ?? null, componentSource: value.componentSource ?? null, visible: value.mount?.visible ?? false,
+          geometry: value.plan?.geometry ?? null, glint: value.object?.userData?.glint ?? null, effectUnavailableReason: value.plan?.appearance?.requirements?.effectUnavailableReason ?? null, componentSource: value.componentSource ?? null, visible: value.mount?.visible ?? false,
           armPoseAvailable: !thirdPersonPoseReason(this.selection?.self, this.now()) } : { status: 'unknown', reason: this.reason }]
       })), equipmentRenderingAvailable: false, worldLightingParityVerified: false, pixelParityVerified: false }
   }
@@ -470,6 +475,7 @@ export class NativeHeldItems {
       equipmentTransitionAvailable: false, cameraLagAnimationAvailable: false, viewBobbingAnimationAvailable: false, emptyHandArmRenderingAvailable: !!motion,
       hands: Object.fromEntries(['right','left'].map(arm => [arm, { status: this.hands.get(arm)?.status ?? 'unknown',
         visible: !!(this.hands.get(arm)?.firstMount?.visible || this.emptyArms.get(arm)?.visible), name: this.hands.get(arm)?.raw?.name ?? null,
+        glint: this.hands.get(arm)?.firstObject?.userData?.glint ?? null,
         reason: this.hands.get(arm)?.status === 'unsupported' ? this.hands.get(arm)?.reason : this.hands.get(arm)?.firstReason ?? null,
         projection: this.hands.get(arm)?.firstProjection ?? null }])),
       worldLightingParityVerified: false, pixelParityVerified: false }

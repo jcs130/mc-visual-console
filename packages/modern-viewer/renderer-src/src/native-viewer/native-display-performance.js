@@ -1,19 +1,33 @@
-// Display-only observed samples. One physics tick of latency; never predicts.
+// Display-only observed samples. Buffer the actual delivery cadence; never predicts.
 export class NativeSelfDisplayPose {
   constructor () { this.reset() }
-  reset () { this.resetVersion=(this.resetVersion??0)+1; this.samples=[]; this.identity=null; this.sequence=null; this.stale=false }
+  reset () { this.resetVersion=(this.resetVersion??0)+1; this.samples=[]; this.identity=null; this.sequence=null; this.stale=false;this.resetCadence() }
+  resetCadence () { this.arrivalGaps=[];this.delayMs=50;this.cadenceAt=null;this.cadenceTick=null;this.playhead=null }
   receive (pose, at, identity, motion) {
     if (!pose || !['x','y','z','yaw','pitch','eyeHeight'].every(k=>Number.isFinite(pose[k])) || !Number.isFinite(at)) return
     const last=this.samples.at(-1), sequence=motion?.resetSequence??null
-    if (identity!==this.identity || sequence!==this.sequence || (last && (at-last.at>250 || at<last.at || Math.hypot(pose.x-last.pose.x,pose.y-last.pose.y,pose.z-last.pose.z)>8))) {this.samples=[];this.resetVersion++}
+    if (identity!==this.identity || sequence!==this.sequence || (last && (at-last.at>250 || at<last.at || Math.hypot(pose.x-last.pose.x,pose.y-last.pose.y,pose.z-last.pose.z)>8))) {this.samples=[];this.resetCadence();this.resetVersion++}
     this.identity=identity;this.sequence=sequence
+    const tick=Number.isSafeInteger(motion?.tick)?motion.tick:null
+    if(tick===null||tick!==this.cadenceTick){
+      const gap=this.cadenceAt===null?null:at-this.cadenceAt
+      if(gap>=20&&gap<=250){
+        this.arrivalGaps.push(gap);if(this.arrivalGaps.length>16)this.arrivalGaps.shift()
+        const sorted=[...this.arrivalGaps].sort((a,b)=>a-b)
+        this.delayMs=Math.min(200,Math.max(50,Math.ceil(sorted[Math.ceil(sorted.length*.9)-1]/5)*5))
+      }
+      this.cadenceAt=at;this.cadenceTick=tick
+    }
     this.samples.push({pose:{...pose},at});if(this.samples.length>8)this.samples.shift()
   }
   sample (now) {
     const rows=this.samples,last=rows.at(-1);if(!last)return null
     this.stale=now-last.at>250
-    if(this.stale){this.samples=[last];return {...last.pose}}
-    const target=now-50
+    if(this.stale){this.samples=[last];this.playhead=last.at;return {...last.pose}}
+    // Growing a jitter buffer may hold the known pose, never rewind it. Both
+    // the actor and camera use this received interval, including wrapped yaw.
+    const target=Math.max(this.playhead??-Infinity,Math.min(last.at,now-this.delayMs))
+    this.playhead=target
     if(target<=rows[0].at)return {...rows[0].pose}
     for(let i=1;i<rows.length;i++)if(rows[i].at>=target){
       const a=rows[i-1],b=rows[i],t=b.at===a.at?1:(target-a.at)/(b.at-a.at),p={...b.pose}

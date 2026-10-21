@@ -23,8 +23,8 @@ const bytes = Buffer.from(rows.map(r => JSON.stringify(r)).join('\n'))
 const hash = createHash('sha256').update(bytes).digest('hex')
 const states = loadNativeStateRegistry(bytes, hash)
 const Chunk = chunkFactory('1.21.1')
-function worldFixture (registryStates = states, registryHash = hash) {
-  const world = new NativeWorldState({ states: registryStates, registrySha256: registryHash, simplifyNBT: x => x.value,
+function worldFixture (registryStates = states, registryHash = hash, options = {}) {
+  const world = new NativeWorldState({ ...options, states: registryStates, registrySha256: registryHash, simplifyNBT: x => x.value,
     resolveDimension: p => p.dimension === 3 ? { name: 'mod:actual_dimension', minY: -64, height: 384 } : null, now: () => 1000 })
   let sequence = 0
   const packet = (name, params) => world.handle({ registrySha256: registryHash, sequence: ++sequence, name, params })
@@ -34,6 +34,61 @@ function worldFixture (registryStates = states, registryHash = hash) {
   return { world, packet, chunk }
 }
 const pose = { x: -1.5, y: 64, z: -0.5, yaw: 0, pitch: 0, eyeHeight: 1.62 }
+
+test('a normal radius-12 native stream keeps rendering after 625 received columns',()=>{
+  const {world,packet,chunk}=worldFixture(),data=chunk.dump()
+  world.setPose({...pose,x:0.5,z:0.5})
+  for(let x=-12;x<=12;x++)for(let z=-12;z<=12;z++)packet('map_chunk',{x,z,chunkData:data})
+  assert.equal(world.error,null,'cache pressure must not permanently close the stream')
+  assert.equal(world.stateIdAt({x:0,y:64,z:0}),777)
+  assert.deepEqual(world.snapshot({halfExtent:1,below:1,above:1}).missingColumns,[])
+  world.setPose({...pose,x:192.5,z:192.5})
+  assert.equal(world.stateIdAt({x:192,y:64,z:192}),777,'received distant data remains recoverable')
+  packet('block_change',{location:{x:192,y:64,z:192},type:70001})
+  assert.equal(world.stateIdAt({x:192,y:64,z:192}),70001)
+  assert.ok(world.columns.size<=512,'decoded columns remain bounded')
+  packet('unload_chunk',{chunkX:12,chunkZ:12})
+  assert.equal(world.stateIdAt({x:192,y:64,z:192}),null,'unloaded is unknown, never guessed air')
+  packet('map_chunk',{x:12,z:12,chunkData:data})
+  assert.equal(world.stateIdAt({x:192,y:64,z:192}),777)
+  world.handle({sequence:world.lastSequence+2,registrySha256:hash,name:'update_time',params:{age:1,time:1}})
+  assert.equal(world.error,'NATIVE_WORLD_PACKET_SEQUENCE_OR_REGISTRY_MISMATCH','real integrity errors stay closed')
+})
+
+test('cold native columns preserve mutations and block entities; eviction is bounded and invalidates terrain',()=>{
+  const {world,packet,chunk}=worldFixture(states,hash,{columnLimits:{maxDecoded:2,maxColumns:4,maxBytes:65536}})
+  const data=chunk.dump(),evicted=[];world.columnCache.maxBytes=data.length*4+4096
+  world.on('world',change=>{if(change?.reason==='cache_budget')evicted.push(change.column)})
+  world.setPose({...pose,x:0.5,z:0.5})
+  packet('map_chunk',{x:0,z:0,chunkData:data})
+  packet('block_change',{location:{x:1,y:64,z:1},type:70002})
+  packet('tile_entity_data',{location:{x:1,y:64,z:1},nbtData:{Speed:17}})
+  for(let x=1;x<=3;x++)packet('map_chunk',{x,z:0,chunkData:data,blockEntities:[{x:1,y:64,z:1,nbtData:{Speed:25}}]})
+  assert.equal(world.columns.has('0,0'),false,'test actually crosses the decoded cache')
+  assert.equal(world.stateIdAt({x:1,y:64,z:1}),70002,'a cold reload includes the real block update')
+  assert.equal(world.blockEntities.get('1,64,1').data.Speed,17)
+  for(let x=1;x<=3;x++)world.stateIdAt({x:x*16,y:64,z:0})
+  packet('block_change',{location:{x:1,y:64,z:1},type:70001})
+  for(let x=1;x<=3;x++)world.stateIdAt({x:x*16,y:64,z:0})
+  assert.equal(world.stateIdAt({x:1,y:64,z:1}),70001,'an evicted hot lookup cannot lose subsequent writes')
+  packet('map_chunk',{x:100,z:0,chunkData:data,blockEntities:[{x:1,y:64,z:1,nbtData:{Speed:99}}]})
+  assert.equal(world.error,null);assert.equal(world.stateIdAt({x:1601,y:64,z:1}),null)
+  assert.ok(!world.blockEntities.has('1601,64,1'));assert.deepEqual(evicted,[{x:100,z:0}])
+  assert.ok(world.columnCache.stats().retainedBytes<=world.columnCache.maxBytes);assert.ok(world.columns.size<=2)
+  packet('respawn',{worldState:{dimension:3}})
+  assert.equal(world.columnCache.stats().retainedBytes,0);assert.equal(world.blockEntities.size,0)
+})
+
+test('wire and block-entity bytes share a strict budget without poisoning the stream',()=>{
+  const {world,packet,chunk}=worldFixture(states,hash,{columnLimits:{maxDecoded:2,maxColumns:4,maxBytes:32768}})
+  const data=chunk.dump();world.columnCache.maxBytes=data.length+2048;world.setPose({...pose,x:0.5,z:0.5})
+  packet('map_chunk',{x:0,z:0,chunkData:data})
+  packet('tile_entity_data',{location:{x:1,y:64,z:1},nbtData:{large:'x'.repeat(40000)}})
+  assert.equal(world.error,null);assert.equal(world.columnCache.stats().retainedBytes,0)
+  assert.equal(world.blockEntities.size,0);assert.equal(world.stateIdAt({x:1,y:64,z:1}),null)
+  packet('map_chunk',{x:0,z:0,chunkData:data})
+  assert.equal(world.stateIdAt({x:1,y:64,z:1}),777,'newly received data restores the evicted column')
+})
 
 test('dense received terrain emits exposed geometry and lossless hidden runs; opening a hole reveals its true neighbors',()=>{
   const opaque={stateId:70005,name:'minecraft:stone',properties:{},renderShape:'MODEL',hasBlockEntity:false,

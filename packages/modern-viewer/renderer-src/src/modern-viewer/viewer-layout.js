@@ -76,6 +76,14 @@ export function installViewerLayout({document, window, photo = false, overlay = 
     if (!moved.has(el)) moved.set(el, el.parentNode);
     parent.append(el);
   }
+  function dock(ids, parent) {
+    const panels = ids.map(id => document.getElementById(id)).filter(Boolean);
+    for (const panel of panels) move(panel, parent);
+    const current = Array.from(parent.children).filter(el => panels.includes(el));
+    // Modules mount asynchronously. Preserve the declared order even when the
+    // map arrives after decisions, without moving stable canvases every frame.
+    if (current.some((el, index) => el !== panels[index])) parent.append(...panels);
+  }
   function adopt() {
     if (disposed) return;
     move(document.querySelector('.corti-view-switch'), views);
@@ -87,8 +95,8 @@ export function installViewerLayout({document, window, photo = false, overlay = 
     if (tools.lastElementChild !== settings) { tools.append(clean, settings); }
     // Inputs and transient messages have independent viewport anchors. A live
     // chat row must never reflow the input panel or scroll it with the rail.
-    for (const id of ['corti-minimap', 'native-terrain-map', 'corti-scoreboard', 'corti-effects', 'agent-decisions', 'corti-content-status', 'corti-held-map']) move(document.getElementById(id), left);
-    for (const id of ['corti-skills', 'agent-intent', 'agent-route-map', 'agent-presentation', 'native-live-inspector']) move(document.getElementById(id), right);
+    dock(['corti-minimap', 'native-terrain-map', 'corti-scoreboard', 'corti-effects', 'agent-decisions', 'corti-content-status', 'corti-held-map'], left);
+    dock(['corti-skills', 'agent-intent', 'agent-activity', 'agent-route-map', 'agent-presentation', 'native-live-inspector'], right);
     measureToolbar();
   }
   listen(clean, 'click', () => { layout.clean = !layout.clean; apply(); });

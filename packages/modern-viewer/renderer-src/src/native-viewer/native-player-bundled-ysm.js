@@ -70,7 +70,7 @@ export async function createNativeBundledYsmPlayerActor (nativeReader, { uuid, b
     batch = batchYsmBones(model, material)
     content.add(model.root)
     const controller = createBundledYsmAnimation(model, animation, { arm, extra, uuid, sourcePoseAdapter })
-    held = new BundledYsmHeldItems(nativeReader, model, uuid, loadTexture)
+    held = new BundledYsmHeldItems(nativeReader, model, uuid, loadTexture, { readPixels: heldItemOptions.readPixels })
     arms = createBundledYsmFirstPersonArms(armGeometry, material)
     first = new NativeHeldItems(nativeReader, { ...heldItemOptions, uuid, firstPersonOnly: true,
       firstPersonArms: arms.mounts, emptyArmMatrix: bundledYsmFirstPersonArmMatrix, loadHeldTexture: heldItemOptions.loadHeldTexture ?? loadTexture })
@@ -101,7 +101,6 @@ export async function createNativeBundledYsmPlayerActor (nativeReader, { uuid, b
       applyMotion (input) {
         guard(); root.userData.motion = controller.apply(input)
         if (Number.isFinite(root.userData.motion.bodyRotationRadians)) root.rotation.y = root.userData.motion.bodyRotationRadians
-        held.setVisible(root.userData.motion.available && !['death', 'sleep'].includes(root.userData.motion.clip))
         first.frame(input?.now)
         return root.userData.motion
       },

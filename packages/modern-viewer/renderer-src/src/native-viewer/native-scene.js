@@ -162,7 +162,7 @@ async function start () {
         lastPlayerFrameTime = now
         if (selfActor) {
           selfActor.applyPose(displayPose)
-          selfMotionState = applyNativeSelfPlayerMotion(selfActor, current, { dt, now: Date.now() })
+          selfMotionState = applyNativeSelfPlayerMotion(selfActor, current, { dt, now: Date.now(), displayPose })
           if (selfActor.assetInfo?.kind === 'ysm') {
             const signature = JSON.stringify([selfMotionState?.available, selfMotionState?.reason, selfMotionState?.clip, selfMotionState?.selectedNativeState,
               selfMotionState?.state, selfMotionState?.mode, selfMotionState?.notice])
@@ -411,7 +411,7 @@ function publishDiagnostics() {
     kineticClock: kineticClockState,
     deviceVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeDevice).map(actor => ({ position: actor.position, stateId: actor.state.stateId, ...actor.root.userData.nativeDevice })),
     windmillVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeBearing).map(actor => ({ position: actor.position, ...actor.root.userData.nativeBearing })),
-    terrainWork:{...terrainQueue.diagnostics(),phases:{...terrainPhases}},frameCost,frameGaps:frameGaps.value,selfDisplay:{delayMs:50,stale:selfDisplay.stale},skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
+    terrainWork:{...terrainQueue.diagnostics(),phases:{...terrainPhases}},frameCost,frameGaps:frameGaps.value,selfDisplay:{delayMs:selfDisplay.delayMs,stale:selfDisplay.stale},skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
 function clearStatics () {
   if (!statics) return

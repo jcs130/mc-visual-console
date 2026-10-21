@@ -6,10 +6,22 @@ export const isNativeRebuildRetired = error => error?.code === 'NATIVE_SCENE_REB
 export const nativeStaticSignature = snapshot => JSON.stringify([snapshot.groups, snapshot.occludedSolidRuns,
   snapshot.neighbors, snapshot.biomeGrid, snapshot.biomes, snapshot.biomeSeed, snapshot.cuttingBoards])
 
+function yieldPreparationTask () {
+  if (typeof globalThis.scheduler?.yield === 'function') return globalThis.scheduler.yield()
+  if (typeof MessageChannel !== 'function') return new Promise(resolve => setTimeout(resolve, 0))
+  return new Promise(resolve => {
+    const channel = new MessageChannel()
+    channel.port1.onmessage = () => { channel.port1.close(); channel.port2.close(); resolve() }
+    channel.port2.postMessage(null)
+  })
+}
+
 // Check at each costly unit, rather than after a fixed number of biome tints.
 // Return null on the fast path so callers do not create per-block microtasks.
+// CPU preparation must not wait for painting: Chromium can throttle an occluded
+// window's RAF to 1 Hz even while document.visibilityState remains "visible".
 export function createNativeRebuildWork ({ isCurrent, budgetMs = 4, now = () => performance.now(),
-  yieldTask = () => new Promise(resolve => requestAnimationFrame(resolve)) }) {
+  yieldTask = yieldPreparationTask }) {
   let started = now()
   const check = () => { if (!isCurrent()) throw retired() }
   return { check,

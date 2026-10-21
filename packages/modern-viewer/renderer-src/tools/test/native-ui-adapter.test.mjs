@@ -136,7 +136,7 @@ test('soul slab displays the original clipped animated image, discloses missing 
   assert.equal(slot.querySelector('.corti-native-animated-icon').style.overflow,'hidden')
   assert.equal(slot.querySelector('.corti-item-fallback'),null)
   assert.equal(slot.dataset.modelState,'partial'); assert.equal(slot.dataset.animationFrames,'7')
-  assert.match(slot.title,/附魔光效未适配/)
+  assert.match(slot.title,/附魔光效暂不可用/)
   assert.match(nativeSoulSlabAnimationStyle(animation).animation,/700ms steps\(7,end\)/)
   renderNativeItemSlot(document,slot,null)
   assert.equal(slot.dataset.modelState,'empty'); assert.equal(slot.dataset.effectReason,undefined)
@@ -238,6 +238,28 @@ test('verified asset preparation draws original heart/food sprites; no default U
   assert.equal(hearts.children.length, 10); assert.match(hearts.children[0].style.backgroundImage, /blob:/)
   assert.equal(h.document.querySelector('[data-corti-food]').children.length, 10)
   assert.equal(h.document.querySelector('[data-corti-armor]').dataset.state, 'unavailable')
+  h.ui.dispose()
+})
+
+test('current health is not clipped by a lower received maximum, without rewriting either reading', async () => {
+  const h = harness(), self = { uuid: UUID, health: 22, maxHealth: 1, food: 20 }
+  await h.ui.setAssets({ bytes: async () => new Uint8Array([137,80,78,71]) })
+  h.ui.update({ epoch: 1, presentation: presentation({ self }) })
+  const hearts = h.document.querySelector('[data-corti-hearts]')
+  assert.equal(hearts.children.length, 11)
+  assert.match(hearts.title, /生命 22.*上限读数 1.*不一致/)
+  assert.equal(hearts.getAttribute('aria-label'), hearts.title)
+  assert.deepEqual(self, { uuid: UUID, health: 22, maxHealth: 1, food: 20 })
+  h.ui.update({ epoch: 1, presentation: presentation({ self: { ...self, health: 23, maxHealth: 20 } }) })
+  assert.equal(hearts.children.length, 12)
+  assert.notEqual(hearts.children[10].style.backgroundImage, hearts.children[11].style.backgroundImage)
+  h.ui.update({ epoch: 1, presentation: presentation({ self: { ...self, health: 0, maxHealth: 20 } }) })
+  assert.equal(hearts.children.length, 10)
+  assert.equal(hearts.title, '生命 0/20')
+  assert.equal(hearts.getAttribute('aria-label'), null)
+  h.ui.update({ epoch: 1, presentation: presentation({ self: { ...self, maxHealth: null } }) })
+  assert.equal(hearts.dataset.state, 'unavailable')
+  assert.match(hearts.textContent, /生命 22.*上限或纹理未同步/)
   h.ui.dispose()
 })
 test('fresh native slots clear stale unavailable ARIA/title and inventory note stays outside its image', async () => {
@@ -363,6 +385,31 @@ test('the real window zero supplies inventory state without automatically openin
     menuType: 'mod:container', slots: [{ slot: 0, item: null }] } }) })
   assert.equal(h.document.getElementById('corti-menu').dataset.inventorySource, 'container')
 })
+test('real icon bindings keep accessible base image, report effect decode failures and cannot overwrite a replacement item', () => {
+  const document=shell(),slot=document.createElement('div');document.body.append(slot)
+  const item={name:'minecraft:iron_sword',count:1},icon={verified:true,url:'blob:sword',liveGlint:{source:'original_test_glint',bind:()=>true}}
+  renderNativeItemSlot(document,slot,item,{resolveItemIcon:()=>icon})
+  const canvas=slot.querySelector('canvas');assert.ok(canvas);assert.equal(slot.querySelector('img').alt,item.name)
+  assert.equal(slot.dataset.glintSource,'original_test_glint')
+  canvas.dispatch('native-glint-error');assert.equal(slot.dataset.modelState,'partial');assert.match(slot.title,/解码失败/)
+  renderNativeItemSlot(document,slot,{name:'minecraft:stick',count:1},{resolveItemIcon:()=>({verified:true,url:'blob:stick'})})
+  canvas.dispatch('native-glint-error');assert.equal(slot.dataset.glintSource,undefined);assert.match(slot.title,/minecraft:stick/);assert.doesNotMatch(slot.title,/解码失败/)
+})
+
+test('long skills stay in closed disclosures with a bounded preview and keep expansion across updated readings', () => {
+  const h = harness(), skills = { source: 'plugin', skills: Array.from({ length: 11 }, (_, i) => ({ name: `等级${i}`, level: i })),
+    abilities: Array.from({ length: 40 }, (_, i) => ({ id: `extension:${i}`, name: `能力${i}`, cooldownRemainingMs: null })) }
+  h.ui.update({ epoch: 1, presentation: presentation({ skills }) })
+  const panel = h.document.getElementById('corti-skills'), more = panel.querySelector('[data-skill-details]')
+  assert.equal(more?.tagName, 'DETAILS'); assert.notEqual(more.open, true)
+  assert.equal(panel.querySelector('[data-skill-preview]').children.length, 4)
+  assert.equal(panel.querySelector('[data-ability-list]').children.length, 40)
+  assert.equal(panel.querySelector('[data-skill-list]').parentNode.tagName, 'DETAILS')
+  more.open = true
+  h.ui.update({ epoch: 1, presentation: presentation({ skills: { ...skills, observedAt: 2 } }) })
+  assert.equal(panel.querySelector('[data-skill-details]'), more); assert.equal(more.open, true)
+})
+
 test('skills do not invent cooldown readiness; hostile message text is literal and deduped; reset drops stale data', () => {
   const h = harness()
   const state = { epoch: 1, presentation: presentation({ skills: { source: 'ars_nouveau_receipt', mana: { current: 110, max: 200 }, abilities: [{ id: 'self:heal', name: 'Heal', manaCost: null, cooldownRemainingMs: null }] },

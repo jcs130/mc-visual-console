@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import http from 'node:http'
+import net from 'node:net'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, encodeNativeWorldEvent, sendNativeWorldEvent, createNativePlayerPresentation, injectTrackedMaidPresentation } from '../native-world-preview-host.mjs'
@@ -160,6 +161,56 @@ function playerEntity (bot) {
   bot.health = 17; bot.food = 12
   return bot.entity
 }
+
+test('closing a native host retires incomplete browser connections before rebinding the viewer port', async t => {
+  const { bot, nativeStream, host, counts } = attachment(t)
+  await host.listen()
+  const port = host.port
+  const accepted = new Promise(resolve => host.server.once('connection', resolve))
+  const socket = net.connect({ host: '127.0.0.1', port })
+  socket.on('error', () => {})
+  await accepted
+  // This HTTP connection has not reached /events admission, so it is absent
+  // from activeViewers(). A browser can leave it open across a game disconnect.
+  socket.write('GET /events HTTP/1.1\r\nHost: 127.0.0.1\r\n')
+  assert.equal(host.activeViewers(), 0)
+  let finished = false
+  const closing = host.close().then(() => { finished = true })
+  let deadline
+  try {
+    await Promise.race([closing, new Promise(resolve => { deadline = setTimeout(resolve, 300) })])
+    assert.equal(finished, true, 'an unadmitted HTTP socket must not strand viewer reconnection')
+  } finally {
+    clearTimeout(deadline)
+    socket.destroy()
+    await closing
+  }
+  assert.equal(host.server.listening, false)
+  assert.deepEqual(counts(), { quitCount: 0, detachCount: 0 })
+  assert.equal(bot.listenerCount('end'), 0)
+  assert.equal(nativeStream.events.listenerCount('packet'), 0)
+  const preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port })
+  const replacement = attachment(t, { preparedHost })
+  await replacement.host.listen()
+  assert.equal(replacement.host.port, port)
+  assert.equal((await request(replacement.host)).status, 200)
+})
+
+test('native browser bundle receipts are independent of the consuming host working directory', async t => {
+  const { host } = attachment(t)
+  const expected = host.status().build
+  const previous = process.cwd()
+  let preparedHost
+  try {
+    process.chdir(directory)
+    preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0 })
+  } finally {
+    process.chdir(previous)
+  }
+  const actual = attachment(t, { preparedHost }).host.status().build
+  assert.equal(actual.browserBundleSha256, expected.browserBundleSha256)
+  assert.equal(actual.consoleBundleSha256, expected.consoleBundleSha256)
+})
 
 test('prepared native host carries its local appearance default through root and nested pages', async t => {
   const preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0, defaultAppearance: 'bundled:yui-ysm', selectionScope: 'a'.repeat(24) })

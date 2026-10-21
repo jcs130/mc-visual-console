@@ -24,6 +24,10 @@ export class BundledYsmHeldItems {
     try { selected = selectNativeHeldItems(frame, this.uuid); this.reason = null } catch (error) {
       this.reason = error.message; for (const arm of ['right', 'left']) this.retire(arm); return this.state()
     }
+    // Inventory and life state own equipment visibility. A sparse/stale physics
+    // sample can pause an animation, but must not erase a confirmed held stack.
+    this.setVisible(selected.self.health !== 0 && !['dead', 'respawn_pending'].includes(selected.self.deathLifecycle?.phase) &&
+      ![2, 'sleeping', 'dying', 7].includes(selected.self.pose))
     for (const arm of ['right', 'left']) {
       const { raw, slot } = selected.hands[arm]
       let stack
@@ -56,8 +60,13 @@ export class BundledYsmHeldItems {
       const t = plan.transform
       mount.matrix.makeTranslation(0, -.0625, -.1).multiply(new Matrix4().makeRotationX(-Math.PI / 2))
         .multiply(new Matrix4().compose(new Vector3(...t.translation), new Quaternion().setFromEuler(new Euler(...t.radians, 'XYZ')), new Vector3(...t.scale)))
+      // Shield ModelPart grip faces opposite to this authored YSM locator.
+      // Turn around the handle's centre, after the native item display transform.
+      if (plan.appearance.family === 'shield') mount.matrix.multiply(new Matrix4().makeTranslation(-.5, -.5, -.5))
+        .multiply(new Matrix4().makeTranslation(0, 0, -.25)).multiply(new Matrix4().makeRotationY(Math.PI))
+        .multiply(new Matrix4().makeTranslation(.5, .5, .5))
       mount.add(object); mount.visible = this.visible; locator.add(mount)
-      Object.assign(row, { object, mount, textures, status: 'ready', reason: null }); retained = true
+      Object.assign(row, { object, mount, textures, status: 'ready', reason: null, glint: object.userData.glint, effectUnavailableReason: plan.appearance.requirements.effectUnavailableReason }); retained = true
     } catch (error) {
       if (object) disposeNativeHeldItemObject(object)
       if (current()) { row.status = 'unavailable'; row.reason = error.message }
@@ -67,7 +76,7 @@ export class BundledYsmHeldItems {
   state() { const rows = [...this.hands.values()], available = rows.some(row => row.status === 'ready' && row.mount.visible)
     return { available, reason: available ? null : this.reason ?? rows.find(row => row.reason)?.reason ??
       (rows.some(row => row.status === 'loading') ? 'NATIVE_HELD_ITEMS_LOADING' : rows.some(row => row.status === 'ready') ? 'BUNDLED_YSM_HELD_POSE_HIDDEN' : 'NATIVE_HELD_HANDS_EMPTY'),
-    hands: Object.fromEntries([...this.hands].map(([arm, row]) => [arm, { status: row.status, reason: row.reason ?? null, name: row.name, slot: row.slot, visible: !!row.mount?.visible }])),
+    hands: Object.fromEntries([...this.hands].map(([arm, row]) => [arm, { status: row.status, reason: row.reason ?? null, glint: row.glint ?? null, effectUnavailableReason: row.effectUnavailableReason ?? null, name: row.name, slot: row.slot, visible: !!row.mount?.visible }])),
     source: 'native_item_stack_original_ysm_locator', completeEntityParityVerified: false } }
   dispose() { if (this.disposed) return; this.disposed = true; for (const arm of ['right', 'left']) this.retire(arm) }
 }

@@ -1,7 +1,8 @@
 // Explicit 1.21.1 wire-component to ItemStack codec subset. Missing/unsupported
 // patches stay unavailable; never turn an unknown item into a default icon.
-import {componentSnbt,enchantmentSnbt} from './vanilla-component-nbt.mjs';
+import {componentSnbt,enchantmentSnbt,snbtString} from './vanilla-component-nbt.mjs';
 import {bookComponentSnbt} from './vanilla-book-components.mjs';
+import {vanillaBannerPatternsSnbt} from './vanilla-banner-components.mjs';
 const INTEGER = new Set(['max_stack_size', 'max_damage', 'damage', 'repair_cost', 'custom_model_data']);
 const UNIT = new Set(['hide_additional_tooltip', 'hide_tooltip', 'fire_resistant', 'intangible_projectile']);
 const quote = value => JSON.stringify(value);
@@ -42,6 +43,24 @@ function potionComponent(data,registry){
 }
 
 export function componentValue(type, data, registry) {
+  if(type==='profile'){
+    if(!data||typeof data!=='object'||Object.keys(data).some(k=>!['name','uuid','properties'].includes(k))||!Array.isArray(data.properties)||data.properties.length>16)
+      throw Error('VANILLA_PROFILE_COMPONENT_INVALID');
+    const fields=[];
+    // Protocol 767 permits an empty optional profile name (e.g. a UUID-only
+    // Bukkit custom head). Preserve it; texture identity comes from properties.
+    if(data.name!=null){if(typeof data.name!=='string'||!/^\w{0,16}$/.test(data.name))throw Error('VANILLA_PROFILE_NAME_INVALID');fields.push('name:'+snbtString(data.name));}
+    if(data.uuid!=null){
+      if(typeof data.uuid!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(data.uuid))throw Error('VANILLA_PROFILE_UUID_INVALID');
+      const hex=data.uuid.replaceAll('-','');fields.push('id:[I;'+[0,8,16,24].map(i=>parseInt(hex.slice(i,i+8),16)|0).join(',')+']');
+    }
+    fields.push('properties:['+data.properties.map(row=>{
+      if(!row||Object.keys(row).some(k=>!['name','value','signature'].includes(k))||typeof row.name!=='string'||row.name.length>64||typeof row.value!=='string'||row.value.length>16384
+        ||row.signature!=null&&(typeof row.signature!=='string'||row.signature.length>4096))throw Error('VANILLA_PROFILE_COMPONENT_INVALID');
+      return '{name:'+snbtString(row.name)+',value:'+snbtString(row.value)+(row.signature==null?'':',signature:'+snbtString(row.signature))+'}';
+    }).join(',')+']');
+    return '{'+fields.join(',')+'}';
+  }
   if(['written_book_content','writable_book_content'].includes(type))return bookComponentSnbt(type,data);
   if(['custom_name','item_name','custom_data'].includes(type))return componentSnbt(data);
   if(type==='lore'){
@@ -50,6 +69,10 @@ export function componentValue(type, data, registry) {
   }
   if(['enchantments','stored_enchantments'].includes(type))return enchantmentSnbt(data,registry);
   if(type==='potion_contents')return potionComponent(data,registry);
+  if(type==='banner_patterns'){
+    if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).length!==1||!Array.isArray(data.layers))throw Error('VANILLA_BANNER_PATTERNS_INVALID');
+    return vanillaBannerPatternsSnbt(data.layers,registry);
+  }
   if (INTEGER.has(type)) {
     if (!Number.isSafeInteger(data) || data < -2147483648 || data > 2147483647 ||
         (type !== 'custom_model_data' && data < 0) ||

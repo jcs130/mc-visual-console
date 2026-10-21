@@ -21,6 +21,7 @@ import {loadOriginalItemColors,ORIGINAL_ITEM_COLORS_PATH} from '../src/native-vi
 import {NativeAssetReader} from '../src/native-viewer/model-loader.js'
 import {nativeViewerBuildSignature,withNativeViewerBuild} from '../src/native-viewer/native-viewer-build.js'
 import { loadBundledAppearances } from '../host/native-bundled-appearances.mjs'
+import { loadServerItemPack } from '../host/server-item-pack.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
@@ -100,11 +101,15 @@ function injectedPresentation (provider, uuid) {
       UUID.test(row?.uuid??'')&&typeof row.title==='string'&&Number.isFinite(row.health)&&row.health>=0&&row.health<=1&&['pink','blue','red','green','yellow','purple','white'].includes(row.color)&&[0,6,10,12,20].includes(row.dividers)
         ?[{uuid:row.uuid,title:row.title.slice(0,200),health:row.health,color:row.color,dividers:row.dividers}]:[]):[]
     return { inventory: copy.inventory ?? null, nativeMenu: copy.nativeMenu ?? null, skills: copy.skills ?? null,
-      profile:copy.profile==='vanilla_1.21.1'?copy.profile:null,effects,bossBars,
+      profile:copy.profile==='vanilla_1.21.1'?copy.profile:null,
+      serverItemPackId:typeof copy.serverItemPackId==='string'&&/^[a-z0-9_.-]{1,80}$/.test(copy.serverItemPackId)?copy.serverItemPackId:null,effects,bossBars,
       modOperations: copy.modOperations ?? [],
       nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null,
       entityRenderStates: copy.entityRenderStates ?? null, contraptionRenderStates: copy.contraptionRenderStates ?? null,
-      nativeState: { available: true } }
+      nativeState: { available: true,
+        ...(typeof copy.nativeState?.componentsAvailable==='boolean'?{componentsAvailable:copy.nativeState.componentsAvailable}:{}),
+        ...(Array.isArray(copy.nativeState?.componentFailures)?{componentFailures:copy.nativeState.componentFailures.slice(0,46).flatMap(row=>
+          Number.isInteger(row?.slot)&&row.slot>=0&&row.slot<256&&typeof row.reason==='string'?[{slot:row.slot,reason:row.reason.slice(0,160)}]:[])}:{}) } }
   } catch (error) {
     const reason = ['PRESENTATION_INVALID', 'PRESENTATION_TOO_LARGE', 'PRESENTATION_IDENTITY_MISMATCH'].includes(error?.message) ? error.message : 'PRESENTATION_UNAVAILABLE'
     return unavailable(reason)
@@ -295,12 +300,13 @@ export function injectTrackedMaidPresentation (entityState, presentation, dimens
 // import; addon paths retain their normal package resolution.
 async function browserBundle (entry) {
   const require = createRequire(import.meta.url)
+  const workingDirectory = path.resolve(SOURCE, '../..')
   const threeRoot = path.dirname(path.dirname(require.resolve('three')))
   const threeModule = path.join(threeRoot, 'build/three.module.js')
-  const result = await build({ entryPoints: [entry], bundle: true, write: false, platform: 'browser', format: 'esm', target: 'es2022', metafile: true,
+  const result = await build({ absWorkingDir: workingDirectory, entryPoints: [entry], bundle: true, write: false, platform: 'browser', format: 'esm', target: 'es2022', metafile: true,
     plugins: [{ name: 'native-single-three', setup (builder) { builder.onResolve({ filter: /^three$/ }, () => ({ path: threeModule })) } }] })
   for (const input of Object.keys(result.metafile.inputs)) {
-    const absolute = path.resolve(input)
+    const absolute = path.resolve(workingDirectory, input)
     if (/[\\/]node_modules[\\/]three[\\/]/.test(absolute) && !absolute.startsWith(threeRoot + path.sep)) throw Error('NATIVE_WORLD_DUPLICATE_THREE')
   }
   return result.outputFiles[0].contents
@@ -390,7 +396,7 @@ function injectedAgentStatus (getAgentStatus, now) {
 
 // Prepare before createBot(), then attach synchronously before login packets.
 // Preparation creates no Minecraft client, listening socket or signal handler.
-export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server', selectionScope }) {
+export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server', selectionScope, serverItemCatalogFile = '', serverItemCatalogSha256 = '' }) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('NATIVE_WORLD_PORT_INVALID')
   const access = nativePreviewAccess(lanAddress)
   const root = await fs.realpath(assetDirectory)
@@ -405,6 +411,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
     : loadNativeEntityRegistry(await fs.readFile(path.join(root, 'registry/entities.tsv')), entityRegistrySha256)
   const audioPack=await loadNativeAudioPack(root,{nativeRegistrySha256:hash,entityRegistrySha256})
   const bundledAppearances = await loadBundledAppearances(bundledAppearanceCatalogFile)
+  const serverItemPack=await loadServerItemPack(serverItemCatalogFile,serverItemCatalogSha256)
   const itemColors=manifest.assets[ORIGINAL_ITEM_COLORS_PATH]
     ?await loadOriginalItemColors(new NativeAssetReader(manifest,p=>fs.readFile(path.join(root,p)))):null
   const [bundle, consoleBundle, diagnosticsPage] = await Promise.all([
@@ -418,8 +425,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
     browserBundleSha256: createHash('sha256').update(bundle).digest('hex'),
     consoleBundleSha256: createHash('sha256').update(consoleBundle).digest('hex'), registrySha256: hash,
     assetManifestSha256:createHash('sha256').update(manifestBytes).digest('hex'),
-    bundledAppearanceSha256: bundledAppearances.sha256 }
-  const appearanceBuildSha256 = createHash('sha256').update(buildInfo.assetManifestSha256).update(bundledAppearances.sha256).digest('hex')
+    bundledAppearanceSha256: bundledAppearances.sha256,serverItemPackSha256:serverItemPack.metadata.catalogSha256??null }
+  const appearanceBuildSha256 = createHash('sha256').update(buildInfo.assetManifestSha256).update(bundledAppearances.sha256).update(serverItemPack.metadata.catalogSha256??'').digest('hex')
   const viewerBuild=nativeViewerBuildSignature(buildInfo.buildSource.sourceSha256,appearanceBuildSha256)
   buildInfo.viewerBuild=viewerBuild
   const pages = new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['3dview/', '3dview'], ['3dview', '3dview']]
@@ -518,8 +525,10 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             quickBarSlot: Number.isInteger(bot.quickBarSlot) && bot.quickBarSlot >= 0 && bot.quickBarSlot <= 8 ? bot.quickBarSlot : null,
             ...(injected.nativeSelf ?? {}) },
           inventory: injected.inventory, nativeMenu: injected.nativeMenu, skills: injected.skills, modOperations: injected.modOperations ?? [], nativeState: injected.nativeState,
-          profile:injected.profile??null,effects:injected.effects??[],bossBars:injected.bossBars??[],
+          profile:injected.profile??null,serverItemPackId:injected.serverItemPackId??null,effects:injected.effects??[],bossBars:injected.bossBars??[],
           activity: nativeStream.activityState?.() ?? null,
+          itemProperties:{playerUuid:player.uuid,entityId:player.entityId,dimension:world.dimension?.name??null,
+            ...(nativeStream.itemPropertyState?.()??{})},
           agentPlayback: injectedAgentStatus(getAgentStatus, now).details?.playback ?? null,
           renderRegistries: injected.renderRegistries,
           entityRenderStates: injected.entityRenderStates,
@@ -536,6 +545,9 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const entityState = world.entitySnapshot(cachedSnapshot?.bounds)
         return { schemaVersion: 1, mode: sourceMode, readOnly: true, build: buildInfo, identity: identity(),
         selfPlayer: selfPlayer(), presentation: presentation(),
+        attributeEvidence: {source:'same_player_mineflayer_attributes',packet:nativeStream.attributeState?.()??null,
+          maxHealth:Object.entries(bot.entity?.attributes??{}).filter(([key])=>/(?:^|[.:])max_health$/.test(key)).slice(0,4)
+            .map(([key,row])=>({key,value:finiteNumber(row?.value),modifiers:Array.isArray(row?.modifiers)?row.modifiers.slice(0,16).map(m=>({amount:finiteNumber(m?.amount),operation:Number.isInteger(m?.operation)?m.operation:null})):null}))},
         connection: { ended: connectionEnded, playerEntityAvailable: Boolean(bot.entity) },
         viewer: { available: !closed && !world.error, closed, state: world.error || closed ? 'unavailable' : world.dimension && world.pose ? 'snapshot' : 'waiting',
           reason: world.error || (closed ? 'NATIVE_WORLD_HOST_CLOSED' : null), registrySha256: hash, epoch: world.epoch,
@@ -593,6 +605,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           else if (['index.js', 'native-console.js'].includes(requestPath)) { bytes = consoleBundle; type = 'text/javascript; charset=utf-8' }
           else if (requestPath === 'client.js') { bytes = bundle; type = 'text/javascript; charset=utf-8' }
           else if (requestPath === 'manifest.json') { bytes = manifestBytes; type = 'application/json' }
+          else if (requestPath === 'api/server-items') { bytes=Buffer.from(JSON.stringify(serverItemPack.metadata));type='application/json' }
+          else if (requestPath.startsWith('api/server-items/assets/')) {
+            bytes=serverItemPack.assets.get(requestPath.slice('api/server-items/assets/'.length));type='image/png'
+            if(!bytes){response.writeHead(404);response.end();return}
+          }
           else if (requestPath === 'api/bundled-appearances') { bytes = Buffer.from(JSON.stringify(bundledAppearances.metadata)); type = 'application/json' }
           else if (requestPath.startsWith('api/bundled-appearances/assets/')) {
             bytes = bundledAppearances.read(requestPath.slice('api/bundled-appearances/assets/'.length))
@@ -806,7 +823,14 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           // Both the action bot and native packet stream belong to the caller.
           closing = (async () => {
             if (listening) await listening.catch(() => {})
-            if (server.listening) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+            if (server.listening) await new Promise((resolve, reject) => {
+              server.close(error => error ? reject(error) : resolve())
+              // Retire only this viewer's HTTP sockets, including incomplete
+              // requests that never entered clients. Otherwise close() can
+              // hold the next same-port viewer behind a browser connection.
+              // Stop accepting first so no new socket escapes this cleanup.
+              server.closeAllConnections()
+            })
           })()
           return closing
         }

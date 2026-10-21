@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { AgentActivityHistory } from '../src/modern-viewer/agent-activity.js';
 import { normalizeAgentVisualUpdate, normalizeVisualRoute, visualPoint, visualSubject,
   sameVisualSubject, visualText, normalizeVisualFlight, normalizeVisualDecision } from '../src/modern-viewer/agent-visual-protocol.js';
 
@@ -21,6 +22,14 @@ export function createViewerAgentHub({ maximum = 64 } = {}) {
 }
 export const viewerAgentHub = createViewerAgentHub();
 const publishers = new WeakMap(), dispatchers = new WeakMap();
+const activityHistories = new WeakMap();
+/** Retain bounded host records even when the renderer has not attached yet. */
+export function publishAgentActivity(bot, value) {
+  if (!bot || typeof bot.emit !== 'function') return false;
+  let history = activityHistories.get(bot); if (!history) { history = new AgentActivityHistory(); activityHistories.set(bot, history); }
+  if (!history.put(value)) return false;
+  bot.emit('viewer:activity', value); return true;
+}
 
 /** Attach once per actual bot, then call this from an Agent/developer tool.
  * The acknowledgement confirms display acceptance, NOT a Minecraft action. */
@@ -65,8 +74,9 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     if (!subject) { hub.remove(owner); record = null; return null; }
     if (!sameVisualSubject(record?.subject, subject)) {
       hub.remove(owner);
+      const activity = activityHistories.get(bot) ?? new AgentActivityHistory(); activityHistories.set(bot, activity);
       record = { subject, epoch: randomUUID(), dimension: bot.game?.dimension ?? null, intent: null, route: null,
-        candidates: [], markers: [], decisions: [], pointer: null, camera: null, presentation: null, presentationRevision: 0, trail: [], operations: [], input: {} };
+        candidates: [], markers: [], decisions: [], activity, pointer: null, camera: null, presentation: null, presentationRevision: 0, trail: [], operations: [], input: {} };
       if (!hub.put(owner, record)) { record = null; return null; }
     }
     return record;
@@ -105,6 +115,8 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     if (!decision || !r) return;
     r.decisions = [...r.decisions.filter(row => row.source !== decision.source), { ...decision, until: now() + decision.ttlMs }].slice(-4);
   });
+  // Trusted host port only: browser drawing updates cannot impersonate model/tool records.
+  on('viewer:activity', value => { const r = refreshRecord(); if (r) r.activity.put(value); });
   on('viewer:agent', (update, acknowledge) => { const result = publish(update); if (typeof acknowledge === 'function') acknowledge(result); });
   on('spawn', () => { ended = false; hub.remove(owner); record = null; refreshRecord(); flush(true); });
   on('respawn', () => { hub.remove(owner); record = null; flush(true); });
@@ -184,6 +196,14 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
     const signature = JSON.stringify(frame);
     for (const [socket, sent] of sockets) {
       if (socket.connected === false) continue;
+      const activityRevision = r?.activity.revision ?? -1, activityEpoch = r?.epoch ?? '';
+      if (sent.activityRevision !== activityRevision || sent.activityEpoch !== activityEpoch) {
+        const records = r?.activity.snapshot() ?? [], reset = sent.activityEpoch !== activityEpoch;
+        const signatures = new Map(records.map(row => [row.id, JSON.stringify(row)]));
+        socket.emit('agentActivity', { schema: 'agent-activity-frame/v1', available: !!r && records.length > 0,
+          subject, epoch: activityEpoch, reset, records: reset ? records : records.filter(row => sent.activityRows.get(row.id) !== signatures.get(row.id)) });
+        sent.activityRows = signatures; sent.activityRevision = activityRevision; sent.activityEpoch = activityEpoch;
+      }
       if (force || sent.signature !== signature || time - sent.at >= 1000) {
         socket.emit('agentVisualization', { ...frame, sequence: ++sequence }); sent.signature = signature; sent.at = time;
       }
@@ -211,7 +231,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
         finish(publish(update));
       };
       const off = () => { sockets.delete(socket); socket.off?.('disconnect', off); socket.off?.('agentVisualUpdate', incoming); };
-      sockets.set(socket, { signature: '', at: -Infinity, presentation: '', off });
+      sockets.set(socket, { signature: '', at: -Infinity, presentation: '', activityRevision: -2, activityEpoch: null, activityRows: new Map(), off });
       socket.on('disconnect', off); socket.on('agentVisualUpdate', incoming); flush(true); return off;
     },
     dispose() {
@@ -219,6 +239,7 @@ export function createViewerAgentBridge(bot, { hub = viewerAgentHub, getViewerSe
       stopPackets(); for (const [event, handler] of hooks) bot.off(event, handler);
       publishers.delete(bot); hub.remove(owner); record = null;
       for (const [socket, row] of sockets) {
+        socket.emit('agentActivity', { schema: 'agent-activity-frame/v1', available: false, reset: false, records: [] });
         socket.emit('agentVisualization', { schemaVersion: 1, subject: null, available: false, reason: 'AGENT_VISUAL_HOST_CLOSED', sequence: ++sequence, ttlMs: 3500 }); row.off();
       }
       sockets.clear();
