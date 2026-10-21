@@ -32,9 +32,9 @@ test('reference defaults validate the original registry and every admitted stati
     try{const result=nativeRecipeReferenceItem(reader(),ref(name),original);assert.equal(parseNativeItemStack(result.item).id,name);admitted++}
     catch(error){assert.equal(error.message,'NATIVE_ITEM_GLINT_UNSUPPORTED');unavailable++}
   }
-  // Same-connection banner providers added sixteen colours plus the shield.
-  // Keep this witness in step with the admitted families, not an older release.
-  assert.equal(admitted,994);assert.equal(unavailable,3)
+  // The enchanted book adds one positively registered default-foil family.
+  // Strict reference icons still reject its unverified stitched glint atlas.
+  assert.equal(admitted,994);assert.equal(unavailable,4)
   assert.equal(admitted+unavailable,NATIVE_STATIC_ITEM_NAMES.filter(name=>name.startsWith('minecraft:')).length)
   console.log('catalogue default contract',JSON.stringify({registered:original.items.length,static:admitted+unavailable,admitted,defaultGlintUnavailable:unavailable}))
   for(const value of [{name:'minecraft:chest',count:1},{...ref('minecraft:chest'),components:{}},{...ref('minecraft:chest'),snbt:'{}'},

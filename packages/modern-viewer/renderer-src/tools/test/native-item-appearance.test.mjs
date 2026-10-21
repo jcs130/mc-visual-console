@@ -24,6 +24,14 @@ const decode = async bytes => pngRgba(bytes)
 const texture = async bytes => { const {width,height} = pngRgba(bytes); return new THREE.Texture({width,height}) }
 const settle = async icons => { while (icons.active || icons.queue.length) await new Promise(resolve => setImmediate(resolve)) }
 
+test('original enchanted-book model uses its registered default glint and respects explicit removals',async()=>{
+  const {nativeStaticItemState}=await import('../../src/native-viewer/native-static-item-providers.js')
+  const make=extra=>parseNativeItemStack(raw('minecraft:enchanted_book','"minecraft:stored_enchantments":{levels:{"minecraft:sharpness":3}}'+extra))
+  assert.equal(nativeStaticItemState(make(''),{allowPartialGlint:true}).foil,true)
+  assert.equal(nativeStaticItemState(make(',"minecraft:enchantment_glint_override":0b'),{allowPartialGlint:true}).foil,false)
+  assert.equal(nativeStaticItemState(make(',"!minecraft:enchantment_glint_override":{}'),{allowPartialGlint:true}).foil,false)
+})
+
 test('original source models drive all six contexts and real held geometry without losing typed removals or slot identity', async () => {
   const reader = await originalReader()
   const item = raw('minecraft:oak_planks', '"minecraft:damage":2s,"!minecraft:custom_name":{}')

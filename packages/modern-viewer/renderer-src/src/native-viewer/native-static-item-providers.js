@@ -183,6 +183,9 @@ writable_book
 add('minecraft','flat','net.minecraft.world.item.WrittenBookItem',`
 written_book
 `)
+// Items.cut constructs cto (EnchantedBookItem) with the default glint override
+// kq.t=true. The class inherits the generated original item model.
+add('minecraft','flat','net.minecraft.world.item.EnchantedBookItem','enchanted_book')
 add('farmersdelight','json','net.minecraft.world.item.BlockItem',`
 stove cutting_board wooden_basket bamboo_basket carrot_crate potato_crate beetroot_crate cabbage_crate tomato_crate
 onion_crate rice_bale rice_bag straw_bale safety_net oak_cabinet spruce_cabinet birch_cabinet jungle_cabinet
@@ -303,7 +306,7 @@ const NON_VISUAL=new Set(['minecraft:custom_name','minecraft:item_name','minecra
   'minecraft:attribute_modifiers','minecraft:can_break','minecraft:can_place_on',
   'minecraft:writable_book_content','minecraft:written_book_content'])
 const KNOWN=new Set([...NON_VISUAL,'minecraft:enchantments','minecraft:stored_enchantments','minecraft:enchantment_glint_override'])
-const DEFAULT_GLINT=new Set(['minecraft:enchanted_golden_apple','minecraft:nether_star','minecraft:written_book'])
+const DEFAULT_GLINT=new Set(['minecraft:enchanted_golden_apple','minecraft:nether_star','minecraft:written_book','minecraft:enchanted_book'])
 const record=value=>value&&typeof value==='object'&&!Array.isArray(value)
 export function nativeStaticItemState(input,{allowPartialGlint=false}={}) {
   const stack=input?.id?input:parseNativeItemStack(input),evidence=nativeStaticItemEvidence(stack.id)
@@ -335,7 +338,9 @@ export function nativeItemComponentState(stack,{allowPartialGlint=false}={}) {
     const value=components[key]
     if(!record(value)||Object.keys(value).some(name=>!['levels','show_in_tooltip'].includes(name))||
       (value.levels!==undefined&&!record(value.levels)))throw Error('NATIVE_ITEM_ENCHANTMENTS_INVALID')
-    if(Object.keys(value.levels??{}).length&&foil!==false){
+    // Stored book enchantments do not make ItemStack.hasEnchantments() true;
+    // the book's default glint component above supplies that visual state.
+    if(key==='minecraft:enchantments'&&Object.keys(value.levels??{}).length&&foil!==false){
       if(!allowPartialGlint)throw Error('NATIVE_ITEM_GLINT_UNSUPPORTED');foil=true
     }
   }

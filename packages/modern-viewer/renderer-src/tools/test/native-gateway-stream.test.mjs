@@ -22,6 +22,39 @@ test('unsupported mod component retains identity and reports missing rendering c
  const wire=item(2401,1);wire.components=[{type:'irons_spellbooks:spell_container',data:{}}];
  const result=nativeGatewayItem(wire,items,{});assert.equal(result.available,false);assert.equal(result.item.name,'create:andesite_casing');assert(!result.item.snbt);assert.match(result.reason,/CODEC_UNAVAILABLE/);
 });
+
+test('native enchantments, stored books and potions use original connection tables, with no vanilla fallback',()=>{
+ const tables=new Map([
+  ['minecraft:enchantment',new Map([[0,'mod:magic_edge'],[1,'minecraft:sharpness']])],
+  ['minecraft:potion',new Map([[3,'minecraft:healing']])],
+  ['minecraft:mob_effect',new Map([[2,'farmersdelight:comfort']])]
+ ]);
+ const fakeVanilla={enchantments:{0:{name:'aqua_affinity'}}};
+ for(const [type,tooltip] of [['enchantments','showTooltip'],['stored_enchantments','showInTooltip']]){
+  const wire=item(2401,1);wire.components=[{type,data:{enchantments:[{id:0,level:3},{id:1,level:2}],[tooltip]:true}}];
+  const before=structuredClone(wire),result=nativeGatewayItem(wire,items,fakeVanilla,tables);
+  assert(result.available);assert.match(result.item.snbt,/"mod:magic_edge":3/);assert.match(result.item.snbt,/"minecraft:sharpness":2/);
+  assert(!result.item.snbt.includes('aqua_affinity'));assert.deepEqual(wire,before);
+  assert.deepEqual(result.item.resolvedComponents[type],[{id:'mod:magic_edge',level:3},{id:'minecraft:sharpness',level:2}]);
+  assert.equal(nativeGatewayItem(wire,items,fakeVanilla).available,false);
+ }
+ const wire=item(2401,1);wire.components=[{type:'potion_contents',data:{potionId:3,customColor:0x123456,customEffects:[{id:2,details:{amplifier:1,duration:400,ambient:false,showParticles:true,showIcon:true,hiddenEffect:null}}]}}];
+ const result=nativeGatewayItem(wire,items,fakeVanilla,tables);assert(result.available);
+ assert.match(result.item.snbt,/potion:"minecraft:healing"/);assert.match(result.item.snbt,/id:"farmersdelight:comfort"/);
+ assert.equal(result.item.resolvedComponents.potion_contents.effects[0].id,'farmersdelight:comfort');
+});
+
+test('completed tables arrive before login and remain account-local across respawn',()=>{
+ const body=bot('a'),other=bot('b'),stream=observeNativeGateway(body,{registrySha256:hash,items}),second=observeNativeGateway(other,{registrySha256:hash,items});let sequence=0;
+ const send=(name,params)=>body._client.emit('custom_payload',{channel:NATIVE_GATEWAY_CHANNEL,data:frame(name,params,++sequence)});
+ send('native_registries',{source:'same_connection_neoforge_frozen_registry',registries:{'minecraft:enchantment':[{id:0,name:'mod:edge'}]}});
+ const wire=item(2401,1);wire.components=[{type:'stored_enchantments',data:{enchantments:[{id:0,level:2}],showInTooltip:false}}];
+ send('login',{entityId:1});send('window_items',{windowId:0,stateId:1,items:[wire]});
+ assert.match(stream.inventory().inventory.slots[0].item.snbt,/mod:edge/);
+ assert.equal(second.resolveItemStack(wire).available,false);
+ send('respawn',{});assert.equal(stream.inventory().available,false);assert(stream.resolveItemStack(wire).available);
+ stream.close();second.close();
+});
 test('maid owner UUID preserves the original typed int-array component and other custom codecs remain explicit',()=>{
  const registry=loadGatewayItemRegistry('touhou_little_maid:smart_slab_init\t9\n');
  const wire=item(9,1);wire.components=[{type:'touhou_little_maid:init_maid_owner',data:'174bd1e7-fad4-3319-91e6-d495fc2ac20b'}];
@@ -67,4 +100,26 @@ test('native visibility refuses occluded and unloaded cells',()=>{
  assert.equal(nativeVisible(world,{x:.5,y:1.5,z:.5},{x:3.5,y:1.5,z:.5}),false);
  world.stateIdAt=()=>0;assert.equal(nativeVisible(world,{x:.5,y:1.5,z:.5},{x:3.5,y:1.5,z:.5}),true);
  world.stateIdAt=()=>null;assert.equal(nativeVisible(world,{x:.5,y:1.5,z:.5},{x:3.5,y:1.5,z:.5}),false);
+});
+
+test('locked cooking-pot proxy preserves the real native 45-slot layout and two observed progress fields',()=>{
+ const body=bot('a'),stream=observeNativeGateway(body,{registrySha256:hash,items,
+  nativeMenuLayouts:new Map([['farmersdelight:cooking_pot',{proxyType:'minecraft:generic_9x1',slots:45,inventoryStart:9}]]),
+  simplifyNBT:tag=>tag.value});let sequence=0;
+ const send=(name,params)=>body._client.emit('custom_payload',{channel:NATIVE_GATEWAY_CHANNEL,data:frame(name,params,++sequence)});
+ send('native_registries',{source:'same_connection_neoforge_frozen_registry',registries:{'minecraft:menu':[{id:91,name:'farmersdelight:cooking_pot'}]}});
+ send('window_items',{windowId:0,stateId:1,items:Array.from({length:46},()=>({itemCount:0}))});
+ send('open_window',{windowId:4,inventoryType:91,windowTitle:{type:'string',value:'我的烹饪锅'}});
+ body.currentWindow={id:4,type:'minecraft:generic_9x1',inventoryStart:9,slots:Array(45)};
+ const rows=Array.from({length:45},()=>({itemCount:0}));rows[0]=item(1002,2);rows[36]=item(2401,3);
+ send('window_items',{windowId:4,stateId:2,items:rows});
+ assert.equal(stream.presentation().nativeMenu.menuType,'farmersdelight:cooking_pot');assert.equal(stream.presentation().nativeMenu.titleComponent,'我的烹饪锅');
+ assert.equal(stream.inventory().inventory.slots[36].item.name,'create:andesite_casing');
+ assert.equal(stream.presentation().nativeMenu.dataValues,null);
+ send('craft_progress_bar',{windowId:4,property:0,value:40});assert.equal(stream.presentation().nativeMenu.dataValues,null);
+ send('craft_progress_bar',{windowId:99,property:1,value:999});assert.equal(stream.presentation().nativeMenu.dataValues,null);
+ send('craft_progress_bar',{windowId:4,property:1,value:200});assert.deepEqual(stream.presentation().nativeMenu.dataValues,[40,200]);
+ send('close_window',{windowId:4});assert.equal(stream.presentation().nativeMenu,null);
+ send('open_window',{windowId:4,inventoryType:91});send('window_items',{windowId:4,stateId:3,items:rows});
+ assert.equal(stream.presentation().nativeMenu.dataValues,null);stream.close();
 });

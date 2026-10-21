@@ -20,8 +20,7 @@ export function configureVanillaItemRegistries(registry,data){
   registries.set(registry,{potions:new Map(data.potions.map(row=>[row.id,row.name])),effects:new Map(data.effects.map(row=>[row.id,row.name]))});
 }
 
-function potionComponent(data,registry){
-  const source=registries.get(registry);
+export function potionComponentSnbt(data,source){
   if(!source)throw Error('VANILLA_POTION_REGISTRY_UNAVAILABLE');
   if(!data||typeof data!=='object'||Object.keys(data).some(k=>!['potionId','customColor','customEffects','customName'].includes(k))||data.customName!=null||
     !Array.isArray(data.customEffects)||data.customEffects.length>256)throw Error('VANILLA_POTION_COMPONENT_INVALID');
@@ -68,7 +67,7 @@ export function componentValue(type, data, registry) {
     return '['+data.map(row=>componentSnbt(row)).join(',')+']';
   }
   if(['enchantments','stored_enchantments'].includes(type))return enchantmentSnbt(data,registry);
-  if(type==='potion_contents')return potionComponent(data,registry);
+  if(type==='potion_contents')return potionComponentSnbt(data,registries.get(registry));
   if(type==='banner_patterns'){
     if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).length!==1||!Array.isArray(data.layers))throw Error('VANILLA_BANNER_PATTERNS_INVALID');
     return vanillaBannerPatternsSnbt(data.layers,registry);

@@ -33,9 +33,12 @@ export async function prepareNativeConnection({assetDirectory,viewerPort=0}){
   const items=loadGatewayItemRegistry(itemBytes.toString());
   const physics=await loadNativePhysics(root,manifest);
   const prepared=await prepareNativeWorldPreviewHost({assetDirectory:root,port:viewerPort});
+  const nativeMenuLayouts=new Map();
+  if(manifest.sources?.some(s=>s.name==='FarmersDelight-1.21.1-1.3.4.jar'&&s.sha256==='139ad7696462c89c03eea463f805abffa552526c5dadaadae221dd9624cb197c'&&!s.explicitOverride))
+    nativeMenuLayouts.set('farmersdelight:cooking_pot',{proxyType:'minecraft:generic_9x1',slots:45,inventoryStart:9});
   return {attach(bot){
     if(bot.version&&bot.version!=='1.21.1')throw Error('NATIVE_CONNECTION_VERSION_MISMATCH');
-    const stream=observeNativeGateway(bot,{registrySha256:prepared.registrySha256,items});
+    const stream=observeNativeGateway(bot,{registrySha256:prepared.registrySha256,items,nativeMenuLayouts,simplifyNBT:nbt.simplify});
     const detachAliases=observeNativeItemAliases(bot,stream);
     const hands=observeVanillaHands(bot);
     const presentation=()=>{
@@ -59,7 +62,7 @@ export async function prepareNativeConnection({assetDirectory,viewerPort=0}){
         if(!['status','block','entities','inventory'].includes(action))return {...envelope,available:false,reason:'NATIVE_QUERY_ACTION_INVALID'};
         if(closed||health.closed)return {...envelope,available:false,reason:'NATIVE_CONNECTION_CLOSED'};
         if(!health.available||world.error)return {...envelope,available:false,reason:world.error||health.error||'NATIVE_STREAM_WAITING'};
-        if(action==='status')return {...envelope,available:true,packets:health.packets,loadedColumns:world.columns.size,actions:['status','block','entities','inventory'],
+        if(action==='status')return {...envelope,available:true,packets:health.packets,registryCounts:health.registryCounts,loadedColumns:world.columns.size,actions:['status','block','entities','inventory'],
           projection:{ordinaryMineflayerBlocks:'compatibility_ids',nativeQueries:'original_ids',pathfinderNativeGeometry:false},renderParityVerified:false};
         if(action==='inventory')return {...envelope,...stream.inventory()};
         if(!bot.entity?.position)return {...envelope,available:false,reason:'NATIVE_BODY_UNAVAILABLE'};
