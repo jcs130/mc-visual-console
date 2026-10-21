@@ -1,3 +1,5 @@
+2026-10-21 FOM同连接Mineflayer适配已提交推主干c6626047（保留最新原生指南针/旗帜/界面/性能更新）：新增host/native-mineflayer、原始包hash/seq接收、原生菜单库存与可撤销物品身份、静态碰撞参考/可见查询；不另开Minecraft身体、不改wire Item。锁Create6.0.10机壳/FD1.3.4 RiceItem静态provider，魂符owner UUID按原int-array组件保留，原七帧sprite和机壳/稻米图标、第一/三人称手持WebGL实见。1177共享通过、32既有条件skip，Windows canvas测试依赖仅独立QA补齐；不是完整场景像素/所有实体GUI验收，缺失仍unavailable，普通pathfinder仍投影。服务端FOM冻结消费v2与SDK已发布且主服/基岩健康；原资产/模型素材/JAR/私有research/fom-mineflayer-visuals-20261021不入Git。详见renderer-src/docs/native-mineflayer-gateway.md及服务端docs/FOM-MINEFLAYER-NATIVE-VIEW.md。
+
 2026-10-09 魂符图标后续已部署：INIT/HAS_MAID 分别校验原模型，两者本来引用同一原16×112 PNG/mcmeta，七帧×2tick以32×32裁剪显示，缓存共享时钟/完整本人SNBT。默认附魔glint缺原sprite atlas UV，明确partial/effectReason，不造CSS假光效；原Java像素/手持/完整玩法仍未验。157项相关Node原资产测试全过0skip，普通非OP零模型QA浏览器实见动画/同步transform、错误为空，正常exit0/临时端口关闭。新服已正常冷备80文件并刷新常驻bundle，同supervisor Java35596/Gate8196/worker31260健康；桥a672b1d2…f8ec、v15资产/全部27JAR、五份保护配置与原主Agent暂停/旧unknown/账本前缀保持。维护已结束勿重放，旧Paper/网络未动。细节renderer-src/docs/native-soul-slab-icons.md；原素材/JAR/包/截图/私有research/soul-slab-icons-20261009留Git外。
 
 # Viewer fidelity requirements
