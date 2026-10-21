@@ -48,6 +48,12 @@ export function nativeGatewayItem(wire,items,vanillaRegistry,registries){
         if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(row.data)||patch.has(row.type))throw Error('NATIVE_MAID_OWNER_COMPONENT_INVALID');
         const bytes=Buffer.from(row.data.replaceAll('-',''),'hex');patch.set(row.type,'[I;'+[0,4,8,12].map(i=>bytes.readInt32BE(i)).join(',')+']');continue;
       }
+      if(row?.type==='touhou_little_maid:maid_info'&&name==='touhou_little_maid:smart_slab_has_maid'){
+        if(row.data?.type!=='compound'||patch.has(row.type))throw Error('NATIVE_MAID_INFO_COMPONENT_INVALID');
+        // The pinned TLM item uses vanilla CustomData.STREAM_CODEC. Preserve
+        // the entire typed compound, including her UUID, owner and inventory.
+        patch.set(row.type,componentValue('custom_data',row.data,vanillaRegistry));continue;
+      }
       if(typeof row?.type!=='string'||row.type.includes(':'))throw Error('NATIVE_ITEM_COMPONENT_CODEC_UNAVAILABLE:'+String(row?.type).slice(0,80));
       const key='minecraft:'+row.type;if(!RESOURCE.test(key)||patch.has(key))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID');
       const native=nativeRegistryComponent(row.type,row.data,registries);

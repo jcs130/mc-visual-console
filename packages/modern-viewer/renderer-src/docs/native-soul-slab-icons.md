@@ -1,5 +1,12 @@
 # Touhou Little Maid 魂符图标
 
+2026-10-22：Mineflayer 原始侧流补齐 HAS_MAID 的 `maid_info` 转换。
+TLM 1.5.3 注册的是 `CustomData.STREAM_CODEC`，收到 typed compound 后完整
+转换为同名 SNBT，保留主人、女仆 UUID、库存和其他存档字段；不改成原版
+custom_data，也不根据图标反推内容。实际隔离服已用普通 Mineflayer
+`activateBlock` / `activateEntity` 完成召唤、收回、再次放出，同一 UUID 保持。
+收回魂符进入网页原 HAS_MAID 图标通道；原 glint 缺口仍见下文。
+
 2026-10-09：初始化魂符与已收纳女仆魂符现在显示原模组动画图标。读取同一玩家的完整 ItemStack，分别绑定 `smart_slab_init`、`smart_slab_has_maid` 原模型；两份模型本来就使用同一张 `smart_slab_has_maid.png`，不是借用其他状态的图片。空魂符继续走既有 EMPTY 静态图标。
 
 原 PNG 为 16×112，共七帧；原 `.mcmeta` 指定 frametime=2，无插值，20 次纹理 tick/秒，因此每帧 100ms、每轮 700ms。网页保留原 PNG 字节，以 32×32 裁剪窗口和 steps(7,end) 显示；同一缓存共用时钟起点，背包与快捷栏重绘不会各自从第一帧重启。网页与另一个 Java 客户端的动画起始相位未验。

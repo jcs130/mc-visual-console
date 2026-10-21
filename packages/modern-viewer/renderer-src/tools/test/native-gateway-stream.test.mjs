@@ -23,6 +23,21 @@ test('unsupported mod component retains identity and reports missing rendering c
  const result=nativeGatewayItem(wire,items,{});assert.equal(result.available,false);assert.equal(result.item.name,'create:andesite_casing');assert(!result.item.snbt);assert.match(result.reason,/CODEC_UNAVAILABLE/);
 });
 
+test('captured soul slab keeps original maid compound and renders its occupied icon',()=>{
+ const registry=new Map([[100,'touhou_little_maid:smart_slab_has_maid']]);
+ const wire=item(100,1);wire.components=[{type:'touhou_little_maid:maid_info',data:{type:'compound',value:{
+  ModelId:{type:'string',value:'touhou_little_maid:hakurei_reimu'},
+  Owner:{type:'intArray',value:[1,-2,3,-4]},UUID:{type:'intArray',value:[-5,6,-7,8]},
+  Inventory:{type:'list',value:{type:'compound',value:[{id:{type:'string',value:'minecraft:apple'},count:{type:'int',value:4}}]}}
+ }}}];
+ const before=structuredClone(wire),result=nativeGatewayItem(wire,registry,{});
+ assert(result.available);assert.equal(result.item.name,'touhou_little_maid:smart_slab_has_maid');
+ assert.match(result.item.snbt,/"touhou_little_maid:maid_info":\{/);assert.match(result.item.snbt,/"Owner":\[I;1,-2,3,-4\]/);
+ assert.match(result.item.snbt,/minecraft:apple/);assert.deepEqual(wire,before);
+ wire.components[0].data={type:'string',value:'invalid'};
+ assert.equal(nativeGatewayItem(wire,registry,{}).reason,'NATIVE_MAID_INFO_COMPONENT_INVALID');
+});
+
 test('native enchantments, stored books and potions use original connection tables, with no vanilla fallback',()=>{
  const tables=new Map([
   ['minecraft:enchantment',new Map([[0,'mod:magic_edge'],[1,'minecraft:sharpness']])],
