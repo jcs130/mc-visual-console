@@ -12,7 +12,7 @@ export const NATIVE_GATEWAY_CHANNEL='mcviewer:native_packet';
 export const NATIVE_GATEWAY_NAMES=new Set(['native_registries','login','respawn','map_chunk','unload_chunk','block_change','multi_block_change',
   'tile_entity_data','update_light','spawn_entity','entity_metadata','entity_equipment','entity_destroy','rel_entity_move',
   'entity_move_look','entity_look','entity_teleport','entity_head_rotation','entity_velocity','entity_status','animation',
-  'hurt_animation','maid_animation','world_particles','window_items','set_slot','trade_list','open_window','close_window','craft_progress_bar',
+  'hurt_animation','maid_animation','twilight_multipart','world_particles','window_items','set_slot','trade_list','open_window','close_window','craft_progress_bar',
   'update_time','game_state_change','held_item_slot','abilities','update_health','entity_update_attributes','entity_effect',
   'remove_entity_effect','collect','sound_effect','named_sound_effect','entity_sound_effect','stop_sound']);
 const RESOURCE=/^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
@@ -34,13 +34,15 @@ export function loadGatewayItemRegistry(text){
   }
   return items;
 }
-export function nativeGatewayItem(wire,items,vanillaRegistry,registries,{twilightComponents=false}={}){
+export function nativeGatewayItem(wire,items,vanillaRegistry,registries,{twilightComponents=false,depth=0,budget={items:0}}={}){
+  if(depth>8||++budget.items>128)return {available:false,reason:'NATIVE_ITEM_RECURSION_LIMIT'};
   if(wire?.itemCount===0)return {available:true,item:null};
   const name=items.get(wire?.itemId),count=wire?.itemCount;
   if(!name||!Number.isInteger(count)||count<1||count>2147483647)return {available:false,reason:'NATIVE_ITEM_ID_OR_COUNT_INVALID'};
   const evidence=nativeStaticItemEvidence(name),base={name,count,nativeId:wire.itemId};
   if(evidence){const prefix=evidence.itemClass==='net.minecraft.world.item.BlockItem'?'block.':'item.';base.descriptionId=prefix+name.replace(':','.');}
   else if(/^touhou_little_maid:smart_slab_(init|has_maid)$/.test(name))base.descriptionId='item.'+name.replace(':','.');
+  else if(twilightComponents&&['twilightforest:greater_potion_flask','twilightforest:brittle_potion_flask'].includes(name))base.descriptionId='item.'+name.replace(':','.');
   try{
     if(!Array.isArray(wire.components)||!Array.isArray(wire.removeComponents)||wire.components.length+wire.removeComponents.length>128)throw Error('NATIVE_ITEM_COMPONENTS_NOT_OBSERVED');
     const patch=new Map(),resolved={};
@@ -57,7 +59,8 @@ export function nativeGatewayItem(wire,items,vanillaRegistry,registries,{twiligh
       }
       if(twilightComponents&&knownTwilightComponent(row?.type)){
         if(patch.has(row.type))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID');
-        patch.set(row.type,twilightComponentSnbt(row.type,row.data,{registries,vanillaRegistry}));continue;
+        patch.set(row.type,twilightComponentSnbt(row.type,row.data,{registries,vanillaRegistry,
+          resolveItem:child=>nativeGatewayItem(child,items,vanillaRegistry,registries,{twilightComponents,depth:depth+1,budget})}));continue;
       }
       if(typeof row?.type!=='string'||row.type.includes(':'))throw Error('NATIVE_ITEM_COMPONENT_CODEC_UNAVAILABLE:'+String(row?.type).slice(0,80));
       const key='minecraft:'+row.type;if(!RESOURCE.test(key)||patch.has(key))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID');
@@ -80,9 +83,10 @@ export function nativeGatewayItem(wire,items,vanillaRegistry,registries,{twiligh
     return {available:true,item:{...base,snbt,...(Object.keys(resolved).length?{resolvedComponents:resolved}:{})}};
   }catch(error){return {available:false,item:base,reason:error.message};}
 }
-export function observeNativeGateway(bot,{registrySha256,items,now=Date.now,nativeMenuLayouts=new Map(),simplifyNBT,twilightComponents=false}){
+export function observeNativeGateway(bot,{registrySha256,items,now=Date.now,nativeMenuLayouts=new Map(),simplifyNBT,twilightComponents=false,blockRegistry=null}){
   if(!/^[a-f0-9]{64}$/.test(registrySha256)||!(items instanceof Map))throw Error('NATIVE_GATEWAY_CONFIG_INVALID');
   const events=new EventEmitter(),registries=new Map();let sequence=0,error=null,closed=false,disposed=false,inventory=null,menu=null,observedAt=null,inventoryFresh=false;
+  if(blockRegistry instanceof Map)registries.set('minecraft:block',new Map(blockRegistry));
   const resolveItemStack=wire=>nativeGatewayItem(wire,items,bot.registry,registries,{twilightComponents});
   const reset=()=>{inventory=null;menu=null;observedAt=null;inventoryFresh=false;};
   const inventorySlot=slot=>!Number.isInteger(slot)||slot<0?null:slot<9?slot+36:slot<36?slot:slot<40?44-slot:slot===40?45:null;
@@ -139,7 +143,9 @@ export function observeNativeGateway(bot,{registrySha256,items,now=Date.now,nati
     const dataValues=count&&Array.from({length:count},(_,i)=>i).every(i=>properties.has(i))?Array.from({length:count},(_,i)=>properties.get(i)):null;
     return {windowId:state.windowId,stateId:state.stateId,observedAt:state.observedAt,
       ...(state.windowId!==0?{nativeMenuType:state.nativeMenuType,menuType:state.menuType??null,title:state.title??null,titleComponent:state.titleComponent??null}:{}),
-      slots:state.items.map((wire,slot)=>({slot,...resolveItemStack(wire)})),carried:state.carried?resolveItemStack(state.carried):null,
+      slots:state.items.map((wire,slot)=>({slot,...resolveItemStack(wire),...(state.menuType==='twilightforest:uncrafting'?{
+        role:slot===0?'input':slot===1?'result':slot<11?'uncrafting_preview':slot<20?'assembly':'player_inventory',
+        ...(slot>=2&&slot<11?{note:'Recipe preview; not yet acquired. Server validates pickup and experience cost.'}:{})}:{} )})),carried:state.carried?resolveItemStack(state.carried):null,
       ...(state.windowId!==0?{dataValues,properties:[...properties].sort(([a],[b])=>a-b).map(([id,value])=>({id,value}))}:{})};
   };
   return {events,resolveItemStack,

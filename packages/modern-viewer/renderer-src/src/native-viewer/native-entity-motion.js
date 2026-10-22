@@ -10,7 +10,7 @@ const F=Math.fround, clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 const wrap=v=>((v+180)%360+360)%360-180
 const relative=(a,b,max)=>F(b-clamp(wrap(b-a),-max,max))
 export const NATIVE_MOB_MOTION_SOURCE='same_connection_entity_ticks'
-export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','wandscape:wandscape_npc',...NATIVE_HOSTILE_TYPES,...NATIVE_AQUATIC_TYPES])
+export const NATIVE_MOB_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','wandscape:wandscape_npc','twilightforest:naga',...NATIVE_HOSTILE_TYPES,...NATIVE_AQUATIC_TYPES])
 const types=new Set(NATIVE_MOB_TYPES)
 let viewerClientConstructorId=0
 
@@ -28,6 +28,7 @@ export function createNativeEntityMotion(entity,{environmentAt,random}={}) {
   const aquatic=isAquatic?createNativeAquaticAnimation(entity,{clientConstructorId,...(random?{random}:{})}):null
   let aquaticEntity=entity,aquaticEnvironment=isAquatic?(environmentAt?.(entity,position)??{available:false,reason:'NATIVE_AQUATIC_WATER_OCCUPANCY_UNAVAILABLE'}):null
   const isMaid=entity.name==='touhou_little_maid:maid'
+  let nagaRed=0
   const living=createNativeLivingAnimation(entity)
   let hurtTime=0,hurtPending=false,health=null,swingPending=false,maidCue=0,swimAmount=0,swimAmountOld=0,maidAnimationId=0
   const observeMaid=(next,kind)=>{
@@ -50,6 +51,7 @@ export function createNativeEntityMotion(entity,{environmentAt,random}={}) {
   function snapshot(){return {source:NATIVE_MOB_MOTION_SOURCE,tickMs:50,tick:ticks,sampledAt,position:{...position},yaw,pitch,headYaw,bodyYaw,
     previous:{...previous,position:{...previous.position}},...(hasWalk?{walk:{...walk}}:{}),...(isAquatic?{aquatic:aquatic.current(),aquaticEnvironment,velocity:aquaticEntity.velocity?{...aquaticEntity.velocity}:null,onGround:aquaticEntity.onGround===true}:{}),slime:{squish,oSquish,targetSquish},chicken:{flap,oFlap,flapSpeed,oFlapSpeed},eatCounter,
     ...(isMaid?{maid:{hurtTime,hurtPending,swingPending,attackAnim:0,swingTime:0,swimAmount,swimAmountOld,animationId:maidAnimationId,source:'Minecraft_1.21.1_client_constructor_and_received_cues'}}:{}),
+    ...(entity.name==='twilightforest:naga'?{twilight:{nagaRed}}:{}),
     living:living.current(),initialDefaultsSource:'Minecraft_1.21.1_client_constructor',animationParityVerified:false}}
   return {
     observe(next,kind){
@@ -65,6 +67,10 @@ export function createNativeEntityMotion(entity,{environmentAt,random}={}) {
       if(!Number.isFinite(now)||now<sampledAt)throw Error('NATIVE_ENTITY_MOTION_CLOCK_INVALID')
       previous={position:{...position},yaw,pitch,headYaw,bodyYaw};sampledAt=now;ticks++
       living.tick(next)
+      if(next.name==='twilightforest:naga'){
+        const dazed=next.metadata?.get?.(17)?.value??next.metadata?.find?.(row=>row.key===17)?.value??false
+        nagaRed=dazed&&living.current().deathTime<10?Math.min(F(.65),F(nagaRed+F(.01))):Math.max(0,F(nagaRed-F(.1)))
+      }
       if(isMaid){
         observeMaid(next,'tick');hurtTime=Math.max(0,hurtTime-1);swimAmountOld=swimAmount
         const flags=next.metadata?.get?.(0)?.value??next.metadata?.find?.(entry=>entry.key===0)?.value??0

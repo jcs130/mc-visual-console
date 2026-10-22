@@ -13,6 +13,7 @@ import {viewerSoundPacket,viewerSoundStopPacket} from '../host/viewer-sound-pack
 import {nativeParticlePacket} from '../src/native-viewer/native-particle-state.js'
 import {nativeThrownItemType,nativeThrownItemState} from '../src/native-viewer/native-thrown-item-state.js'
 import {nativeOpaqueFullCube,appendOccludedSolid} from './native-occlusion.mjs'
+import {twilightMultipartFrame} from '../host/native-twilight-multipart.mjs'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 // Leave room for the same-player presentation in the host's 2 MiB SSE event.
@@ -237,7 +238,7 @@ export class NativeWorldState extends EventEmitter {
         }
         case 'spawn_entity': case 'spawn_entity_experience_orb': case 'entity_metadata': case 'entity_equipment': case 'entity_destroy':
         case 'rel_entity_move': case 'entity_move_look': case 'entity_look': case 'entity_teleport':
-        case 'entity_head_rotation': case 'entity_velocity': case 'entity_update_attributes': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'collect': case 'entity_effect': case 'remove_entity_effect':
+        case 'entity_head_rotation': case 'entity_velocity': case 'entity_update_attributes': case 'entity_status': case 'animation': case 'hurt_animation': case 'maid_animation': case 'twilight_multipart': case 'collect': case 'entity_effect': case 'remove_entity_effect':
           this.handleEntity(body); break
       }
     } catch (error) { this.unavailable(error) }
@@ -296,6 +297,10 @@ export class NativeWorldState extends EventEmitter {
             if(!Number.isFinite(value))throw Error('NATIVE_ENTITY_SCALE_INVALID')
             entity.renderScale=Object.freeze({value:Math.max(.0625,Math.min(16,value)),source:'received_native_entity_update_attributes'})
           }
+        } else if (body.name === 'twilight_multipart') {
+          const frame=JSON.parse(entityJSON(twilightMultipartFrame(entity,p,{observedAt:timestamp,sequence:body.sequence})))
+          this.accountEntityEntry(p.entityId,'twilight:multipart',Buffer.byteLength(JSON.stringify(frame)))
+          entity.multipart=freezeEntityJSON(frame)
         } else if (body.name === 'entity_metadata') {
           if (!Array.isArray(p.metadata) || p.metadata.length > 255) throw metadataFailure(body)
           for (const [entryIndex, entry] of p.metadata.entries()) {

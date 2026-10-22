@@ -20,7 +20,8 @@ const BLOCK_ITEMS = new Set(NATIVE_GUI_BLOCK_ITEMS)
 export const nativeBlockItemEligible = name => BLOCK_ITEMS.has(name)
 const record = value => value && typeof value === 'object' && !Array.isArray(value)
 
-export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { generatedOnly = false, properties = null } = {}) {
+export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { generatedOnly = false, properties = null, predicateMax = 1 } = {}) {
+  if(!Number.isFinite(predicateMax)||predicateMax<1||predicateMax>65535)throw Error('NATIVE_ITEM_PROPERTY_LIMIT_INVALID')
   const path = resourcePath(id, 'models', '.json')
   if (ancestry.length >= 32 || ancestry.includes(path)) throw Error(generatedOnly ? 'NATIVE_HELD_PARENT_CYCLE' : 'NATIVE_BLOCK_ITEM_PARENT_CYCLE')
   let own = await reader.json(path)
@@ -30,14 +31,14 @@ export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { g
     for (const row of own.overrides) {
       if (!record(row) || typeof row.model!=='string' || !record(row.predicate) || !Object.keys(row.predicate).length
         || Object.keys(row).some(key=>!['model','predicate'].includes(key))
-        || Object.entries(row.predicate).some(([key,value])=>!Object.hasOwn(properties,key)||!Number.isFinite(value)||value<0||value>1))
+        || Object.entries(row.predicate).some(([key,value])=>!Object.hasOwn(properties,key)||!Number.isFinite(value)||value<0||value>predicateMax))
         throw Error('NATIVE_ITEM_PROPERTY_UNAVAILABLE')
       if (Object.entries(row.predicate).every(([key,value])=>properties[key]>=value)) selected=row.model
     }
     // ItemOverrides resolves a self-reference to the original base model.
     // Compass deliberately uses this for its wrap-around frame.
     if (selected && resourcePath(selected,'models','.json')!==path) {
-      const model=await resolveNativeBlockItemModel(reader,selected,[...ancestry,path],{generatedOnly,properties})
+      const model=await resolveNativeBlockItemModel(reader,selected,[...ancestry,path],{generatedOnly,properties,predicateMax})
       return {...model,sourcePaths:[path,...model.sourcePaths]}
     }
     const {overrides: _overrides,...base}=own; own=base
@@ -58,7 +59,7 @@ export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { g
   if (own.textures !== undefined && !record(own.textures)) throw Error('NATIVE_BLOCK_ITEM_TEXTURES_INVALID')
   if (own.elements !== undefined && (!Array.isArray(own.elements) || own.elements.length > 128)) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
   const generated = /^(?:minecraft:)?builtin\/generated$/.test(own.parent ?? '')
-  const parent = own.parent && !generated ? await resolveNativeBlockItemModel(reader, own.parent, [...ancestry, path], { generatedOnly, properties }) : {}
+  const parent = own.parent && !generated ? await resolveNativeBlockItemModel(reader, own.parent, [...ancestry, path], { generatedOnly, properties, predicateMax }) : {}
   return { ...parent, ...own, textures: { ...parent.textures, ...own.textures },
     display: { ...parent.display, ...own.display }, elements: own.elements ?? parent.elements ?? [],
     nativeGenerated: generated || Boolean(parent.nativeGenerated),
@@ -140,7 +141,18 @@ export async function prepareNativeBlockGuiPlan(reader, { name, model, evidence,
     if (reader.manifest.assets[path]?.sha256 !== hash) throw Error(`NATIVE_BLOCK_ITEM_SHADER_UNSUPPORTED:${path}`)
     await reader.bytes(path) // Also enforces the manifest SHA and resource priority.
   }
-  const faces = bakeNativeBlockItemFaces(model)
+  const translucentCull=name==='twilightforest:uncrafting_table'&&evidence?.source?.sha256==='493da16d10210f9f53a3c33b3d8fcb4ae9b14016ee420d753c894562bd9aba35'
+  let guiModel=model
+  if(translucentCull){
+    // GuiGraphics already supplies FULL_BRIGHT (15,15). The original TF
+    // overlay requests precisely that light, not emissive/unshaded RGB.
+    guiModel={...model,elements:model.elements.map(element=>({...element,faces:Object.fromEntries(Object.entries(element.faces).map(([direction,face])=>{
+      if(!face.neoforge_data)return [direction,face]
+      if(Object.keys(face.neoforge_data).sort().join(',')!=='block_light,sky_light'||face.neoforge_data.block_light!==15||face.neoforge_data.sky_light!==15)throw Error('NATIVE_GUI_LIGHT_OVERRIDE_UNSUPPORTED')
+      const {neoforge_data,...rest}=face;return [direction,rest]
+    }))}))}
+  }
+  const faces = bakeNativeBlockItemFaces(guiModel,{translucentCull}).map(face=>translucentCull?{...face,nativeTranslucentCull:true}:face)
   if ((model.gui_light ?? 'side') !== 'side') throw Error('NATIVE_BLOCK_ITEM_FRONT_LIGHT_UNSUPPORTED')
   const transform=nativeGuiItemTransform(model.display.gui)
   const culling=nativeGuiFaceCulling(faces,transform)
@@ -151,16 +163,16 @@ export async function prepareNativeBlockGuiPlan(reader, { name, model, evidence,
     const size = reader.manifest.assets[path]?.bytes
     if (!Number.isSafeInteger(size) || size <= 0 || size > 16777216) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_LIMIT')
   }
-  return { name, model, faces, renderFaces:culling.visible, culling, transform, texturePaths, evidence,
+  return { name, model, faces, renderFaces:culling.visible, culling, transform, texturePaths, evidence,translucentCull,
     sourcePaths: [...new Set([...sourcePaths, ...model.sourcePaths, ...texturePaths, ...Object.keys(BLOCK_ICON_SHADER_HASHES)])] }
 }
 
 // Geometry checks shared by original GUI and held contexts. Camera-dependent
 // GUI culling/light/transform checks deliberately stay outside this function.
-export function bakeNativeBlockItemFaces(model) {
+export function bakeNativeBlockItemFaces(model,{translucentCull=false}={}) {
   if (model.nativeGenerated) throw Error('NATIVE_BLOCK_ITEM_GENERATED_PROVIDER_REQUIRED')
   if (!model.elements.length || model.elements.length > 128) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
-  if (model.render_type !== undefined && !['solid','minecraft:solid'].includes(model.render_type)) throw Error('NATIVE_BLOCK_ITEM_RENDER_TYPE_UNSUPPORTED')
+  if (model.render_type !== undefined && !['solid','minecraft:solid',...(translucentCull?['minecraft:translucent']:[])].includes(model.render_type)) throw Error('NATIVE_BLOCK_ITEM_RENDER_TYPE_UNSUPPORTED')
   if (model.elements.some(element => !record(element) || !record(element.faces) || Object.keys(element.faces).length > 6)) throw Error('NATIVE_BLOCK_ITEM_FACES_INVALID')
   for (const element of model.elements) {
     // BlockElement.Deserializer's original coordinate/rotation limits also
@@ -176,7 +188,7 @@ export function bakeNativeBlockItemFaces(model) {
   return faces
 }
 
-function material(texture,tintColor=0xffffff,translucent=false) {
+function material(texture,tintColor=0xffffff,translucent=false,translucentCull=false) {
   return new THREE.ShaderMaterial({ uniforms: {
     iconTexture: { value: texture }, light0: { value: new THREE.Vector3(...NATIVE_GUI_LIGHT_DIRECTIONS[0]) },
     light1: { value: new THREE.Vector3(...NATIVE_GUI_LIGHT_DIRECTIONS[1]) },
@@ -191,7 +203,7 @@ function material(texture,tintColor=0xffffff,translucent=false) {
     void main() {
       vec4 color = texture2D(iconTexture, nativeUV); if (color.a < 0.1) discard;
       gl_FragColor = vec4(color.rgb * nativeTint * nativeLight, color.a);
-    }`, toneMapped: false, side: translucent?THREE.DoubleSide:THREE.FrontSide,transparent:translucent })
+    }`, toneMapped: false, side: translucent&&!translucentCull?THREE.DoubleSide:THREE.FrontSide,transparent:translucent||translucentCull })
 }
 
 export function buildNativeBlockItemObject(plan, textures) {
@@ -200,9 +212,9 @@ export function buildNativeBlockItemObject(plan, textures) {
     for (const face of plan.renderFaces ?? plan.faces) {
       const path = resourcePath(face.texture, 'textures', '.png')
       if (!textures.has(path)) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_MISSING')
-      const tint=face.tintColor??0xffffff,translucent=face.nativeBannerPattern===true,key=path+'#'+tint+'#'+translucent;
+      const tint=face.tintColor??0xffffff,translucent=face.nativeBannerPattern===true,translucentCull=face.nativeTranslucentCull===true,key=path+'#'+tint+'#'+translucent+'#'+translucentCull;
       if(!Number.isInteger(tint)||tint<0||tint>0xffffff)throw Error('NATIVE_BLOCK_ITEM_TINT_INVALID')
-      if (!materials.has(key)) materials.set(key, material(textures.get(path),tint,translucent))
+      if (!materials.has(key)) materials.set(key, material(textures.get(path),tint,translucent,translucentCull))
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(face.position, 3))
       geometry.setAttribute('uv', new THREE.Float32BufferAttribute(face.uv, 2))
@@ -283,7 +295,7 @@ export class NativeBlockItemIconRenderer {
       ensureOpen(); const plan = preparedPlan ?? await this.preparePlan(this.reader, name); ensureOpen()
       for (const path of plan.texturePaths) {
         const bytes = await this.reader.bytes(path); ensureOpen()
-        const texture = await this.loadTexture(bytes); textures.set(path, texture); ensureOpen()
+        const texture = await this.loadTexture(bytes,plan.translucentCull===true,plan.translucentCull===true); textures.set(path, texture); ensureOpen()
         const { width, height } = texture.image ?? {}
         if (![width, height].every(n => Number.isInteger(n) && n > 0 && n <= 2048)) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_DIMENSIONS_UNSUPPORTED')
         if (plan.textureDimensions && (width !== plan.textureDimensions[0] || height !== plan.textureDimensions[1])) throw Error('NATIVE_BLOCK_ITEM_TEXTURE_DIMENSIONS_UNSUPPORTED')

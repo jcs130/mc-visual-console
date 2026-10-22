@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import {NATIVE_TWILIGHT_GUI,nativeTwilightMenuLayout} from './native-twilight-menu.js'
 import { renderNativeSkillLists } from './native-skill-panel.js'
 import { InventoryPlayerPreview } from '../modern-viewer/inventory-player-preview.js'
 import { FishingCatchHud } from '../modern-viewer/fishing-catch.js'
@@ -282,6 +283,8 @@ export class NativeUiAssets {
       try { verifyGuiSource(this.reader, info, kind); await this.texture(info.path); return null } catch (error) { return error.message }
     }
     await Promise.all([
+      ...(this.reader.manifest?.sources?.some(row=>row.name===NATIVE_TWILIGHT_GUI.sourceName)?[
+        prepare(NATIVE_TWILIGHT_GUI,'TWILIGHT').then(reason=>{this.twilightReason=reason})]:[]),
       ...Object.entries(NATIVE_VANILLA_GUIS).map(([type, info]) => prepare(info, 'VANILLA').then(reason => { this.standardReasons.set(type, reason) })),
       prepare(NATIVE_CRAFTING_GUI, 'CRAFTING').then(reason => { this.craftingReason = reason }),
       prepare(NATIVE_CRAFTER_GUI, 'CRAFTER').then(reason => { this.crafterReason = reason }),
@@ -640,6 +643,9 @@ export function createNativeInterface ({ document = globalThis.document,
         } else if (Object.hasOwn(NATIVE_VANILLA_GUIS, window.menuType)) {
           kind = 'standard'; layout = nativeVanillaMenuLayout(window, expectedUuid)
           reason = assets ? assets.standardReasons.get(window.menuType) : 'NATIVE_VANILLA_GUI_LOADING'
+        } else if(window.menuType==='twilightforest:uncrafting'){
+          kind='twilight';layout=nativeTwilightMenuLayout(window,expectedUuid)
+          reason=assets?assets.twilightReason:'NATIVE_TWILIGHT_GUI_LOADING'
         } else if (window.menuType === 'farmersdelight:cooking_pot') {
           kind = 'cooking-pot'; layout = nativeCookingPotMenuLayout(window, expectedUuid)
           reason = assets ? assets.cookingPotReason : 'NATIVE_COOKING_POT_GUI_LOADING'
@@ -725,6 +731,18 @@ export function createNativeInterface ({ document = globalThis.document,
             panel.append(element)
           }
         }
+        if(kind==='twilight'){
+          panel.dataset.uncraftingCostState='unknown';panel.dataset.uncraftingCostReason=layout.costs.reason
+          for(const {row,x,y,marked}of layout.ghosts){
+            if(!row.item)continue
+            const ghost=node(document,'div','native-uncrafting-ghost');ghost.dataset.nativePreviewSlot=String(row.slot)
+            ghost.style.cssText=`position:absolute;left:${x*2}px;top:${y*2}px;width:32px;height:32px;pointer-events:none`
+            const icon=node(document,'div','native-uncrafting-preview-icon');icon.style.cssText='position:absolute;inset:0';ghost.append(icon)
+            renderMenuItem(icon,row.item,{label:'拆解预览',contextLabel:'尚未取得的拆解预览，取出由服务端确认',hideCount:true,imageStyle:{width:'32px',height:'32px',imageRendering:'pixelated'}})
+            const shade=node(document,'span','native-uncrafting-ghost-shade');shade.style.cssText='position:absolute;inset:0;background:'+(marked?'rgba(255,139,139,0.5019607843)':'rgba(139,139,139,0.6235294118)');ghost.append(shade);panel.append(ghost)
+          }
+          for(const button of layout.buttons)blit(background,256,256,{x:button.x,y:button.y,sourceX:button.u,sourceY:button.v,width:14,height:9},'native-uncrafting-cycle-button')
+        }
         for (const { row, x, y, role } of layout.slots) {
           // Original Slot coords address the 16px item; existing CSS draws its
           // 32px image 2px inside this 36px div, so place the div one GUI pixel back.
@@ -767,6 +785,7 @@ export function createNativeInterface ({ document = globalThis.document,
         const label = kind === 'crafting' ? '原版 3×3 工作台与玩家背包布局'
           : kind === 'crafter' ? '原版合成器 9 个输入、玩家背包与产物预览布局'
           : kind === 'standard' ? `原版${language.menu({ menuType: window.menuType })}与玩家背包布局`
+          : kind === 'twilight' ? '暮色森林原拆解台、合成格与本人背包；灰色图标为拆解预览，经验费用尚未同步'
           : kind === 'chest' ? `原版 9×${layout.rowsCount} 容器与玩家背包布局`
           : kind === 'curios' ? `Curios 原背包与饰品槽布局${layout.page !== null ? ` · 第 ${layout.page + 1}/${layout.totalPages} 页` : ' · 分页状态未同步'}`
           : kind === 'domum' ? 'Domum Ornamentum 原建筑切割台材料、产物与玩家背包布局'

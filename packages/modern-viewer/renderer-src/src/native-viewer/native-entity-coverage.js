@@ -152,6 +152,7 @@ const pendingFamily=name=>{
   return 'animals'
 }
 export function nativeEntityCoverage(name) {
+  if(name==='twilightforest:naga')return {name,geometry:'original_Twilight_baked_layers_integrated',state:'same_connection_metadata_and_12_part_packets',animation:'received_motion_and_original_client_counters',material:'partial',scene:'unverified',reasons:['OTHER_TWILIGHT_BOSSES_NOT_INTEGRATED','COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}
   const row=NATIVE_ENTITY_CENSUS.find(row=>row.name===name)
   if(!row)return {name,geometry:'unavailable',state:'unavailable',animation:'unavailable',material:'unavailable',scene:'unverified',reasons:['ORIGINAL_ENTITY_REGISTRATION_UNAVAILABLE']}
   const noop=row.path==='I',pending=row.path==='U',self=row.path==='S',aquatic=row.path==='A',family=pending?pendingFamily(name):null

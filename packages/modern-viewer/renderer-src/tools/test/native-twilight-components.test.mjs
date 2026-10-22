@@ -29,10 +29,22 @@ test('native stack conversion requires explicit pinned Twilight enablement and p
   assert.match(enabled.item.snbt,/"!twilightforest:double_jump":\{\}/);
   assert.equal(wire.components.length,2);
 });
-test('unsupported recursive and registry codecs stay unavailable, and malformed scalars fail closed',()=>{
-  for(const name of ['ore_filter','stored_broken_attributes','magic_painting_variant','item_display']){
-    const type='twilightforest:'+name;assert.equal(knownTwilightComponent(type),false);assert.equal(twilightComponentSnbt(type,0),null);
-  }
+test('registry and recursive codecs require actual names and complete child stacks',()=>{
+  const maps=new Map([...registries,['minecraft:block',new Map([[1888,'twilightforest:ironwood_block']])],['twilight:magic_paintings',new Map([[2,'twilightforest:darkness']])],['minecraft:attribute',new Map([[31,'minecraft:generic.attack_damage']])]]);
+  assert.equal(twilightComponentSnbt('twilightforest:ore_filter',1888,{registries:maps}),'"twilightforest:ironwood_block"');
+  assert.equal(twilightComponentSnbt('twilightforest:magic_painting_variant',2,{registries:maps}),'"twilightforest:darkness"');
+  assert.throws(()=>twilightComponentSnbt('twilightforest:ore_filter',1888,{registries}),/REGISTRY_UNAVAILABLE/);
+  const attributes={attributes:[{typeId:31,name:'twilightforest:gear',value:2.5,operation:'add',slot:'main_hand'}],showTooltip:true};
+  assert.equal(twilightComponentSnbt('twilightforest:stored_broken_attributes',attributes,{registries:maps}),'{modifiers:[{type:"minecraft:generic.attack_damage",id:"twilightforest:gear",amount:2.5d,operation:"add_value",slot:"mainhand"}],show_in_tooltip:1b}');
+  const items=new Map([[300,'twilightforest:travellers_boots'],[301,'twilightforest:magic_map']]);
+  const child={itemCount:1,itemId:301,components:[],removeComponents:[]};
+  const wire={itemCount:1,itemId:300,components:[{type:'twilightforest:item_display',data:{items:[{itemCount:0},child],chosenMapSlot:1}}],removeComponents:[]};
+  const result=nativeGatewayItem(wire,items,null,maps,{twilightComponents:true});
+  assert.equal(result.available,true);assert.match(result.item.snbt,/slots:\[\{slot:1,item:\{id:"twilightforest:magic_map",count:1\}\}\],chosen_map_slot:1/);
+  child.components=wire.components;assert.equal(nativeGatewayItem(wire,items,null,maps,{twilightComponents:true}).reason,'NATIVE_ITEM_RECURSION_LIMIT');
+});
+test('malformed scalars and unknown components fail closed',()=>{
+  assert.equal(knownTwilightComponent('twilightforest:new_unknown'),false);
   assert.throws(()=>twilightComponentSnbt('twilightforest:efficient_eater',NaN),/TWILIGHT_COMPONENT_INVALID/);
   assert.throws(()=>twilightComponentSnbt('twilightforest:water_walk',1),/TWILIGHT_COMPONENT_INVALID/);
 });

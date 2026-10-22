@@ -12,7 +12,9 @@ import { prepareNativeBannerItem } from './native-banner-items.js'
 import { prepareNativeGlint } from './native-item-glint.js'
 import { NativeIconGlintClock } from './native-icon-glint.js'
 import {nativePotionItemEligible,validateNativePotionItem} from './native-potion-items.js'
+import {nativeTwilightFlaskEligible,nativeTwilightFlaskState} from './native-twilight-items.js'
 import {renderNativePotionIcon} from './native-potion-icons.js'
+import {renderNativeGeneratedLayers} from './native-generated-icon-layers.js'
 import { resolveNativeItemAppearance } from './native-item-appearance.js'
 import { ServerItemIcons } from './server-item-icons.js'
 import {nativeDynamicGuiEligible,nativeDynamicGuiState,prepareNativeDynamicGuiIcon,NativeCompassWobble} from './native-dynamic-gui-icons.js'
@@ -23,6 +25,7 @@ export function nativeItemIconEligible(item) {
     const stack = parseNativeItemStack(item)
     if (nativeSoulSlabEligible(stack.id)) nativeSoulSlabState(stack)
     else if (nativeDomumItemEligible(stack.id)) nativeDomumItemState(stack)
+    else if(nativeTwilightFlaskEligible(stack.id))nativeTwilightFlaskState(stack)
     else if(nativePotionItemEligible(stack.id))validateNativePotionItem(stack)
     else nativeStaticItemState(stack,{allowPartialGlint:true})
     return true
@@ -70,6 +73,8 @@ export class NativeItemIcons {
       // Input is bounded to 64 KiB and this cache to 128 entries.
     } else if (nativeDomumItemEligible(key)) {
       try { nativeDomumItemState(stack); provider = 'domum' } catch { return null }
+    } else if(nativeTwilightFlaskEligible(key)){
+      try{nativeTwilightFlaskState(stack);provider='potion'}catch{return null}
     } else if(nativePotionItemEligible(key)){
       try{validateNativePotionItem(stack);provider='potion'}catch{return null}
     } else {
@@ -106,6 +111,7 @@ export class NativeItemIcons {
       if(nativeDynamicGuiEligible(item.name))dynamic=nativeDynamicGuiState(stack,this.context,this.compassWobble)
       else if (nativeSoulSlabEligible(item.name)) nativeSoulSlabState(stack)
       else if (nativeDomumItemEligible(item.name)) nativeDomumItemState(stack)
+      else if(nativeTwilightFlaskEligible(item.name))nativeTwilightFlaskState(stack)
       else if(nativePotionItemEligible(item.name))validateNativePotionItem(stack)
       else if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack,{allowPartialGlint:true})
       const entry=this.entries.get(item.name+'#'+item.snbt+(dynamic?'#'+dynamic.variant:''))
@@ -166,6 +172,11 @@ export class NativeItemIcons {
       }
       const guide = provider === 'guide' ? appearance.prepared : null
       const model = appearance.model
+      if(Object.keys(model.textures).filter(key=>/^layer/.test(key)).length>1){
+        const {blob,...info}=await renderNativeGeneratedLayers(this.reader,model)
+        if(this.disposed)return
+        entry.result={verified:true,url:this.createUrl(blob),providerEvidence:evidence,...info};entry.reason=null;return
+      }
       if (Object.keys(model.textures).some(key => /^layer/.test(key) && key !== 'layer0') || !model.textures.layer0) throw Error('NATIVE_ITEM_LAYERS_UNSUPPORTED')
       const png = resourcePath(textureId(model, model.textures.layer0), 'textures', '.png')
       if (this.reader.manifest.assets[`${png}.mcmeta`]) throw Error('NATIVE_ITEM_ANIMATION_UNSUPPORTED')

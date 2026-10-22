@@ -7,7 +7,7 @@ const UNIT=new Set('emperors_cloth infinite_glass_sword translatable_book travel
 const FLOAT=new Set('auto_repair_probability zoom_ability_modifier efficient_eater perfect_dodge_probability gradually_gliding_multiplier agile_ranger_modifier slimy_soles_coefficient'.split(' '));
 const INT=new Set('casket_damage haste_amplifier high_jump_amplifier ore_loading ore_range'.split(' '));
 const NBT=new Set('candelabra_data jar_lid ore_scanner'.split(' '));
-const SPECIAL=new Set('e115_variant thrown_projectile straight_ahead_multiplier sidestep_cooldown flask_contents skull_candles ore_data'.split(' '));
+const SPECIAL=new Set('e115_variant thrown_projectile straight_ahead_multiplier sidestep_cooldown flask_contents skull_candles ore_data ore_filter stored_broken_attributes magic_painting_variant item_display'.split(' '));
 const RESOURCE=/^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
 const invalid=()=>{throw Error('NATIVE_TWILIGHT_COMPONENT_INVALID');};
 const integer=v=>Number.isInteger(v)&&v>=-2147483648&&v<=2147483647?v:invalid();
@@ -22,15 +22,33 @@ export function knownTwilightComponent(type){
   return UNIT.has(name)||FLOAT.has(name)||INT.has(name)||NBT.has(name)||SPECIAL.has(name);
 }
 // Wire field names follow the pinned original Java records. This converts only
-// audited components to their ORIGINAL persistent codec representation. Four
-// registry/recursive codecs remain explicit unavailable, never guessed IDs.
-export function twilightComponentSnbt(type,data,{registries,vanillaRegistry}={}){
+// audited components to their ORIGINAL persistent codec representation.
+// Registry names and recursive stacks must come from this same connection.
+export function twilightComponentSnbt(type,data,{registries,vanillaRegistry,resolveItem}={}){
   if(!knownTwilightComponent(type))return null;
   const name=type.slice('twilightforest:'.length);
   if(UNIT.has(name)){if(data!==undefined&&data!==null)invalid();return '{}';}
   if(FLOAT.has(name))return String(finite(data))+'f';
   if(INT.has(name))return String(integer(data));
   if(NBT.has(name))return componentValue('custom_data',data,vanillaRegistry);
+  if(name==='ore_filter'||name==='magic_painting_variant'){
+    const registry=name==='ore_filter'?'minecraft:block':'twilight:magic_paintings';
+    const resource=Number.isInteger(data)&&data>=0?registries?.get(registry)?.get(data):null;
+    if(!RESOURCE.test(resource??''))throw Error('NATIVE_COMPONENT_REGISTRY_UNAVAILABLE:'+registry);
+    return JSON.stringify(resource);
+  }
+  if(name==='stored_broken_attributes')return nativeRegistryComponent('attribute_modifiers',data,registries).snbt;
+  if(name==='item_display'){
+    if(!data||Object.keys(data).some(k=>!['items','chosenMapSlot'].includes(k))||!Array.isArray(data.items)||data.items.length>128||typeof resolveItem!=='function')invalid();
+    const chosen=integer(data.chosenMapSlot),slots=[];
+    if(chosen< -1||chosen>=data.items.length&&chosen!==0)invalid();
+    for(const [slot,wire] of data.items.entries()){
+      const result=resolveItem(wire);
+      if(!result.available)throw Error(result.reason||'NATIVE_TWILIGHT_DISPLAY_ITEM_UNAVAILABLE');
+      if(result.item)slots.push('{slot:'+slot+',item:'+result.item.snbt+'}');
+    }
+    return '{slots:['+slots.join(',')+'],chosen_map_slot:'+chosen+'}';
+  }
   if(name==='straight_ahead_multiplier')return String(finite(data))+'d';
   if(name==='sidestep_cooldown')return String(long(data))+'L';
   if(name==='e115_variant'){if(typeof data!=='string'||data.length>1024)invalid();return JSON.stringify(data);}

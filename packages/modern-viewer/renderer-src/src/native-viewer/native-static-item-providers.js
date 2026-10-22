@@ -1,5 +1,6 @@
 import { parseNativeItemStack, nativeNumericValue } from './native-item-stack.js'
 import {nativeBannerLayers} from './native-banner-data.js'
+import {TWILIGHT_ITEM_FACTORY_AUDIT} from './native-twilight-item-factories.js'
 
 // Positive registration evidence from locked 1.21.1 Items (cut), ItemColors
 // (fhu), ItemProperties (gps), ItemNameBlockItem, BookItem and WritableBookItem.
@@ -48,6 +49,12 @@ add('twilightforest','flat','net.minecraft.world.item.SwordItem','steeleaf_sword
 add('twilightforest','flat','net.minecraft.world.item.Item','ironwood_ingot naga_scale')
 add('twilightforest','flat','twilightforest.item.GlassSwordItem','glass_sword')
 add('twilightforest','flat','twilightforest.item.EmptyMagicMapItem','magic_map')
+// Additional exact vanilla constructors read from the ORIGINAL TFItems class;
+// no custom subclass or JSON-presence heuristic is admitted by this list.
+for(const row of TWILIGHT_ITEM_FACTORY_AUDIT.items) table.set(row.id,Object.freeze({namespace:'twilightforest',kind:'flat',itemClass:row.itemClass,source:STATIC_ITEM_SOURCES.twilightforest,factory:row.factory}))
+// TFBlocks.register -> lambda$register$606 constructs an exact BlockItem.
+// The original uncrafting-table item JSON has no BER/extra model wrapper.
+add('twilightforest','json','net.minecraft.world.item.BlockItem','uncrafting_table')
 add('minecraft','json','net.minecraft.world.item.BlockItem',`
 stone granite polished_granite diorite polished_diorite andesite polished_andesite deepslate cobbled_deepslate
 polished_deepslate calcite tuff tuff_slab tuff_stairs tuff_wall chiseled_tuff polished_tuff polished_tuff_slab
@@ -324,6 +331,15 @@ const record=value=>value&&typeof value==='object'&&!Array.isArray(value)
 export function nativeStaticItemState(input,{allowPartialGlint=false}={}) {
   const stack=input?.id?input:parseNativeItemStack(input),evidence=nativeStaticItemEvidence(stack.id)
   if(!evidence||!Number.isSafeInteger(stack.count)||stack.count<=0||!record(stack.components)) throw Error('NATIVE_ITEM_STATIC_PROVIDER_UNVERIFIED')
+  // GlassSwordItem.hurt only reads this unit component for durability. The
+  // registered item has no ItemProperties/ItemColors override for it; a long
+  // sidestep timestamp likewise cannot change this sword's original model.
+  // Retain the complete original stack/cache key, including typed long values.
+  if(stack.id==='twilightforest:glass_sword'){
+    const components=Object.fromEntries(Object.entries(stack.components).filter(([key])=>!['twilightforest:infinite_glass_sword','twilightforest:sidestep_cooldown'].includes(key.replace(/^!/,''))))
+    for(const [key,value] of Object.entries(stack.components))if(key.startsWith('!')&&(!record(value)||Object.keys(value).length||Object.hasOwn(stack.components,key.slice(1))))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID')
+    return {...nativeItemComponentState({...stack,components},{allowPartialGlint}),stack,evidence}
+  }
   return {...nativeItemComponentState(stack,{allowPartialGlint}),evidence}
 }
 // Component validation is shared with positively registered dynamic GUI items;

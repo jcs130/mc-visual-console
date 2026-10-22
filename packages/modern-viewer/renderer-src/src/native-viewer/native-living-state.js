@@ -3,7 +3,7 @@ export const NATIVE_HOSTILE_TYPES=Object.freeze(['minecraft:zombie','minecraft:h
   'minecraft:skeleton','minecraft:stray','minecraft:wither_skeleton','minecraft:bogged','minecraft:creeper','minecraft:spider',
   'minecraft:cave_spider','minecraft:enderman','minecraft:witch','minecraft:iron_golem'])
 export const nativeHostileType=name=>NATIVE_HOSTILE_TYPES.includes(name)
-const SERIALIZER={byte:0,int:1,float:3,boolean:8,pose:21,optional_block_state:15,villager_data:19}
+const SERIALIZER={byte:0,int:1,float:3,boolean:8,pose:21,optional_component:6,optional_block_state:15,villager_data:19}
 export function nativeLivingMeta(entity,key,type,defaultValue) {
   const row=entity.metadata?.get?.(key)??entity.metadata?.find?.(entry=>entry.key===key)
   if(!row)return defaultValue

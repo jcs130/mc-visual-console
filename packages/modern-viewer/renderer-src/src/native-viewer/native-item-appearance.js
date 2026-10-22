@@ -10,6 +10,7 @@ import { nativeArsItemEligible, prepareNativeArsItemIcon } from './native-ars-it
 import { nativeDomumItemEligible, prepareNativeDomumItemIcon } from './native-domum-item-icons.js'
 import { nativeSoulSlabEligible, prepareNativeSoulSlabAppearance } from './native-soul-slab-icons.js'
 import { nativePotionItemEligible, prepareNativePotionItem } from './native-potion-items.js'
+import {nativeTwilightFlaskEligible,prepareNativeTwilightFlask} from './native-twilight-items.js'
 
 export const NATIVE_ITEM_APPEARANCE_CONTEXTS = Object.freeze(['gui', 'ground',
   'firstperson_lefthand', 'firstperson_righthand', 'thirdperson_lefthand', 'thirdperson_righthand'])
@@ -91,6 +92,8 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     family = 'ars'; prepared = await prepareNativeArsItemIcon(reader, stack); model = prepared.model
   } else if (nativeGuideItemEligible(stack.id)) {
     family = 'guide'; prepared = await prepareNativeGuideItemIcon(reader, stack); modelId = prepared.modelId
+  } else if(nativeTwilightFlaskEligible(stack.id)){
+    family='potion';prepared=await prepareNativeTwilightFlask(reader,stack);model=prepared.model
   } else if (nativePotionItemEligible(stack.id)) {
     family = 'potion'; prepared = await prepareNativePotionItem(reader, stack)
   } else {
