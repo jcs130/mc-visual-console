@@ -16,6 +16,12 @@ test('Twilight ore data preserves signed absolute chunk coordinates and full 64-
   assert.equal(twilightComponentSnbt('twilightforest:skull_candles',{color:14,count:3}),'{color:14,count:3}');
   assert.throws(()=>twilightComponentSnbt('twilightforest:sidestep_cooldown',[0,-1]),/TWILIGHT_COMPONENT_INVALID/);
 });
+
+test('real scanner translation keys and non-negative counts survive the persistent codec',()=>{
+  const data={counts:[{name:'block.minecraft.iron_ore',count:2}],scannedChunk:[0,0],scannedBlockCount:120,universalId:[0,3]}
+  assert.match(twilightComponentSnbt('twilightforest:ore_data',data),/"block.minecraft.iron_ore":2/)
+  for(const bad of [{...data,counts:[{name:'',count:2}]},{...data,counts:[{name:'block.minecraft.iron_ore',count:-1}]},{...data,scannedBlockCount:-1}])assert.throws(()=>twilightComponentSnbt('twilightforest:ore_data',bad),/INVALID/)
+});
 test('native stack conversion requires explicit pinned Twilight enablement and preserves removals',()=>{
   const items=new Map([[300,'twilightforest:travellers_boots']]);
   const wire={itemCount:1,itemId:300,addedComponentCount:2,removedComponentCount:1,

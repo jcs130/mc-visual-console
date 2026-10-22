@@ -67,18 +67,21 @@ export class NativeLanguage {
     const dictionaries = await Promise.all(paths.map(async path => {
       try {
         if (this.reader.manifest.assets[path].bytes > 2097152) throw Error('NATIVE_LANGUAGE_SIZE_LIMIT')
-        const value = await this.reader.json(path)
-        if (!record(value) || Object.keys(value).length > 32768 || Object.values(value).some(text => typeof text !== 'string' || text.length > 32768)) throw Error('NATIVE_LANGUAGE_DICTIONARY_INVALID')
-        return [path, value]
+        const rows=typeof this.reader.languageDictionaries==='function'?await this.reader.languageDictionaries(path):[{dictionary:await this.reader.json(path),priority:1}]
+        for(const {dictionary:value}of rows)if (!record(value) || Object.keys(value).length > 32768 || Object.values(value).some(text => typeof text !== 'string' || text.length > 32768)) throw Error('NATIVE_LANGUAGE_DICTIONARY_INVALID')
+        return rows.map(row=>[path,row.dictionary,row.priority])
       } catch (error) { this.errors.push({ path, reason: error.message }); return null }
-    }))
+    })).then(rows=>rows.filter(Boolean).flat())
     // Language entries share a global key space. Conflicting values in the
     // same locale require actual pack-order evidence, not namespace sorting.
     const locale = suffix => {
-      const words = new Map(), conflicts = new Set()
+      const words = new Map(), conflicts = new Set(),priorities=new Map()
       for (const entry of dictionaries) if (entry?.[0].endsWith(suffix)) for (const [key, value] of Object.entries(entry[1])) {
-        if (words.has(key) && words.get(key) !== value) conflicts.add(key)
-        words.set(key, value)
+        const priority=entry[2]??1,previous=priorities.get(key)
+        if(previous!==undefined&&previous>priority)continue
+        if(previous!==undefined&&previous===priority&&words.get(key)!==value)conflicts.add(key)
+        if(previous===undefined||previous<priority)conflicts.delete(key)
+        words.set(key, value);priorities.set(key,priority)
       }
       for (const key of conflicts) { words.delete(key); this.errors.push({ key, reason: 'NATIVE_LANGUAGE_KEY_PRIORITY_UNRESOLVED' }) }
       return words

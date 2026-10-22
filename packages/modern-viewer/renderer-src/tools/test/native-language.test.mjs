@@ -6,6 +6,7 @@ import { NativeLanguage } from '../../src/native-viewer/native-language.js'
 import { NativeAssetReader } from '../../src/native-viewer/model-loader.js'
 import { renderNativeItemSlot } from '../../src/native-viewer/native-ui-adapter.js'
 import { shell } from './fixtures/native-console-dom.mjs'
+import {createHash} from 'node:crypto'
 
 const named = (component, extra = {}) => ({ name: 'minecraft:oak_planks', count: 2,
   snbt: '{id:"minecraft:oak_planks",count:2}', displayName: 'Oak Planks',
@@ -78,4 +79,25 @@ test('common native menus have Chinese headings while a custom chest title remai
   assert.equal(language.menu({ menuType: 'minecraft:generic_9x6' }), '大型箱子')
   assert.equal(language.menu({ menuType: 'minecraft:generic_9x6', title: 'Corti chest' }), 'Corti chest')
   assert.equal(language.menu({ menuType: 'unknown:screen' }), 'unknown:screen')
+})
+
+test('stacked partial mod languages preserve original keys, resolve only proven vanilla priority and retain mod conflicts',async()=>{
+  const file='assets/minecraft/lang/en_us.json',base={'block.minecraft.dirt':'Dirt',shared:'Base'},a={pale:'Pale Oak',shared:'Mod A'},b={shared:'Mod B'}
+  const inputs=[['client.jar',base],['a.jar',a],['b.jar',b]],bytes=new Map(),rows=inputs.map(([source,dict])=>{
+    const data=Buffer.from(JSON.stringify(dict)),sha256=createHash('sha256').update(data).digest('hex');bytes.set(`asset-variants/${sha256}.bin`,data)
+    return {source,sha256,bytes:data.length}
+  })
+  const manifest={minecraftVersion:'1.21.1',assetIntegrityVerified:true,clientJarSha256:'499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99',variantContentPath:'asset-variants/{sha256}.bin',
+    sources:[{name:'client.jar',sha256:'499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99'},
+      {name:'neoforge-21.1.250-universal.jar',sha256:'1f9cc68fe9ec0416475d34ce76e95a696b9721d5d338168563dab0632c3d2956'},
+      {name:'a.jar',sha256:'1'.repeat(64)},{name:'b.jar',sha256:'2'.repeat(64)}],assets:{[file]:{...rows[1],variants:rows.slice(0,2)}}}
+  const reader=new NativeAssetReader(manifest,async p=>bytes.get(p)),language=await new NativeLanguage(reader).prepare()
+  assert.equal(language.translate('block.minecraft.dirt'),'Dirt');assert.equal(language.translate('pale'),'Pale Oak');assert.equal(language.translate('shared'),'Mod A')
+  await assert.rejects(reader.bytes(file),/RESOURCE_PRIORITY_UNRESOLVED/)
+  const conflict=structuredClone(manifest);conflict.assets[file]={...rows[2],variants:rows}
+  const other=await new NativeLanguage(new NativeAssetReader(conflict,async p=>bytes.get(p))).prepare()
+  assert.equal(other.translate('block.minecraft.dirt'),'Dirt');assert.equal(other.translate('shared'),null)
+  assert(other.errors.some(e=>e.key==='shared'&&e.reason==='NATIVE_LANGUAGE_KEY_PRIORITY_UNRESOLVED'))
+  const corrupt=new NativeAssetReader(manifest,async()=>Buffer.from('{}')),failed=await new NativeLanguage(corrupt).prepare()
+  assert.equal(failed.translate('block.minecraft.dirt'),null);assert(failed.errors.some(e=>e.reason==='NATIVE_LANGUAGE_VARIANT_HASH_MISMATCH'))
 })

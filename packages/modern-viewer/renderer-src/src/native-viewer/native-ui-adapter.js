@@ -10,6 +10,7 @@ import { NativeLanguage } from './native-language.js'
 import { nativeSoulSlabAnimationStyle, NATIVE_SOUL_SLAB_KEYFRAMES } from './native-soul-slab-icons.js'
 import { nativeClientSourceVerified } from './native-client-source.js'
 import { createNativeSurvivalUi } from './native-survival-ui.js'
+import {heldTwilightOreMeter,twilightOreMeterLines} from './native-twilight-ore-meter.js'
 import { NATIVE_VANILLA_GUIS, standardVanillaMenuLayout, vanillaMenuPropertyLabels } from './native-vanilla-menus.js'
 import { NATIVE_CRAFTER_GUI, crafterMenuLayout, nativeCrafterState } from './native-crafter-menu.js'
 export { NATIVE_CRAFTER_GUI, nativeCrafterState } from './native-crafter-menu.js'
@@ -444,6 +445,12 @@ export function createNativeInterface ({ document = globalThis.document,
   if (!document?.getElementById) throw Error('NATIVE_UI_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
   const survivalUi=createNativeSurvivalUi({document,translate:key=>language.translate(key)})
+  const orePanel=node(document,'div','native-twilight-ore-meter')
+  orePanel.dataset.twilightOreMeter='';orePanel.hidden=true
+  // The browser toolbar/minimap occupy the Java HUD's top-left origin. Keep
+  // original scan text apart from those controls; this is not font/pixel parity.
+  orePanel.style.cssText='position:fixed;left:248px;top:64px;padding:8px;background:rgba(0,0,0,.608);color:white;font:16px monospace;line-height:20px;white-space:pre;pointer-events:none;z-index:21'
+  document.body?.append(orePanel)
   let expectedUuid = null, identityKey = null, actor = null, actorReason = null, assets = null, assetsSequence = 0, current = null, itemIcons = null, iconRevision = 0
   let hudSignature = null, skillsSignature = null
   const menuItems=new Map()
@@ -494,6 +501,12 @@ export function createNativeInterface ({ document = globalThis.document,
   const selfState = () => presentation.self ?? (expectedUuid && uuid(current?.selfPlayer?.uuid) === expectedUuid ? current?.selfPlayer : null)
   const renderHud = () => {
     const self = selfState() ?? {}, health = self.health, maxHealth = self.maxHealth
+    try{
+      const meter=heldTwilightOreMeter(presentation),lines=twilightOreMeterLines(meter,(key,args)=>language.translate(key,args))
+      orePanel.textContent=lines.join('\n');orePanel.hidden=!lines.length;orePanel.dataset.state=lines.length?'available':'inactive'
+      orePanel.dataset.source='same_player_connection_item_components'
+      delete orePanel.dataset.reason
+    }catch(error){orePanel.textContent='';orePanel.hidden=true;orePanel.dataset.state='unavailable';orePanel.dataset.reason=error.message}
     const signature = JSON.stringify([health, maxHealth, self.food, self.armor, self.oxygen, self.inWater,
       self.experienceLevel, self.experienceProgress, presentation.inventory, assetsSequence, iconRevision])
     if (hudSignature === signature) return
@@ -1009,6 +1022,7 @@ export function createNativeInterface ({ document = globalThis.document,
       reset(); disposed = true; assetsSequence++
       preview?.dispose(); fishing?.dispose(); assets?.dispose(); itemIcons?.dispose()
       survivalUi.dispose()
+      orePanel.remove()
       for (const [target, event, callback] of listeners) target?.removeEventListener(event, callback)
     }
   }

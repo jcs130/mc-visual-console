@@ -142,6 +142,7 @@ export async function prepareNativeBlockGuiPlan(reader, { name, model, evidence,
     await reader.bytes(path) // Also enforces the manifest SHA and resource priority.
   }
   const translucentCull=name==='twilightforest:uncrafting_table'&&evidence?.source?.sha256==='493da16d10210f9f53a3c33b3d8fcb4ae9b14016ee420d753c894562bd9aba35'
+  const cutout=name==='twilightforest:mason_jar'&&evidence?.source?.sha256==='493da16d10210f9f53a3c33b3d8fcb4ae9b14016ee420d753c894562bd9aba35'
   let guiModel=model
   if(translucentCull){
     // GuiGraphics already supplies FULL_BRIGHT (15,15). The original TF
@@ -152,7 +153,7 @@ export async function prepareNativeBlockGuiPlan(reader, { name, model, evidence,
       const {neoforge_data,...rest}=face;return [direction,rest]
     }))}))}
   }
-  const faces = bakeNativeBlockItemFaces(guiModel,{translucentCull}).map(face=>translucentCull?{...face,nativeTranslucentCull:true}:face)
+  const faces = bakeNativeBlockItemFaces(guiModel,{translucentCull,cutout}).map(face=>translucentCull?{...face,nativeTranslucentCull:true}:face)
   if ((model.gui_light ?? 'side') !== 'side') throw Error('NATIVE_BLOCK_ITEM_FRONT_LIGHT_UNSUPPORTED')
   const transform=nativeGuiItemTransform(model.display.gui)
   const culling=nativeGuiFaceCulling(faces,transform)
@@ -169,10 +170,10 @@ export async function prepareNativeBlockGuiPlan(reader, { name, model, evidence,
 
 // Geometry checks shared by original GUI and held contexts. Camera-dependent
 // GUI culling/light/transform checks deliberately stay outside this function.
-export function bakeNativeBlockItemFaces(model,{translucentCull=false}={}) {
+export function bakeNativeBlockItemFaces(model,{translucentCull=false,cutout=false}={}) {
   if (model.nativeGenerated) throw Error('NATIVE_BLOCK_ITEM_GENERATED_PROVIDER_REQUIRED')
   if (!model.elements.length || model.elements.length > 128) throw Error('NATIVE_BLOCK_ITEM_ELEMENT_LIMIT')
-  if (model.render_type !== undefined && !['solid','minecraft:solid',...(translucentCull?['minecraft:translucent']:[])].includes(model.render_type)) throw Error('NATIVE_BLOCK_ITEM_RENDER_TYPE_UNSUPPORTED')
+  if (model.render_type !== undefined && !['solid','minecraft:solid',...(translucentCull?['minecraft:translucent']:[]),...(cutout?['minecraft:cutout']:[])].includes(model.render_type)) throw Error('NATIVE_BLOCK_ITEM_RENDER_TYPE_UNSUPPORTED')
   if (model.elements.some(element => !record(element) || !record(element.faces) || Object.keys(element.faces).length > 6)) throw Error('NATIVE_BLOCK_ITEM_FACES_INVALID')
   for (const element of model.elements) {
     // BlockElement.Deserializer's original coordinate/rotation limits also

@@ -9,6 +9,7 @@ import {observeNativeItemAliases} from './native-item-identity.mjs';
 import {observeVanillaHands} from './vanilla-hand-state.mjs';
 import {TWILIGHT_1211_JAR,TWILIGHT_1211_SHA} from './native-twilight-components.mjs';
 import {observeTwilightWindow} from './native-twilight-window.mjs';
+import {observeTwilightRegistry} from './native-twilight-registry.mjs';
 export {nativeItemIdentity} from './native-item-identity.mjs';
 const require=createRequire(import.meta.url),requireChunk=createRequire(require.resolve('prismarine-chunk')),nbt=requireChunk('prismarine-nbt');
 const finite=p=>p&&['x','y','z'].every(k=>Number.isInteger(p[k])&&Math.abs(p[k])<=30000000);
@@ -55,10 +56,12 @@ export async function prepareNativeConnection({assetDirectory,viewerPort=0}){
     if(bot.version&&bot.version!=='1.21.1')throw Error('NATIVE_CONNECTION_VERSION_MISMATCH');
     const stream=observeNativeGateway(bot,{registrySha256:prepared.registrySha256,items,nativeMenuLayouts,simplifyNBT:nbt.simplify,twilightComponents,blockRegistry});
     const detachTwilight=twilightComponents?observeTwilightWindow(bot,stream):()=>{};
+    const twilightRegistry=twilightComponents?observeTwilightRegistry(bot,{simplifyNBT:nbt.simplify}):null;
     const detachAliases=observeNativeItemAliases(bot,stream);
     const hands=observeVanillaHands(bot);
     const presentation=()=>{
-      const value=stream.presentation(),hand=hands.snapshot();
+      const original=stream.presentation(),hand=hands.snapshot();
+      const value=original&&twilightRegistry?{...original,twilightTravellerRegistry:twilightRegistry.snapshot(bot._client.uuid)}:original;
       // The compatibility registry cannot identify arbitrary mod potion IDs.
       // Reuse observed arm packets only while no such effect can alter timing.
       if(!value||!hand||Object.keys(bot.entity?.effects??{}).length)return value;
@@ -97,7 +100,7 @@ export async function prepareNativeConnection({assetDirectory,viewerPort=0}){
         return {...envelope,available:snapshot.available,reason:snapshot.reason??null,entities:rows.filter(e=>distance(e.position)<=16&&nativeVisible(world,eye,e.position)).slice(0,64).map(e=>({
           nativeId:e.name,entityId:e.entityId,uuid:e.uuid,position:{...e.position},metadata:e.metadata,equipment:e.equipment})),scope:'visible_tracked_entities_within_16_blocks'};
       },
-      async close(){if(closed)return;closed=true;detachTwilight();detachAliases();hands.close();await host.close();stream.close();}
+      async close(){if(closed)return;closed=true;detachTwilight();twilightRegistry?.dispose();detachAliases();hands.close();await host.close();stream.close();}
     };
   }};
 }

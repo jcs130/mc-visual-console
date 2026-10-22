@@ -22,6 +22,13 @@ export const NATIVE_BASE_TEXTURE_PRIORITY = Object.freeze({
     '3d04f576678df35491ccc43b0fafddce13e310fa5f363ca13193f8a2f55b285b'
   ])
 })
+// Stacked language resources merge individual keys. This proves only vanilla
+// below mod_resources; it supplies no ordering between two different mods.
+export function verifiedNativeLanguageBasePriority(manifest){
+  const platforms=manifest.sources?.filter(s=>Object.hasOwn(PLATFORMS,s.name))
+  return manifest.clientJarSha256===CLIENT&&!manifest.sources?.some(s=>s.explicitOverride)&&
+    platforms?.length===1&&platforms[0].sha256===PLATFORMS[platforms[0].name]
+}
 export function verifiedNativeBasePriority(manifest, path, entry) {
   const hashes = NATIVE_BASE_TEXTURE_PRIORITY[path]
   if (!hashes || entry.priorityResolution !== NATIVE_BASE_PRIORITY_RULE || manifest.clientJarSha256 !== CLIENT ||

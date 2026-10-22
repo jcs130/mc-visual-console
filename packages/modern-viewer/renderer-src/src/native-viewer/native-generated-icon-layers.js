@@ -18,8 +18,10 @@ function pngSize(bytes){
 }
 export async function renderNativeGeneratedLayers(reader,model){
   if(!model?.nativeGenerated||model.elements?.length||(model.gui_light??'front')!=='front')throw Error('NATIVE_GENERATED_LAYER_MODEL_UNSUPPORTED')
-  const layers=Object.keys(model.textures??{}).filter(k=>/^layer/.test(k)).sort()
-  if(layers.length<2||layers.length>5||layers.some((k,i)=>k!=='layer'+i))throw Error('NATIVE_GENERATED_LAYER_SEQUENCE_INVALID')
+  const layers=Object.keys(model.textures??{}).filter(k=>/^layer/.test(k)).sort((a,b)=>Number(a.slice(5))-Number(b.slice(5)))
+  const scales=model.twilightTravellerLayerScales
+  if(scales&&(!Array.isArray(scales)||scales.length!==layers.length||scales.some((n,i)=>n!==Math.fround(1+Math.fround(i*Math.fround(.001))))))throw Error('NATIVE_GENERATED_LAYER_SCALE_INVALID')
+  if(layers.length<2||layers.length>(scales?26:5)||layers.some((k,i)=>k!=='layer'+i))throw Error('NATIVE_GENERATED_LAYER_SEQUENCE_INVALID')
   let dimensions=null,total=0;const images=[],paths=[]
   for(const layer of layers){
     const path=resourcePath(textureId(model,model.textures[layer]),'textures','.png')
@@ -29,7 +31,8 @@ export async function renderNativeGeneratedLayers(reader,model){
     const size=pngSize(bytes)
     if(dimensions&&(size.width!==dimensions.width||size.height!==dimensions.height))throw Error('NATIVE_GENERATED_LAYER_DIMENSIONS_UNSUPPORTED')
     dimensions??=size;paths.push(path)
-    images.push(`<image width="${size.width}" height="${size.height}" href="data:image/png;base64,${base64(bytes)}"/>`)
+    const scale=scales?.[images.length],transform=scale&&scale!==1?` transform="translate(${size.width/2} ${size.height/2}) scale(${scale}) translate(${-size.width/2} ${-size.height/2})"`:''
+    images.push(`<image width="${size.width}" height="${size.height}"${transform} href="data:image/png;base64,${base64(bytes)}"/>`)
   }
   const {width,height}=dimensions,svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${images.join('')}</svg>`
   return {blob:new Blob([svg],{type:'image/svg+xml'}),width,height,layers:layers.length,kind:'native-json-generated-layers',

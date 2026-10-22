@@ -162,6 +162,16 @@ function harness (options = {}) {
   return { ui, document, jobs, previews, advance }
 }
 
+test('held ore-meter overlay follows actual progress and account state, and is removed on UI disposal',()=>{
+  const h=harness(),p=presentation();p.inventory.playerUuid=UUID;p.inventory.selectedHotbarSlot=0
+  p.inventory.slots[36].item={name:'twilightforest:ore_meter',count:1,snbt:'{id:"twilightforest:ore_meter",count:1,components:{"twilightforest:ore_loading":11}}'}
+  h.ui.update({epoch:1,presentation:p})
+  const overlay=h.document.querySelector('[data-twilight-ore-meter]')
+  assert.equal(overlay.hidden,false);assert(overlay.textContent.endsWith('...'))
+  h.ui.reset();assert.equal(overlay.hidden,true);assert.equal(overlay.textContent,'')
+  h.ui.dispose();assert.equal(overlay.isConnected,false)
+})
+
 test('same UUID with a replacement entity immediately clears old manual inventory and replay before the next snapshot',()=>{
   const h=harness(),menu=h.document.getElementById('corti-menu')
   h.ui.setIdentity({confirmed:true,playerUuid:UUID,entityId:1,epoch:1})

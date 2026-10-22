@@ -15,6 +15,9 @@ import {nativePotionItemEligible,validateNativePotionItem} from './native-potion
 import {nativeTwilightFlaskEligible,nativeTwilightFlaskState} from './native-twilight-items.js'
 import {renderNativePotionIcon} from './native-potion-icons.js'
 import {renderNativeGeneratedLayers} from './native-generated-icon-layers.js'
+import {nativeTwilightOreMeterEligible,nativeTwilightOreMeterState} from './native-twilight-ore-meter.js'
+import {nativeTwilightTravellerEligible,nativeTwilightTravellerState,twilightTravellerContext} from './native-twilight-travellers.js'
+import {nativeTwilightJarEligible,nativeTwilightJarState} from './native-twilight-jars.js'
 import { resolveNativeItemAppearance } from './native-item-appearance.js'
 import { ServerItemIcons } from './server-item-icons.js'
 import {nativeDynamicGuiEligible,nativeDynamicGuiState,prepareNativeDynamicGuiIcon,NativeCompassWobble} from './native-dynamic-gui-icons.js'
@@ -26,6 +29,9 @@ export function nativeItemIconEligible(item) {
     if (nativeSoulSlabEligible(stack.id)) nativeSoulSlabState(stack)
     else if (nativeDomumItemEligible(stack.id)) nativeDomumItemState(stack)
     else if(nativeTwilightFlaskEligible(stack.id))nativeTwilightFlaskState(stack)
+    else if(nativeTwilightOreMeterEligible(stack.id))nativeTwilightOreMeterState(stack)
+    else if(nativeTwilightTravellerEligible(stack.id))return true
+    else if(nativeTwilightJarEligible(stack.id))nativeTwilightJarState(stack)
     else if(nativePotionItemEligible(stack.id))validateNativePotionItem(stack)
     else nativeStaticItemState(stack,{allowPartialGlint:true})
     return true
@@ -38,6 +44,7 @@ export class NativeItemIcons {
     this.entries = new Map(); this.queue = []; this.active = 0; this.disposed = false
     this.serverIcons=new ServerItemIcons({reader,onChange,createUrl,revokeUrl})
     this.context=null;this.compassWobble=new NativeCompassWobble()
+    this.oreSamples=new Map();this.travellerContext=null
     this.glintClock = new NativeIconGlintClock(glintOptions)
     this.potionIconOptions=potionIconOptions
     this.animationEpochMs = Date.now()
@@ -47,21 +54,42 @@ export class NativeItemIcons {
     this.chestRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeChestItemIcon,loadTexture:loadNativeCutoutItemTexture,...chestRendererOptions})
     this.shieldRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeShieldItem,loadTexture:loadNativeCutoutItemTexture,...shieldRendererOptions})
     this.bannerRenderer = new NativeBlockItemIconRenderer(reader, {preparePlan:prepareNativeBannerItem,loadTexture:loadNativeBannerItemTexture,...bannerRendererOptions})
+    this.jarRenderer = new NativeBlockItemIconRenderer(reader,{loadTexture:loadNativeCutoutItemTexture})
   }
   setContext(view){
-    if(this.context?.self?.entityId!==view?.self?.entityId||this.context?.playerUuid!==view?.playerUuid)this.compassWobble=new NativeCompassWobble()
+    if(this.context?.self?.entityId!==view?.self?.entityId||this.context?.playerUuid!==view?.playerUuid){this.compassWobble=new NativeCompassWobble();this.oreSamples.clear()}
     this.context=view?.available?view:null
+    try{this.travellerContext=twilightTravellerContext(this.context)}catch{this.travellerContext=null}
     let compass='unavailable'
     try{compass=nativeDynamicGuiState({id:'minecraft:compass',count:1,components:{}},this.context,this.compassWobble).variant}catch{}
-    const next=JSON.stringify([compass,this.context?.self?.usingItem??null]),changed=next!==this.dynamicSignature
+    const next=JSON.stringify([compass,this.context?.self?.usingItem??null,this.context?.twilightTravellerRegistry?.sha256??null]),changed=next!==this.dynamicSignature
     this.dynamicSignature=next;return changed
+  }
+  twilightSelection(stack,snbt){
+    if(nativeTwilightTravellerEligible(stack.id)){
+      const state=nativeTwilightTravellerState(stack,this.travellerContext)
+      return {observed:this.travellerContext??{},variant:state.variant}
+    }
+    if(nativeTwilightOreMeterEligible(stack.id)){
+      if(!this.oreSamples.has(snbt)){
+        if(this.oreSamples.size>=128)this.oreSamples.delete(this.oreSamples.keys().next().value)
+        this.oreSamples.set(snbt,nativeTwilightOreMeterState(stack))
+      }
+      const state=this.oreSamples.get(snbt)
+      return {observed:{oreMeter:{active:state.active}},variant:state.variant}
+    }
+    return null
   }
   resolve(item) {
     if (this.disposed) return null
     if(this.serverIcons.selector(item))return this.serverIcons.resolve(item)
-    let provider = null, stack = null, dynamic = null, key = item?.name
+    let provider = null, stack = null, dynamic = null, twilight=null, key = item?.name
     try { stack = parseNativeItemStack(item) } catch { return null }
-    if(nativeDynamicGuiEligible(key)){
+    if(nativeTwilightJarEligible(key)){
+      try{nativeTwilightJarState(stack);provider='twilight'}catch{return null}
+    } else if(nativeTwilightTravellerEligible(key)||nativeTwilightOreMeterEligible(key)){
+      try{twilight=this.twilightSelection(stack,item.snbt);provider='twilight'}catch{return null}
+    } else if(nativeDynamicGuiEligible(key)){
       try{dynamic=nativeDynamicGuiState(stack,this.context,this.compassWobble);provider='dynamic-gui'}catch{return null}
     } else if (nativeSoulSlabEligible(key)) {
       try { nativeSoulSlabState(stack); provider = 'soul-slab' } catch { return null }
@@ -84,9 +112,10 @@ export class NativeItemIcons {
     // inputs, removal patches and tag types. No name-only generic icon cache.
     key += '#' + item.snbt
     if(dynamic)key+='#'+dynamic.variant
+    if(twilight)key+='#'+twilight.variant
     if (!this.entries.has(key)) {
       if (this.entries.size >= 128 && !this.evictOldest()) return null
-      this.entries.set(key, { result: null, reason: 'loading', name: item.name, provider, stack, dynamic }); this.queue.push(key); this.pump()
+      this.entries.set(key, { result: null, reason: 'loading', name: item.name, provider, stack, dynamic,twilight }); this.queue.push(key); this.pump()
     }
     const entry = this.entries.get(key)
     this.entries.delete(key); this.entries.set(key, entry)
@@ -107,14 +136,16 @@ export class NativeItemIcons {
     if(this.serverIcons.selector(item))return this.serverIcons.reason(item)
     try {
       const stack=parseNativeItemStack(item)
-      let dynamic=null
-      if(nativeDynamicGuiEligible(item.name))dynamic=nativeDynamicGuiState(stack,this.context,this.compassWobble)
+      let dynamic=null,twilight=null
+      if(nativeTwilightJarEligible(item.name))nativeTwilightJarState(stack)
+      else if(nativeTwilightTravellerEligible(item.name)||nativeTwilightOreMeterEligible(item.name))twilight=this.twilightSelection(stack,item.snbt)
+      else if(nativeDynamicGuiEligible(item.name))dynamic=nativeDynamicGuiState(stack,this.context,this.compassWobble)
       else if (nativeSoulSlabEligible(item.name)) nativeSoulSlabState(stack)
       else if (nativeDomumItemEligible(item.name)) nativeDomumItemState(stack)
       else if(nativeTwilightFlaskEligible(item.name))nativeTwilightFlaskState(stack)
       else if(nativePotionItemEligible(item.name))validateNativePotionItem(stack)
       else if(!nativeGuideItemEligible(item.name)&&!nativeArsItemEligible(item.name))nativeStaticItemState(stack,{allowPartialGlint:true})
-      const entry=this.entries.get(item.name+'#'+item.snbt+(dynamic?'#'+dynamic.variant:''))
+      const entry=this.entries.get(item.name+'#'+item.snbt+(dynamic?'#'+dynamic.variant:'')+(twilight?'#'+twilight.variant:''))
       return entry ? entry.reason : this.entries.size>=128?'NATIVE_ITEM_ICON_CACHE_LIMIT':'not_requested'
     } catch(error) { return error.message }
   }
@@ -130,10 +161,15 @@ export class NativeItemIcons {
     entry.loading = true
     const name = entry.name
     try {
-      const appearance = entry.dynamic?await prepareNativeDynamicGuiIcon(this.reader,entry.dynamic):await resolveNativeItemAppearance(this.reader, entry.stack, { kind: 'gui' })
+      const appearance = entry.dynamic?await prepareNativeDynamicGuiIcon(this.reader,entry.dynamic):await resolveNativeItemAppearance(this.reader, entry.stack, { kind: 'gui',...(entry.twilight?{observed:entry.twilight.observed}:{}) })
       entry.appearance = appearance
       if (this.disposed) return
       const provider = appearance.family
+      if(provider==='twilight-jar'){
+        const {blob,...info}=await this.jarRenderer.render(name,appearance.prepared)
+        if(this.disposed)return
+        entry.result={verified:true,url:this.createUrl(blob),...info};entry.reason=null;return
+      }
       if(provider==='potion'){
         const {blob,...info}=await renderNativePotionIcon(this.reader,entry.stack,{...this.potionIconOptions,appearance})
         if(this.disposed)return
@@ -212,9 +248,11 @@ export class NativeItemIcons {
     this.chestRenderer.dispose()
     this.shieldRenderer.dispose()
     this.bannerRenderer.dispose()
+    this.jarRenderer.dispose()
     this.glintClock.dispose()
     for (const entry of this.entries.values()) entry.result?.liveGlint?.dispose()
     for (const entry of this.entries.values()) if (entry.result) this.revokeUrl(entry.result.url)
     this.entries.clear()
+    this.oreSamples.clear();this.travellerContext=null
   }
 }

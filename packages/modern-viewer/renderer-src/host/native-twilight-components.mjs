@@ -66,7 +66,12 @@ export function twilightComponentSnbt(type,data,{registries,vanillaRegistry,reso
   }
   if(name==='ore_data'){
     if(!Array.isArray(data?.counts)||data.counts.length>4096)invalid();
-    const seen=new Set(),counts=data.counts.map(row=>{if(!RESOURCE.test(row?.name??'')||seen.has(row.name))invalid();seen.add(row.name);return JSON.stringify(row.name)+':'+integer(row.count);});
+    // OreScannerComponent.getResults stores Block.getDescriptionId(), e.g.
+    // "block.minecraft.iron_ore", not a namespaced registry resource. The
+    // original persistent codec accepts a non-empty string and a non-negative
+    // int. Keep the translation key intact for both the HUD and Agent queries.
+    const seen=new Set(),counts=data.counts.map(row=>{if(typeof row?.name!=='string'||!row.name.length||Buffer.byteLength(row.name)>32767||seen.has(row.name)||integer(row.count)<0)invalid();seen.add(row.name);return JSON.stringify(row.name)+':'+row.count;});
+    if(integer(data.scannedBlockCount)<0)invalid();
     // The TF persistent codec uses Codec.LONG.xmap(ChunkPos::new,
     // ChunkPos::toLong), not vanilla ChunkPos.CODEC's integer pair.
     return '{counts:{'+counts.join(',')+'},scanned_chunk:'+long(data.scannedChunk)+'L,scanned_block_count:'+integer(data.scannedBlockCount)+',universal_id:'+long(data.universalId)+'L}';

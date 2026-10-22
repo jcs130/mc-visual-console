@@ -73,6 +73,12 @@ export function nativeNumericValue (value) {
   return typeof value.value === 'number' && Number.isFinite(value.value) ? value.value : null
 }
 
+// Large chunk positions and scan identifiers must not round through a double.
+// Only a real LongTag from the bounded parser may supply this value.
+export function nativeLongValue(value) {
+  return record(value) && value[TAG] === 'long' ? BigInt(value.value) : null
+}
+
 function numericOrString (word) {
   if (FLOAT.test(word) || DOUBLE_SUFFIX.test(word) || DOUBLE.test(word)) {
     const type = FLOAT.test(word) ? 'float' : 'double'
@@ -226,4 +232,27 @@ export function parseNativeItemStack (item) {
 export function assertNativeItemStack(stack) {
   if (!parsedStacks.has(stack)) fail('PARSED_REQUIRED')
   return stack
+}
+
+// ItemContainerContents.copyOne() copies slot ZERO, not the first nonempty
+// entry. Reuse parser-produced nested values without losing numeric tag types
+// in a JSON round trip, or accepting a fabricated typed-tag lookalike.
+export function nativeContainerItemAt(stack,slot=0){
+  assertNativeItemStack(stack)
+  if(Object.hasOwn(stack.components,'!minecraft:container')){
+    const removed=stack.components['!minecraft:container']
+    if(!record(removed)||Object.keys(removed).length||Object.hasOwn(stack.components,'minecraft:container'))fail('CONTAINER')
+    return null
+  }
+  const rows=stack.components['minecraft:container']??[]
+  if(!Array.isArray(rows)||rows.length>256||!Number.isInteger(slot)||slot<0||slot>255)fail('CONTAINER')
+  let selected=null;const seen=new Set()
+  for(const row of rows){
+    if(!record(row)||typeOf(row)!=='compound'||Object.keys(row).some(k=>!['slot','item'].includes(k))||typeOf(row.slot)!=='int'||!Number.isInteger(row.slot)||row.slot<0||row.slot>255||seen.has(row.slot)||!record(row.item)||typeOf(row.item)!=='compound')fail('CONTAINER')
+    seen.add(row.slot);const item=row.item,count=item.count??1
+    if(!RESOURCE.test(item.id??'')||Object.keys(item).some(k=>!['id','count','components'].includes(k))||!Number.isInteger(count)||count<=0||count>2147483647||typeOf(count)!=='int'||(item.components!==undefined&&(!record(item.components)||typeOf(item.components)!=='compound')))fail('CONTAINER')
+    if(row.slot===slot&&item.id!=='minecraft:air')selected=Object.freeze({id:item.id,count,components:item.components??Object.freeze({})})
+  }
+  if(selected)parsedStacks.add(selected)
+  return selected
 }

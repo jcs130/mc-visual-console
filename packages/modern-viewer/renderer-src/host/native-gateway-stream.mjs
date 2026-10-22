@@ -42,7 +42,9 @@ export function nativeGatewayItem(wire,items,vanillaRegistry,registries,{twiligh
   const evidence=nativeStaticItemEvidence(name),base={name,count,nativeId:wire.itemId};
   if(evidence){const prefix=evidence.itemClass==='net.minecraft.world.item.BlockItem'?'block.':'item.';base.descriptionId=prefix+name.replace(':','.');}
   else if(/^touhou_little_maid:smart_slab_(init|has_maid)$/.test(name))base.descriptionId='item.'+name.replace(':','.');
-  else if(twilightComponents&&['twilightforest:greater_potion_flask','twilightforest:brittle_potion_flask'].includes(name))base.descriptionId='item.'+name.replace(':','.');
+  else if(twilightComponents&&['twilightforest:greater_potion_flask','twilightforest:brittle_potion_flask','twilightforest:ore_meter',
+    ...['goggles','vest','wings','boots','gloves','belt'].map(s=>'twilightforest:travellers_'+s)].includes(name))base.descriptionId='item.'+name.replace(':','.');
+  else if(twilightComponents&&name==='twilightforest:mason_jar')base.descriptionId='block.twilightforest.mason_jar';
   try{
     if(!Array.isArray(wire.components)||!Array.isArray(wire.removeComponents)||wire.components.length+wire.removeComponents.length>128)throw Error('NATIVE_ITEM_COMPONENTS_NOT_OBSERVED');
     const patch=new Map(),resolved={};
@@ -64,6 +66,19 @@ export function nativeGatewayItem(wire,items,vanillaRegistry,registries,{twiligh
       }
       if(typeof row?.type!=='string'||row.type.includes(':'))throw Error('NATIVE_ITEM_COMPONENT_CODEC_UNAVAILABLE:'+String(row?.type).slice(0,80));
       const key='minecraft:'+row.type;if(!RESOURCE.test(key)||patch.has(key))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID');
+      if(row.type==='container'){
+        // 1.21.1 ItemContainerContents STREAM_CODEC is an indexed Slot list;
+        // its persistent codec omits empty cells and retains their slot index.
+        // Resolve recursive stacks through THIS connection's native registry.
+        if(!row.data||Object.keys(row.data).join(',')!=='contents'||!Array.isArray(row.data.contents)||row.data.contents.length>256)throw Error('NATIVE_CONTAINER_COMPONENT_INVALID');
+        const contents=[];
+        for(let slot=0;slot<row.data.contents.length;slot++){
+          const child=nativeGatewayItem(row.data.contents[slot],items,vanillaRegistry,registries,{twilightComponents,depth:depth+1,budget});
+          if(!child.available)throw Error(child.reason||'NATIVE_CONTAINER_CHILD_UNAVAILABLE');
+          if(child.item)contents.push('{slot:'+slot+',item:'+child.item.snbt+'}');
+        }
+        patch.set(key,'['+contents.join(',')+']');continue;
+      }
       const native=nativeRegistryComponent(row.type,row.data,registries);
       if(native){patch.set(key,native.snbt);resolved[row.type]=native.summary;continue;}
       patch.set(key,componentValue(row.type,row.data,vanillaRegistry));

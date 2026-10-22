@@ -11,6 +11,9 @@ import { nativeDomumItemEligible, prepareNativeDomumItemIcon } from './native-do
 import { nativeSoulSlabEligible, prepareNativeSoulSlabAppearance } from './native-soul-slab-icons.js'
 import { nativePotionItemEligible, prepareNativePotionItem } from './native-potion-items.js'
 import {nativeTwilightFlaskEligible,prepareNativeTwilightFlask} from './native-twilight-items.js'
+import {nativeTwilightOreMeterEligible,prepareNativeTwilightOreMeter} from './native-twilight-ore-meter.js'
+import {nativeTwilightTravellerEligible,prepareNativeTwilightTraveller} from './native-twilight-travellers.js'
+import {nativeTwilightJarEligible,prepareNativeTwilightJar} from './native-twilight-jars.js'
 
 export const NATIVE_ITEM_APPEARANCE_CONTEXTS = Object.freeze(['gui', 'ground',
   'firstperson_lefthand', 'firstperson_righthand', 'thirdperson_lefthand', 'thirdperson_righthand'])
@@ -83,7 +86,13 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
   if (reader?.manifest?.minecraftVersion !== '1.21.1' || reader.manifest.assetIntegrityVerified !== true ||
       (!gui && reader.manifest.clientJarSha256 !== BLOCK_ICON_CLIENT_SHA256) || typeof reader.json !== 'function' || typeof reader.bytes !== 'function') throw Error('NATIVE_ITEM_APPEARANCE_READER_UNVERIFIED')
   let family, prepared = null, evidence = null, model = null, effect = null, modelId = stack.id.replace(':', ':item/')
-  if (gui && nativeSoulSlabEligible(stack.id)) {
+  if(gui&&nativeTwilightJarEligible(stack.id)){
+    family='twilight-jar';prepared=await prepareNativeTwilightJar(reader,stack);model=prepared.model
+  } else if(gui&&nativeTwilightTravellerEligible(stack.id)){
+    family='twilight-traveller';prepared=await prepareNativeTwilightTraveller(reader,stack,context.observed);model=prepared.model
+  } else if(gui&&nativeTwilightOreMeterEligible(stack.id)){
+    family='twilight-ore-meter';prepared=await prepareNativeTwilightOreMeter(reader,stack,context.observed?.oreMeter);model=prepared.model
+  } else if (gui && nativeSoulSlabEligible(stack.id)) {
     family = 'soul-slab'; prepared = await prepareNativeSoulSlabAppearance(reader, stack); model = prepared.model; modelId = prepared.modelId
   } else if (gui && nativeDomumItemEligible(stack.id)) {
     family = 'domum'; prepared = await prepareNativeDomumItemIcon(reader, stack); model = prepared.model; evidence = prepared.evidence
@@ -120,7 +129,7 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     }
   }
   const geometry = family === 'static' ? nativeBlockItemEligible(stack.id) && !model.nativeGenerated ? 'block' : 'generated'
-    : family === 'guide' || family === 'potion' || family === 'soul-slab' ? 'generated' : 'specialized'
+    : ['guide','potion','soul-slab','twilight-traveller','twilight-ore-meter'].includes(family) ? 'generated' : 'specialized'
   if (gui && ['static', 'guide'].includes(family) && geometry === 'generated') validateFlatModel(model)
   if (gui && geometry === 'block') prepared = await prepareNativeBlockGuiPlan(reader, { name: stack.id, model, evidence })
   const display = model.display ?? {}, right = context.kind.replace('_lefthand', '_righthand')

@@ -13,7 +13,10 @@ It does **not** certify complete modpack rendering or Java pixel parity.
 | Ordinary items | 95 exact vanilla constructor factories audited from original TFItems bytecode | A provider registration is not 95 individual browser certificates; custom components still need support |
 | Uncrafting table | Original translucent GUI icon; exact 56-slot native menu, original GUI PNG, distinct inventory/recipe previews | Original wire menu omits XP-cost data; UI reports unknown, not a fabricated cost; custom cycle controls not yet interactive |
 | Naga | Original head/body LayerDefinitions, actual multipart IDs, absolute poses, original textures, metadata and tick interpolation | Actual WebGL fixture had AI paused; no autonomous combat, Java reference comparison, fire/outline/name effects or all-boss certification |
-| Other TF content | Original resources exported and hash-checked | Other bosses, ore meter GUI/loading, jar item display and traveller overlays still need dedicated renderers |
+| Ore meter | Actual loading component, original icon overrides, scan counts/translation keys, signed chunk coordinates and Chinese HUD text | Scan contains chunk totals, not individual ore positions; browser text/layout is not Java font/pixel parity; original use rejects Numen FakePlayer |
+| Traveller gear | Same-connection configuration definitions, original registry order, component predicates, broken icons and original overlay PNGs/scales | Live modified/broken boots verified; worn armour and every combination are not certified |
+| Mason jar | Original block body, original 40-lid mapping, actual slot-zero contained item and JARRED/FIXED transform | Live oak-lid/diamond icon verified; unsupported nested renderers fail explicitly; placed-jar wobble/contents are not ported by this GUI provider |
+| Other TF content | Original resources exported and hash-checked | Other bosses/creatures and special rendering still require dedicated adapters |
 | Bedrock | Separate server bridge already has static items/block-state mappings | This Web/Three.js change does not implement TF Bedrock boss actors or Uncrafting forms |
 
 ## Original model export
@@ -79,3 +82,57 @@ The default-timeout LAN connection and same-UUID/full-inventory reconnection als
 passed. The temporary test viewer is closed; remote clients and the website must
 explicitly consume the new frozen release. This is not proof that every consumer,
 the phone GPU or all mod content has been updated or accepted.
+
+## Dynamic items and language resources, 2026-10-23
+
+The host now observes `twilight:travellers_modifiers` from the action account's
+configuration packets, binds it after login to that account UUID, and clears it
+on reconfiguration/disconnect. The private presentation allowlist explicitly
+retains this field. No guessed default registry or second body supplies it.
+Component predicates follow the installed bytecode: built-in abilities do not
+produce insertable overlays; missing modifier sprites do not consume a layer.
+Original `float32(1 + float32(layer * float32(.001)))` scaling is retained.
+
+`minecraft:container` now recursively resolves original native IDs and complete
+component patches through the same connection, preserving sparse slots and
+64-bit values with depth/item/byte budgets. `ItemContainerContents.copyOne()`
+reads slot **zero**, not the first nonempty slot. An unsupported contained item
+is unavailable rather than being silently omitted from the jar picture.
+
+The ore scanner sends description keys such as `block.minecraft.dirt`; rejecting
+them as resource IDs lost real scan data. The adapter preserves these keys and
+full signed longs. A real scan in the isolated world returned 452 dirt blocks
+out of 72000 blocks and the HUD displayed 0.628%, using original float32 maths.
+No operation bypasses the original OreMeterItem's exact-ServerPlayer use check.
+
+Language files have stacked **per-key merge** semantics. A mod's 71-byte
+`assets/minecraft/lang/en_us.json` supplement must not erase vanilla's 434381-byte
+dictionary. The reader validates every original variant's SHA/size separately;
+the language merger only resolves proven vanilla-below-mod priority. Conflicting
+keys between mods remain explicit, and ordinary model/texture priority guards
+are unchanged. The matched release additionally includes the audited Mojang
+`zh_cn` object (SHA256 `10da480179ef720771e27aebec6f33a6d4cec5063401310ceb82bb576a6b7af0`).
+
+Original class audit: ClientLanguage `8937956cad957291b963ab2b86b79a4300f0e527e66c68f18f9e1001fc833d1b`;
+TravellersEntryModifier `6f2380230f194e2b073006fc9402f2e7e13535082ec00f016bf6d7939d18bd76`;
+TFEnumExtensions `edc8fba1a312372da7b00761036edde131b3f24302a34ada7c88f495e834462f`.
+JARRED's original fallback is FIXED. Source/geometry verification still does not
+certify Java reference-frame parity or Bedrock support for these dynamic UIs.
+
+Real headless WebGL accepted the modified boots, filled jar, original meter
+icons, loading-to-results transition and inventory images without page errors.
+The first attempts exposed missing recursive container conversion, a filtered
+registry field and the missing original language dictionary; those failures are
+retained in private QA evidence. A previous diagnostic stick carried an unrelated
+`twilightforest:skull_candles` component and correctly remained explicitly
+unavailable; it was reconciled to an ordinary stick in the isolated QA inventory,
+with the original full diagnostic stack retained. Do not loosen unknown visual
+component admission just to hide a diagnostic fixture.
+
+The dynamic-item consumer package is prepared separately at
+`E:/MC/integrations/fom-twilight-items-20261023/renderer` and its matched `assets`.
+Use that release's disabled `client.example.json`; existing clients/sites must
+explicitly switch both paths. The transport/game mod set is unchanged, so this
+renderer update does not require restarting the Java server or Bedrock gateway.
+Immutable shared asset files may be hardlinked between these two releases;
+never edit them in place. The new manifest and added language file are separate.

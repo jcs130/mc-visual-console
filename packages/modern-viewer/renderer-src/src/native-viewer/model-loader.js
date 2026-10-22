@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { weightedModel, multipartMatches, defaultBlockSeedEvidence } from './model-selection.js'
 import { lockedFaceUV } from './uv-lock.js'
 import { animationFrames, applyFrame, enableInterpolation } from './texture-animation.js'
-import { verifiedNativeBasePriority } from './native-resource-priority.js'
+import { verifiedNativeBasePriority,verifiedNativeLanguageBasePriority } from './native-resource-priority.js'
 
 // Native assets only. A missing loader/model/texture is an error, never a cube
 // or a vanilla replacement. Scene lighting and complete mod parity are separate
@@ -40,6 +40,38 @@ export class NativeAssetReader {
   }
 
   async json (path) { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await this.bytes(path))) }
+
+  // ClientLanguage reads EVERY stacked language file, merging keys. Do not
+  // weaken bytes() for models/textures or select a mod's partial dictionary as
+  // a replacement vanilla language. Ambiguous mod-vs-mod keys stay unresolved.
+  async languageDictionaries(path){
+    if(!/^assets\/[a-z0-9_.-]+\/lang\/(?:en_us|zh_cn)\.json$/.test(path))throw Error('NATIVE_LANGUAGE_PATH_INVALID')
+    const entry=this.manifest.assets[path]
+    if(!entry)throw Error('NATIVE_LANGUAGE_ASSET_MISSING')
+    const rows=entry.variants?.length?entry.variants:[entry]
+    if(rows.length>32||rows.reduce((n,r)=>n+(r.bytes??Infinity),0)>8388608)throw Error('NATIVE_LANGUAGE_SIZE_LIMIT')
+    return Promise.all(rows.map(async row=>{
+      if(!/^[a-f0-9]{64}$/.test(row.sha256??'')||!Number.isSafeInteger(row.bytes)||row.bytes<1||row.bytes>2097152)throw Error('NATIVE_LANGUAGE_VARIANT_INVALID')
+      const sources=this.manifest.sources?.filter(s=>s.name===row.source)
+      if(sources?.length!==1)throw Error('NATIVE_LANGUAGE_SOURCE_UNVERIFIED')
+      let bytes
+      if(rows.length===1&&!entry.variants?.length)bytes=await this.bytes(path)
+      else{
+        if(this.manifest.variantContentPath!=='asset-variants/{sha256}.bin')throw Error('NATIVE_LANGUAGE_VARIANT_PATH_UNVERIFIED')
+        const key='languageVariant:'+row.sha256
+        if(!this.cache.has(key))this.cache.set(key,(async()=>{
+          const data=new Uint8Array(await this.readBytes(`asset-variants/${row.sha256}.bin`))
+          const hash=Array.from(new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256',data)),b=>b.toString(16).padStart(2,'0')).join('')
+          if(data.length!==row.bytes||hash!==row.sha256)throw Error('NATIVE_LANGUAGE_VARIANT_HASH_MISMATCH')
+          return data
+        })())
+        bytes=await this.cache.get(key)
+      }
+      const base=sources[0].sha256===this.manifest.clientJarSha256||/^minecraft-assets-[0-9]+:[a-f0-9]{40}$/.test(sources[0].name)
+      return {dictionary:JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)),source:row.source,
+        priority:verifiedNativeLanguageBasePriority(this.manifest)&&base?0:1}
+    }))
+  }
 }
 
 export async function resolveModel (reader, id, ancestry = []) {

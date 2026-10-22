@@ -18,6 +18,17 @@ test('native item identities and name components never use vanilla proxy IDs',()
  const result=nativeGatewayItem(wire,items,{});assert(result.available);assert.equal(result.item.name,'create:andesite_casing');assert.match(result.item.snbt,/大背包/);
  assert.equal(nativeGatewayItem(item(200000,1),items,{}).available,false);
 });
+
+test('container components preserve sparse original native slots and full recursive ItemStack patches',()=>{
+ const registry=new Map([[100,'twilightforest:mason_jar'],[101,'minecraft:diamond'],[102,'twilightforest:glass_sword']]);
+ const wire=item(100,1);wire.components=[{type:'container',data:{contents:[{itemCount:0},item(101,3),{...item(102,1),components:[{type:'twilightforest:sidestep_cooldown',data:[2147483647,4294967295]}]}]}}];
+ const before=structuredClone(wire),result=nativeGatewayItem(wire,registry,{},null,{twilightComponents:true});
+ assert(result.available);assert.match(result.item.snbt,/slot:1,item:\{id:"minecraft:diamond",count:3/);
+ assert.match(result.item.snbt,/slot:2,item:\{id:"twilightforest:glass_sword"/);assert.match(result.item.snbt,/9223372036854775807L/);assert.deepEqual(wire,before);
+ wire.components[0].data.contents[1].itemId=999;assert.equal(nativeGatewayItem(wire,registry,{},null,{twilightComponents:true}).available,false);
+ wire.components[0].data.contents=Array.from({length:257},()=>({itemCount:0}));assert.match(nativeGatewayItem(wire,registry,{}).reason,/CONTAINER_COMPONENT_INVALID/);
+ const cycle=item(100,1);cycle.components=[{type:'container',data:{contents:[cycle]}}];assert.equal(nativeGatewayItem(cycle,registry,{}).reason,'NATIVE_ITEM_RECURSION_LIMIT');
+});
 test('unsupported mod component retains identity and reports missing rendering codec',()=>{
  const wire=item(2401,1);wire.components=[{type:'irons_spellbooks:spell_container',data:{}}];
  const result=nativeGatewayItem(wire,items,{});assert.equal(result.available,false);assert.equal(result.item.name,'create:andesite_casing');assert(!result.item.snbt);assert.match(result.reason,/CODEC_UNAVAILABLE/);

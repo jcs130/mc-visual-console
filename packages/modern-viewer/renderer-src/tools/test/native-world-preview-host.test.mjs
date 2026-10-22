@@ -867,16 +867,21 @@ test('same-player private presentation rejects foreign, asynchronous, cyclic and
   supplied.entityRenderStates = [{ playerUuid: bot._client.uuid, source: 'same_player_tracked_entity', entityId: 5,
     uuid: '11111111-1111-1111-1111-111111111111', dimension: 'minecraft:overworld', backpackType: 'touhou_little_maid:empty',
     backItem: null, bannerItem: null, passenger: false, inSwimFluid: false, swimAmount: 0 }]
+  supplied.twilightTravellerRegistry={available:true,registry:'twilight:travellers_modifiers',playerUuid:bot._client.uuid,
+    source:'same_connection_configuration_registry_data',sha256:'a'.repeat(64),entries:[{id:0,key:'twilightforest:water_walk',value:{type:'twilightforest:component',component:{'twilightforest:water_walk':{}}}}]}
   const current = host.status().presentation
   assert.equal(current.playerUuid, bot._client.uuid); assert.equal(current.available, true)
   assert.equal(current.source, 'same_player_connection'); assert.equal(current.nativeState.available, true)
   assert.equal(current.inventory.slots[36].item.name, 'farmersdelight:iron_knife')
   assert.deepEqual(current.entityRenderStates, supplied.entityRenderStates)
   assert.notEqual(current.entityRenderStates, supplied.entityRenderStates)
+  assert.deepEqual(current.twilightTravellerRegistry,supplied.twilightTravellerRegistry)
+  assert.notEqual(current.twilightTravellerRegistry,supplied.twilightTravellerRegistry)
   assert(!JSON.stringify(current).includes('private-auth-secret'))
   const original = supplied
   for (const value of [null, [], Promise.resolve(original), { ...original, playerUuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff' },
-    { ...original, nativeMenu: { playerUuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff', slots: [] } }]) {
+    { ...original, nativeMenu: { playerUuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff', slots: [] } },
+    { ...original, twilightTravellerRegistry:{...original.twilightTravellerRegistry,playerUuid:'ffffffff-ffff-ffff-ffff-ffffffffffff'} }]) {
     supplied = value
     const result = host.status().presentation
     assert.equal(result.available, true); assert.equal(result.nativeState.available, false)
