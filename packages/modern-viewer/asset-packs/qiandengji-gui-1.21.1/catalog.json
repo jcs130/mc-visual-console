@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "id": "qiandengji-gui-1.21.1",
+  "minecraftVersion": "1.21.1",
+  "items": [
+    {
+      "baseId": "minecraft:iron_sword",
+      "customModelData": 731001,
+      "icon": "icons/frost_sword.png"
+    },
+    {
+      "baseId": "minecraft:iron_sword",
+      "customModelData": 731002,
+      "icon": "icons/blink_dagger.png"
+    },
+    {
+      "baseId": "minecraft:crossbow",
+      "customModelData": 731003,
+      "icon": "icons/mechanical_crossbow.png"
+    },
+    {
+      "baseId": "minecraft:blaze_rod",
+      "customModelData": 731004,
+      "icon": "icons/focus_wand.png"
+    },
+    {
+      "baseId": "minecraft:iron_sword",
+      "customModelData": 731005,
+      "icon": "icons/abyss_verdict.png"
+    },
+    {
+      "baseId": "minecraft:player_head",
+      "profileTextureHash": "8dcc6eb40f3bada41e4339888d6d207437598bdbd175c2e731191d5a9a42d3c8",
+      "icon": "profiles/backpack.png"
+    }
+  ],
+  "assets": {
+    "icons/frost_sword.png": {
+      "sha256": "0d8cece432c0c97e849d390087a136f5ad5e7dd1b2cb39cd5543247b7444e985",
+      "bytes": 928
+    },
+    "icons/blink_dagger.png": {
+      "sha256": "86f55ca9d885e10ce985d279df032bd9f5f0b4c102485a7f3459aed928196043",
+      "bytes": 1074
+    },
+    "icons/mechanical_crossbow.png": {
+      "sha256": "1a25d7374f4e09ede6c04803ae9a4280c217e4844bebd266d1f3dcc36ff33515",
+      "bytes": 1835
+    },
+    "icons/focus_wand.png": {
+      "sha256": "cfb116521a64044d3ea5284a72283ea79215e9d6d3683f459afcff33dde177f9",
+      "bytes": 974
+    },
+    "icons/abyss_verdict.png": {
+      "sha256": "07876ee027415735dcee903cd99701e95685bdf8e1e8cec97c96b8ae3d4eed9e",
+      "bytes": 1124
+    },
+    "profiles/backpack.png": {
+      "sha256": "8dcc6eb40f3bada41e4339888d6d207437598bdbd175c2e731191d5a9a42d3c8",
+      "bytes": 697
+    }
+  },
+  "sources": [
+    {
+      "kind": "existing_original_gui_images",
+      "manifest": "../qiandengji-items-1.20.6/manifest.json",
+      "manifestSha256": "6885cac28712ad6a56c65f2d134d5b4e4d460e6be32233b04a02bf9dc833adc4",
+      "scope": "GUI icon PNG byte reuse only; no Java-version or held-model substitution"
+    },
+    {
+      "kind": "minecraft_profile_texture",
+      "url": "https://textures.minecraft.net/texture/8dcc6eb40f3bada41e4339888d6d207437598bdbd175c2e731191d5a9a42d3c8",
+      "sha256": "8dcc6eb40f3bada41e4339888d6d207437598bdbd175c2e731191d5a9a42d3c8",
+      "bytes": 697,
+      "width": 64,
+      "height": 64,
+      "observedComponent": "minecraft:profile"
+    }
+  ]
+}

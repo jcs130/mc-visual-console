@@ -298,7 +298,7 @@ export function injectTrackedMaidPresentation (entityState, presentation, dimens
 // A native console and its skin preview must share one Three module, including
 // dependencies which have their own nested Three package. Resolve only the bare
 // import; addon paths retain their normal package resolution.
-async function browserBundle (entry) {
+export async function browserBundle (entry) {
   const require = createRequire(import.meta.url)
   const workingDirectory = path.resolve(SOURCE, '../..')
   const threeRoot = path.dirname(path.dirname(require.resolve('three')))
@@ -434,6 +434,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
   const diagnosticBytes=Buffer.from(withNativeViewerBuild(diagnosticsPage.toString(),viewerBuild))
   return {
     registrySha256: hash,
+    serverItemPackId: serverItemPack.metadata.id ?? null,
     attach ({ bot, nativeStream, simplifyNBT, resolveDimension, expectedUsername, getAgentStatus = null, getPresentationState = null, logger = console, now = Date.now,
       sourceMode = 'live_same_player_connection', basePath = '/' }) {
       if (!['live_same_player_connection', 'numen_server_body'].includes(sourceMode)) throw Error('NATIVE_WORLD_SOURCE_INVALID')
@@ -624,7 +625,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             const expected = manifest.assets[requestPath]
             bytes = await fs.readFile(file)
             if (!SHA256.test(expected?.sha256 || '') || bytes.length !== expected.bytes || createHash('sha256').update(bytes).digest('hex') !== expected.sha256) throw Error('NATIVE_WORLD_ASSET_HASH_MISMATCH')
-            type = file.endsWith('.png') ? 'image/png' : 'application/json'
+            type = file.endsWith('.png') ? 'image/png' : /\.(?:vsh|fsh|glsl|txt)$/.test(file) ? 'text/plain; charset=utf-8' : 'application/json'
           } else { response.writeHead(404); response.end(); return }
           response.writeHead(200, headers(type)); response.end(bytes)
         } catch (error) {
