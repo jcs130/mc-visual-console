@@ -22,7 +22,8 @@ import {nativeBannerLayers} from './native-banner-data.js'
 export const STATIC_ITEM_SOURCES = Object.freeze({
   minecraft: Object.freeze({name:'minecraft-1.21.1-client.jar',sha256:'499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99'}),
   create: Object.freeze({name:'create-1.21.1-6.0.10.jar',sha256:'ef87fe5709f1ba1f5b8bb20a2925b5afb4669e178fd6d8bf10c167759eefe37a'}),
-  farmersdelight: Object.freeze({name:'FarmersDelight-1.21.1-1.3.4.jar',sha256:'139ad7696462c89c03eea463f805abffa552526c5dadaadae221dd9624cb197c'})
+  farmersdelight: Object.freeze({name:'FarmersDelight-1.21.1-1.3.4.jar',sha256:'139ad7696462c89c03eea463f805abffa552526c5dadaadae221dd9624cb197c'}),
+  twilightforest: Object.freeze({name:'twilightforest-1.21.1-4.8.3345-universal.jar',sha256:'493da16d10210f9f53a3c33b3d8fcb4ae9b14016ee420d753c894562bd9aba35'})
 })
 const table = new Map()
 const add = (namespace,kind,itemClass,names) => {
@@ -35,6 +36,18 @@ add('create','json','net.minecraft.world.item.BlockItem','andesite_casing')
 // ModItems lambda$static$93 constructs RiceItem. Its only override is useOn
 // (placement); it inherits the ordinary ItemNameBlockItem model/colour path.
 add('farmersdelight','flat','vectorwing.farmersdelight.common.item.RiceItem','rice')
+// TFItems 4.8.3345 factory lambdas 59/22/0 construct the exact vanilla
+// SwordItem/Item classes. GlassSwordItem changes combat/durability only;
+// EmptyMagicMapItem only overrides use. Their original JSON parents/layers are
+// still loaded and checked. Filled maps, flask, jar, ore meter and traveller
+// armour have separate renderers/loaders and are deliberately not admitted.
+// Original class SHA256: TFItems 0ea17aae2ca0609567e0f97893d53cad0181322f0bf6294db61ec76a32071271;
+// GlassSwordItem 500c15ca96ffd254bdd9b8435d355fe6f2d1b74a4f132b88888a345ec6d8f2ce;
+// EmptyMagicMapItem a83ecdc71f7035565512cd531c6d9a67fbff9b431e0881c8e822add65c4b88d4.
+add('twilightforest','flat','net.minecraft.world.item.SwordItem','steeleaf_sword')
+add('twilightforest','flat','net.minecraft.world.item.Item','ironwood_ingot naga_scale')
+add('twilightforest','flat','twilightforest.item.GlassSwordItem','glass_sword')
+add('twilightforest','flat','twilightforest.item.EmptyMagicMapItem','magic_map')
 add('minecraft','json','net.minecraft.world.item.BlockItem',`
 stone granite polished_granite diorite polished_diorite andesite polished_andesite deepslate cobbled_deepslate
 polished_deepslate calcite tuff tuff_slab tuff_stairs tuff_wall chiseled_tuff polished_tuff polished_tuff_slab
