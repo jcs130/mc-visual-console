@@ -6,10 +6,11 @@
 // ResourcePackLoader 89f699b5…ac3b (full hashes in export tool/docs).
 export const NATIVE_BASE_PRIORITY_RULE = 'neoforge-21.1.248-mods-above-vanilla'
 const CLIENT = '499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99'
-const SOURCES = Object.freeze({
-  'minecraft-1.21.1-client.jar': CLIENT,
-  'domum-ornamentum-1.0.231-main.jar': '04c0c902bdbcbd48e38bee5a323907ae0b7b7db4ff4a3e4da7c45334b65610a1',
-  'neoforge-21.1.248-universal.jar': '90a56f70425711b4e1a4b94ff0c2904ae9f6d74ca6478b3b2152ac794a07b8e5'
+const DOMUM = '04c0c902bdbcbd48e38bee5a323907ae0b7b7db4ff4a3e4da7c45334b65610a1'
+// These two exact JARs contain the same audited ResourcePackLoader.class.
+const PLATFORMS = Object.freeze({
+  'neoforge-21.1.248-universal.jar': '90a56f70425711b4e1a4b94ff0c2904ae9f6d74ca6478b3b2152ac794a07b8e5',
+  'neoforge-21.1.250-universal.jar': '1f9cc68fe9ec0416475d34ce76e95a696b9721d5d338168563dab0632c3d2956'
 })
 export const NATIVE_BASE_TEXTURE_PRIORITY = Object.freeze({
   'assets/minecraft/textures/block/oak_planks.png': Object.freeze([
@@ -25,12 +26,13 @@ export function verifiedNativeBasePriority(manifest, path, entry) {
   const hashes = NATIVE_BASE_TEXTURE_PRIORITY[path]
   if (!hashes || entry.priorityResolution !== NATIVE_BASE_PRIORITY_RULE || manifest.clientJarSha256 !== CLIENT ||
       manifest.sources?.some(source => source.explicitOverride)) return false
-  for (const [name, sha] of Object.entries(SOURCES)) {
-    const matches = manifest.sources?.filter(source => source.name === name)
-    if (matches?.length !== 1 || matches[0].sha256 !== sha) return false
-  }
+  const clients = manifest.sources?.filter(source => source.sha256 === CLIENT)
+  const mods = manifest.sources?.filter(source => source.name === 'domum-ornamentum-1.0.231-main.jar')
+  const platforms = manifest.sources?.filter(source => Object.hasOwn(PLATFORMS, source.name))
+  if (clients?.length !== 1 || mods?.length !== 1 || mods[0].sha256 !== DOMUM ||
+      platforms?.length !== 1 || platforms[0].sha256 !== PLATFORMS[platforms[0].name]) return false
   const variants = entry.variants
-  return variants?.length === 2 && variants[0].source === 'minecraft-1.21.1-client.jar' && variants[0].sha256 === hashes[0] &&
+  return variants?.length === 2 && variants[0].source === clients[0].name && variants[0].sha256 === hashes[0] &&
     variants[1].source === 'domum-ornamentum-1.0.231-main.jar' && variants[1].sha256 === hashes[1] &&
     entry.source === variants[1].source && entry.sha256 === hashes[1] && entry.bytes === variants[1].bytes
 }

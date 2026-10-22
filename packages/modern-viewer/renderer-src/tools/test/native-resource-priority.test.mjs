@@ -14,7 +14,7 @@ test('only two audited vanilla/locked-mod conflicts resolve; user packs, changed
     assert.equal(verifiedNativeBasePriority(manifest, filename, manifest.assets[filename]), true)
     assert.ok((await reader.bytes(filename)).length > 0)
     for (const edit of [copy => { delete copy.assets[filename].priorityResolution },
-      copy => { copy.sources.find(source => source.name.startsWith('neoforge-21.1.248-universal.jar')).sha256 = '0'.repeat(64) },
+      copy => { copy.sources.find(source => source.name.startsWith('neoforge-')).sha256 = '0'.repeat(64) },
       copy => { copy.sources.push({ name: 'user-pack.zip', explicitOverride: true }) },
       copy => { copy.assets[filename].variants.push({ source: 'other.jar', sha256: '0'.repeat(64) }) }]) {
       const copy = structuredClone(manifest); edit(copy)

@@ -28,6 +28,8 @@ Domum 材料只支持已审计的不透明、无 tint、所有候选面为同一
 
 Domum 原 JAR 覆盖 `minecraft/textures/block/oak_planks.png`、`dark_oak_planks.png`。默认 1.21.1 / NeoForge 21.1.248 中，vanilla 在 BOTTOM，mod_resources 在 TOP 且 children 随后展开，FallbackResourceManager 倒序查找。导出器只对锁定的两个路径、variant 哈希和三份来源 SHA 写入 `priorityResolution=neoforge-21.1.248-mods-above-vanilla`；reader 独立复核。用户资源包、其他模组覆盖和 atlas 合并不适用此规则。
 
+2026-10-22 补验：NeoForge 21.1.250 原 JAR SHA256 为 `1f9cc68fe9ec0416475d34ce76e95a696b9721d5d338168563dab0632c3d2956`，其 `ResourcePackLoader.class` 与 21.1.248 完全相同，SHA256 均为 `89f699b517eb79e76d48eb7387b31939b38938ac70d68b0764f8db8b0f83ac3b`，因此加入明确审计的原 JAR 集合。Minecraft 客户端按唯一原 JAR 的 SHA256 绑定，允许文件名为 `1.21.1.jar`；仍校验该实际来源名与两份纹理 variant 的对应关系。未知加载器、重复客户端来源、第三种贴图及玩家资源包继续拒绝，不按版本范围或文件名排序推断优先级。
+
 | 审计 class | SHA256 |
 | --- | --- |
 | ClientPackSource / grc | `e5f833a22b1f144291f64472cb74ec057793920fc96b8b3b21efd90aaa390d41` |

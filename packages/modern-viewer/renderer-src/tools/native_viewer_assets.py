@@ -206,6 +206,10 @@ BASE_PRIORITY_SOURCES = {
     "domum-ornamentum-1.0.231-main.jar": "04c0c902bdbcbd48e38bee5a323907ae0b7b7db4ff4a3e4da7c45334b65610a1",
     "neoforge-21.1.248-universal.jar": "90a56f70425711b4e1a4b94ff0c2904ae9f6d74ca6478b3b2152ac794a07b8e5",
 }
+BASE_PRIORITY_PLATFORMS = {
+    "neoforge-21.1.248-universal.jar": BASE_PRIORITY_SOURCES["neoforge-21.1.248-universal.jar"],
+    "neoforge-21.1.250-universal.jar": "1f9cc68fe9ec0416475d34ce76e95a696b9721d5d338168563dab0632c3d2956",
+}
 BASE_PRIORITY_TEXTURES = {
     "oak_planks": ("3a33db67a3ba30537d0890a5cb37c8087ca336be89cbb1393a71c23224e361a8", "3b00412fec87bd07b83825b86de49bcb6c186ca7799f41721a36b04e5d8ed161"),
     "dark_oak_planks": ("2bccdc1ef269b7ae6050d46b70071ead5c3ad4c3a16e3f6baf24fc629752b8bc", "3d04f576678df35491ccc43b0fafddce13e310fa5f363ca13193f8a2f55b285b"),
@@ -215,19 +219,22 @@ BASE_PRIORITY_TEXTURES = {
 # 89f699b517eb79e76d48eb7387b31939b38938ac70d68b0764f8db8b0f83ac3b
 # creates mod_resources with TOP and expands children after it. FallbackResourceManager
 # atv cb84739e30214079af9e1f511fb0857e33c80b5080afca45ab94923613f3c16a searches backwards.
+# NeoForge 21.1.250 has the exact same ResourcePackLoader.class SHA256.
 def resolve_audited_base_priority(assets):
     if any(s["explicitOverride"] for s in assets.sources):
         return []
-    for name, digest in BASE_PRIORITY_SOURCES.items():
-        matches = [s for s in assets.sources if s["name"] == name]
-        if len(matches) != 1 or matches[0]["sha256"] != digest:
-            return []
+    clients = [s for s in assets.sources if s["sha256"] == BASE_PRIORITY_SOURCES["minecraft-1.21.1-client.jar"]]
+    mods = [s for s in assets.sources if s["name"] == "domum-ornamentum-1.0.231-main.jar"]
+    platforms = [s for s in assets.sources if s["name"] in BASE_PRIORITY_PLATFORMS]
+    if (len(clients) != 1 or len(mods) != 1 or mods[0]["sha256"] != BASE_PRIORITY_SOURCES[mods[0]["name"]]
+            or len(platforms) != 1 or platforms[0]["sha256"] != BASE_PRIORITY_PLATFORMS[platforms[0]["name"]]):
+        return []
     resolved = []
     for name, hashes in BASE_PRIORITY_TEXTURES.items():
         path = f"assets/minecraft/textures/block/{name}.png"
         entry = assets.index.get(path, {})
         variants = entry.get("variants", [])
-        if (len(variants) == 2 and [v["source"] for v in variants] == list(BASE_PRIORITY_SOURCES)[:2]
+        if (len(variants) == 2 and [v["source"] for v in variants] == [clients[0]["name"], mods[0]["name"]]
                 and tuple(v["sha256"] for v in variants) == hashes
                 and entry.get("source") == variants[1]["source"] and entry.get("sha256") == hashes[1]):
             entry["priorityResolution"] = BASE_PRIORITY_RULE
