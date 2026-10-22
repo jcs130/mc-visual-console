@@ -6,6 +6,7 @@ import {inflateRawSync} from 'node:zlib';
 import {componentValue} from './vanilla-item-stack.mjs';
 import {nativeStaticItemEvidence} from '../src/native-viewer/native-static-item-providers.js';
 import {nativeRegistryComponent} from './native-registry-components.mjs';
+import {twilightComponentSnbt,knownTwilightComponent} from './native-twilight-components.mjs';
 
 export const NATIVE_GATEWAY_CHANNEL='mcviewer:native_packet';
 export const NATIVE_GATEWAY_NAMES=new Set(['native_registries','login','respawn','map_chunk','unload_chunk','block_change','multi_block_change',
@@ -33,7 +34,7 @@ export function loadGatewayItemRegistry(text){
   }
   return items;
 }
-export function nativeGatewayItem(wire,items,vanillaRegistry,registries){
+export function nativeGatewayItem(wire,items,vanillaRegistry,registries,{twilightComponents=false}={}){
   if(wire?.itemCount===0)return {available:true,item:null};
   const name=items.get(wire?.itemId),count=wire?.itemCount;
   if(!name||!Number.isInteger(count)||count<1||count>2147483647)return {available:false,reason:'NATIVE_ITEM_ID_OR_COUNT_INVALID'};
@@ -54,6 +55,10 @@ export function nativeGatewayItem(wire,items,vanillaRegistry,registries){
         // the entire typed compound, including her UUID, owner and inventory.
         patch.set(row.type,componentValue('custom_data',row.data,vanillaRegistry));continue;
       }
+      if(twilightComponents&&knownTwilightComponent(row?.type)){
+        if(patch.has(row.type))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID');
+        patch.set(row.type,twilightComponentSnbt(row.type,row.data,{registries,vanillaRegistry}));continue;
+      }
       if(typeof row?.type!=='string'||row.type.includes(':'))throw Error('NATIVE_ITEM_COMPONENT_CODEC_UNAVAILABLE:'+String(row?.type).slice(0,80));
       const key='minecraft:'+row.type;if(!RESOURCE.test(key)||patch.has(key))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID');
       const native=nativeRegistryComponent(row.type,row.data,registries);
@@ -61,6 +66,10 @@ export function nativeGatewayItem(wire,items,vanillaRegistry,registries){
       patch.set(key,componentValue(row.type,row.data,vanillaRegistry));
     }
     for(const row of wire.removeComponents){
+      if(twilightComponents&&knownTwilightComponent(typeof row==='string'?row:row?.type)){
+        const type=typeof row==='string'?row:row.type;if(patch.has(type)||patch.has('!'+type))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID');
+        patch.set('!'+type,'{}');continue;
+      }
       const type=typeof row==='string'?row:row?.type,key='minecraft:'+type;
       if(typeof type!=='string'||type.includes(':')||!RESOURCE.test(key)||patch.has(key)||patch.has('!'+key))throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID');
       patch.set('!'+key,'{}');
@@ -71,10 +80,10 @@ export function nativeGatewayItem(wire,items,vanillaRegistry,registries){
     return {available:true,item:{...base,snbt,...(Object.keys(resolved).length?{resolvedComponents:resolved}:{})}};
   }catch(error){return {available:false,item:base,reason:error.message};}
 }
-export function observeNativeGateway(bot,{registrySha256,items,now=Date.now,nativeMenuLayouts=new Map(),simplifyNBT}){
+export function observeNativeGateway(bot,{registrySha256,items,now=Date.now,nativeMenuLayouts=new Map(),simplifyNBT,twilightComponents=false}){
   if(!/^[a-f0-9]{64}$/.test(registrySha256)||!(items instanceof Map))throw Error('NATIVE_GATEWAY_CONFIG_INVALID');
   const events=new EventEmitter(),registries=new Map();let sequence=0,error=null,closed=false,disposed=false,inventory=null,menu=null,observedAt=null,inventoryFresh=false;
-  const resolveItemStack=wire=>nativeGatewayItem(wire,items,bot.registry,registries);
+  const resolveItemStack=wire=>nativeGatewayItem(wire,items,bot.registry,registries,{twilightComponents});
   const reset=()=>{inventory=null;menu=null;observedAt=null;inventoryFresh=false;};
   const inventorySlot=slot=>!Number.isInteger(slot)||slot<0?null:slot<9?slot+36:slot<36?slot:slot<40?44-slot:slot===40?45:null;
   const syncPlayerSlots=()=>{

@@ -7,6 +7,7 @@ import {loadGatewayItemRegistry,observeNativeGateway} from './native-gateway-str
 import {loadNativePhysics} from './native-physics.mjs';
 import {observeNativeItemAliases} from './native-item-identity.mjs';
 import {observeVanillaHands} from './vanilla-hand-state.mjs';
+import {TWILIGHT_1211_JAR,TWILIGHT_1211_SHA} from './native-twilight-components.mjs';
 export {nativeItemIdentity} from './native-item-identity.mjs';
 const require=createRequire(import.meta.url),requireChunk=createRequire(require.resolve('prismarine-chunk')),nbt=requireChunk('prismarine-nbt');
 const finite=p=>p&&['x','y','z'].every(k=>Number.isInteger(p[k])&&Math.abs(p[k])<=30000000);
@@ -32,13 +33,14 @@ export async function prepareNativeConnection({assetDirectory,viewerPort=0}){
   if(hash(itemBytes)!==manifest.registryHashes?.['items.tsv'])throw Error('NATIVE_ITEM_REGISTRY_HASH_MISMATCH');
   const items=loadGatewayItemRegistry(itemBytes.toString());
   const physics=await loadNativePhysics(root,manifest);
+  const twilightComponents=manifest.sources?.some(s=>s.name===TWILIGHT_1211_JAR&&s.sha256===TWILIGHT_1211_SHA&&!s.explicitOverride)??false;
   const prepared=await prepareNativeWorldPreviewHost({assetDirectory:root,port:viewerPort});
   const nativeMenuLayouts=new Map();
   if(manifest.sources?.some(s=>s.name==='FarmersDelight-1.21.1-1.3.4.jar'&&s.sha256==='139ad7696462c89c03eea463f805abffa552526c5dadaadae221dd9624cb197c'&&!s.explicitOverride))
     nativeMenuLayouts.set('farmersdelight:cooking_pot',{proxyType:'minecraft:generic_9x1',slots:45,inventoryStart:9});
   return {attach(bot){
     if(bot.version&&bot.version!=='1.21.1')throw Error('NATIVE_CONNECTION_VERSION_MISMATCH');
-    const stream=observeNativeGateway(bot,{registrySha256:prepared.registrySha256,items,nativeMenuLayouts,simplifyNBT:nbt.simplify});
+    const stream=observeNativeGateway(bot,{registrySha256:prepared.registrySha256,items,nativeMenuLayouts,simplifyNBT:nbt.simplify,twilightComponents});
     const detachAliases=observeNativeItemAliases(bot,stream);
     const hands=observeVanillaHands(bot);
     const presentation=()=>{
