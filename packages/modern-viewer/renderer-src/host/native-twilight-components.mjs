@@ -9,7 +9,6 @@ const INT=new Set('casket_damage haste_amplifier high_jump_amplifier ore_loading
 const NBT=new Set('candelabra_data jar_lid ore_scanner'.split(' '));
 const SPECIAL=new Set('e115_variant thrown_projectile straight_ahead_multiplier sidestep_cooldown flask_contents skull_candles ore_data'.split(' '));
 const RESOURCE=/^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
-const DYES='white orange magenta light_blue yellow lime pink gray light_gray cyan purple blue brown green red black'.split(' ');
 const invalid=()=>{throw Error('NATIVE_TWILIGHT_COMPONENT_INVALID');};
 const integer=v=>Number.isInteger(v)&&v>=-2147483648&&v<=2147483647?v:invalid();
 const finite=v=>typeof v==='number'&&Number.isFinite(v)?v:invalid();
@@ -40,7 +39,7 @@ export function twilightComponentSnbt(type,data,{registries,vanillaRegistry}={})
     const b=Buffer.from(data.replaceAll('-',''),'hex');return '[I;'+[0,4,8,12].map(i=>b.readInt32BE(i)).join(',')+']';
   }
   if(name==='skull_candles'){
-    if(!DYES[data?.color])invalid();return '{color:'+JSON.stringify(DYES[data.color])+',count:'+integer(data.count)+'}';
+    return '{color:'+integer(data?.color)+',count:'+integer(data?.count)+'}';
   }
   if(name==='flask_contents'){
     if(typeof data?.breakable!=='boolean')invalid();
@@ -50,8 +49,9 @@ export function twilightComponentSnbt(type,data,{registries,vanillaRegistry}={})
   if(name==='ore_data'){
     if(!Array.isArray(data?.counts)||data.counts.length>4096)invalid();
     const seen=new Set(),counts=data.counts.map(row=>{if(!RESOURCE.test(row?.name??'')||seen.has(row.name))invalid();seen.add(row.name);return JSON.stringify(row.name)+':'+integer(row.count);});
-    const chunk=long(data.scannedChunk),x=Number(BigInt.asIntN(32,chunk)),z=Number(chunk>>32n);
-    return '{counts:{'+counts.join(',')+'},scanned_chunk:[I;'+x+','+z+'],scanned_block_count:'+integer(data.scannedBlockCount)+',universal_id:'+long(data.universalId)+'L}';
+    // The TF persistent codec uses Codec.LONG.xmap(ChunkPos::new,
+    // ChunkPos::toLong), not vanilla ChunkPos.CODEC's integer pair.
+    return '{counts:{'+counts.join(',')+'},scanned_chunk:'+long(data.scannedChunk)+'L,scanned_block_count:'+integer(data.scannedBlockCount)+',universal_id:'+long(data.universalId)+'L}';
   }
   return null;
 }
