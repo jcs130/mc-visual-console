@@ -63,3 +63,19 @@ default to their version-specific checked-in test assets. Set only
 `TWILIGHT_NATIVE_ASSETS` to the exact private FOM asset export for TF integration
 tests. Pointing all fixture variables at FOM does not make old-version fixtures
 interchangeable. Never relax source verification to hide such mismatches.
+
+## Consuming release
+
+FOM published the frozen source `5f230d2c` on 2026-10-23 at
+`E:/MC/integrations/fom-twilight-compat-20261023/renderer`, with its matched
+`assets` directory and disabled `client.example.json`. All 67188 asset/variant/
+registry files passed their SHA checks. The registered server and Bedrock owners
+were normally stopped, backed up on two drives and restarted with new gateway
+pointers; the game JARs and Bedrock resource packs were unchanged.
+
+The production action connection rendered original terrain, its character and
+own starter-book icon in a real headless WebGL browser without page errors.
+The default-timeout LAN connection and same-UUID/full-inventory reconnection also
+passed. The temporary test viewer is closed; remote clients and the website must
+explicitly consume the new frozen release. This is not proof that every consumer,
+the phone GPU or all mod content has been updated or accepted.
