@@ -25,7 +25,7 @@ export function observationPath(path) {
 }
 
 export function validatedSource(value, expectedUuid, trustedBuild) {
-  if (value?.schemaVersion !== 1 || value.readOnly !== true || value.mode !== 'live_same_player_connection'
+  if (value?.schemaVersion !== 1 || value.readOnly !== true || !['live_same_player_connection', 'paper_server_observation'].includes(value.mode)
       || value.identity?.confirmed !== true || !UUID_PATTERN.test(value.identity.playerUuid ?? '')
       || value.identity.playerUuid.toLowerCase() !== expectedUuid.toLowerCase()
       || value.connection?.ended !== false || value.viewer?.available !== true

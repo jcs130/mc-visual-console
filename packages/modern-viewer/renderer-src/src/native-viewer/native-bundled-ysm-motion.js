@@ -24,7 +24,7 @@ export function bundledYsmSourcePoseAdapter (choice, sourceHashes) {
 // This never manufactures a same_player_server_tick row or native mod flags.
 export function bundledYsmMotionInput(current, uuid, now) {
   const p = current?.presentation, self = p?.self, physics = current?.motion, pose = current?.pose
-  if (!p || p.available !== true || !['same_player_connection', 'numen_server_body'].includes(p.source) ||
+  if (!p || p.available !== true || !['same_player_connection', 'numen_server_body', 'paper_server_observation'].includes(p.source) ||
       p.playerUuid?.toLowerCase() !== uuid || self?.uuid?.toLowerCase() !== uuid ||
       current.selfPlayer?.uuid?.toLowerCase() !== uuid || self.entityId !== current.selfPlayer.entityId) throw Error('BUNDLED_YSM_MOTION_IDENTITY_UNAVAILABLE')
   if (!fresh(p.sampledAt, now, 1500) || !pose || ![pose.yaw, pose.pitch].every(Number.isFinite)) throw Error('BUNDLED_YSM_PRESENTATION_STALE_OR_MISSING')
@@ -35,7 +35,7 @@ export function bundledYsmMotionInput(current, uuid, now) {
   const v = self.velocity
   if (!dead && (!v || ![v.x, v.y, v.z].every(Number.isFinite) || typeof self.onGround !== 'boolean')) throw Error('BUNDLED_YSM_VELOCITY_OR_GROUND_MISSING')
   const hand = self.handAnimation
-  const hands = hand?.source === 'same_player_vanilla_hand_packets' && hand.playerUuid === uuid && hand.entityId === self.entityId && fresh(hand.sampledAt, now, 1500) ? hand : null
+  const hands = ['same_player_vanilla_hand_packets','paper_server_observation'].includes(hand?.source) && hand.playerUuid === uuid && hand.entityId === self.entityId && fresh(hand.sampledAt, now, 1500) ? hand : null
   let equipment, equipmentReason = null
   try {
     const selected = selectNativeHeldItems(p, uuid), main = selected.mainArm

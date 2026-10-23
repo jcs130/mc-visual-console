@@ -10,7 +10,7 @@ const F = Math.fround, PI = F(Math.PI), mul = (a,b) => F(F(a)*F(b)), add = (a,b)
 const rot = (matrix, axis, degrees) => matrix.multiply(new THREE.Matrix4()[`makeRotation${axis}`](mul(degrees, F(Math.PI / 180))))
 export function nativeHandAnimation(self, arm, now = Date.now()) {
   const value = self?.handAnimation
-  if (value?.source !== 'same_player_vanilla_hand_packets' || value.playerUuid !== self.uuid || value.entityId !== self.entityId ||
+  if (!['same_player_vanilla_hand_packets','paper_server_observation'].includes(value?.source) || value.playerUuid !== self.uuid || value.entityId !== self.entityId ||
       !Number.isFinite(value.sampledAt) || now - value.sampledAt > 1500 || now < value.sampledAt - 100 ||
       !['left', 'right'].includes(value.mainArm) || !['left','right'].includes(arm)) return null
   if (value.usingItem !== false || value.spinAttack !== false) return null
@@ -34,10 +34,10 @@ export function nativeFirstPersonSwingMatrix(progress, arm = 'right') {
 
 export function nativeHandUse(self,arm,item,now=Date.now()) {
   const state=self?.handAnimation,use=state?.use
-  if(state?.source!=='same_player_vanilla_hand_packets' || state.playerUuid!==self.uuid || state.entityId!==self.entityId || state.usingItem!==true || state.spinAttack!==false ||
+  if(!['same_player_vanilla_hand_packets','paper_server_observation'].includes(state?.source) || state.playerUuid!==self.uuid || state.entityId!==self.entityId || state.usingItem!==true || state.spinAttack!==false ||
     !Number.isFinite(state.sampledAt) || now-state.sampledAt>1500 || now<state.sampledAt-100 || !['left','right'].includes(state.mainArm) || !use ||
-    use.source!=='observed_use_packet_vanilla_duration' || !['eat','drink'].includes(use.kind) || !['mainhand','offhand'].includes(use.hand) ||
-    ![16,32,40].includes(use.durationTicks) || !Number.isFinite(use.startedAt) || use.startedAt>state.sampledAt || now<use.startedAt || now-use.startedAt>=use.durationTicks*50) return null
+    !(state.source==='paper_server_observation'&&use.source==='paper_use_item_state'||state.source==='same_player_vanilla_hand_packets'&&use.source==='observed_use_packet_vanilla_duration') || !['eat','drink'].includes(use.kind) || !['mainhand','offhand'].includes(use.hand) ||
+    !(state.source==='paper_server_observation'?Number.isInteger(use.durationTicks)&&use.durationTicks>0&&use.durationTicks<=72000:[16,32,40].includes(use.durationTicks)) || !Number.isFinite(use.startedAt) || use.startedAt>state.sampledAt || now<use.startedAt || now-use.startedAt>=use.durationTicks*50) return null
   const active=use.hand==='offhand'?(state.mainArm==='left'?'right':'left'):state.mainArm
   if(arm!==active || item?.name!==use.name)return null
   return {kind:use.kind,remainingTicks:F(use.durationTicks-F((now-use.startedAt)/50)+1),durationTicks:use.durationTicks}

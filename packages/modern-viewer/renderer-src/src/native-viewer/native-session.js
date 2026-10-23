@@ -1,6 +1,6 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const SHA = /^[a-f0-9]{64}$/
-const ownConnections = new Set(['live_same_player_connection', 'numen_server_body'])
+const ownConnections = new Set(['live_same_player_connection', 'numen_server_body', 'paper_server_observation'])
 
 // The browser is a passive observer of one caller-owned game connection.
 // A disconnect invalidates the old world, and frames cannot establish identity
@@ -14,7 +14,7 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
       if (!value || typeof value !== 'object') throw Error('NATIVE_WORLD_EVENT_INVALID')
       if (value.type === 'identity') {
         if (value.registrySha256 !== registrySha256 || !ownConnections.has(value.mode) || value.minecraftVersion !== '1.21.1' ||
-            !/^[A-Za-z0-9_]{1,16}$/.test(value.player || '') || (value.playerUuid != null && !UUID.test(value.playerUuid))) throw Error('NATIVE_WORLD_IDENTITY_MISMATCH')
+            !/^\.?[A-Za-z0-9_]{1,16}$/.test(value.player || '') || (value.playerUuid != null && !UUID.test(value.playerUuid))) throw Error('NATIVE_WORLD_IDENTITY_MISMATCH')
         const changed = identity && (identity.player !== value.player || identity.playerUuid !== value.playerUuid || identity.mode !== value.mode || identity.entityId !== value.entityId)
         if (changed) { ready = false; epoch = null }
         identity = { ...value, playerUuid: value.playerUuid?.toLowerCase() || null }

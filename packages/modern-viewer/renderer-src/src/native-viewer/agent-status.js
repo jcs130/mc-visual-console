@@ -20,7 +20,7 @@ function timestamp (value) {
 // This view uses only the same host's injected Agent record. A positive receipt
 // is displayed as ok=true, never promoted to a verified Minecraft effect.
 export function agentStatusView (status, expectedPlayer = null) {
-  if (!['live_same_player_connection', 'numen_server_body'].includes(status?.mode) || !text(status?.identity?.player)) return unavailable('玩家连接身份不可用')
+  if (!['live_same_player_connection', 'numen_server_body', 'paper_server_observation'].includes(status?.mode) || !text(status?.identity?.player)) return unavailable('玩家连接身份不可用')
   if ((expectedPlayer && status.identity.player !== expectedPlayer) ||
       (text(status.agent?.details?.username) && status.agent.details.username !== status.identity.player)) return unavailable('Agent 身份与玩家连接不一致')
   if (status.agent?.available !== true || status.agent.source !== 'caller_injected') {

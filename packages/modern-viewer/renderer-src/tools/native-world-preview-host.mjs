@@ -342,7 +342,7 @@ export function parseNativeWorldPreviewArguments (args) {
   if (!assetDirectory || !nativePacketFile) throw Error('Usage: node tools/serve-native-world-preview.mjs <native-assets-dir> <native-packet.cjs> [qa-player] [loopback-game-port] [loopback-http-port]')
   const gamePort = Number(gamePortString), port = Number(portString)
   if (![gamePort, port].every(p => Number.isInteger(p) && p >= 1024 && p <= 65535)) throw Error('NATIVE_WORLD_PORT_INVALID')
-  if (!/^[A-Za-z0-9_]{1,16}$/.test(username)) throw Error('NATIVE_WORLD_PLAYER_INVALID')
+  if (!/^\.?[A-Za-z0-9_]{1,16}$/.test(username)) throw Error('NATIVE_WORLD_PLAYER_INVALID')
   return { assetDirectory, nativePacketFile, username, gamePort, port }
 }
 
@@ -438,14 +438,14 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
     serverItemPackId: serverItemPack.metadata.id ?? null,
     attach ({ bot, nativeStream, simplifyNBT, resolveDimension, expectedUsername, getAgentStatus = null, getPresentationState = null, logger = console, now = Date.now,
       sourceMode = 'live_same_player_connection', basePath = '/' }) {
-      if (!['live_same_player_connection', 'numen_server_body'].includes(sourceMode)) throw Error('NATIVE_WORLD_SOURCE_INVALID')
+      if (!['live_same_player_connection', 'numen_server_body', 'paper_server_observation'].includes(sourceMode)) throw Error('NATIVE_WORLD_SOURCE_INVALID')
       const scopedPages = basePath === '/' ? pages : new Map([['', 'first'], ['third/', 'third'], ['third', 'third'], ['3dview/', '3dview'], ['3dview', '3dview']]
         .map(([route, mode]) => [route, Buffer.from(withNativeViewerBuild(renderViewerPage(mode, { basePath, defaultAppearance, selectionScope }),viewerBuild))]))
       // Mineflayer 4.37.1 fills bot.username in its login plugin. Attach before
       // that packet using the caller's createBot username, then verify it.
       const username = bot?.username || expectedUsername
-      if (!bot || !/^[A-Za-z0-9_]{1,16}$/.test(username || '') || !bot.on || !bot.off || !bot._client?.on || !nativeStream?.events?.on || typeof simplifyNBT !== 'function') throw Error('NATIVE_WORLD_ATTACHMENT_INVALID')
-      if (expectedUsername !== undefined && (!/^[A-Za-z0-9_]{1,16}$/.test(expectedUsername) || (bot.username && bot.username !== expectedUsername))) throw Error('NATIVE_WORLD_ATTACHMENT_IDENTITY_MISMATCH')
+      if (!bot || !/^\.?[A-Za-z0-9_]{1,16}$/.test(username || '') || !bot.on || !bot.off || !bot._client?.on || !nativeStream?.events?.on || typeof simplifyNBT !== 'function') throw Error('NATIVE_WORLD_ATTACHMENT_INVALID')
+      if (expectedUsername !== undefined && (!/^\.?[A-Za-z0-9_]{1,16}$/.test(expectedUsername) || (bot.username && bot.username !== expectedUsername))) throw Error('NATIVE_WORLD_ATTACHMENT_IDENTITY_MISMATCH')
       if (getAgentStatus !== null && typeof getAgentStatus !== 'function') throw Error('AGENT_STATUS_PROVIDER_INVALID')
       if (getPresentationState !== null && typeof getPresentationState !== 'function') throw Error('PRESENTATION_PROVIDER_INVALID')
       if(itemColors&&typeof nativeStream.configureItemRegistries==='function')nativeStream.configureItemRegistries(itemColors)
@@ -516,7 +516,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         // packet contains the unmodified effective base, never a fabricated 0.
         const armor = armorAttribute && !(armorAttribute.modifiers?.length) ? finiteNumber(armorAttribute.value) : null
         const injected = injectedPresentation(getPresentationState, player.uuid)
-        const value = { schemaVersion: 1, playerUuid: player.uuid, available: true, source: sourceMode === 'numen_server_body' ? sourceMode : 'same_player_connection', sampledAt: now(),
+        const value = { schemaVersion: 1, playerUuid: player.uuid, available: true, source: sourceMode !== 'live_same_player_connection' ? sourceMode : 'same_player_connection', sampledAt: now(),
           self: { ...player, saturation: finiteNumber(bot.foodSaturation), oxygen: finiteNumber(bot.oxygenLevel), armor,
             ...(bot.deathLifecycle&&typeof bot.deathLifecycle.episodeId==='string'&&['dead','respawn_pending','alive'].includes(bot.deathLifecycle.phase)?
               {deathLifecycle:{episodeId:bot.deathLifecycle.episodeId.slice(0,160),phase:bot.deathLifecycle.phase,

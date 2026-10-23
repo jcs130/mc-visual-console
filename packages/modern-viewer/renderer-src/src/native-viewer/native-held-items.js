@@ -29,6 +29,17 @@ function normalizeUuid(value) {
 // supply this actor's held items. Null is known empty; absence is unknown.
 export function selectNativeHeldItems(frame, boundUuid) {
   const uuid = normalizeUuid(boundUuid)
+  // A server scene can expose only the visibly held pair without publishing
+  // a private inventory. This is a separate, UUID-bound source contract;
+  // missing inventory slots are never replaced by fabricated empty stacks.
+  const equipment = frame?.self?.equipment
+  if (frame?.source === 'paper_server_observation' && frame.inventory === null && equipment?.source === frame.source) {
+    if (normalizeUuid(frame.playerUuid) !== uuid || normalizeUuid(frame.self.uuid) !== uuid || normalizeUuid(equipment.playerUuid) !== uuid
+      || equipment.entityId !== frame.self.entityId || !['left','right'].includes(frame.self.mainArm)
+      || !Object.hasOwn(equipment,'mainHand') || !Object.hasOwn(equipment,'offHand')) throw Error('NATIVE_HELD_PLAYER_BINDING_MISMATCH')
+    const mainArm=frame.self.mainArm,offArm=mainArm==='right'?'left':'right'
+    return {playerUuid:uuid,mainArm,self:frame.self,hands:{[mainArm]:{slot:null,raw:equipment.mainHand},[offArm]:{slot:null,raw:equipment.offHand}}}
+  }
   if (normalizeUuid(frame?.playerUuid) !== uuid || normalizeUuid(frame?.self?.uuid) !== uuid ||
       normalizeUuid(frame?.inventory?.playerUuid) !== uuid) throw Error('NATIVE_HELD_PLAYER_BINDING_MISMATCH')
   const inventory = frame.inventory
