@@ -1,7 +1,34 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
-import { nativeCameraTarget,nativeCameraCollisionDistance } from '../../src/native-viewer/native-camera.js'
+import { NativeOrbitCameraAnchor,nativeCameraTarget,nativeCameraCollisionDistance } from '../../src/native-viewer/native-camera.js'
+
+test('manual orbit waits for the first actual pose and points at the new terrain without an avatar',()=>{
+  const anchor=new NativeOrbitCameraAnchor(),camera=new THREE.PerspectiveCamera(70,1,.05,150)
+  const controls={target:new THREE.Vector3(),update(){camera.lookAt(this.target);camera.updateMatrixWorld(true)}}
+  assert.equal(anchor.initialize({pose:null,mode:'third',camera,controls}),false)
+  const pose={x:-648,y:62,z:-487,yaw:1,pitch:0}
+  assert.equal(anchor.initialize({pose,mode:'third',camera,controls}),true)
+  assert.deepEqual(controls.target.toArray(),[-648,63,-487])
+  const target=new THREE.Vector3(...controls.target.toArray()).project(camera)
+  assert.ok(Math.abs(target.x)<1e-9&&Math.abs(target.y)<1e-9&&target.z>-1&&target.z<1)
+  // Later pose packets must preserve a viewer's drag/zoom in manual mode.
+  camera.position.add(new THREE.Vector3(1,2,3));const dragged=camera.position.clone()
+  assert.equal(anchor.initialize({pose:{...pose,x:pose.x+2},mode:'third',camera,controls}),false)
+  assert.ok(camera.position.equals(dragged))
+})
+
+test('identity/epoch reset reanchors a delayed manual scene to the next body',()=>{
+  for(const mode of ['third','region']){
+    const anchor=new NativeOrbitCameraAnchor(),camera=new THREE.PerspectiveCamera(),controls={target:new THREE.Vector3(),update(){}}
+    const options={mode,camera,controls,pose:{x:8,y:64,z:8,yaw:0,pitch:0}}
+    anchor.initialize(options);anchor.reset()
+    assert.equal(anchor.initialize({...options,pose:undefined}),false)
+    assert.equal(anchor.initialize({...options,pose:{...options.pose,x:-650,z:-488}}),true)
+    assert.deepEqual(controls.target.toArray(),[-650,65,-488])
+    assert.ok(camera.position.distanceTo(controls.target)>1&&camera.position.distanceTo(controls.target)<15)
+  }
+})
 
 test('native following binds the actual displayed root and body epoch, not the raw target or animated head',()=>{
   const state={epoch:3,selfPlayer:{uuid:'player-uuid',entityId:7},pose:{x:8,y:64,z:8,yaw:1}}

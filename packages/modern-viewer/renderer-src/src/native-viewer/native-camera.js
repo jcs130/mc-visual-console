@@ -1,4 +1,20 @@
 import * as THREE from 'three'
+import { playerCamera } from './player-camera.js'
+
+// Manual controls can be selected before the first world snapshot arrives.
+// Keep that initialization pending until the real pose exists; otherwise the
+// camera stays at (0,0,0), outside the new body's terrain, with only the HUD visible.
+export class NativeOrbitCameraAnchor {
+  constructor () { this.reset() }
+  reset () { this.pending = true }
+  initialize ({ pose, mode, camera, controls }) {
+    if (!this.pending || !pose || !['x', 'y', 'z', 'yaw', 'pitch'].every(key => Number.isFinite(pose[key]))) return false
+    const view = playerCamera(pose, mode === 'region' ? 'region' : 'third')
+    controls.target.fromArray(view.target); camera.position.fromArray(view.position); controls.update()
+    this.pending = false
+    return true
+  }
+}
 
 // A camera target is the displayed body root of the authenticated same player,
 // never a name tag, model head bone, another observer or actor control API.

@@ -36,6 +36,17 @@ The site build scopes CSS texture URLs to `/watch/:id/`. Animation `.mcmeta` and
 original GLSL are resources too, not optional placeholders. A successful HTTP200,
 sky-only frame or a model count of0 is not rendering acceptance.
 
+### Manual camera on a new body (2026-10-24)
+
+Manual orbit can be restored from the viewer's saved settings before terrain
+or the player pose arrives. Initialization now remains pending until that first
+real pose, and resets on an identity/epoch change. Subsequent frames preserve
+the viewer's drag/zoom. This also works when the custom avatar is unavailable;
+the camera uses the authenticated body's pose and never fabricates a model.
+The loading screen stays visible until terrain for the current epoch commits,
+instead of disappearing as soon as inventory/HUD data arrives. Consumers must
+rebuild both trusted browser bundles and the source host from this revision.
+
 For unprojected Java1.21.1/Paper, `host/vanilla-mineflayer.mjs` is a separate
 optional SDK adapter. It attaches before login to the action bot and requires
 the original vanilla1.21.1 registry. Modded projection gateways must continue

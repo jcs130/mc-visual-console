@@ -30,6 +30,26 @@ const presentation = () => ({ schemaVersion: 1, playerUuid: UUID, available: tru
     slots: Array.from({ length: 46 }, (_, slot) => ({ slot, item: null })) },
   nativeMenu: { windowId: 0, stateId: 1, menuType: 'minecraft:inventory', slots: [] }, skills: null, gameMessages: [] })
 
+test('world loading remains visible until current-epoch terrain commits, even when the HUD is live',async()=>{
+  const {document,window}=fullShell();let hooks
+  const console=await bootNativeConsole({document,window,startStatus:()=>()=>{},mount:async options=>{
+    hooks=options;return {setView(){},dispose(){},renderer:{setPixelRatio(){}}}
+  }})
+  const boot=document.querySelector('.boot'),compact=()=>boot.className.split(' ').includes('is-compact')
+  hooks.onIdentity({confirmed:true,playerUuid:UUID,entityId:7,epoch:2})
+  hooks.onState({type:'snapshot',epoch:2,presentation:presentation()})
+  hooks.onDiagnostics({drawn:0,total:200,terrainWork:{received:{epoch:2},building:true,committedCoverage:null}})
+  assert.equal(compact(),false);assert.match(boot.textContent,/正在准备原版地形与材质/)
+  hooks.onDiagnostics({drawn:200,total:200,terrainWork:{committedCoverage:{epoch:2}}})
+  assert.equal(compact(),true)
+  hooks.onIdentity({confirmed:true,playerUuid:UUID,entityId:8,epoch:3})
+  hooks.onDiagnostics({drawn:200,total:200,terrainWork:{committedCoverage:{epoch:2}}})
+  assert.equal(compact(),false,'a prior body snapshot cannot complete the new loading screen')
+  hooks.onUnavailable('NATIVE_WORLD_STREAM_DISCONNECTED')
+  assert.match(boot.textContent,/不可用/);assert.ok(boot.className.includes('is-error'))
+  console.dispose()
+})
+
 test('actual console links and menu handlers share bounded viewport diagnostics and clean visibility listeners', async () => {
   const {document,window}=fullShell();let mode='third',hooks
   const console=await bootNativeConsole({document,window,startStatus:()=>()=>{},mount:async options=>{

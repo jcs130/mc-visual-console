@@ -26,7 +26,7 @@ import { installAgentVisualization } from '../modern-viewer/agent-visual-overlay
 import { createAgentWorldProjector } from '../modern-viewer/agent-visual-projection.js'
 import { createNativeMiniMap } from './native-mini-map.js'
 import { normalizeCameraSettings } from '../modern-viewer/camera-preferences.js'
-import { nativeCameraTarget, nativeCameraCollisionDistance } from './native-camera.js'
+import { NativeOrbitCameraAnchor, nativeCameraTarget, nativeCameraCollisionDistance } from './native-camera.js'
 import { createNativeTerrainRaycast } from './native-terrain-raycast.js'
 import { pickEntity } from '../modern-viewer/entity-picker.js'
 import { createNativeRoomVisibility } from './native-room-visibility.js'
@@ -49,6 +49,7 @@ let lastPlayerFrameTime = null, selfMotionState = null, selfMotionSignature = nu
 let director, cameraOptions=normalizeCameraSettings(cameraSettings??{version:1,mode:'follow'}),cameraFrame=null
 let terrainRaycast=()=>[],selectedEntity=null,pointerStart=null,lastCollision=null
 const roomVisibility=createNativeRoomVisibility()
+const orbitAnchor=new NativeOrbitCameraAnchor()
 let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
 let observerPose=null,observerTarget=null
 let frameCost=null,lastCostAt=0,displayPose=null
@@ -295,9 +296,8 @@ async function start () {
   events.onerror = () => { session.receive({type:'unavailable'}); clearScene(); onUnavailable('NATIVE_WORLD_STREAM_DISCONNECTED') }
 }
 function orbitPosition () {
-  if (!current?.pose) return
-  const view = playerCamera(displayPose??current.pose, viewMode==='region'?'region':'third')
-  controls.target.fromArray(view.target); camera.position.fromArray(view.position); controls.update()
+  orbitAnchor.reset()
+  orbitAnchor.initialize({pose:displayPose??current?.pose,mode:viewMode,camera,controls})
 }
 function setView (mode) {
   if (!['third', 'first', 'region', '3dview'].includes(mode) || disposed) return
@@ -321,7 +321,10 @@ function updatePlayerCamera (now) {
       observerPose={...current.pose,...observerTarget.position,yaw:observerTarget.yaw}
     }
   }
-  if (viewMode === 'region'||viewMode==='third'&&cameraOptions.mode==='manual'&&!director.shot) { controls.enabled=true;controls.update();cameraFrame={mode:'manual'};return }
+  if (viewMode === 'region'||viewMode==='third'&&cameraOptions.mode==='manual'&&!director.shot) {
+    orbitAnchor.initialize({pose:observerPose,mode:viewMode,camera,controls})
+    controls.enabled=true;controls.update();cameraFrame={mode:'manual'};return
+  }
   controls.enabled=false
   if(viewMode==='third') {
     const pose=director.update(observerTarget,cameraOptions,now,{aspect:camera.aspect,
@@ -418,6 +421,7 @@ function clearStatics () {
   disposeNativeStaticMeshes(statics)
 }
 function clearScene () {
+  orbitAnchor.reset()
   selfDisplay.reset();displayPose=null;frameGaps.reset();if(renderer)renderer.domElement.dataset.frameGaps="null"
   miniMap?.reset()
   audio?.connect(false)

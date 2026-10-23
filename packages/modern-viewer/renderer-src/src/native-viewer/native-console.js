@@ -275,8 +275,10 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         if (disposed) return
         lastDiagnostics = value; updateDiagnosticText()
         updateAudio(value.audio)
-        boot.classList.add('is-compact'); boot.classList.remove('is-error')
-        boot.textContent = `原生模型 ${value.drawn}/${value.total} · 完整场景尚未验收`
+        const terrainReady = value.terrainWork?.committedCoverage?.epoch === identity?.epoch && value.terrainWork?.committedCoverage != null
+        boot.classList.toggle('is-compact', terrainReady); boot.classList.remove('is-error')
+        boot.textContent = terrainReady ? `原生模型 ${value.drawn}/${value.total} · 完整场景尚未验收`
+          : value.terrainWork?.received ? '正在载入世界画面：正在准备原版地形与材质…' : '正在载入世界画面：等待角色地形…'
       },
       onActor (value, reason) { if (!disposed) ui.setActor(value, reason) },
       onMode (value) { if (!disposed) { pendingMode = value; updateDiagnosticText() } },
