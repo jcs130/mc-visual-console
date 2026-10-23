@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import * as THREE from 'three'
-import { nativeStaticBatches } from '../../src/native-viewer/native-static-batch.js'
+import { nativeStaticBatches, nativeInstanceTints } from '../../src/native-viewer/native-static-batch.js'
 
 function triangles(geometry,matrix=new THREE.Matrix4()){
   const out=[],normal=new THREE.Matrix3().getNormalMatrix(matrix),index=geometry.index
@@ -39,4 +39,10 @@ test('static material batches preserve authored transformed triangles, UVs, norm
 test('static batching refuses dynamic meshes instead of silently flattening animation',()=>{
   const model=new THREE.Group();model.add(new THREE.InstancedMesh(new THREE.BoxGeometry(),new THREE.MeshBasicMaterial(),1))
   assert.throws(()=>nativeStaticBatches(model),/DYNAMIC_MODEL/)
+})
+test('one unknown boundary biome cannot discard the whole grass/foliage instance group',async()=>{
+  const warnings=[],positions=[0,1,2,3,4,5,6,7,8],parts=[{userData:{tintIndex:0}},{userData:{tintIndex:0}},{userData:{tintIndex:-1}}],calls=[]
+  const result=await nativeInstanceTints({},positions,parts,{blockTint(_,p,n){calls.push([p.x,n]);if(p.x===3)throw Error('NATIVE_BIOME_NOT_RECEIVED');return 0x123456+p.x}},null,e=>warnings.push(e.message))
+  assert.deepEqual(result.positions,[0,1,2,6,7,8]);assert.deepEqual(result.tints.get(0),[0x123456,0x12345c]);assert.equal(calls.length,3);assert.deepEqual(warnings,['NATIVE_BIOME_NOT_RECEIVED'])
+  const untouched=await nativeInstanceTints({},positions,[{userData:{tintIndex:-1}}],null);assert.strictEqual(untouched.positions,positions)
 })

@@ -397,7 +397,7 @@ function injectedAgentStatus (getAgentStatus, now) {
 
 // Prepare before createBot(), then attach synchronously before login packets.
 // Preparation creates no Minecraft client, listening socket or signal handler.
-export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server', selectionScope, serverItemCatalogFile = '', serverItemCatalogSha256 = '' }) {
+export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server', selectionScope, serverItemCatalogFile = '', serverItemCatalogSha256 = '', surfaceCulling = false, appearanceSource = null }) {
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('NATIVE_WORLD_PORT_INVALID')
   const access = nativePreviewAccess(lanAddress)
   const root = await fs.realpath(assetDirectory)
@@ -494,6 +494,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           onGround: typeof entity.onGround === 'boolean' ? entity.onGround : null,
           surfaceBlock: audioPack.metadata.blocks ? states.get(world.stateIdAt({x:Math.floor(entity.position.x),y:Math.floor(entity.position.y-.2),z:Math.floor(entity.position.z)}))?.name ?? null : null,
           sneaking: typeof entity.crouching === 'boolean' ? entity.crouching : null, velocity: vector(entity.velocity), skin,
+          ...(appearanceSource?{paperAppearance:appearanceSource.binding({uuid:uuid.toLowerCase(),entityId:entity.id})}:{}),
           ...(Object.hasOwn(nativeSelf ?? {}, 'ysm') ? { ysm: nativeSelf.ysm } : {}) }
       }
       const playerPose = player => player && [player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)
@@ -609,6 +610,10 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           else if (requestPath === 'client.js') { bytes = bundle; type = 'text/javascript; charset=utf-8' }
           else if (requestPath === 'manifest.json') { bytes = manifestBytes; type = 'application/json' }
           else if (requestPath === 'api/server-items') { bytes=Buffer.from(JSON.stringify(serverItemPack.metadata));type='application/json' }
+          else if (/^api\/server-appearance\/assets\/[a-f0-9]{64}\.json$/.test(requestPath)) {
+            bytes=appearanceSource?.read(requestPath.split('/').at(-1).slice(0,-5));type='application/json'
+            if(!bytes){response.writeHead(404);response.end();return}
+          }
           else if (requestPath.startsWith('api/server-items/assets/')) {
             bytes=serverItemPack.assets.get(requestPath.slice('api/server-items/assets/'.length));type='image/png'
             if(!bytes){response.writeHead(404);response.end();return}
@@ -743,7 +748,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       let scanning=false
       const startSnapshot = startedAt => {
         scanning=true
-        void world.snapshotAsync().then(snapshot => {
+        void world.snapshotAsync({surfaceCulling}).then(snapshot => {
           if(closed || !snapshot)return // Retired work leaves the coherent cache and dirty cadence intact.
           snapshotBuildMs = Math.round((performance.now() - startedAt) * 100) / 100; snapshotBuildCount++
           cachedSnapshot = snapshot.type === 'snapshot' ? snapshot : null

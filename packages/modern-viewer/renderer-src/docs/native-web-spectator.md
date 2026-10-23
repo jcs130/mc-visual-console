@@ -1,5 +1,41 @@
 # Authenticated native Web spectator
 
+## 2026-10-24 loading and original player appearances
+
+Cold model dependencies prefetch through eight bounded chains. Manifest-checked
+Minecraft resources (at most 256 files of 64KiB) reuse a hash-addressed browser
+cache across role switches. Cache hits are rehashed; live/auth/inventory data is
+never persisted there. Block instances omit only original `cullface` faces behind
+confirmed full opaque neighbors; rotations and exact remaining UVs are retained.
+Missing boundary biome data rejects only that block, not its entire material group.
+
+`preparePaperObservation({surfaceCulling:true,appearanceSource})` additionally
+removes cropped underground shells and sealed caves. Known open cells are flooded
+from received sky and the actual observer's feet/eyes; unknown, partial and
+transparent blocks do not become occluders. Native hidden-state runs remain
+lossless. This option defaults off for existing native/modded hosts. It is a
+conservative connectivity filter, not a claim of perfect screen-space occlusion.
+
+An optional read-only appearance source supplies `binding({uuid,entityId})` and
+`read(bundleSha256)`. Paper's actual observed body binds the original YSM2.4.1
+bundle or configured skin. The browser verifies whole-bundle and per-file hashes;
+expired/mismatched source state is unavailable. This is separate from the native
+YSM2.6.5 integration; neither a folder name nor a missing model authorizes Steve.
+Original movement and held-item providers are reused. Full animation/client pixel
+parity and unsupported nearby-player renderers are not implied.
+
+New relays advertise optional `gzip-chunks-v1`: independent level-three gzip
+chunks for JSON/text/SSE, each bounded to 64KiB after decompression. PNG/OGG stay
+unchanged. Legacy peers keep identity transfer. Authentication, hash checks,
+read-only routes and backpressure are unchanged. Website proxies should also
+compress JavaScript, JSON and CSS; test streaming flush if compressing SSE.
+This existing HTTPS/WSS path needs no extra ICE/TURN service or home public port.
+
+Validation: 147 related Node checks (including the deployment's real1.21.1
+metadata codec), real NEKO/Kirito original geometry and walk/arm resources, and
+the existing live NEKO observation in WebGL. Deployment consumers must rebuild
+and independently verify their served page; local success is not publication.
+
 The portal serves the existing Three.js console using its own trusted build.
 `host/spectator-relay.mjs` tunnels only read-only JSON/SSE and original
 PNG/mcmeta/GLSL/OGG resources from an already running loopback native host.

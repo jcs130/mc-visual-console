@@ -8,6 +8,7 @@ import chunkFactory from 'prismarine-chunk'
 import { Vec3 } from 'vec3'
 import { NativeWorldState, loadNativeStateRegistry, loadNativeEntityRegistry, longNumber, longBigInt, nativeChunk, attachNativeWorld } from '../native-world-host.mjs'
 import { waterGeometry } from '../../src/native-viewer/native-fluid.js'
+import {createHiddenSolidLookup} from '../../src/native-viewer/native-hidden-solids.js'
 
 const rows = [
   { stateId: 777, name: 'minecraft:air', properties: {}, renderShape: 'INVISIBLE', hasBlockEntity: false,
@@ -34,6 +35,22 @@ function worldFixture (registryStates = states, registryHash = hash, options = {
   return { world, packet, chunk }
 }
 const pose = { x: -1.5, y: 64, z: -0.5, yaw: 0, pitch: 0, eyeHeight: 1.62 }
+
+test('optional surface snapshots remove cropped underground shells and sealed caves without losing exact solid states',()=>{
+  const stone={stateId:1,name:'minecraft:stone',properties:{},renderShape:'MODEL',hasBlockEntity:false,fluid:{empty:true},solid:true,blocksMotion:true,canOcclude:true,dynamicShape:false,occlusionBoxes:[[0,0,0,1,1,1]]}
+  const nativeStates=new Map([[777,rows[0]],[1,stone]])
+  const {world,packet}=worldFixture(nativeStates,hash,{makeChunk:()=>({load(){},getBlockStateId(p){return p.y<=5&&!(p.x>=7&&p.x<=9&&p.z>=7&&p.z<=9&&p.y>=1&&p.y<=3)?1:777},getBiome(){return 0}})})
+  packet('map_chunk',{x:0,z:0,chunkData:Buffer.alloc(1)});world.setPose({x:8,y:6,z:8,yaw:0,pitch:0,eyeHeight:1.62})
+  const old=world.snapshot({halfExtent:4,below:5,above:4}),surface=world.snapshot({halfExtent:4,below:5,above:4,surfaceCulling:true})
+  assert.ok(surface.viewCoverage.renderBlocks<old.viewCoverage.renderBlocks/2)
+  assert.ok(surface.viewCoverage.surfaceHiddenBlocks>0)
+  assert.equal(createHiddenSolidLookup(surface)(8,4,8).stateId,1)
+  const solids=surface.occludedSolidRuns.reduce((n,r)=>n+r[3]-r[2]+1,0);assert.equal(solids+surface.viewCoverage.renderBlocks,surface.viewCoverage.nonAirBlocks)
+  world.setPose({x:8,y:2,z:8,yaw:0,pitch:0,eyeHeight:1.62})
+  const cave=world.snapshot({halfExtent:4,below:1,above:8,surfaceCulling:true})
+  assert.equal(createHiddenSolidLookup(cave)(8,4,8),undefined,'the cave ceiling becomes visible to the real underground observer')
+  assert.ok(cave.groups.some(g=>g.positions.some((v,i)=>i%3===0&&v===8&&g.positions[i+1]===4&&g.positions[i+2]===8)))
+})
 
 test('a normal radius-12 native stream keeps rendering after 625 received columns',()=>{
   const {world,packet,chunk}=worldFixture(),data=chunk.dump()

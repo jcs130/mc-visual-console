@@ -30,7 +30,9 @@ import { NativeOrbitCameraAnchor, nativeCameraTarget, nativeCameraCollisionDista
 import { createNativeTerrainRaycast } from './native-terrain-raycast.js'
 import { pickEntity } from '../modern-viewer/entity-picker.js'
 import { createNativeRoomVisibility } from './native-room-visibility.js'
-import { nativeStaticBatches } from './native-static-batch.js'
+import { nativeStaticBatches, nativeInstanceTints } from './native-static-batch.js'
+import { createNativeAssetCache } from './native-asset-cache.js'
+import { nativeFaceVisibility } from './native-face-visibility.js'
 
 // Shared exact-resource scene used by the full console and diagnostic preview.
 // UI, network presentation and quality policy belong to the console, not this backend.
@@ -87,10 +89,13 @@ async function start () {
   const response = await fetch(nativeViewerUrl('manifest.json'))
   if (!response.ok) throw Error('NATIVE_WORLD_MANIFEST_UNAVAILABLE')
   const manifest = await response.json()
+  const cachedAsset = createNativeAssetCache()
   const reader = new NativeAssetReader(manifest, async path => {
-    const result = await fetch(nativeViewerUrl(path))
-    if (!result.ok) throw Error(`NATIVE_ASSET_UNAVAILABLE:${path}`)
-    return result.arrayBuffer()
+    return cachedAsset(path, manifest.assets[path], async () => {
+      const result = await fetch(nativeViewerUrl(path))
+      if (!result.ok) throw Error(`NATIVE_ASSET_UNAVAILABLE:${path}`)
+      return result.arrayBuffer()
+    })
   })
   assetReader = reader
   if(manifest.assets[ORIGINAL_MODEL_LAYERS_PATH])originalModelLayers=await loadOriginalModelLayers(reader)
@@ -488,6 +493,7 @@ async function rebuildLatest () {
       const isCurrent=()=>run===generation&&!disposed&&terrainCurrent()
       try {
       const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
+      await loader.prefetchBlockModels(snapshot.groups, definitions, { isCurrent })
       const cuttingBoards = new Map((snapshot.cuttingBoards || []).map(board => [pointKey(board.position), board]))
       const signatureStarted=performance.now()
       const signature = nativeStaticSignature(snapshot)
@@ -501,6 +507,7 @@ async function rebuildLatest () {
       if (signature !== lastGroupSignature) {
         const environmentStarted=performance.now()
         const next = new NativeStaticStage(), environment = createNativeEnvironment(snapshot, colormaps), tintColor = new THREE.Color()
+        const faceVisibility=nativeFaceVisibility(snapshot)
         terrainPhases.environmentMs=performance.now()-environmentStarted
         const work = createNativeRebuildWork({ isCurrent })
         let count = 0
@@ -541,39 +548,44 @@ async function rebuildLatest () {
             const subgroups = new Map()
             for (const position of positions) {
               const pause = work.checkpoint(); if (pause) await pause
-              const variants = isBed ? [] : selectBlockVariants(blockstate, state, position), key = JSON.stringify(variants)
-              if (!subgroups.has(key)) subgroups.set(key, { variants, positions: [] })
+              const variants = isBed ? [] : selectBlockVariants(blockstate, state, position), faceMask=faceVisibility(position.x,position.y,position.z),key = JSON.stringify([variants,faceMask])
+              if (!subgroups.has(key)) subgroups.set(key, { variants, faceMask, positions: [] })
               subgroups.get(key).positions.push(position.x, position.y, position.z)
             }
             for (const subgroup of subgroups.values()) {
               const model = await template(state, subgroup.variants)
               if(model.userData.nativeBaseIssue)nextStaticIssues.push(`${state.name}：${model.userData.nativeBaseIssue}`)
               work.check()
-              const instanceCount = subgroup.positions.length / 3
               const meshes = []
               try {
-                if(!staticBatches.has(model))staticBatches.set(model,nativeStaticBatches(model))
-                for(const part of staticBatches.get(model).batches){
+                if(!staticBatches.has(model))staticBatches.set(model,new Map())
+                const batches=staticBatches.get(model)
+                if(!batches.has(subgroup.faceMask))batches.set(subgroup.faceMask,nativeStaticBatches(model,{faceMask:subgroup.faceMask}))
+                const prepared=await nativeInstanceTints(state,subgroup.positions,batches.get(subgroup.faceMask).batches,environment,work,
+                  error=>nextStaticIssues.push(`${state.name}（缺少数据的边缘格）：${error.message}`))
+                const instanceCount=prepared.positions.length/3
+                if(!instanceCount)continue
+                for(const part of batches.get(subgroup.faceMask).batches){
                   const pause = work.checkpoint(); if (pause) await pause
                   for(const material of Array.isArray(part.material)?part.material:[part.material])roomVisibility.patch(material)
                   const mesh = new THREE.InstancedMesh(part.geometry, part.material, instanceCount)
-                  mesh.userData.nativeBlockPositions=subgroup.positions
+                  mesh.userData.nativeBlockPositions=prepared.positions
                   meshes.push(mesh)
                   const matrix = new THREE.Matrix4()
                   for (let i = 0; i < instanceCount; i++) {
                     const pause = work.checkpoint(); if (pause) await pause
-                    const p = { x: subgroup.positions[i * 3], y: subgroup.positions[i * 3 + 1], z: subgroup.positions[i * 3 + 2] }, offset = modelOffset(state, p)
+                    const p = { x: prepared.positions[i * 3], y: prepared.positions[i * 3 + 1], z: prepared.positions[i * 3 + 2] }, offset = modelOffset(state, p)
                     matrix.makeTranslation(p.x + 0.5 + offset[0], p.y + 0.5 + offset[1], p.z + 0.5 + offset[2]).multiply(part.matrixWorld)
                     mesh.setMatrixAt(i, matrix)
                     if (part.userData.tintIndex >= 0) {
-                      mesh.setColorAt(i, tintColor.setHex(environment.blockTint(state, p, part.userData.tintIndex)))
+                      mesh.setColorAt(i, tintColor.setHex(prepared.tints.get(part.userData.tintIndex)[i]))
                     }
                   }
                   mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
                 }
+                count += instanceCount
               } catch (error) { for (const mesh of meshes) mesh.dispose(); throw error }
               for (const mesh of meshes) next.add(mesh)
-              count += instanceCount
             }
           } catch (error) {
             work.check()
@@ -615,7 +627,7 @@ function dispose () {
   document.removeEventListener('visibilitychange', kineticVisibility)
   renderer?.domElement.removeEventListener('pointerdown',manualCameraInput,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
   renderer?.domElement.removeEventListener('pointerdown',rememberPointer);renderer?.domElement.removeEventListener('pointerup',selectPointer)
-  controls?.dispose(); clearScene(); roomVisibility.dispose(); selfController?.dispose(); entityLayer?.dispose(); for(const batch of staticBatches.values())batch.dispose();staticBatches.clear();loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
+  controls?.dispose(); clearScene(); roomVisibility.dispose(); selfController?.dispose(); entityLayer?.dispose(); for(const masks of staticBatches.values())for(const batch of masks.values())batch.dispose();staticBatches.clear();loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
 try { await start(); setView(mode) } catch(error) { dispose(); throw error }
 return { setView, dispose, renderer,

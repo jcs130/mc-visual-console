@@ -1,5 +1,8 @@
 import { SPECTATOR_PROTOCOL, CHUNK_BYTES, MAX_BODY_BYTES, CHANNEL_PATTERN,
   observationPath, validatedSource, encodeChunk } from './spectator-protocol.mjs';
+import { gzip } from 'node:zlib';
+import { promisify } from 'node:util';
+const compress = promisify(gzip);
 
 const loopback = hostname => ['127.0.0.1', '[::1]'].includes(hostname);
 export function spectatorAddresses(sourceUrl, portalUrl, channelId) {
@@ -32,6 +35,7 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
   if (!/^pub_[A-Za-z0-9_-]{43}$/.test(token ?? '') || typeof Socket !== 'function') throw Error('SPECTATOR_PUBLISHER_CONFIGURATION');
   const ws = new Socket(socket), requests = new Map(), waits = new Map();
   let closed = false, ready = false, binding = null, poll = null, polling = false, lastError = null;
+  let transferredRawBytes = 0, transferredWireBytes = 0;
   let resolveReady, rejectReady, resolveDone;
   const connected = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
   const done = new Promise(resolve => { resolveDone = resolve; });
@@ -63,7 +67,10 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
     catch (e) { lastError = e.message; close('SPECTATOR_SOURCE_UNAVAILABLE'); }
     finally { polling = false; }
   }
-  async function sendPart(id, sequence, part, signal) {
+  async function sendPart(id, sequence, part, signal, encoding) {
+    if (closed || signal.aborted) throw Error('SPECTATOR_REQUEST_CANCELLED');
+    let wire = encodeChunk(id, sequence, part);
+    if (encoding === 'gzip-chunks-v1') wire = Buffer.concat([wire.subarray(0, 8), await compress(part, { level: 3 })]);
     if (closed || signal.aborted) throw Error('SPECTATOR_REQUEST_CANCELLED');
     const key = `${id}:${sequence}`;
     let complete, failed;
@@ -75,7 +82,7 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
     const timer = setTimeout(() => { waits.delete(key); failed(Error('SPECTATOR_ACK_TIMEOUT')); }, 15000);
     timer.unref?.(); waits.set(key, { resolve: complete, reject: failed, timer });
     signal.addEventListener('abort', abort, { once: true });
-    try { ws.send(encodeChunk(id, sequence, part)); await acknowledged; }
+    try { ws.send(wire); transferredRawBytes += part.length; transferredWireBytes += wire.length - 8; await acknowledged; }
     finally { clearTimeout(timer); waits.delete(key); signal.removeEventListener('abort', abort); }
   }
   async function serve(value) {
@@ -95,7 +102,10 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
         await response.body?.cancel(); return;
       }
       if (value.path !== 'events' && Number(response.headers.get('content-length')) > MAX_BODY_BYTES) throw Error('SPECTATOR_BODY_LIMIT');
-      send({ type: 'response', id: value.id, status: 200, contentType });
+      // Independent chunks have no cross-request compression dictionary. PNG
+      // and OGG are already compressed; JSON/SSE benefit most on the home uplink.
+      const encoding = binding.compression === 'gzip-chunks-v1' && ['application/json', 'text/event-stream', 'text/plain'].includes(contentType) ? 'gzip-chunks-v1' : 'identity';
+      send({ type: 'response', id: value.id, status: 200, contentType, encoding });
       reader = response.body.getReader();
       let size = 0, sequence = 0;
       for (;;) {
@@ -104,7 +114,7 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
         size += bytes.length;
         if (value.path !== 'events' && size > MAX_BODY_BYTES) throw Error('SPECTATOR_BODY_LIMIT');
         for (let offset = 0; offset < bytes.length; offset += CHUNK_BYTES) {
-          await sendPart(value.id, sequence++, Buffer.from(bytes.subarray(offset, offset + CHUNK_BYTES)), controller.signal);
+          await sendPart(value.id, sequence++, Buffer.from(bytes.subarray(offset, offset + CHUNK_BYTES)), controller.signal, encoding);
         }
       }
       send({ type: 'end', id: value.id });
@@ -126,7 +136,8 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
         if (!binding) throw Error('SPECTATOR_PROTOCOL_REJECTED');
         if (!ready) {
           ready = true; clearTimeout(deadline); poll = setInterval(publishStatus, pollIntervalMs); poll.unref?.();
-          resolveReady({ done, close, state: () => ({ connected: !closed, readOnly: true, playerUuid: binding.playerUuid, lastError, pendingRequests: requests.size }) });
+          resolveReady({ done, close, state: () => ({ connected: !closed, readOnly: true, playerUuid: binding.playerUuid, lastError, pendingRequests: requests.size,
+            transferredRawBytes, transferredWireBytes, compression: binding.compression ?? 'identity' }) });
         }
       } else if (value.type === 'request') {
         if (!ready) throw Error('SPECTATOR_SOURCE_NOT_READY');

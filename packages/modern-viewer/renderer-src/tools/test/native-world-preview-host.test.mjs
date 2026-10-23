@@ -1017,7 +1017,7 @@ test('actual publisher keeps current frame and HUD samples during held and retir
  const initial={type:'snapshot',epoch:1,groups:[],bounds:{},biomeSeed:'old'}
  const state=Function('world','clients','cadence','encodeNativeWorldEvent','createHash','nativeTerrainSignature','initial','health','setInterval','sendNativeWorldEvent',`
  let closed=false,pendingSnapshot=null,cachedSnapshot=initial,cachedTerrainSignature=null,snapshotBuildMs,snapshotBuildCount=0,terrainSignatureMs,wireEncodeMs;
- const sourceMode='same_player_connection',selfPlayer=()=>({uuid:'own'}),presentation=()=>({self:{health:health()}}),playerPose=()=>({}),motionTracker={current:()=>({tick:world.time.age})},injectTrackedMaidPresentation=s=>s,sendIdentity=()=>true,agentVisual={subscribe:()=>()=>{}},connectionEnded=false;
+ const surfaceCulling=true,sourceMode='same_player_connection',selfPlayer=()=>({uuid:'own'}),presentation=()=>({self:{health:health()}}),playerPose=()=>({}),motionTracker={current:()=>({tick:world.time.age})},injectTrackedMaidPresentation=s=>s,sendIdentity=()=>true,agentVisual={subscribe:()=>()=>{}},connectionEnded=false;
  ${publisher};return {cache:()=>cachedSnapshot}`)(world,clients,cadence,encodeNativeWorldEvent,createHash,nativeTerrainSignature,initial,()=>health,callback=>{tick=callback;return {}},(c,value)=>{sent.push({client:c,message:JSON.parse(value.text.slice(6))});return true})
  tick();assert.equal(scans,1);health=17;world.time.age=2;tick();health=12;world.time.age=3;tick()
  assert.equal(scans,1);assert.deepEqual(sent.map(s=>s.message.presentation.self.health),[20,17,12]);assert.deepEqual(sent.map(s=>s.message.motion.tick),[1,2,3])

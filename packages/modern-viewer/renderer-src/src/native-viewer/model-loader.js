@@ -270,6 +270,28 @@ export class NativeModelLoader {
     return selectBlockVariants(await this.blockstate(nativeState.name), nativeState, position)
   }
 
+  // Bounded dependency prefetch avoids one WAN round trip per block family.
+  // Failures remain owned by the ordinary per-block renderer and its diagnostics.
+  async prefetchBlockModels (groups, definitions, { concurrency = 8, isCurrent = () => true } = {}) {
+    let next = 0
+    const worker = async () => {
+      while (isCurrent() && next < groups.length) {
+        const group = groups[next++], state = definitions.get(group.stateId)
+        if (!state || state.renderShape !== 'MODEL' || !group.positions.length || /_bed$/.test(state.name)) continue
+        try {
+          const blockstate = await this.blockstate(state.name)
+          const variants = selectBlockVariants(blockstate, state, { x: group.positions[0], y: group.positions[1], z: group.positions[2] })
+          for (const variant of variants) {
+            const model = await resolveModel(this.reader, variant.model)
+            const paths = [...new Set(bakeFaces(model, variant, { allowTint: true }).map(face => resourcePath(face.texture, 'textures', '.png')))]
+            await Promise.all(paths.flatMap(path => [path, ...(this.reader.manifest.assets[path + '.mcmeta'] ? [path + '.mcmeta'] : [])]).map(path => this.reader.bytes(path)))
+          }
+        } catch {}
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(8, Math.max(1, Math.floor(concurrency)), groups.length) }, worker))
+  }
+
   async models (variants, context = {}) {
     const group = new THREE.Group()
     for (const variant of variants) group.add(await this.model(variant.model, variant, context))

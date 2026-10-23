@@ -1,15 +1,41 @@
-import { Matrix4 } from 'three'
+import { Matrix4, Matrix3, Vector3 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
+// A missing edge biome invalidates that block's tint, not thousands of other
+// received instances sharing its material. Keep every independently known one.
+export async function nativeInstanceTints(state,positions,batches,environment,work,onIssue=()=>{}){
+  const indices=[...new Set(batches.map(p=>p.userData.tintIndex).filter(n=>n>=0))]
+  const tints=new Map(indices.map(n=>[n,[]]))
+  if(!indices.length)return {positions,tints}
+  const valid=[];let reported=false
+  for(let i=0;i<positions.length;i+=3){
+    const pause=work?.checkpoint();if(pause)await pause
+    const p={x:positions[i],y:positions[i+1],z:positions[i+2]}
+    try{
+      const colors=indices.map(n=>environment.blockTint(state,p,n));valid.push(p.x,p.y,p.z)
+      indices.forEach((n,j)=>tints.get(n).push(colors[j]))
+    }catch(error){if(!reported){reported=true;onIssue(error)}}
+  }
+  return {positions:valid,tints}
+}
+
 // Immutable authored faces only. Instances still use every original block's
-// offset, state and tint; no face/namespace or transparent geometry is removed.
-export function nativeStaticBatches(model) {
+// offset, state and tint. Only explicitly authored cullfaces facing a confirmed
+// full opaque neighbor can be omitted; other geometry stays intact.
+export function nativeStaticBatches(model, { faceMask = 63 } = {}) {
   model.updateMatrixWorld(true)
   const groups=new Map(),owned=[]
   model.traverse(part=>{
     if(!part.isMesh)return
     if(part.isSkinnedMesh||part.isInstancedMesh||Array.isArray(part.material)||part.geometry.morphAttributes.position?.length)
       throw Error('NATIVE_STATIC_BATCH_DYNAMIC_MODEL')
+    const direction={west:[-1,0,0],east:[1,0,0],down:[0,-1,0],up:[0,1,0],north:[0,0,-1],south:[0,0,1]}[part.userData.cullface]
+    if(direction&&faceMask!==63){
+      const normal=new Vector3(...direction).applyNormalMatrix(new Matrix3().getNormalMatrix(part.matrixWorld))
+      const axis=[normal.x,normal.y,normal.z].findIndex(value=>Math.abs(value)>1-1e-6)
+      // Diagonally rotated or undeclared faces remain authored geometry.
+      if(axis>=0){const bit=axis*2+([normal.x,normal.y,normal.z][axis]>0?1:0);if(!(faceMask&(1<<bit)))return}
+    }
     const key=JSON.stringify([part.material.uuid,part.userData.tintIndex??-1,part.userData.shade??null])
     if(!groups.has(key))groups.set(key,[])
     groups.get(key).push(part)

@@ -13,6 +13,7 @@ import {viewerSoundPacket,viewerSoundStopPacket} from '../host/viewer-sound-pack
 import {nativeParticlePacket} from '../src/native-viewer/native-particle-state.js'
 import {nativeThrownItemType,nativeThrownItemState} from '../src/native-viewer/native-thrown-item-state.js'
 import {nativeOpaqueFullCube,appendOccludedSolid} from './native-occlusion.mjs'
+import {nativeSurfaceVisibility} from './native-surface-visibility.mjs'
 import {twilightMultipartFrame} from '../host/native-twilight-multipart.mjs'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
@@ -547,7 +548,7 @@ export class NativeWorldState extends EventEmitter {
     } finally { job.return();this.off('world',changed);this.snapshotTiming=timing }
   }
 
-  * snapshotJob ({ halfExtent = 32, below = 24, above = 24 } = {}) {
+  * snapshotJob ({ halfExtent = 32, below = 24, above = 24, surfaceCulling = false } = {}) {
     if (this.error) return { type: 'unavailable', reason: this.error, epoch: this.epoch }
     if (!this.pose || !this.dimension) return { type: 'waiting', epoch: this.epoch, reason: 'waiting_for_native_world_and_player' }
     if (![halfExtent, below, above].every(Number.isInteger) || halfExtent < 1 || halfExtent > 32 || below < 0 || above < 0 || below + above > 96) throw Error('NATIVE_WORLD_VIEW_BOUNDS_INVALID')
@@ -560,7 +561,7 @@ export class NativeWorldState extends EventEmitter {
       if (volume(haloBounds(bounds, this.dimension)) > SNAPSHOT_LIMITS.maxScanVoxels) {
         clippedBy.add('scan_budget'); selectedExtent--; continue
       }
-      const snapshot = yield* this.#snapshotVolume(bounds)
+      const snapshot = yield* this.#snapshotVolume(bounds, surfaceCulling)
       scanWork += snapshot.viewCoverage.scannedVoxels
       snapshot.viewCoverage = { ...snapshot.viewCoverage, requestedBounds, clippedBy: [...clippedBy],
         horizontalRangeReduced: selectedExtent !== halfExtent, verticalRangeLimited: bounds.minY > this.dimension.minY || bounds.maxY < this.dimension.minY + this.dimension.height - 1,
@@ -583,7 +584,7 @@ export class NativeWorldState extends EventEmitter {
     }
   }
 
-  * #snapshotVolume (bounds) {
+  * #snapshotVolume (bounds, surfaceCulling) {
     const groups = new Map(), definitions = new Map(), kinetic = [], cuttingBoards = [], missingColumns = new Set(), receivedColumns = []
     const neighbors = [], halo = haloBounds(bounds, this.dimension)
     const haloWidth = halo.maxX - halo.minX + 1, haloDepth = halo.maxZ - halo.minZ + 1, haloLayer = haloWidth * haloDepth
@@ -606,6 +607,9 @@ export class NativeWorldState extends EventEmitter {
     }
     let occludedBlocks=0
     let scannedVoxels = 0, nonAirBlocks = 0, renderBlocks = 0
+    const visibility=surfaceCulling?yield* nativeSurfaceVisibility({bounds:halo,dimension:this.dimension,pose:this.pose,stateAt,
+      worldStateAt:(x,y,z)=>{const id=this.stateIdAt({x,y,z});return id==null?null:this.states.get(id)},isOpaque:full}):null
+    let surfaceHiddenBlocks=0
     for (let cz = Math.floor(bounds.minZ / 16); cz <= Math.floor(bounds.maxZ / 16); cz++)
       for (let cx = Math.floor(bounds.minX / 16); cx <= Math.floor(bounds.maxX / 16); cx++) {
         const ck = columnKey(cx, cz)
@@ -631,9 +635,12 @@ export class NativeWorldState extends EventEmitter {
       if (AIR.has(state.name)) continue
       nonAirBlocks++
       definitions.set(id, state)
-      if(x>bounds.minX&&x<bounds.maxX&&y>bounds.minY&&y<bounds.maxY&&z>bounds.minZ&&z<bounds.maxZ&&full(state)&&
+      if((surfaceCulling||x>bounds.minX&&x<bounds.maxX&&y>bounds.minY&&y<bounds.maxY&&z>bounds.minZ&&z<bounds.maxZ)&&full(state)&&
           full(stateAt(x-1,y,z))&&full(stateAt(x+1,y,z))&&full(stateAt(x,y-1,z))&&full(stateAt(x,y+1,z))&&full(stateAt(x,y,z-1))&&full(stateAt(x,y,z+1))){
         appendOccludedSolid(occludedSolidRuns,x,y,z,id);occludedBlocks++;continue
+      }
+      if(visibility&&full(state)&&!visibility.exposed(x,y,z)){
+        appendOccludedSolid(occludedSolidRuns,x,y,z,id);occludedBlocks++;surfaceHiddenBlocks++;continue
       }
       if (!groups.has(id)) groups.set(id, [])
       groups.get(id).push(x, y, z); renderBlocks++
@@ -671,7 +678,8 @@ export class NativeWorldState extends EventEmitter {
       entityState: this.entitySnapshot(bounds),
       neighbors, biomeSeed: this.biomeSeed, biomeGrid, biomes: [...usedBiomes].map(id => this.biomes.get(id)).filter(Boolean),
       viewCoverage: { source: 'received_native_chunks', policy: 'complete_bounded_volume', receivedColumns, missingColumns: [...missingColumns],
-        scannedVoxels, nonAirBlocks, renderBlocks, occludedBlocks, visibilityPolicy: 'exposed_surfaces_with_lossless_hidden_solid_runs', fluidNeighborVoxels: neighbors.length / 4, neighborCoverage: 'fluid_stencil_only',
+        scannedVoxels, nonAirBlocks, renderBlocks, occludedBlocks, surfaceHiddenBlocks, skyProbes:visibility?.skyProbes??0,
+        visibilityPolicy: visibility?'sky_and_player_connected_surfaces_with_lossless_hidden_solid_runs':'exposed_surfaces_with_lossless_hidden_solid_runs', fluidNeighborVoxels: neighbors.length / 4, neighborCoverage: 'fluid_stencil_only',
         outsideBounds: 'not_in_snapshot', unloadedColumns: 'unknown', cache: this.columnCache.stats() },
       entityRenderingAvailable: false, lightingParityVerified: false, completeSceneParityVerified: false }
   }

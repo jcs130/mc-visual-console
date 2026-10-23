@@ -64,6 +64,16 @@ test('binary envelope preserves exact bytes and rejects malformed or oversized c
   assert.throws(() => decodeChunk(Buffer.alloc(8))); assert.throws(() => encodeChunk(0, 0, data));
   assert.throws(() => encodeChunk(1, 0, Buffer.alloc(65537)));
 });
+
+test('negotiated independent gzip chunks reduce the uplink and preserve exact Unicode resource bytes', async t => {
+  const f = await fixture(t), publisher = await f.start()
+  const response = await f.get('manifest.json')
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), f.data)
+  const metrics = publisher.state()
+  assert.equal(metrics.compression, 'gzip-chunks-v1')
+  assert.ok(metrics.transferredWireBytes < metrics.transferredRawBytes / 10)
+  assert.equal(metrics.pendingRequests, 0)
+})
 test('authenticated exact-body publisher serves only operator-built page and JavaScript', async t => {
   const f = await fixture(t); await f.start();
   const page = await f.get(''); assert.equal(page.status, 200); assert.match(await page.text(), /TRUSTED:\/watch\/channel-a\//);

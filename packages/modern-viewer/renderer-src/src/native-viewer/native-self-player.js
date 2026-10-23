@@ -3,12 +3,13 @@ import { createNativeYsmPlayerActor } from './native-player-ysm.js'
 import { createNativeBundledYsmPlayerActor } from './native-player-bundled-ysm.js'
 import { nativeSelfPlayerBinding, nativeYsmSourcePresent, NATIVE_YSM_NOTICE } from './native-ysm-state.js'
 import { nativeAppearanceChoices, nativeWebAppearanceBinding, assertNativeAppearanceIdentity } from './native-appearance.js'
+import { nativePaperAppearanceBinding, createNativePaperAppearanceActor } from './native-paper-appearance.js'
 
 // Preserve the server's own motion row, including its native tick counter.
 // Minecraft's existing walking projection has a separate input contract.
 export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Date.now(), displayPose = null } = {}) {
   if (!actor?.applyMotion) return null
-  if (actor.assetInfo?.kind === 'ysm') {
+  if (actor.assetInfo?.kind === 'ysm' || actor.assetInfo?.source === 'paper_server_appearance') {
     const self = current?.presentation?.self ?? null
     const playerUuid = actor.assetInfo.uuid?.toLowerCase()
     if (self && (typeof (self.playerUuid ?? self.uuid) !== 'string' ||
@@ -27,10 +28,11 @@ export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Dat
 // checked with the same production controller used by the scene.
 export class NativeSelfPlayerController {
   constructor (reader, { minecraftFactory = createNativePlayerActor, ysmFactory = createNativeYsmPlayerActor,
-    bundledYsmFactory = createNativeBundledYsmPlayerActor, bundledAppearanceReader = null, onChange = () => {},
+    bundledYsmFactory = createNativeBundledYsmPlayerActor, paperAppearanceFactory = createNativePaperAppearanceActor, bundledAppearanceReader = null, onChange = () => {},
     defaultAppearance = 'server', selectionStorage = null, selectionScope = 'page' } = {}) {
     this.reader = reader; this.minecraftFactory = minecraftFactory; this.ysmFactory = ysmFactory; this.onChange = onChange
     this.bundledAppearanceReader = bundledAppearanceReader; this.bundledYsmFactory = bundledYsmFactory
+    this.paperAppearanceFactory=paperAppearanceFactory
     this.ysmAssetsPresent = nativeYsmSourcePresent(reader.manifest)
     this.actor = null; this.key = null; this.revision = 0; this.disposed = false
     this.appearanceId = 'server'; this.lastInput = null; this.status = '等待当前观战玩家'
@@ -73,7 +75,7 @@ export class NativeSelfPlayerController {
     this.lastInput = [self, playerUuid, ysm]
     let binding
     try { binding = this.appearanceId === 'server'
-      ? nativeSelfPlayerBinding(self, playerUuid, ysm, { ysmAssetsPresent: this.ysmAssetsPresent })
+      ? self.paperAppearance?.available===true?nativePaperAppearanceBinding(self,playerUuid):nativeSelfPlayerBinding(self, playerUuid, ysm, { ysmAssetsPresent: this.ysmAssetsPresent })
       : nativeWebAppearanceBinding(self, playerUuid, this.appearanceId, this.reader.manifest, this.bundledAppearanceReader) }
     catch (error) { this.clear(error.message, true); return null }
     if (this.key === binding.key) return this.actor
@@ -81,7 +83,9 @@ export class NativeSelfPlayerController {
     this.actor?.dispose(); this.actor = null; this.notify(null, '本人模型正在载入')
     let candidate
     try {
-      candidate = binding.kind === 'bundled-ysm'
+      candidate = binding.kind === 'paper-original'
+        ? await this.paperAppearanceFactory(this.reader,{uuid:binding.uuid,paperAppearance:binding.paperAppearance})
+        : binding.kind === 'bundled-ysm'
         ? await this.bundledYsmFactory(this.reader, { uuid: binding.uuid, bundledAppearance: binding.bundledAppearance })
         : binding.kind === 'ysm'
         ? await this.ysmFactory(this.reader, { uuid: binding.uuid, ysm: binding.ysm, ...(binding.webAppearance ? { webAppearance: binding.webAppearance } : {}) })
@@ -94,7 +98,7 @@ export class NativeSelfPlayerController {
         throw Error('NATIVE_PLAYER_SKIN_BINDING_MISMATCH')
       }
       this.actor = candidate
-      this.notify(candidate, ['ysm', 'bundled-ysm'].includes(binding.kind) ? candidate.assetInfo.support?.notice || candidate.assetInfo.notice || NATIVE_YSM_NOTICE
+      this.notify(candidate, ['ysm', 'bundled-ysm','paper-original'].includes(binding.kind) ? candidate.assetInfo.support?.notice || candidate.assetInfo.notice || NATIVE_YSM_NOTICE
         : `1.21.1 ${candidate.assetInfo.name || candidate.assetInfo.model || binding.skin?.model}; 本人步态和部分持物已接入，完整动画未验收`)
       return candidate
     } catch (error) {
