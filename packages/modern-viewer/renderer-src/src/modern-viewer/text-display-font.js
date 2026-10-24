@@ -54,7 +54,7 @@ export class TextDisplayFont {
 export async function loadTextDisplayFont({fetcher=fetch,createImage=()=>new Image(),minecraftVersion='1.20.6'}={}) {
   const response=await fetcher('/text-display-font.json');if(!response.ok)throw Error('text_display_font_missing');
   const spec=await response.json();
-  if(!['1.20.6','1.21.1'].includes(minecraftVersion)||spec.schemaVersion!==1||spec.minecraftVersion!==minecraftVersion||spec.uniform!==false||spec.jp!==false
+  if(typeof minecraftVersion!=='string'||!/^\d{1,3}\.\d{1,3}(?:\.\d{1,3})?$/.test(minecraftVersion)||spec.schemaVersion!==1||spec.minecraftVersion!==minecraftVersion||spec.uniform!==false||spec.jp!==false
       ||!Array.isArray(spec.providers)||spec.providers.length>16)throw Error('text_display_font_version');
   const font=new TextDisplayFont();
   try {
