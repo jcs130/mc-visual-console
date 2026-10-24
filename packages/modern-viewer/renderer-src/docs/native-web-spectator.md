@@ -1,5 +1,25 @@
 # Authenticated native Web spectator
 
+## 2026-10-24 model retry and fullscreen
+
+An unchanged Paper appearance no longer latches an empty actor after its first
+HTTP/image transport failure. Retry the same verified original at two and five
+seconds, at most three attempts total, with one load in flight. Hash, identity
+and unsupported-model failures stay unavailable; switching roles or disposing
+the controller retires pending work. This fixes a reproduced failure mode; it
+does not prove that every report of an invisible player has the same cause.
+
+The normal viewer toolbar includes Fullscreen. It retains the existing scene,
+HUD and camera controls. Native fullscreen is preferred; unsupported or denied
+requests expand the current page, and Escape/disposal restores its layout and
+scrolling. Photo/OBS capture remains free of added buttons. Embedding portals
+can use `src/modern-viewer/viewer-fullscreen.js` on the iframe container so the
+mobile fallback occupies the portal viewport too, without opening a new source.
+
+The recovery, disposal and fullscreen lifecycle have Node/DOM regressions.
+NEKO and Kirito original resources are checked separately; actual browser pixels,
+mobile fullscreen and the reported production incident require live acceptance.
+
 ## 2026-10-24 loading and original player appearances
 
 Cold model dependencies prefetch through eight bounded chains. Manifest-checked

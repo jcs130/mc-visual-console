@@ -645,3 +645,7 @@ body[data-viewer-layout=docked] .corti-boss-bars{top:var(--viewer-top);width:min
 .corti-compact-minimap .corti-map-caption{text-align:center;font:10px/1.5 monospace;margin-top:4px}
 @media(max-width:900px){#corti-minimap.corti-compact-minimap{width:160px!important}}
 @media(max-width:520px){#corti-minimap.corti-compact-minimap{width:128px!important}.corti-compact-minimap .corti-map-header{gap:3px;font-size:10px}.corti-compact-minimap .corti-map-header button{width:18px;height:18px}.corti-compact-minimap .corti-map-caption{font-size:9px}}
+/* Native fullscreen keeps the whole viewer, including HUD and camera tools. */
+html:fullscreen,body:fullscreen{width:100vw;height:100dvh;overflow:hidden;background:#07131b}
+html:-webkit-full-screen,body:-webkit-full-screen{width:100vw;height:100dvh;overflow:hidden;background:#07131b}
+[data-viewer-fullscreen="window"]{position:fixed!important;inset:0!important;z-index:2147483000;width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;aspect-ratio:auto!important}

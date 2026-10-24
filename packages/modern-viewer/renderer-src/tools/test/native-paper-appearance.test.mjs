@@ -19,6 +19,30 @@ test('server model loads are retired on a body switch; an old asynchronous actor
   const pending=controller.update({uuid,entityId:12,paperAppearance:row},uuid)
   controller.clear();release(actor);assert.equal(await pending,null);assert.equal(disposed,1);assert.equal(controller.actor,null);controller.dispose()
 })
+
+test('a transient first model download can recover for the same body without a page reload',async()=>{
+  let clock=0,calls=0;const actor={assetInfo:{source:'paper_server_appearance'},dispose(){}}
+  const controller=new NativeSelfPlayerController({manifest:{assets:{}}},{now:()=>clock,paperAppearanceFactory:async()=>{
+    if(++calls===1)throw Error('PAPER_APPEARANCE_DOWNLOAD_FAILED');return actor
+  }})
+  const self={uuid,entityId:12,paperAppearance:row}
+  assert.equal(await controller.update(self,uuid),null)
+  for(let i=0;i<60;i++){clock+=10;await controller.update(self,uuid)}
+  assert.equal(calls,1,'render frames must not create a retry storm')
+  clock=2500;assert.equal(await controller.update(self,uuid),actor)
+  assert.equal(calls,2);assert.equal(controller.actor,actor);controller.dispose()
+})
+
+test('automatic model retries are bounded and never repeat an invalid original-asset hash',async()=>{
+  for(const message of ['PAPER_APPEARANCE_DOWNLOAD_FAILED','PAPER_APPEARANCE_HASH_MISMATCH']){
+    let clock=0,calls=0
+    const controller=new NativeSelfPlayerController({manifest:{assets:{}}},{now:()=>clock,paperAppearanceFactory:async()=>{calls++;throw Error(message)}})
+    const self={uuid,entityId:12,paperAppearance:row}
+    for(let i=0;i<12;i++){clock+=10000;await controller.update(self,uuid)}
+    assert.equal(calls,message.includes('HASH')?1:3)
+    controller.dispose();clock+=10000;await controller.update(self,uuid);assert.equal(calls,message.includes('HASH')?1:3)
+  }
+})
 const directory=process.env.PAPER_APPEARANCE_FIXTURES,assets=process.env.PAPER_APPEARANCE_NATIVE_ASSETS
 test('actual original NEKO and Kirito bundles render their complete geometry, correct source scales, first-person arms and live walk motion',{skip:!directory||!assets},async()=>{
   const manifest=JSON.parse(await fs.readFile(path.join(assets,'native-assets.json'),'utf8')),reader=new NativeAssetReader(manifest,p=>fs.readFile(path.join(assets,p)))

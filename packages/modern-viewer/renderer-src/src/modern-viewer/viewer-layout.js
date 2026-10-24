@@ -1,4 +1,5 @@
 import { OBS_COMPONENTS } from './obs-layout.js';
+import { installViewerFullscreen } from './viewer-fullscreen.js';
 
 const KEY = 'minecraft.viewer.layout.v1';
 const COMPONENTS = OBS_COMPONENTS.filter(row => !['hands', 'inventoryButton'].includes(row.id));
@@ -26,6 +27,8 @@ export function installViewerLayout({document, window, photo = false, overlay = 
   const views = make('div', 'viewer-toolbar-views', toolbar);
   const camera = make('div', 'viewer-toolbar-camera', toolbar);
   const tools = make('div', 'viewer-toolbar-tools', toolbar);
+  const fullButton=make('button','viewer-fullscreen-toggle',tools,'全屏');fullButton.type='button';
+  const fullscreen=installViewerFullscreen({document,window,button:fullButton});
   const left = make('aside', 'viewer-rail viewer-rail-left', document.body); roots.push(left);
   const right = make('aside', 'viewer-rail viewer-rail-right', document.body); roots.push(right);
   const previousToolbarBottom=document.body.style.getPropertyValue?.('--viewer-toolbar-bottom')??'';
@@ -109,6 +112,7 @@ export function installViewerLayout({document, window, photo = false, overlay = 
   const observer = new window.MutationObserver(adopt); observer.observe(document.body, {childList: true});
   function dispose() {
     if (disposed) return; disposed = true; observer.disconnect();toolbarObserver?.disconnect();
+    fullscreen.dispose();
     if(previousToolbarBottom)document.body.style.setProperty?.('--viewer-toolbar-bottom',previousToolbarBottom);
     else document.body.style.removeProperty?.('--viewer-toolbar-bottom');
     for (const [el, name, handler] of listeners) el.removeEventListener(name, handler);
