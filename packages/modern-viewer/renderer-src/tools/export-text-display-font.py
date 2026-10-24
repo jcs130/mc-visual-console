@@ -21,7 +21,7 @@ def main():
         files[relative]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'source':source,**({'assetSha1':sha1} if sha1 else {})}
     with zipfile.ZipFile(a.client) as z:
         version=json.loads(z.read('version.json'))['id']
-        if version not in ('1.20.6','1.21.1'):raise ValueError('Unsupported font source version')
+        if not re.fullmatch(r'\d{1,3}\.\d{1,3}(?:\.\d{1,3})?', version):raise ValueError('Unsupported font source version')
         for name in ['default.json','include/space.json','include/default.json','include/unifont.json']:
             logical='minecraft/font/'+name;source='assets/'+logical
             if logical in index['objects']:

@@ -104,7 +104,7 @@ async function copyAssetPack(pack, output) {
 
 /** Also used by direct renderer builds: updating visuals must not omit audio. */
 export async function prepareSoundAssetPack({ minecraftVersion, outputDirectory, assetRoot = SHARED_ASSET_ROOT, originalBgm = assetRoot === SHARED_ASSET_ROOT }) {
-  if (!['1.20.6', '1.21.1'].includes(minecraftVersion)) throw Error('ASSET_PACK_SOUND_VERSION_UNSUPPORTED');
+  if (typeof minecraftVersion !== 'string' || !/^\d{1,3}\.\d{1,3}(?:\.\d{1,3})?$/.test(minecraftVersion)) throw Error('ASSET_PACK_SOUND_VERSION_UNSUPPORTED');
   const output = path.resolve(outputDirectory), source = path.resolve(assetRoot);
   if (inside(source, output) || inside(output, source)) throw Error('ASSET_PACK_OUTPUT_OVERLAPS_SOURCE');
   const audio = await verifyAssetPack(`java-${minecraftVersion}-sounds`, assetRoot);
@@ -160,7 +160,7 @@ export async function prepareAssetPack({ id, outputDirectory, sounds = true, pre
     if (result.stderr) process.stderr.write(result.stderr);
   }
   const receipt = { schemaVersion: 1, minecraftVersion: primary.manifest.minecraftVersion, kind: primary.manifest.kind,
-    preparedAt: new Date().toISOString(), preset, packs: packs.map(pack => ({ id: pack.manifest.id,
+    preparedAt: new Date().toISOString(), preset, audio: {requested:sounds, status:sounds?'prepared':'disabled'}, packs: packs.map(pack => ({ id: pack.manifest.id,
       manifestSha256: pack.manifestSha256, fileCount: pack.manifest.fileCount, bytes: pack.manifest.bytes,
       source: pack.manifest.source ?? null, status: pack.copyStatus })) };
   await fs.writeFile(path.join(output, 'viewer-assets.json'), JSON.stringify(receipt, null, 2) + '\n');

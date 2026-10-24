@@ -18,6 +18,15 @@ def export_icons(jar_path: str, public_dir: str) -> int:
             for name in files
             if name.startswith('assets/minecraft/models/') and name.endswith('.json')
         }
+        # New clients reference block models directly from items/<name>.json;
+        # those items no longer have a models/item/<name>.json wrapper.
+        for name in files:
+            if name.startswith('assets/minecraft/items/') and name.endswith('.json'):
+                definition = json.loads(jar.read(name)).get('model', {})
+                if definition.get('type', '').removeprefix('minecraft:') == 'model':
+                    reference = definition.get('model', '').removeprefix('minecraft:')
+                    if reference in models:
+                        models.setdefault('item/' + name[len('assets/minecraft/items/'):-5], {'parent': reference})
         textures = {}
         resolved = {}
 
@@ -26,7 +35,11 @@ def export_icons(jar_path: str, public_dir: str) -> int:
             if name not in textures:
                 path = f'assets/minecraft/textures/{name}.png'
                 if path not in files:
-                    textures[name] = None
+                    # Paletted permutations are exported from this same JAR's
+                    # atlas rules before icons, never borrowed from another version.
+                    version = json.loads(jar.read('version.json'))['id']
+                    derived = os.path.join(public_dir, 'textures', version, *name.split('/')) + '.png'
+                    textures[name] = Image.open(derived).convert('RGBA') if os.path.isfile(derived) else None
                 else:
                     image = Image.open(BytesIO(jar.read(path))).convert('RGBA')
                     if image.height > image.width and name.startswith(('block/', 'item/')):

@@ -79,3 +79,26 @@ test('missing model settings remain unknown and connection help uses the primary
   assert.match(elements.get('#host-model').textContent,/模型未知.*设置未知/);
   assert.match(elements.get('#asset-note').textContent,/Java 1.21.1/);
 });
+
+test('a host can omit native launcher controls while preserving the Agent account and OAuth', () => {
+  renderClientState({...base, capabilities:{nativeClients:false}});
+  assert.ok(all('#accounts').some(n => n.textContent === 'Agent 游戏连接'));
+  assert.ok(all('#accounts').some(n => n.textContent === 'FIXTURE-1234'));
+  assert.equal(all('#accounts').filter(n => n.dataset.action).length, 0);
+  assert.ok(!all('#accounts').some(n => /观察者客户端|玩家客户端/.test(n.textContent)));
+});
+
+test('a connected 1.21.11 game reports viewer failure honestly and never embeds a stale scene', () => {
+  const state = {...base, connection:{...base.connection, connection:{ready:true},
+    server:{actualVersion:'1.21.11',requestedVersion:'auto'},
+    viewer:{phase:'failed',code:'VIEWER_ASSETS_MISSING',message:'缺少 Java 1.21.11 画面资源。'}},
+    links:[{href:'http://127.0.0.1:17852/'}]};
+  showView('game');renderClientState(state);
+  assert.equal(elements.get('#game-frame').getAttribute('src'), null);
+  assert.ok(all('#game-empty').some(n => n.textContent === '游戏已连接，画面加载失败'));
+  assert.ok(all('#game-empty').some(n => n.textContent.includes('1.21.11')));
+  renderClientState({...state,connection:{...state.connection,viewer:{phase:'starting'}}});
+  assert.ok(all('#game-empty').some(n => n.textContent === '游戏已连接，正在准备画面'));
+  renderClientState({...state,connection:{...state.connection,viewer:{phase:'ready'}}});
+  assert.equal(elements.get('#game-frame').getAttribute('src'), 'http://127.0.0.1:17852/');
+});

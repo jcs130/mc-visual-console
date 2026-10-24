@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
+import {nativeFaceVisibility} from '../../src/native-viewer/native-face-visibility.js'
 import { NativeTerrainQueue, createNativeRebuildWork, NativeStaticStage, isNativeRebuildRetired, nativeStaticSignature } from '../../src/native-viewer/native-rebuild-work.js'
 
 test('terrain signature includes biome grid origin, dimensions and world clamp even if quart IDs repeat', () => {
@@ -99,13 +100,13 @@ test('actual scene rebuild preserves crank history and defers live updates throu
  const queue=new NativeTerrainQueue(),actors=new Map(),worldRoot=new THREE.Group(),statics=new THREE.Group(),created=[],disposed=new Map(),commits=[]
  const state={stateId:1,name:'create:hand_crank',properties:{facing:'north'}},node=(x,speed=32)=>({stateId:1,position:{x,y:0,z:0},speed})
  let hold=false,release,entered
- const loader={reader:{manifest:{sources:[{name:'create-1.21.1-6.0.10.jar',sha256:CREATE_JAR_SHA256}]}},block:async()=>new THREE.Group(),model:async()=>new THREE.Group(),releaseModel(){}}
+ const loader={reader:{manifest:{sources:[{name:'create-1.21.1-6.0.10.jar',sha256:CREATE_JAR_SHA256}]}},prefetchBlockModels:async()=>{},block:async()=>new THREE.Group(),model:async()=>new THREE.Group(),releaseModel(){}}
  const create=async(...args)=>{const actor=await createKineticActor(...args);created.push(actor);const original=actor.dispose;actor.dispose=()=>{disposed.set(actor,(disposed.get(actor)||0)+1);original()};if(hold&&actor.position.x===1){entered?.();await new Promise(r=>release=r)}return actor}
- const run=Function('THREE','terrainQueue','actors','worldRoot','statics','loader','createKineticActor','stageNativeKineticActors','nativeStaticSignature','NativeStaticStage','createNativeRebuildWork','commits',`
+ const run=Function('THREE','terrainQueue','actors','worldRoot','statics','loader','createKineticActor','stageNativeKineticActors','nativeStaticSignature','NativeStaticStage','createNativeRebuildWork','commits','nativeFaceVisibility',`
  let generation=1,disposed=false,current={},lastGroupSignature=null,staticIssues=[],unknown=[],drawn=0,terrainRaycast,lastCollision,firstTerrainRender;
  const terrainPhases={},colormaps={},camera={position:{lengthSq:()=>1}},viewMode='third',pointKey=p=>JSON.stringify(p),removeActor=a=>a.dispose(),roomVisibility={stage:s=>commits.push(s.biomeSeed)},publishDiagnostics=()=>{},fail=e=>{throw e},createNativeEnvironment=()=>({clear(){}}),createNativeTerrainRaycast=()=>null;
- ${rebuild};return rebuildLatest`)(THREE,queue,actors,worldRoot,statics,loader,create,stageNativeKineticActors,nativeStaticSignature,NativeStaticStage,createNativeRebuildWork,commits)
- const snapshot=(id,nodes)=>({epoch:1,states:[state],groups:[],kinetic:nodes,biomeSeed:id})
+ ${rebuild};return rebuildLatest`)(THREE,queue,actors,worldRoot,statics,loader,create,stageNativeKineticActors,nativeStaticSignature,NativeStaticStage,createNativeRebuildWork,commits,nativeFaceVisibility)
+ const snapshot=(id,nodes)=>({epoch:1,bounds:{minX:-1,maxX:5,minY:-1,maxY:1,minZ:-1,maxZ:1},states:[state],groups:[],neighbors:[],kinetic:nodes,biomeSeed:id})
  queue.request(snapshot('initial',[node(0),node(4)]));await run()
  const crank=actors.get('0,0,0'),removed=actors.get('4,0,0');for(let i=0;i<10;i++)crank.tick()
  const history={...crank.motion};queue.request(snapshot('unrelated',[node(0),node(4)]));await run()

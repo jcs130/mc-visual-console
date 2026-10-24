@@ -20,15 +20,15 @@ importers:
       mineflayer:
         specifier: '>=4.37.0'
         version: 4.39.0
+      prismarine-block:
+        specifier: 1.23.0
+        version: 1.23.0(prismarine-registry@1.12.0)
       prismarine-chunk:
         specifier: ^1.41.0
         version: 1.41.0
-      prismarine-block:
-        specifier: 1.23.0
-        version: 1.23.0
       prismarine-viewer:
         specifier: 1.33.0
-        version: 1.33.0
+        version: 1.33.0(prismarine-registry@1.12.0)
       prismarine-world:
         specifier: ^3.7.0
         version: 3.7.0
@@ -47,10 +47,13 @@ importers:
         version: 22.20.4
       '@types/ws':
         specifier: ^8.5.12
-        version: 8.18.1
+        version: 8.18.2
       esbuild:
         specifier: ^0.24.0
         version: 0.24.0
+      prismarine-item:
+        specifier: 1.18.0
+        version: 1.18.0
       tsx:
         specifier: ^4.19.0
         version: 4.23.15
@@ -672,8 +675,8 @@ packages:
   '@types/readable-stream@4.0.24':
     resolution: {integrity: sha512-NRvUNC/JFGPJvqdAfEve8oginbM6V08u5NzLWpG8MwA2kTPOLnqk+wpwuPT+mp3aUsxyuT6m2gnrPuHYCruzEg==}
 
-  '@types/ws@8.18.1':
-    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@vitest/expect@2.1.0':
     resolution: {integrity: sha512-N3/xR4fSu0+6sVZETEtPT1orUs2+Y477JOXTcU3xKuu3uBlsgbD7/7Mz2LZ1Jr1XjwilEWlrIgSCj4N1+5ZmsQ==}
@@ -2054,7 +2057,7 @@ snapshots:
     dependencies:
       '@types/node': 22.20.4
 
-  '@types/ws@8.18.1':
+  '@types/ws@8.18.2':
     dependencies:
       '@types/node': 22.20.4
 
@@ -2321,7 +2324,7 @@ snapshots:
     dependencies:
       '@types/cors': 2.8.19
       '@types/node': 22.20.4
-      '@types/ws': 8.18.1
+      '@types/ws': 8.18.2
       accepts: 1.3.8
       cookie: 0.7.2
       cors: 2.8.6
@@ -2858,6 +2861,18 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  prismarine-block@1.23.0(prismarine-registry@1.12.0):
+    dependencies:
+      minecraft-data: 3.116.0
+      prismarine-biome: 1.4.0(prismarine-registry@1.12.0)
+      prismarine-chat: 1.13.0
+      prismarine-item: 1.18.0
+      prismarine-nbt: 2.8.0
+      prismarine-registry: 1.12.0
+    transitivePeerDependencies:
+      - prismarine-registry
+      - supports-color
+
   prismarine-chat@1.13.0:
     dependencies:
       debug: 4.4.3
@@ -2870,7 +2885,7 @@ snapshots:
   prismarine-chunk@1.41.0:
     dependencies:
       prismarine-biome: 1.4.0(prismarine-registry@1.12.0)
-      prismarine-block: 1.23.0
+      prismarine-block: 1.23.0(prismarine-registry@1.12.0)
       prismarine-nbt: 2.8.0
       prismarine-registry: 1.12.0
       smart-buffer: 4.2.0
@@ -2919,18 +2934,18 @@ snapshots:
   prismarine-registry@1.12.0:
     dependencies:
       minecraft-data: 3.116.0
-      prismarine-block: 1.23.0
+      prismarine-block: 1.23.0(prismarine-registry@1.12.0)
       prismarine-nbt: 2.8.0
     transitivePeerDependencies:
       - supports-color
 
-  prismarine-viewer@1.33.0:
+  prismarine-viewer@1.33.0(prismarine-registry@1.12.0):
     dependencies:
       '@tweenjs/tween.js': 23.1.3
       compression: 1.8.2
       express: 4.22.3
       minecraft-data: 3.116.0
-      prismarine-block: 1.23.0
+      prismarine-block: 1.23.0(prismarine-registry@1.12.0)
       prismarine-chunk: 1.41.0
       prismarine-world: 3.7.0
       socket.io: 4.8.3
@@ -2940,6 +2955,7 @@ snapshots:
       vec3: 0.1.7
     transitivePeerDependencies:
       - bufferutil
+      - prismarine-registry
       - supports-color
       - utf-8-validate
 
