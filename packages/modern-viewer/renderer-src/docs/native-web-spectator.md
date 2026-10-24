@@ -1,5 +1,18 @@
 # Authenticated native Web spectator
 
+## 2026-10-24 delivery jitter and original body heading
+
+The display sampler no longer resets the camera for every received interval
+over 250ms. The bounded cadence buffer learns intervals up to one second, uses
+at most 500ms of received-pose delay, and still resets for an actual 1.5s gap,
+teleport, identity or reset-counter change. It holds the last observed endpoint
+rather than predicting missing movement. Fast 50ms sources keep their old path.
+Body/head angles use the same shortest-angle sample interval as the actor and
+camera instead of replacing the model's heading with the newest raw packet.
+Authoritative snapshots, server timestamps, identity and freshness checks are
+unchanged. Tests reproduce both cloud-cadence resets and heading discontinuity;
+the reported production pixels still require live confirmation after deployment.
+
 ## 2026-10-24 model retry and fullscreen
 
 An unchanged Paper appearance no longer latches an empty actor after its first

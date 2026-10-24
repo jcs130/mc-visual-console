@@ -58,6 +58,10 @@ test('actual original NEKO and Kirito bundles render their complete geometry, co
     const now=Date.now(),self={uuid:proof.playerUuid,entityId:proof.entityId,velocity:{x:.1,y:0,z:0},onGround:true,health:20,crouching:false,mainArm:'right',bodyYaw:.4,headYaw:.4}
     const frame={epoch:1,pose,selfPlayer:self,motion:{schemaVersion:1,source:'same_player_physics_tick',tickMs:50,epoch:1,tick:3,sampledAt:now},presentation:{available:true,source:'paper_server_observation',playerUuid:proof.playerUuid,sampledAt:now,self}}
     const motion=actor.applyMotion({current:frame,now});assert.equal(motion.available,true);assert.equal(motion.base,'walk');assert.deepEqual(actor.root.position.toArray(),[100,67,-200]);assert.equal(actor.root.visible,true)
+    actor.applyPose({...pose,bodyYaw:.7,headYaw:.9})
+    const stale=actor.applyMotion({current:frame,now:now+2000})
+    assert.equal(stale.available,false);assert.match(stale.reason,/STALE/)
+    assert.equal(actor.root.rotation.y,.7,'stale animation may not snap the body back to raw head yaw')
     actor.dispose();actor.dispose()
     await assert.rejects(readPaperAppearance({...binding,bundleSha256:'f'.repeat(64)},{resolveUrl:p=>'http://127.0.0.1/'+p,fetcher:async()=>new Response(bytes)}),/HASH_MISMATCH/)
   }
