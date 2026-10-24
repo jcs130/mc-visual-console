@@ -6,7 +6,7 @@ import { BundledAppearanceReader } from '../../src/native-viewer/native-bundled-
 import { createNativeBundledYsmPlayerActor } from '../../src/native-viewer/native-player-bundled-ysm.js'
 import { applyNativeSelfPlayerMotion, NativeSelfPlayerController } from '../../src/native-viewer/native-self-player.js'
 import { createNativeBedrockModel } from '../../src/native-viewer/native-entity-model-bedrock.js'
-import { createBundledYsmAnimation } from '../../src/native-viewer/native-bundled-ysm-motion.js'
+import { createBundledYsmAnimation,bundledYsmMotionInput } from '../../src/native-viewer/native-bundled-ysm-motion.js'
 import { mirrorInventoryPlayer, poseInventoryPlayer } from '../../src/modern-viewer/inventory-player-preview.js'
 const uuid = '01234567-89ab-cdef-0123-456789abcdef'
 const other = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -23,6 +23,15 @@ async function originals() {
   return { reader, actor }
 }
 const close = (a, b, eps = 1e-7) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`)
+
+test('Paper observed eating uses the actual item and active hand rather than dropping its animation',()=>{
+ const f=frame(3050,{mainArm:'right',handAnimation:{source:'paper_server_observation',playerUuid:uuid,entityId:42,sampledAt:3050,
+  mainArm:'right',usingItem:true,activeHand:'offhand',use:{source:'paper_use_item_state',kind:'eat',name:'minecraft:apple',hand:'offhand',durationTicks:32,startedAt:3000}}})
+ f.presentation.source='paper_server_observation';f.presentation.inventory={playerUuid:uuid,windowId:0,hotbarStart:36,offhandSlot:45,selectedHotbarSlot:0,
+  slots:Array.from({length:46},(_,slot)=>({slot,item:slot===45?{name:'minecraft:apple',count:1,snbt:'{id:"minecraft:apple",count:1}'}:null}))}
+ assert.equal(bundledYsmMotionInput(f,uuid,3050).useKind,'eat');assert.equal(bundledYsmMotionInput(f,uuid,3050).activeHand,'offhand')
+ f.presentation.self.handAnimation.use.name='minecraft:bread';assert.equal(bundledYsmMotionInput(f,uuid,3050).useKind,undefined)
+})
 
 test('actual bundled YSM preserves the interpolated display heading through its animation controller', { skip: !catalog }, async () => {
  const {actor}=await originals()

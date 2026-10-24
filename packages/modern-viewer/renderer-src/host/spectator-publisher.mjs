@@ -30,9 +30,10 @@ function sourceHeader(value) {
  */
 export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId, token,
   WebSocket: Socket = globalThis.WebSocket, fetch: fetcher = globalThis.fetch,
-  pollIntervalMs = 3000, readyTimeoutMs = 12000 }) {
+  pollIntervalMs = 3000, readyTimeoutMs = 12000, signal }) {
   const { source, socket } = spectatorAddresses(sourceUrl, portalUrl, channelId);
   if (!/^pub_[A-Za-z0-9_-]{43}$/.test(token ?? '') || typeof Socket !== 'function') throw Error('SPECTATOR_PUBLISHER_CONFIGURATION');
+  if(signal?.aborted)throw Error('SPECTATOR_PUBLISHER_CANCELLED');
   const ws = new Socket(socket), requests = new Map(), waits = new Map();
   let closed = false, ready = false, binding = null, poll = null, polling = false, lastError = null;
   let transferredRawBytes = 0, transferredWireBytes = 0;
@@ -43,6 +44,7 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
   function close(reason = 'SPECTATOR_PUBLISHER_CLOSED') {
     if (closed) return;
     closed = true; clearInterval(poll); clearTimeout(deadline);
+    signal?.removeEventListener('abort',abort);
     for (const controller of requests.values()) controller.abort(); requests.clear();
     for (const wait of waits.values()) { clearTimeout(wait.timer); wait.reject(Error(reason)); } waits.clear();
     if (ws.readyState === 0 || ws.readyState === 1) ws.close(1000, 'publisher closed');
@@ -51,6 +53,9 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
   }
   const deadline = setTimeout(() => close('SPECTATOR_PUBLISHER_READY_TIMEOUT'), readyTimeoutMs);
   deadline.unref?.();
+  const abort=()=>close('SPECTATOR_PUBLISHER_CANCELLED');
+  signal?.addEventListener('abort',abort,{once:true});
+  if(signal?.aborted)abort();
   async function readStatus() {
     const response = await fetcher(new URL('status.json', source), { redirect: 'error', signal: AbortSignal.timeout(6000) });
     if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0] !== 'application/json') throw Error('SPECTATOR_SOURCE_STATUS_UNAVAILABLE');

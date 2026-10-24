@@ -25,6 +25,8 @@ export class PaperObservedPlayer extends EventEmitter {
     this._client.state = 'observation'; this._client.write = () => { throw Error('PAPER_OBSERVATION_READ_ONLY'); };
     this.players = {}; this.entities = {}; this.game = {}; this.settings = {}; this.entity = null;
     this.events = new EventEmitter(); this.generation = null; this.wireSequence = 0; this.sequence = 0; this.closed = false;
+    this.inventorySignature=null;this.inventoryRows=null;this.lastPresentationAt=-Infinity;
+    this.swingSequence=0;this.attackProgress=0;this.swing=null;
     this.resolveItemStack = wire => { const item = vanillaWireItem(wire, registry); return item?.snbt ? { available: true, item } : { available: false, reason: 'PAPER_ITEM_COMPONENTS_UNAVAILABLE' }; };
     this.resolveEffect = id => { const name = registry.effects?.[id]?.name; return name ? 'minecraft:' + name.replace(/[A-Z]/g,(c,i)=>(i?'_':'')+c.toLowerCase()) : null; };
   }
@@ -39,10 +41,22 @@ export class PaperObservedPlayer extends EventEmitter {
       || !Number.isInteger(p.world.minY) || !Number.isInteger(p.world.height) || p.world.height < 16 || p.world.height > 4096
       || !Array.isArray(receipt.packets) || receipt.packets.length > 4096) throw Error('PAPER_OBSERVATION_IDENTITY_OR_STATE');
     const changed = this.generation !== receipt.generation || this.game.worldUuid !== p.world.uuid || this.entity?.id !== p.entityId;
-    this.latest = structuredClone(p);
+    const previous=this.latest,inventorySignature=JSON.stringify(p.inventory??null);
+    const inventoryChanged=changed||inventorySignature!==this.inventorySignature;
+    if(inventoryChanged){this.inventorySignature=inventorySignature;this.inventoryRows=null;}
+    if(changed){this.swingSequence=0;this.attackProgress=0;this.swing=null;}
+    // The observed swing progress, not unrelated chunk/entity packet sequence,
+    // owns the action token. Otherwise a running attack restarts every sample.
+    const attack=Number.isFinite(p.attackAnim)?p.attackAnim:0;
+    if(attack>0){
+      if(this.attackProgress<=0||attack+.2<this.attackProgress)this.swingSequence++;
+      this.swing={hand:'mainhand',sequence:this.swingSequence,startedAt:p.observedAt-attack*300,durationTicks:6};
+    }else this.swing=null;
+    this.attackProgress=attack;this.latest = structuredClone(p);
     this.entity = { id: p.entityId, uuid: this.uuid, username: this.username, position: { ...p.position }, velocity: { ...p.velocity },
       yaw: Math.PI - p.yawDegrees * Math.PI / 180, pitch: -p.pitchDegrees * Math.PI / 180, eyeHeight: p.eyeHeight,
-      onGround: p.onGround, crouching: p.sneaking, isInWater: p.inWater, isValid: true, attributes: {} };
+      bodyYaw: Math.PI - p.bodyYaw * Math.PI / 180, headYaw: Math.PI - p.headYaw * Math.PI / 180,
+      onGround: p.onGround, crouching: p.sneaking, isInWater: p.inWater, sprinting:p.sprinting, flying:p.flying,isValid: true, attributes: {} };
     this.health = p.health; this.food = p.food; this.experience = { level: p.experienceLevel, progress: p.experienceProgress };
     this.quickBarSlot = p.selectedHotbarSlot; this.game = { dimension: p.world.name, worldUuid: p.world.uuid };
     // No forged skin profile. An unavailable skin remains unavailable; an
@@ -69,7 +83,11 @@ export class PaperObservedPlayer extends EventEmitter {
       this.feed(packet.name, packet.params); this._client.emit(packet.name, packet.params); this.wireSequence = row.sequence;
     }
     this.feed('update_time', { age: BigInt(p.gameTime), time: BigInt(p.dayTime) });
-    this.emit('physicsTick'); this.events.emit('presentation');
+    this.emit('physicsTick');
+    // Keep the existing low-frequency HUD/inventory path; only actual changes
+    // bypass it. Faster pose delivery must not resend 46 SNBT slots at 20Hz.
+    const urgent=changed||inventoryChanged||p.selectedHotbarSlot!==previous?.selectedHotbarSlot||p.health!==previous?.health||p.food!==previous?.food;
+    if(urgent||this.now()-this.lastPresentationAt>=200){this.lastPresentationAt=this.now();this.events.emit('presentation');}
     return { changed, after: this.wireSequence, generation: this.generation };
   }
   decode(data, state) {
@@ -82,11 +100,12 @@ export class PaperObservedPlayer extends EventEmitter {
   }
   presentation() {
     const p = this.latest; if (!p) return null;
-    const rows = Array.isArray(p.inventory) && p.inventory.length === 46 ? p.inventory.map(({slot,item}) => {
+    const rows = this.inventoryRows??(Array.isArray(p.inventory) && p.inventory.length === 46 ? p.inventory.map(({slot,item}) => {
       if (!Number.isInteger(slot) || slot < 0 || slot > 45 || item && (!/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(item.name ?? '')
         || !Number.isInteger(item.count) || item.count < 1 || typeof item.snbt !== 'string' || item.snbt.length > 65536)) throw Error('PAPER_INVENTORY_INVALID');
       return { slot, item: item ? { ...item } : null };
-    }) : null;
+    }) : null);
+    this.inventoryRows=rows;
     const equipment = rows ? { source: PAPER_OBSERVATION_MODE, playerUuid: this.uuid, entityId: p.entityId,
       mainHand: rows[36 + p.selectedHotbarSlot]?.item ?? null, offHand: rows[45]?.item ?? null,
       head: rows[5]?.item ?? null, chest: rows[6]?.item ?? null, legs: rows[7]?.item ?? null, feet: rows[8]?.item ?? null } : null;
@@ -98,17 +117,21 @@ export class PaperObservedPlayer extends EventEmitter {
       oxygen: Number.isFinite(p.airSupply) && p.maxAirSupply > 0 ? Math.max(0, Math.min(20, p.airSupply * 20 / p.maxAirSupply)) : null,
       bodyYaw: Math.PI - p.bodyYaw * Math.PI / 180, headYaw: Math.PI - p.headYaw * Math.PI / 180,
       usingItem: p.usingItem, useItemRemainingTicks: p.useItemRemainingTicks, attackAnim: p.attackAnim,
-      equipment, handAnimation: { source: PAPER_OBSERVATION_MODE, playerUuid: this.uuid, entityId: p.entityId, sampledAt: this.now(),
-        mainArm: p.mainArm, usingItem: p.usingItem, crouching: p.sneaking, spinAttack: p.spinAttack === true,
-        use: p.usingItem && ['eat','drink'].includes(p.useItemAnimation) && Number.isInteger(p.useItemDurationTicks) && p.useItemDurationTicks > 0
-          ? { source: 'paper_use_item_state', hand: p.activeHand, name: p.activeItemName, kind: p.useItemAnimation,
-            durationTicks: p.useItemDurationTicks, startedAt: this.now() - (p.useItemDurationTicks-p.useItemRemainingTicks)*50 } : null,
-        swing: p.attackAnim > 0 ? { hand: 'mainhand', sequence: this.wireSequence, startedAt: this.now() - p.attackAnim * 300, durationTicks: 6 } : null } };
+      equipment, handAnimation:this.handState() };
     return { schemaVersion: 1, playerUuid: this.uuid, profile: 'vanilla_1.21.1', self,
       inventory: this.scope === 'owner' && rows ? { playerUuid: this.uuid, windowId: 0, selectedHotbarSlot: p.selectedHotbarSlot,
         inventoryStart: 9, hotbarStart: 36, offhandSlot: 45, slots: rows, carried: null } : null,
       nativeMenu: null, renderRegistries: p.renderRegistries?.source === 'server_builtin_registries' ? p.renderRegistries : null,
       nativeState: { available: true, source: PAPER_OBSERVATION_MODE } };
+  }
+  handState() {
+    const p=this.latest;if(!p)return null;
+    return {source:PAPER_OBSERVATION_MODE,playerUuid:this.uuid,entityId:p.entityId,sampledAt:p.observedAt,
+      mainArm:p.mainArm,usingItem:p.usingItem,activeHand:p.activeHand,crouching:p.sneaking,spinAttack:p.spinAttack===true,
+      use:p.usingItem&&['eat','drink'].includes(p.useItemAnimation)&&Number.isInteger(p.useItemDurationTicks)&&p.useItemDurationTicks>0
+        ?{source:'paper_use_item_state',hand:p.activeHand,name:p.activeItemName,kind:p.useItemAnimation,
+          durationTicks:p.useItemDurationTicks,startedAt:p.observedAt-(p.useItemDurationTicks-p.useItemRemainingTicks)*50}:null,
+      swing:this.swing&&{...this.swing}};
   }
   close() { if (this.closed) return; this.closed = true; this.entity = null; this.latest = null; this.emit('end'); this.events.removeAllListeners(); this._client.removeAllListeners(); this.removeAllListeners(); }
 }

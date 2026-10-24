@@ -6,13 +6,28 @@ import { playerCamera } from './player-camera.js'
 // camera stays at (0,0,0), outside the new body's terrain, with only the HUD visible.
 export class NativeOrbitCameraAnchor {
   constructor () { this.reset() }
-  reset () { this.pending = true }
+  reset () { this.pending = true; this.previous = null }
+  rebase (pose) {
+    if (!pose || !['x','y','z'].every(key => Number.isFinite(pose[key]))) return false
+    this.pending = false; this.previous = {x:pose.x,y:pose.y,z:pose.z}; return true
+  }
   initialize ({ pose, mode, camera, controls }) {
     if (!this.pending || !pose || !['x', 'y', 'z', 'yaw', 'pitch'].every(key => Number.isFinite(pose[key]))) return false
     const view = playerCamera(pose, mode === 'region' ? 'region' : 'third')
     controls.target.fromArray(view.target); camera.position.fromArray(view.position); controls.update()
-    this.pending = false
+    this.rebase(pose)
     return true
+  }
+  // Manual third person changes the orbit, not its tracked body. Translate
+  // camera AND aim from the displayed root, retaining the viewer's pan/zoom.
+  // Region mode remains an explicitly stationary world camera.
+  follow ({ pose, mode, camera, controls }) {
+    if (mode !== 'third' || this.pending || !pose || !['x','y','z'].every(key => Number.isFinite(pose[key]))) return false
+    if (this.previous) for (const axis of ['x','y','z']) {
+      const delta = pose[axis] - this.previous[axis]
+      camera.position[axis] += delta; controls.target[axis] += delta
+    }
+    this.rebase(pose); return true
   }
 }
 

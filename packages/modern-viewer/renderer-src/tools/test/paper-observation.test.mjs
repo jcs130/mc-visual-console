@@ -63,3 +63,28 @@ test('actual biome hash, villager registries and oxygen are retained without exp
  const p=o.presentation();assert.equal(p.self.oxygen,10);assert.deepEqual(p.renderRegistries,r.player.renderRegistries);assert.equal(p.self.spinAttack,false);
  assert.ok(!Object.hasOwn(r.player.world,'seed'));o.close();
 });
+
+test('20Hz observed poses retain fast hands/head while unchanged full inventory stays at 5Hz',()=>{
+ let now=100000,poses=0,presentations=0;
+ const o=new PaperObservedPlayer({playerUuid:uuid,name:'ObservedAgent',registry:{},registrySha256:hash,decodePacket:bytes=>JSON.parse(bytes),now:()=>now});
+ o.on('physicsTick',()=>poses++);o.events.on('presentation',()=>presentations++);
+ for(let i=0;i<20;i++){
+  const r=receipt();r.player.observedAt=now;r.player.bodyYaw=i*3;r.player.headYaw=i*4;
+  r.player.attackAnim=i>=2&&i<7?(i-1)/6:0;r.player.sprinting=true;
+  o.ingest(r);const p=o.presentation();
+  assert.equal(p.self.handAnimation.sampledAt,now);assert.equal(o.entity.bodyYaw,Math.PI-i*3*Math.PI/180);
+  now+=50;
+ }
+ assert.equal(poses,20);assert.equal(presentations,5);
+ const changed=receipt();changed.player.observedAt=now;changed.player.inventory[9].item.count=2;
+ o.ingest(changed);assert.equal(presentations,6);assert.equal(o.presentation().inventory.slots[9].item.count,2);o.close();
+});
+
+test('one observed attack keeps its action token across unrelated packets and advances only on a new swing',()=>{
+ const o=observer(),r=receipt();r.player.observedAt=100000;r.player.attackAnim=.2;o.ingest(r);
+ const first=o.handState().swing.sequence;
+ const next=receipt();next.player.observedAt=100050;next.player.attackAnim=.4;next.packets=[{sequence:1,data:packet('animation')}];o.ingest(next);
+ assert.equal(o.handState().swing.sequence,first);assert.equal(o.handState().swing.startedAt,99930);
+ next.packets=[];next.player.attackAnim=0;o.ingest(next);assert.equal(o.handState().swing,null);
+ next.player.attackAnim=.2;o.ingest(next);assert.equal(o.handState().swing.sequence,first+1);o.close();
+});

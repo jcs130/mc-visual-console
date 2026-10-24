@@ -490,15 +490,19 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         }
         return { uuid: uuid.toLowerCase(), name: username, entityId: entity.id, position: vector(entity.position),
           yaw: finiteNumber(entity.yaw), pitch: finiteNumber(entity.pitch), eyeHeight: finiteNumber(entity.eyeHeight),
+          ...(Number.isFinite(entity.bodyYaw)?{bodyYaw:entity.bodyYaw}:{}),...(Number.isFinite(entity.headYaw)?{headYaw:entity.headYaw}:{}),
           health: finiteNumber(bot.health), maxHealth: maximumHealth(entity), food: finiteNumber(bot.food),
           onGround: typeof entity.onGround === 'boolean' ? entity.onGround : null,
+          ...(typeof entity.sprinting==='boolean'?{sprinting:entity.sprinting}:{}),...(typeof entity.flying==='boolean'?{flying:entity.flying}:{}),
+          ...(typeof entity.isInWater==='boolean'?{inWater:entity.isInWater}:{}),
           surfaceBlock: audioPack.metadata.blocks ? states.get(world.stateIdAt({x:Math.floor(entity.position.x),y:Math.floor(entity.position.y-.2),z:Math.floor(entity.position.z)}))?.name ?? null : null,
           sneaking: typeof entity.crouching === 'boolean' ? entity.crouching : null, velocity: vector(entity.velocity), skin,
           ...(appearanceSource?{paperAppearance:appearanceSource.binding({uuid:uuid.toLowerCase(),entityId:entity.id})}:{}),
           ...(Object.hasOwn(nativeSelf ?? {}, 'ysm') ? { ysm: nativeSelf.ysm } : {}) }
       }
       const playerPose = player => player && [player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)
-        ? { ...player.position, yaw: player.yaw, pitch: player.pitch, eyeHeight: player.eyeHeight } : world.pose
+        ? { ...player.position, yaw: player.yaw, pitch: player.pitch, eyeHeight: player.eyeHeight,
+          ...(Number.isFinite(player.bodyYaw)?{bodyYaw:player.bodyYaw}:{}),...(Number.isFinite(player.headYaw)?{headYaw:player.headYaw}:{}) } : world.pose
       const identity = () => ({ player: username, confirmed: identityConfirmed, playerUuid: bot._client.uuid || null, entityId: bot.entity?.id ?? null, epoch: world.epoch, profile: ownProfile(),viewerBuild })
       const sendIdentity = client => {
         const value = identity(), signature = JSON.stringify(value)
@@ -658,7 +662,9 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const motion = { ...state, epoch: world.epoch }
         if (!clients.size || ![player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)) return
         const currentPose = playerPose(player)
-        const value = { type: 'motion', epoch: world.epoch, playerUuid: player.uuid, pose: currentPose, motion,
+        const selfMotion=Object.fromEntries(['uuid','name','entityId','velocity','onGround','health','food','sneaking','sprinting','flying','inWater','bodyYaw','headYaw']
+          .filter(key=>Object.hasOwn(player,key)).map(key=>[key,player[key]]))
+        const value = { type: 'motion', epoch: world.epoch, playerUuid: player.uuid, pose: currentPose, motion,selfPlayer:selfMotion,
           handAnimation: nativeStream.handState?.() ?? null }
         const encoded=encodeNativeWorldEvent(value)
         for (const client of clients) {

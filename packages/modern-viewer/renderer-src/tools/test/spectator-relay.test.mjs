@@ -44,7 +44,7 @@ async function fixture(t, options = {}) {
   const portalUrl = await listening(portal);
   let publisher;
   t.after(async () => { publisher?.close(); await relay.close(); await Promise.all([stop(portal), stop(source)]); });
-  const start = async () => (publisher = await startSpectatorPublisher({ sourceUrl, portalUrl, channelId: 'channel-a', token, pollIntervalMs: 1000 }));
+  const start = async (options={}) => (publisher = await startSpectatorPublisher({ sourceUrl, portalUrl, channelId: 'channel-a', token, pollIntervalMs: 1000,...options }));
   const get = (route, init = {}) => fetch(new URL('watch/channel-a/' + route, portalUrl), { headers: { cookie: 'owner=A' }, ...init });
   return { sourceUrl, portalUrl, relay, status, data, reads, streams, start, get, revoke: () => { allowed = false; }, revokeViewer: () => { viewAllowed = false; } };
 }
@@ -57,6 +57,13 @@ test('publisher only reads explicit loopback sources and uses TLS for remote sit
   assert.equal(spectatorAddresses('http://127.0.0.1:3007/', 'https://mc.example.org', 'channel-a').socket.href, 'wss://mc.example.org/api/v1/live/channel-a/source');
   for (const source of ['http://192.168.3.163/', 'http://localhost/', 'http://127.0.0.1/?secret=x', 'http://user:pass@127.0.0.1/']) assert.throws(() => spectatorAddresses(source, 'https://mc.example.org', 'channel-a'));
   assert.throws(() => spectatorAddresses('http://127.0.0.1:3007/', 'http://mc.example.org', 'channel-a'));
+});
+
+test('source retirement aborts a pending publisher handshake without leaving a late socket',async t=>{
+ const f=await fixture(t),controller=new AbortController();controller.abort();
+ await assert.rejects(f.start({signal:controller.signal}),/CANCELLED/);assert.equal(f.reads.length,0);
+ const live=new AbortController(),publisher=await f.start({signal:live.signal});live.abort();
+ const result=await publisher.done;assert.equal(result.reason,'SPECTATOR_PUBLISHER_CANCELLED');assert.equal(publisher.state().connected,false);
 });
 test('binary envelope preserves exact bytes and rejects malformed or oversized chunks', () => {
   const data = Buffer.from([0, 255, 4, 9]), value = decodeChunk(encodeChunk(13, 7, data));

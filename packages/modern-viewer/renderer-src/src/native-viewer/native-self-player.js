@@ -18,10 +18,15 @@ export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Dat
         (self.playerUuid ?? self.uuid).toLowerCase() !== playerUuid)) throw Error('NATIVE_YSM_MOTION_IDENTITY_MISMATCH')
     // The bundled model derives heading from pose. Keep its animation layer
     // from overwriting the received, interpolated actor/camera orientation.
-    const presentedSelf=displayPose&&self?{...self,
-      ...(Number.isFinite(displayPose.bodyYaw)?{bodyYaw:displayPose.bodyYaw}:{}),
-      ...(Number.isFinite(displayPose.headYaw)?{headYaw:displayPose.headYaw}:{})}:self
-    const frame=displayPose?{...current,pose:displayPose,
+    const fast=current?.selfPlayer
+    const observed=fast?.uuid===playerUuid&&Number.isSafeInteger(self?.entityId)&&fast.entityId===self.entityId
+      ?Object.fromEntries(['velocity','onGround','health','sneaking','sprinting','flying','inWater'].filter(key=>Object.hasOwn(fast,key)).map(key=>[key,fast[key]])):{}
+    const hasDisplay=!!displayPose||Object.keys(observed).length>0
+    const presentedSelf=hasDisplay&&self?{...self,...observed,
+      ...(typeof observed.sneaking==='boolean'?{crouching:observed.sneaking}:{}),
+      ...(Number.isFinite(displayPose?.bodyYaw)?{bodyYaw:displayPose.bodyYaw}:{}),
+      ...(Number.isFinite(displayPose?.headYaw)?{headYaw:displayPose.headYaw}:{})}:self
+    const frame=hasDisplay?{...current,...(displayPose?{pose:displayPose}:{}),
       ...(current.presentation?{presentation:{...current.presentation,self:presentedSelf}}:{})}:current
     return actor.applyMotion({ self:presentedSelf, current:frame, dt: Number.isFinite(dt) ? Math.max(0, Math.min(.1, dt)) : 0, now })
   }

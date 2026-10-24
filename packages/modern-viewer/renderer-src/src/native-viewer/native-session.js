@@ -8,7 +8,7 @@ const ownConnections = new Set(['live_same_player_connection', 'numen_server_bod
 export function createNativeSession(registrySha256, { entityRegistrySha256 = null } = {}) {
   if (!SHA.test(registrySha256 || '')) throw Error('NATIVE_WORLD_REGISTRY_HASH_INVALID')
   if (entityRegistrySha256 !== null && !SHA.test(entityRegistrySha256)) throw Error('NATIVE_ENTITY_REGISTRY_HASH_INVALID')
-  let identity = null, epoch = null, ready = false, effectSequence=-1
+  let identity = null, epoch = null, ready = false, effectSequence=-1,entityId=null
   return {
     receive(value) {
       if (!value || typeof value !== 'object') throw Error('NATIVE_WORLD_EVENT_INVALID')
@@ -18,6 +18,7 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
         const changed = identity && (identity.player !== value.player || identity.playerUuid !== value.playerUuid || identity.mode !== value.mode || identity.entityId !== value.entityId)
         if (changed) { ready = false; epoch = null }
         identity = { ...value, playerUuid: value.playerUuid?.toLowerCase() || null }
+        entityId=Number.isSafeInteger(value.entityId)?value.entityId:null
         return { kind: 'identity', value: identity, reset: Boolean(changed) }
       }
       if (value.type === 'unavailable' || value.type === 'waiting') {
@@ -51,6 +52,7 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
         if (epoch !== null && value.epoch < epoch) return { kind: 'ignored' }
       } else if (!['frame', 'motion', 'presentation'].includes(value.type) || !ready || value.epoch !== epoch) return { kind: 'ignored' }
       if (value.type === 'motion' && (!identity.playerUuid || value.playerUuid?.toLowerCase() !== identity.playerUuid || value.motion?.epoch !== epoch)) throw Error('NATIVE_WORLD_MOTION_IDENTITY_MISMATCH')
+      if (value.type === 'motion' && value.selfPlayer && entityId!==null && value.selfPlayer.entityId !== entityId) throw Error('NATIVE_WORLD_MOTION_IDENTITY_MISMATCH')
       if (value.selfPlayer && (!identity.playerUuid || value.selfPlayer.uuid?.toLowerCase() !== identity.playerUuid || value.selfPlayer.name !== identity.player)) throw Error('NATIVE_WORLD_SELF_PLAYER_MISMATCH')
       if (value.presentation?.available && (!identity.playerUuid || value.presentation.playerUuid?.toLowerCase() !== identity.playerUuid)) throw Error('NATIVE_WORLD_PRESENTATION_IDENTITY_MISMATCH')
       if (value.entityState?.available && (entityRegistrySha256 === null || value.entityState.source !== 'received_native_entity_packets' ||
@@ -58,6 +60,7 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
           value.entityState.rotationUnit !== 'minecraft_degrees' || !Array.isArray(value.entityState.entities) ||
           value.entityState.entities.length > 512)) throw Error('NATIVE_ENTITY_STREAM_BINDING_MISMATCH')
       const reset = value.type === 'snapshot' && epoch !== value.epoch
+      if(value.type==='snapshot'&&Number.isSafeInteger(value.selfPlayer?.entityId))entityId=value.selfPlayer.entityId
       if(reset)effectSequence=-1
       epoch = value.epoch; ready = true
       return { kind: value.type, value, reset }

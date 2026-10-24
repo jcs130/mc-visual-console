@@ -32,6 +32,16 @@ test('YSM receives the same native self motion and server tick with seconds from
   }
 })
 
+test('fast same-body velocity and ground samples update animation without replacing inventory or native mod motion',()=>{
+ let input;const actor={assetInfo:{kind:'ysm',uuid:UUID},applyMotion:value=>{input=value}}
+ const nativeMotion={serverTick:7},self={uuid:UUID,entityId:8,onGround:true,velocity:{x:0,y:0,z:0},motion:nativeMotion,equipment:{mainHand:'original'}}
+ const current={presentation:{self},selfPlayer:{uuid:UUID,entityId:8,velocity:{x:.2,y:.1,z:0},onGround:false,sprinting:true,sneaking:false},pose:{yaw:0}}
+ const before=structuredClone(current);applyNativeSelfPlayerMotion(actor,current,{now:1000})
+ assert.equal(input.self.onGround,false);assert.equal(input.self.velocity.x,.2);assert.equal(input.self.sprinting,true)
+ assert.strictEqual(input.self.motion,nativeMotion);assert.strictEqual(input.self.equipment,self.equipment);assert.deepEqual(current,before)
+ applyNativeSelfPlayerMotion(actor,{...current,selfPlayer:{...current.selfPlayer,entityId:9}},{now:1000});assert.strictEqual(input.self,self)
+})
+
 test('missing YSM motion remains missing and foreign native self never reaches the actor', () => {
   const calls = []
   const actor = { assetInfo: { kind: 'ysm', uuid: UUID }, applyMotion: input => calls.push(input) }

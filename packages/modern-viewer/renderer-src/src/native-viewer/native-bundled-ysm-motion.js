@@ -47,7 +47,7 @@ export function bundledYsmMotionInput(current, uuid, now) {
   const bodyYaw = Number.isFinite(self.bodyYaw) ? self.bodyYaw : pose.yaw
   const headYaw = Number.isFinite(self.headYaw) ? self.headYaw : pose.yaw
   const use = hands?.use, activeItem = equipment?.[hands?.activeHand === 'offhand' ? 1 : 0]
-  const useKind = use?.source === 'observed_use_packet_vanilla_duration' && ['eat', 'drink'].includes(use.kind) && [16,32,40].includes(use.durationTicks) &&
+  const useKind = (use?.source === 'observed_use_packet_vanilla_duration' || p.source==='paper_server_observation'&&use?.source==='paper_use_item_state') && ['eat', 'drink'].includes(use.kind) && [16,32,40].includes(use.durationTicks) &&
     activeItem?.name === use.name && fresh(use.startedAt, now, use.durationTicks * 50) ? use.kind : undefined
   return { entityId: self.entityId, epoch: current.epoch, tick: physics.tick, resetSequence: dead ? 'death' : physics.resetSequence,
     bodyYaw, headingSource: Number.isFinite(self.bodyYaw) ? 'same_player_body_yaw' : 'same_player_look_yaw',

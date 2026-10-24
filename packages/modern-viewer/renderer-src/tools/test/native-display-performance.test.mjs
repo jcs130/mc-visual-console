@@ -38,7 +38,7 @@ test('cadence changes are bounded and never rewind the display playhead; duplica
  let previous=.98
  for(let now=150;now<=350;now+=10){const x=d.sample(now).x;assert.ok(x>=previous);previous=x;assert.ok(x<=2)}
  for(let i=1;i<40;i++)d.receive(pose(2),150+i*240,'a',{tick:2+i})
- assert.ok(d.delayMs<=500);assert.ok(d.samples.length<=8);assert.ok(d.arrivalGaps.length<=16)
+ assert.ok(d.delayMs<=500);assert.ok(d.samples.length<=64);assert.ok(d.arrivalGaps.length<=16)
  d.receive(pose(10),10000,'b',{tick:1});assert.equal(d.delayMs,50);assert.equal(d.sample(10000).x,10)
 })
 test('50ms observed display produces intermediate 60Hz poses without modifying raw inputs or extrapolating',()=>{
@@ -47,7 +47,31 @@ test('50ms observed display produces intermediate 60Hz poses without modifying r
  assert.equal(d.sample(66).x,.32);assert.equal(d.sample(83).x,.66);assert.equal(d.sample(100).x,1);assert.equal(d.sample(200).x,1)
  assert.deepEqual(raw,before)
  for(let i=0;i<100;i++)d.receive(pose(1),100+i*50,'a')
- assert.ok(d.samples.length<=8);assert.deepEqual(d.sample(5050),pose(1))
+ assert.ok(d.samples.length<=64);assert.deepEqual(d.sample(5050),pose(1))
+})
+
+test('repeated HUD frames for one physics tick never insert stationary pose intervals',()=>{
+ const d=new NativeSelfDisplayPose();d.receive(pose(),0,'a',{tick:0});d.receive(pose(1),50,'a',{tick:1})
+ for(let at=51;at<90;at++)d.receive(pose(1),at,'a',{tick:1})
+ assert.equal(d.samples.length,2);assert.equal(d.delayMs,50)
+ assert.equal(d.sample(75).x,.5)
+ d.receive(pose(.2),90,'a',{tick:0});assert.equal(d.samples.length,2);assert.equal(d.sample(100).x,1)
+})
+
+test('batched SSE preserves measured source spacing and smooth 60Hz travel without predicting',()=>{
+ const d=new NativeSelfDisplayPose(),epoch=1000000,shown=[];let latest=0
+ d.receive(pose(0),0,'a',{tick:0,sampledAt:epoch},epoch)
+ for(let frame=1;frame<=120;frame++){
+  const now=frame*1000/60
+  if(frame%9===0)for(let i=2;i>=0;i--){
+   const sampled=now-i*50;latest=sampled/1000*4
+   d.receive(pose(latest),now,'a',{tick:frame/3-i,sampledAt:epoch+sampled},epoch+now)
+  }
+  const x=d.sample(now).x;assert.ok(x<=latest+1e-9);shown.push(x)
+ }
+ const steps=shown.slice(20).map((x,i)=>x-shown[i+19])
+ assert.ok(steps.every(x=>x>=-1e-9&&x<.09));assert.ok(steps.filter(x=>x>.01).length>90)
+ assert.ok(d.samples.length<=64)
 })
 test('shortest yaw, identity, epoch, actual reset counters, jumps and stale gaps snap coherently',()=>{
  const d=new NativeSelfDisplayPose();d.receive(pose(0,Math.PI-.1),0,'a',{resetSequence:0});d.receive(pose(1,-Math.PI+.1),50,'a',{resetSequence:0})

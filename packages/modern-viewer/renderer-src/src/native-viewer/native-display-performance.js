@@ -1,17 +1,24 @@
 // Display-only observed samples. Buffer the actual delivery cadence; never predicts.
 export class NativeSelfDisplayPose {
   constructor () { this.reset() }
-  reset () { this.resetVersion=(this.resetVersion??0)+1; this.samples=[]; this.identity=null; this.sequence=null; this.stale=false;this.resetCadence() }
+  reset () { this.resetVersion=(this.resetVersion??0)+1; this.samples=[]; this.identity=null; this.sequence=null; this.stale=false;this.received=0;this.duplicates=0;this.resetCadence() }
   resetCadence () { this.arrivalGaps=[];this.delayMs=50;this.cadenceAt=null;this.cadenceTick=null;this.playhead=null }
-  receive (pose, at, identity, motion) {
+  receive (pose, at, identity, motion, wallNow = Date.now()) {
     if (!pose || !['x','y','z','yaw','pitch','eyeHeight'].every(k=>Number.isFinite(pose[k])) || !Number.isFinite(at)) return
-    const last=this.samples.at(-1), sequence=motion?.resetSequence??null
+    let last=this.samples.at(-1);const sequence=motion?.resetSequence??null
     // Cloud delivery can exceed a quarter second. Retiring the identity/camera
     // on every such interval caused repeated snaps even though the body was
     // unchanged. Buffer received samples; only a real gap/teleport resets it.
-    if (identity!==this.identity || sequence!==this.sequence || (last && (at-last.at>1500 || at<last.at || Math.hypot(pose.x-last.pose.x,pose.y-last.pose.y,pose.z-last.pose.z)>8))) {this.samples=[];this.resetCadence();this.resetVersion++}
+    if (identity!==this.identity || sequence!==this.sequence || (last && (at-last.arrivedAt>1500 || at<last.arrivedAt || Math.hypot(pose.x-last.pose.x,pose.y-last.pose.y,pose.z-last.pose.z)>8))) {this.samples=[];this.resetCadence();this.resetVersion++;last=null}
     this.identity=identity;this.sequence=sequence
     const tick=Number.isSafeInteger(motion?.tick)?motion.tick:null
+    // Fast motion and the slower HUD/terrain frame repeat the same tick. They
+    // must not create a false stationary interval or evict real motion samples.
+    if(last&&tick!==null&&last.tick!==null&&tick<=last.tick){
+      this.duplicates++
+      if(tick===last.tick)last.pose={...pose}
+      return
+    }
     if(tick===null||tick!==this.cadenceTick){
       const gap=this.cadenceAt===null?null:at-this.cadenceAt
       if(gap>=20&&gap<=1000){
@@ -21,7 +28,20 @@ export class NativeSelfDisplayPose {
       }
       this.cadenceAt=at;this.cadenceTick=tick
     }
-    this.samples.push({pose:{...pose},at});if(this.samples.length>8)this.samples.shift()
+    // SSE may deliver several real source samples in one read. Retain their
+    // measured spacing instead of assigning every pose the same arrival time.
+    // A skewed/unavailable source clock uses arrival time; never extrapolate.
+    const age=wallNow-motion?.sampledAt
+    const sampledAt=Number.isFinite(age)&&age>=-100&&age<=1500?at-Math.max(0,age):at
+    this.samples.push({pose:{...pose},at:Math.max(last?.at??-Infinity,sampledAt),arrivedAt:at,tick})
+    this.received++
+    if(this.samples.length>64)this.samples.shift()
+  }
+  status (now) {
+    const last=this.samples.at(-1),sorted=[...this.arrivalGaps].sort((a,b)=>a-b)
+    return {receivedSamples:this.received,duplicateTickFrames:this.duplicates,bufferedSamples:this.samples.length,bufferMs:this.delayMs,
+      arrivalP90Ms:sorted.length?sorted[Math.ceil(sorted.length*.9)-1]:null,
+      lastSampleAgeMs:last?Math.max(0,now-last.at):null,stale:this.stale}
   }
   sample (now) {
     const rows=this.samples,last=rows.at(-1);if(!last)return null

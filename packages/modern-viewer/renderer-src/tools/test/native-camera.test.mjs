@@ -30,6 +30,27 @@ test('identity/epoch reset reanchors a delayed manual scene to the next body',()
   }
 })
 
+test('manual third-person orbit follows the displayed root while retaining drag, pan and zoom',()=>{
+ const anchor=new NativeOrbitCameraAnchor(),camera=new THREE.PerspectiveCamera(),controls={target:new THREE.Vector3(),update(){}}
+ const pose={x:-512,y:63,z:-378,yaw:1,pitch:0}
+ anchor.initialize({pose,mode:'third',camera,controls})
+ camera.position.add(new THREE.Vector3(3,2,-1));controls.target.add(new THREE.Vector3(.5,.2,0))
+ const offset=camera.position.clone().sub(controls.target),oldTarget=controls.target.clone()
+ for(let i=1;i<=120;i++)anchor.follow({pose:{...pose,x:pose.x+i*.05,y:pose.y+i*.01},mode:'third',camera,controls})
+ assert.ok(camera.position.clone().sub(controls.target).distanceTo(offset)<1e-9)
+ assert.ok(controls.target.distanceTo(oldTarget.clone().add(new THREE.Vector3(6,1.2,0)))<1e-9)
+ const still=camera.position.clone()
+ assert.equal(anchor.follow({pose:{...pose,x:100},mode:'region',camera,controls}),false);assert.ok(camera.position.equals(still))
+})
+
+test('taking over a director shot rebases the orbit without resetting its camera position',()=>{
+ const anchor=new NativeOrbitCameraAnchor(),camera=new THREE.PerspectiveCamera(),controls={target:new THREE.Vector3(),update(){}}
+ camera.position.set(10,70,12);controls.target.set(8,65,8)
+ assert.equal(anchor.rebase({x:8,y:64,z:8}),true)
+ anchor.follow({pose:{x:9,y:64,z:8},mode:'third',camera,controls})
+ assert.deepEqual(camera.position.toArray(),[11,70,12]);assert.deepEqual(controls.target.toArray(),[9,65,8])
+})
+
 test('native following binds the actual displayed root and body epoch, not the raw target or animated head',()=>{
   const state={epoch:3,selfPlayer:{uuid:'player-uuid',entityId:7},pose:{x:8,y:64,z:8,yaw:1}}
   const root=new THREE.Group();root.position.set(7.5,64.1,8)

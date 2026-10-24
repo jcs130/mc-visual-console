@@ -61,7 +61,7 @@ const selfDisplay=new NativeSelfDisplayPose(),frameGaps=new NativeFrameGaps()
 const receiveDisplay=()=>{
   const previous=selfDisplay.resetVersion
   const self=current?.presentation?.self,pose=current?.pose
-  selfDisplay.receive(pose?{...pose,bodyYaw:self?.bodyYaw,headYaw:self?.headYaw}:pose,performance.now(),`${epoch}:${playerUuid}:${current?.selfPlayer?.entityId}:${current?.selfPlayer?.health===0}`,current?.motion)
+  selfDisplay.receive(pose?{...pose,bodyYaw:pose.bodyYaw??self?.bodyYaw,headYaw:pose.headYaw??self?.headYaw}:pose,performance.now(),`${epoch}:${playerUuid}:${current?.selfPlayer?.entityId}:${current?.selfPlayer?.health===0}`,current?.motion)
   if(previous!==selfDisplay.resetVersion){director?.reset();cameraDistance=null;lastCollision=null}
 }
 const visualListeners = new Map()
@@ -142,9 +142,9 @@ async function start () {
   controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxDistance = 9; controls.enabled = false
   const {CameraDirector}=await import('../modern-viewer/camera-director.js')
   director=new CameraDirector()
-  renderer.domElement.addEventListener('pointerdown',manualCameraInput,true)
+  renderer.domElement.addEventListener('pointerdown',beginCameraPointer,true)
+  renderer.domElement.addEventListener('pointermove',dragCameraPointer,true)
   renderer.domElement.addEventListener('wheel',manualCameraInput,true)
-  renderer.domElement.addEventListener('pointerdown',rememberPointer)
   renderer.domElement.addEventListener('pointerup',selectPointer)
   const resize = () => {
     const host = viewport
@@ -235,7 +235,10 @@ async function start () {
           uiMs:performance.now()-afterMap,mainCalls:mainDraw.calls,mainTriangles:mainDraw.triangles,
           mapCalls:mapDrawn?renderer.info.render.calls:0,mapTriangles:mapDrawn?renderer.info.render.triangles:0,
           mapReadback:miniMap.root.dataset.readback??null,room:roomStatus?.reason??null}
-        lastCostAt=now;renderer.domElement.dataset.frameCost=JSON.stringify(frameCost);publishDiagnostics()
+        lastCostAt=now;renderer.domElement.dataset.frameCost=JSON.stringify(frameCost);renderer.domElement.dataset.motionCadence=JSON.stringify(selfDisplay.status(now));publishDiagnostics()
+        renderer.domElement.dataset.cameraTracking=JSON.stringify({view:viewMode,mode:cameraOptions.mode,
+          camera:{x:camera.position.x,y:camera.position.y,z:camera.position.z},target:observerTarget?.position??null,
+          actor:selfActor?{x:selfActor.root.position.x,y:selfActor.root.position.y,z:selfActor.root.position.z}:null,fov:camera.fov})
       }
       transitionTiming?.worldFinish(timingFrame,{cameraMs,roomMs,updateMs:beforeRender-frameStarted,
         mainCpuDrawMs:afterRender-beforeRender,handsMs:beforeMap-afterRender,mapMs:afterMap-beforeMap,
@@ -283,6 +286,7 @@ async function start () {
         current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
         current.presentation = value.presentation; current.entityState = value.entityState; receiveDisplay()
       } else if (value.type === 'motion' && current && value.epoch === epoch) {
+        if(value.selfPlayer)current.selfPlayer={...current.selfPlayer,...value.selfPlayer}
         selfActor?.applyHandAnimation?.(value.handAnimation)
         if(current.presentation?.self && value.handAnimation?.playerUuid===playerUuid && value.handAnimation.entityId===current.selfPlayer?.entityId)
           current.presentation.self.handAnimation=value.handAnimation
@@ -329,6 +333,7 @@ function updatePlayerCamera (now) {
   }
   if (viewMode === 'region'||viewMode==='third'&&cameraOptions.mode==='manual'&&!director.shot) {
     orbitAnchor.initialize({pose:observerPose,mode:viewMode,camera,controls})
+    orbitAnchor.follow({pose:observerPose,mode:viewMode,camera,controls})
     controls.enabled=true;controls.update();cameraFrame={mode:'manual'};return
   }
   controls.enabled=false
@@ -354,6 +359,15 @@ function updatePlayerCamera (now) {
   camera.position.copy(desired); camera.lookAt(target)
 }
 function rememberPointer(event){pointerStart={x:event.clientX,y:event.clientY,id:event.pointerId}}
+function beginCameraPointer(event) {
+  // Let OrbitControls observe pointerdown, but a click/target selection alone
+  // must not silently disable the director's selected follow mode.
+  rememberPointer(event)
+  if(viewMode==='third'&&current?.pose)controls.enabled=true
+}
+function dragCameraPointer(event) {
+  if(pointerStart?.id===event.pointerId&&Math.hypot(event.clientX-pointerStart.x,event.clientY-pointerStart.y)>5)manualCameraInput()
+}
 function selectPointer(event){
   const start=pointerStart;pointerStart=null
   if(!start||start.id!==event.pointerId||Math.hypot(start.x-event.clientX,start.y-event.clientY)>5||!current)return
@@ -377,7 +391,7 @@ function setCameraSettings(value) {
 }
 function manualCameraInput() {
   if(viewMode!=='third'||!current?.pose)return
-  if(cameraOptions.mode!=='manual'||director.shot){const focus=director.lastPose?.focus??{x:current.pose.x,y:current.pose.y+1,z:current.pose.z};director.reset();cameraOptions={...cameraOptions,mode:'manual'};controls.target.copy(focus);onCameraManual()}
+  if(cameraOptions.mode!=='manual'||director.shot){const focus=director.lastPose?.focus??{x:current.pose.x,y:current.pose.y+1,z:current.pose.z};director.reset();cameraOptions={...cameraOptions,mode:'manual'};controls.target.copy(focus);orbitAnchor.rebase(observerPose??displayPose??current.pose);onCameraManual()}
   controls.enabled=true
 }
 async function ensureSelfActor (self) {
@@ -626,7 +640,7 @@ function dispose () {
   if (disposed) return
   disposed = true; audio?.dispose();particles?.dispose();miniMap?.dispose(); agentVisual.dispose(); visualListeners.clear(); events?.close(); observer?.disconnect(); renderer?.setAnimationLoop(null)
   document.removeEventListener('visibilitychange', kineticVisibility)
-  renderer?.domElement.removeEventListener('pointerdown',manualCameraInput,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
+  renderer?.domElement.removeEventListener('pointerdown',beginCameraPointer,true);renderer?.domElement.removeEventListener('pointermove',dragCameraPointer,true);renderer?.domElement.removeEventListener('wheel',manualCameraInput,true);director?.dispose()
   renderer?.domElement.removeEventListener('pointerdown',rememberPointer);renderer?.domElement.removeEventListener('pointerup',selectPointer)
   controls?.dispose(); clearScene(); roomVisibility.dispose(); selfController?.dispose(); entityLayer?.dispose(); for(const masks of staticBatches.values())for(const batch of masks.values())batch.dispose();staticBatches.clear();loader?.dispose(); for (const bed of bedTemplates) bed.dispose(); bedTemplates.clear(); renderer?.dispose(); renderer?.domElement.remove()
 }
