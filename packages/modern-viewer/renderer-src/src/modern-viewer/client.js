@@ -4035,10 +4035,12 @@ function maybeApplyPlayerSkin(entity, specialPlayerEntity = false, force = false
 }
 
 function resolveEntityPlayerSkin(entity) {
-  const hash = /^\/head-texture\/([0-9a-f]{40,64})\.png$/.exec(entity?.skinUrl || '')?.[1];
+  const local = entity?.isSelf === true && entity.skinSource === 'local-viewer-override'
+    && /^\/agent-skin\/([0-9a-f]{64})\.png$/.exec(entity.skinUrl || '')?.[1];
+  const hash = local || /^\/head-texture\/([0-9a-f]{40,64})\.png$/.exec(entity?.skinUrl || '')?.[1];
   if (!hash) return selectedPlayerSkin;
   const model = entity.skinModel === 'slim' ? 'slim' : 'classic';
-  return { id: `server:${hash}:${model}`, label: '服务端皮肤', model, texture: entity.skinUrl };
+  return { id: `${local ? 'local' : 'server'}:${hash}:${model}`, label: local ? '本地预览皮肤' : '服务端皮肤', model, texture: entity.skinUrl };
 }
 
 function resolveSelfPlayerSkin() {

@@ -61,6 +61,17 @@ test('a late texture response cannot replace the current server appearance or re
   assert.equal(timers.length, 1, 'only the current profile schedules integrity checks');
 });
 
+test('a configured local skin is accepted only for the own avatar with explicit provenance', () => {
+  const {context,api,entity}=fixture();
+  const local={...entity,skinUrl:`/agent-skin/${'d'.repeat(64)}.png`,skinSource:'local-viewer-override'};
+  context.pendingAvatarState.entity=local;
+  assert.equal(api.resolve().id,`local:${'d'.repeat(64)}:slim`);
+  assert.equal(api.resolve().label,'本地预览皮肤');
+  for(const changed of [{isSelf:false},{skinSource:'server'},{skinUrl:'/agent-skin/not-a-hash.png'},{skinUrl:'https://example.test/skin.png'}]){
+    context.pendingAvatarState.entity={...local,...changed};assert.equal(api.resolve().id,'default');
+  }
+});
+
 test('other player profile changes ignore older arm models and profile removal restores the default', async () => {
   const { api, pending, player, entity } = fixture();
   const other = { ...entity, id: 8, isSelf: false };
