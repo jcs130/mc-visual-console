@@ -84,7 +84,7 @@ export async function createNativePaperAppearanceActor(reader,{uuid,paperAppeara
       bundleSha256:row.bundleSha256,modelId:row.modelId,texture:row.texture,ysmVersion:row.ysmVersion??null,
       notice:row.kind==='ysm'?'服务器原 YSM 模型与实际动作；完整客户端动画一致性未验':'服务器绑定的原皮肤；当前未提供 YSM 模型状态'}
     return {root,assetInfo,model:inner.model,playerObject:inner.playerObject,firstPersonRoot:first.firstPersonRoot,
-      applyPose(pose){if(disposed)throw Error('PAPER_APPEARANCE_DISPOSED');root.position.set(pose.x,pose.y,pose.z);root.rotation.y=pose.yaw;root.visible=true},
+      applyPose(pose){if(disposed)throw Error('PAPER_APPEARANCE_DISPOSED');root.position.set(pose.x,pose.y,pose.z);root.rotation.y=Number.isFinite(pose.bodyYaw)?pose.bodyYaw:pose.yaw;root.visible=true},
       applyMotion(input){
         try{const m=bundledYsmMotionInput(input.current,uuid,input.now);inner.animate({motion:m,pitch:input.current.pose.pitch,renderedYaw:m.bodyYaw},input.now);root.rotation.y=m.bodyYaw;motion={available:true,source:'paper_server_observation',...inner.animationState}}
         catch(error){motion={available:false,reason:error.message}}

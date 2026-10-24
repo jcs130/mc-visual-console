@@ -6,6 +6,17 @@ import { NATIVE_YSM_SOURCE, NATIVE_YSM_JAR_SHA256 } from '../../src/native-viewe
 const UUID = '01234567-89ab-cdef-0123-456789abcdef'
 const OTHER = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 
+test('Paper body/head yaw share the actor/camera display interval without changing authoritative samples',()=>{
+ let received
+ const actor={assetInfo:{kind:'ysm',uuid:UUID},applyMotion:input=>{received=input}}
+ const self={uuid:UUID,bodyYaw:-3,headYaw:3},current={pose:{yaw:1},presentation:{self},selfPlayer:{uuid:UUID}}
+ const before=structuredClone(current),displayPose={yaw:.5,bodyYaw:3.14,headYaw:3.1}
+ applyNativeSelfPlayerMotion(actor,current,{displayPose,now:200})
+ assert.equal(received.current.presentation.self.bodyYaw,3.14);assert.equal(received.self.headYaw,3.1)
+ assert.strictEqual(received.current.pose,displayPose);assert.deepEqual(current,before)
+ assert.equal(received.self.uuid,UUID)
+})
+
 test('YSM receives the same native self motion and server tick with seconds from RAF', () => {
   let received
   const actor = { assetInfo: { kind: 'ysm', uuid: UUID }, applyMotion: input => { received = input; return { available: true, state: 'walk' } } }

@@ -5,6 +5,18 @@ import {nativeCameraTarget} from '../../src/native-viewer/native-camera.js'
 import {createNativePlayerMotionTracker} from '../../src/native-viewer/native-player-motion.js'
 const pose=(x=0,yaw=0)=>({x,y:64,z:0,yaw,pitch:0,eyeHeight:1.62})
 
+test('cloud intervals over 250ms do not repeatedly reset the same actor/camera or jump body heading',()=>{
+ const d=new NativeSelfDisplayPose(),a={...pose(0,3),bodyYaw:3,headYaw:3.1},b={...pose(1,-3),bodyYaw:-3,headYaw:-3.1}
+ const before=structuredClone([a,b]);d.receive(a,0,'same-body',{tick:1});const version=d.resetVersion
+ assert.equal(d.sample(350).x,0,'a late packet holds its last observed position')
+ d.receive(b,400,'same-body',{tick:2});assert.equal(d.resetVersion,version);assert.equal(d.delayMs,400)
+ const middle=d.sample(600);assert.equal(middle.x,.5)
+ assert.ok(Math.abs(middle.bodyYaw-Math.PI)<1e-10);assert.ok(Math.abs(middle.headYaw-Math.PI)<1e-10)
+ assert.deepEqual([a,b],before);assert.equal(d.sample(1000).x,1,'never extrapolate beyond the last delivered position')
+ d.receive(pose(2),1000,'same-body',{tick:3});assert.equal(d.resetVersion,version)
+ d.receive(pose(3),2600,'same-body',{tick:4});assert.ok(d.resetVersion>version,'a real stream gap still resets')
+})
+
 test('observed 60ms delivery keeps moving between packets instead of freezing at the 50ms endpoint',()=>{
  const d=new NativeSelfDisplayPose(),raw=[pose(),pose(1),pose(2)],before=structuredClone(raw)
  d.receive(raw[0],0,'a',{tick:0});d.receive(raw[1],60,'a',{tick:1})
@@ -26,7 +38,7 @@ test('cadence changes are bounded and never rewind the display playhead; duplica
  let previous=.98
  for(let now=150;now<=350;now+=10){const x=d.sample(now).x;assert.ok(x>=previous);previous=x;assert.ok(x<=2)}
  for(let i=1;i<40;i++)d.receive(pose(2),150+i*240,'a',{tick:2+i})
- assert.ok(d.delayMs<=200);assert.ok(d.samples.length<=8);assert.ok(d.arrivalGaps.length<=16)
+ assert.ok(d.delayMs<=500);assert.ok(d.samples.length<=8);assert.ok(d.arrivalGaps.length<=16)
  d.receive(pose(10),10000,'b',{tick:1});assert.equal(d.delayMs,50);assert.equal(d.sample(10000).x,10)
 })
 test('50ms observed display produces intermediate 60Hz poses without modifying raw inputs or extrapolating',()=>{
@@ -44,7 +56,7 @@ test('shortest yaw, identity, epoch, actual reset counters, jumps and stale gaps
  d.receive(pose(3),150,'b',{resetSequence:1});assert.equal(d.sample(150).x,3)
  d.receive(pose(20),200,'b',{resetSequence:1});assert.equal(d.sample(200).x,20)
  assert.equal(d.sample(500).x,20);assert.equal(d.stale,true)
- d.receive(pose(21),501,'b',{resetSequence:1});assert.equal(d.sample(501).x,21)
+ d.receive(pose(21),1701,'b',{resetSequence:1});assert.equal(d.sample(1701).x,21)
  const tracker=createNativePlayerMotionTracker();const seq=tracker.current().resetSequence;tracker.reset('teleport');assert.equal(tracker.current().resetSequence,seq+1)
  d.reset();assert.equal(d.sample(600),null)
 })

@@ -6,15 +6,18 @@ export class NativeSelfDisplayPose {
   receive (pose, at, identity, motion) {
     if (!pose || !['x','y','z','yaw','pitch','eyeHeight'].every(k=>Number.isFinite(pose[k])) || !Number.isFinite(at)) return
     const last=this.samples.at(-1), sequence=motion?.resetSequence??null
-    if (identity!==this.identity || sequence!==this.sequence || (last && (at-last.at>250 || at<last.at || Math.hypot(pose.x-last.pose.x,pose.y-last.pose.y,pose.z-last.pose.z)>8))) {this.samples=[];this.resetCadence();this.resetVersion++}
+    // Cloud delivery can exceed a quarter second. Retiring the identity/camera
+    // on every such interval caused repeated snaps even though the body was
+    // unchanged. Buffer received samples; only a real gap/teleport resets it.
+    if (identity!==this.identity || sequence!==this.sequence || (last && (at-last.at>1500 || at<last.at || Math.hypot(pose.x-last.pose.x,pose.y-last.pose.y,pose.z-last.pose.z)>8))) {this.samples=[];this.resetCadence();this.resetVersion++}
     this.identity=identity;this.sequence=sequence
     const tick=Number.isSafeInteger(motion?.tick)?motion.tick:null
     if(tick===null||tick!==this.cadenceTick){
       const gap=this.cadenceAt===null?null:at-this.cadenceAt
-      if(gap>=20&&gap<=250){
+      if(gap>=20&&gap<=1000){
         this.arrivalGaps.push(gap);if(this.arrivalGaps.length>16)this.arrivalGaps.shift()
         const sorted=[...this.arrivalGaps].sort((a,b)=>a-b)
-        this.delayMs=Math.min(200,Math.max(50,Math.ceil(sorted[Math.ceil(sorted.length*.9)-1]/5)*5))
+        this.delayMs=Math.min(500,Math.max(50,Math.ceil(sorted[Math.ceil(sorted.length*.9)-1]/5)*5))
       }
       this.cadenceAt=at;this.cadenceTick=tick
     }
@@ -22,7 +25,7 @@ export class NativeSelfDisplayPose {
   }
   sample (now) {
     const rows=this.samples,last=rows.at(-1);if(!last)return null
-    this.stale=now-last.at>250
+    this.stale=now-last.at>Math.max(250,Math.min(1500,this.delayMs*3))
     if(this.stale){this.samples=[last];this.playhead=last.at;return {...last.pose}}
     // Growing a jitter buffer may hold the known pose, never rewind it. Both
     // the actor and camera use this received interval, including wrapped yaw.
@@ -32,8 +35,11 @@ export class NativeSelfDisplayPose {
     for(let i=1;i<rows.length;i++)if(rows[i].at>=target){
       const a=rows[i-1],b=rows[i],t=b.at===a.at?1:(target-a.at)/(b.at-a.at),p={...b.pose}
       for(const k of ['x','y','z','pitch','eyeHeight'])p[k]=a.pose[k]+(b.pose[k]-a.pose[k])*t
-      const delta=Math.atan2(Math.sin(b.pose.yaw-a.pose.yaw),Math.cos(b.pose.yaw-a.pose.yaw))
-      p.yaw=a.pose.yaw+delta*t;return p
+      for(const k of ['yaw','bodyYaw','headYaw'])if(Number.isFinite(a.pose[k])&&Number.isFinite(b.pose[k])){
+        const delta=Math.atan2(Math.sin(b.pose[k]-a.pose[k]),Math.cos(b.pose[k]-a.pose[k]))
+        p[k]=a.pose[k]+delta*t
+      }
+      return p
     }
     return {...last.pose}
   }

@@ -96,7 +96,7 @@ export async function createNativeBundledYsmPlayerActor (nativeReader, { uuid, b
       applyPose (pose) {
         guard()
         if (!pose || ![pose.x, pose.y, pose.z, pose.yaw, pose.pitch].every(Number.isFinite)) throw Error('BUNDLED_YSM_POSE_UNAVAILABLE')
-        root.position.set(pose.x, pose.y, pose.z); root.rotation.y = pose.yaw; root.visible = true
+        root.position.set(pose.x, pose.y, pose.z); root.rotation.y = Number.isFinite(pose.bodyYaw) ? pose.bodyYaw : pose.yaw; root.visible = true
       },
       applyMotion (input) {
         guard(); root.userData.motion = controller.apply(input)

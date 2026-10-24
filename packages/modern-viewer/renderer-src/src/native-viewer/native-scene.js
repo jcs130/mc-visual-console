@@ -60,7 +60,8 @@ let firstTerrainRender=false
 const selfDisplay=new NativeSelfDisplayPose(),frameGaps=new NativeFrameGaps()
 const receiveDisplay=()=>{
   const previous=selfDisplay.resetVersion
-  selfDisplay.receive(current?.pose,performance.now(),`${epoch}:${playerUuid}:${current?.selfPlayer?.entityId}:${current?.selfPlayer?.health===0}`,current?.motion)
+  const self=current?.presentation?.self,pose=current?.pose
+  selfDisplay.receive(pose?{...pose,bodyYaw:self?.bodyYaw,headYaw:self?.headYaw}:pose,performance.now(),`${epoch}:${playerUuid}:${current?.selfPlayer?.entityId}:${current?.selfPlayer?.health===0}`,current?.motion)
   if(previous!==selfDisplay.resetVersion){director?.reset();cameraDistance=null;lastCollision=null}
 }
 const visualListeners = new Map()

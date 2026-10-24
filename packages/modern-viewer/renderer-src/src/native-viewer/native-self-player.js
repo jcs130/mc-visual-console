@@ -18,8 +18,12 @@ export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Dat
         (self.playerUuid ?? self.uuid).toLowerCase() !== playerUuid)) throw Error('NATIVE_YSM_MOTION_IDENTITY_MISMATCH')
     // The bundled model derives heading from pose. Keep its animation layer
     // from overwriting the received, interpolated actor/camera orientation.
-    const frame=displayPose?{...current,pose:displayPose}:current
-    return actor.applyMotion({ self, current:frame, dt: Number.isFinite(dt) ? Math.max(0, Math.min(.1, dt)) : 0, now })
+    const presentedSelf=displayPose&&self?{...self,
+      ...(Number.isFinite(displayPose.bodyYaw)?{bodyYaw:displayPose.bodyYaw}:{}),
+      ...(Number.isFinite(displayPose.headYaw)?{headYaw:displayPose.headYaw}:{})}:self
+    const frame=displayPose?{...current,pose:displayPose,
+      ...(current.presentation?{presentation:{...current.presentation,self:presentedSelf}}:{})}:current
+    return actor.applyMotion({ self:presentedSelf, current:frame, dt: Number.isFinite(dt) ? Math.max(0, Math.min(.1, dt)) : 0, now })
   }
   const crouching = current?.presentation?.self?.crouching ?? current?.selfPlayer?.sneaking
   return actor.applyMotion(current?.selfPlayer?.onGround === true && crouching === false ? current.motion : null, now)
