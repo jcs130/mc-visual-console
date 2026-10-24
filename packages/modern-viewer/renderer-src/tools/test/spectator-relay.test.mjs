@@ -20,7 +20,7 @@ async function fixture(t, options = {}) {
   const status = { schemaVersion: 1, mode: 'live_same_player_connection', readOnly: true,
     identity: { confirmed: true, playerUuid: options.uuid ?? uuid }, connection: { ended: false },
     viewer: { available: true, registrySha256: 'e'.repeat(64) }, build: { ...build, ...options.build } };
-  const data = Buffer.from(JSON.stringify({ 原始素材: '魔法世界🌏'.repeat(40000) }));
+  const data = options.data ?? Buffer.from(JSON.stringify({ 原始素材: '魔法世界🌏'.repeat(40000) }));
   const source = http.createServer((req, res) => {
     reads.push({ method: req.method, url: req.url });
     const headers = type => res.writeHead(200, { 'Content-Type': type });
@@ -110,6 +110,18 @@ test('native SSE stays live and browser cancellation releases only that HTTP obs
   const next = await reader.read(); assert.match(Buffer.from(next.value).toString(), /frame/);
   abort.abort(); await pause(60); assert.equal(f.streams.size, 0); assert.equal(publisher.state().connected, true);
   assert.equal((await f.get('status.json')).status, 200);
+});
+
+test('a paused HTTP consumer bounds the negotiated window, resumes exact bytes and can cancel without retiring the source', async t => {
+  const data=Buffer.from(JSON.stringify({content:'x'.repeat(8*1024*1024)})),f=await fixture(t,{data}),publisher=await f.start();
+  const response=await new Promise((resolve,reject)=>{const req=http.get(new URL('watch/channel-a/manifest.json',f.portalUrl),{headers:{cookie:'owner=A'}},res=>{res.pause();resolve(res)});req.on('error',reject)});
+  await pause(100);assert.equal(publisher.state().connected,true);assert.equal(publisher.state().maxInFlightChunks,4);
+  assert.ok(publisher.state().pendingRequests>0,'a paused 8MiB response must hold its bounded sender window');
+  const bytes=[];await new Promise((resolve,reject)=>{response.on('data',part=>bytes.push(part));response.on('end',resolve);response.on('error',reject);response.resume()});
+  assert.deepEqual(Buffer.concat(bytes),data);assert.equal(publisher.state().connected,true);
+  const cancelled=await new Promise((resolve,reject)=>{const req=http.get(new URL('watch/channel-a/manifest.json',f.portalUrl),{headers:{cookie:'owner=A'}},res=>{res.pause();resolve(res)});req.on('error',reject)});
+  cancelled.destroy();await pause(100);assert.equal(publisher.state().connected,true);assert.equal(publisher.state().pendingRequests,0);
+  assert.equal((await f.get('status.json')).status,200);
 });
 test('third-person resource paths keep their scoped base and the same data source', async t => {
   const f = await fixture(t); await f.start();

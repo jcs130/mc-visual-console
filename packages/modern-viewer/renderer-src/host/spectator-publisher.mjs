@@ -87,8 +87,14 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
     const timer = setTimeout(() => { waits.delete(key); failed(Error('SPECTATOR_ACK_TIMEOUT')); }, 15000);
     timer.unref?.(); waits.set(key, { resolve: complete, reject: failed, timer });
     signal.addEventListener('abort', abort, { once: true });
-    try { ws.send(wire); transferredRawBytes += part.length; transferredWireBytes += wire.length - 8; await acknowledged; }
-    finally { clearTimeout(timer); waits.delete(key); signal.removeEventListener('abort', abort); }
+    // Keep compression/sends ordered, but do not idle for a network round trip
+    // after every small SSE/asset chunk. A negotiated four-chunk window is
+    // bounded to 256 KiB/request and still stops completely at HTTP backpressure.
+    const receipt = acknowledged.finally(() => { clearTimeout(timer); waits.delete(key); signal.removeEventListener('abort', abort); });
+    void receipt.catch(() => {}); // A later window receipt may fail before its turn to be awaited.
+    try { ws.send(wire); transferredRawBytes += part.length; transferredWireBytes += wire.length - 8; }
+    catch (error) { failed(error); throw error; }
+    return { receipt };
   }
   async function serve(value) {
     const contentType = observationPath(value.path);
@@ -113,15 +119,19 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
       send({ type: 'response', id: value.id, status: 200, contentType, encoding });
       reader = response.body.getReader();
       let size = 0, sequence = 0;
+      const inFlight = [], window = binding.maxInFlightChunks ?? 1;
       for (;;) {
         const { done: ended, value: bytes } = await reader.read();
         if (ended) break;
         size += bytes.length;
         if (value.path !== 'events' && size > MAX_BODY_BYTES) throw Error('SPECTATOR_BODY_LIMIT');
         for (let offset = 0; offset < bytes.length; offset += CHUNK_BYTES) {
-          await sendPart(value.id, sequence++, Buffer.from(bytes.subarray(offset, offset + CHUNK_BYTES)), controller.signal, encoding);
+          const { receipt } = await sendPart(value.id, sequence++, Buffer.from(bytes.subarray(offset, offset + CHUNK_BYTES)), controller.signal, encoding);
+          inFlight.push(receipt);
+          if (inFlight.length >= window) await inFlight.shift();
         }
       }
+      await Promise.all(inFlight);
       send({ type: 'end', id: value.id });
     } catch {
       if (!closed && !controller.signal.aborted) send({ type: 'error', id: value.id });
@@ -136,13 +146,14 @@ export async function startSpectatorPublisher({ sourceUrl, portalUrl, channelId,
       const value = JSON.parse(event.data);
       if (value.type === 'ready') {
         if (binding || value.protocol !== SPECTATOR_PROTOCOL) throw Error('SPECTATOR_PROTOCOL_REJECTED');
+        if (value.maxInFlightChunks !== undefined && (!Number.isSafeInteger(value.maxInFlightChunks) || value.maxInFlightChunks < 1 || value.maxInFlightChunks > 4)) throw Error('SPECTATOR_PROTOCOL_REJECTED');
         binding = value; await publishStatus();
       } else if (value.type === 'accepted') {
         if (!binding) throw Error('SPECTATOR_PROTOCOL_REJECTED');
         if (!ready) {
           ready = true; clearTimeout(deadline); poll = setInterval(publishStatus, pollIntervalMs); poll.unref?.();
           resolveReady({ done, close, state: () => ({ connected: !closed, readOnly: true, playerUuid: binding.playerUuid, lastError, pendingRequests: requests.size,
-            transferredRawBytes, transferredWireBytes, compression: binding.compression ?? 'identity' }) });
+            transferredRawBytes, transferredWireBytes, compression: binding.compression ?? 'identity', maxInFlightChunks: binding.maxInFlightChunks ?? 1 }) });
         }
       } else if (value.type === 'request') {
         if (!ready) throw Error('SPECTATOR_SOURCE_NOT_READY');

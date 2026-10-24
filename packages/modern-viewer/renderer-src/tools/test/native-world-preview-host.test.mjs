@@ -570,6 +570,24 @@ test('SSE snapshot and frames resample the action player without borrowing anoth
   assert.equal(host.status().selfPlayer, null)
 })
 
+test('opted-in actual host sends a compact baseline, an exact terrain delta and a complete baseline for a new viewer', async t => {
+  const preparedHost = await prepareNativeWorldPreviewHost({ assetDirectory: directory, port: 0, terrainDeltas: true })
+  const { bot, host, nativeStream } = attachment(t, { preparedHost }), entity = playerEntity(bot)
+  bot.registry.dimensionsArray[0].height = 128; ownPlayerInfo(bot)
+  nativeStream.events.emit('packet', { registrySha256: registryHash, sequence: 1, name: 'login', params: { worldState: { dimension: 0 } } })
+  host.world.setPose({ ...entity.position, yaw: entity.yaw, pitch: entity.pitch, eyeHeight: entity.eyeHeight }); await host.listen()
+  const stream = await events(host); t.after(() => stream.close())
+  const session = createNativeSession(registryHash, { entityRegistrySha256: host.status().viewer.entityRegistrySha256 })
+  session.receive(await stream.next())
+  const initial = await stream.next(); assert.equal(initial.type, 'snapshot_compact'); session.receive(initial)
+  bot.health = 8; host.world.biomeSeed = '2'; host.world.emit('world');
+  const delta = await untilEvent(stream, row => row.type === 'snapshot_delta')
+  const current = session.receive(delta).value; assert.equal(current.selfPlayer.health, 8); assert.equal(current.type, 'snapshot')
+  const other = await events(host); t.after(() => other.close()); await other.next()
+  const baseline = await other.next(); assert.equal(baseline.type, 'snapshot_compact'); assert.equal(baseline.selfPlayer.health, 8)
+  assert.ok(baseline.terrainSequence > initial.terrainSequence); assert.equal(host.status().viewer.terrain.wire.enabled, true)
+})
+
 test('a second viewer reuses coherent terrain; movement outside the anchor gets a new bounded snapshot', async t => {
   const { bot, host, nativeStream } = attachment(t)
   const entity = playerEntity(bot); bot.registry.dimensionsArray[0].height = 128
@@ -1017,6 +1035,7 @@ test('actual publisher keeps current frame and HUD samples during held and retir
  const initial={type:'snapshot',epoch:1,groups:[],bounds:{},biomeSeed:'old'}
  const state=Function('world','clients','cadence','encodeNativeWorldEvent','createHash','nativeTerrainSignature','initial','health','setInterval','sendNativeWorldEvent',`
  let closed=false,pendingSnapshot=null,cachedSnapshot=initial,cachedTerrainSignature=null,snapshotBuildMs,snapshotBuildCount=0,terrainSignatureMs,wireEncodeMs;
+ let terrainWireStatus=null;const terrainDeltas=false;
  const surfaceCulling=true,sourceMode='same_player_connection',selfPlayer=()=>({uuid:'own'}),presentation=()=>({self:{health:health()}}),playerPose=()=>({}),motionTracker={current:()=>({tick:world.time.age})},injectTrackedMaidPresentation=s=>s,sendIdentity=()=>true,agentVisual={subscribe:()=>()=>{}},connectionEnded=false;
  ${publisher};return {cache:()=>cachedSnapshot}`)(world,clients,cadence,encodeNativeWorldEvent,createHash,nativeTerrainSignature,initial,()=>health,callback=>{tick=callback;return {}},(c,value)=>{sent.push({client:c,message:JSON.parse(value.text.slice(6))});return true})
  tick();assert.equal(scans,1);health=17;world.time.age=2;tick();health=12;world.time.age=3;tick()

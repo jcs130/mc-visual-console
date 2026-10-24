@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { createNativeTerrainEncoder } from '../src/native-viewer/native-terrain-wire.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
@@ -397,7 +398,8 @@ function injectedAgentStatus (getAgentStatus, now) {
 
 // Prepare before createBot(), then attach synchronously before login packets.
 // Preparation creates no Minecraft client, listening socket or signal handler.
-export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server', selectionScope, serverItemCatalogFile = '', serverItemCatalogSha256 = '', surfaceCulling = false, appearanceSource = null }) {
+export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server', selectionScope, serverItemCatalogFile = '', serverItemCatalogSha256 = '', surfaceCulling = false, terrainDeltas = false, appearanceSource = null }) {
+  if (typeof terrainDeltas !== 'boolean') throw Error('NATIVE_WORLD_TERRAIN_DELTAS_INVALID')
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('NATIVE_WORLD_PORT_INVALID')
   const access = nativePreviewAccess(lanAddress)
   const root = await fs.realpath(assetDirectory)
@@ -464,6 +466,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
       let closed = false, closing = null, listening = null, currentPort = port, connectionEnded = false, identityConfirmed = Boolean(bot.username)
       const cadence = new NativeSnapshotCadence()
       let pendingSnapshot = null, cachedSnapshot = null, cachedTerrainSignature = null, snapshotBuildCount = 0, snapshotBuildMs = null, terrainSignatureMs = null, wireEncodeMs = null
+      const terrainEncoder = createNativeTerrainEncoder()
+      let terrainWireStatus = null
       const motionTracker = createNativePlayerMotionTracker()
       let physicsTickCount = 0
       let receivedProfile = null, messageSequence = 0, gameMessages = [], currentTitle = null, currentActionbar = null
@@ -561,7 +565,7 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           reason: world.error || (closed ? 'NATIVE_WORLD_HOST_CLOSED' : null), registrySha256: hash, epoch: world.epoch,
           packetSequence: world.lastSequence, packetCount: world.packetCount, loadedColumns: world.columns.size,
           terrain: { coverage: cachedSnapshot?.viewCoverage ?? null, bounds: cachedSnapshot?.bounds ?? null,
-            snapshotBuildCount, snapshotBuildMs, terrainSignatureMs, wireEncodeMs, scan: world.snapshotTiming, budgetEncodeMs: world.snapshotEncodeMs, minimumIntervalMs: cadence.minimumIntervalMs, recenterDistance: cadence.recenterDistance },
+            snapshotBuildCount, snapshotBuildMs, terrainSignatureMs, wireEncodeMs, wire: terrainWireStatus, scan: world.snapshotTiming, budgetEncodeMs: world.snapshotEncodeMs, minimumIntervalMs: cadence.minimumIntervalMs, recenterDistance: cadence.recenterDistance },
           entityDataAvailable: entityState.available, entityDataReason: entityState.reason ?? null,
           entityDataScope: cachedSnapshot?.bounds ? 'current_view_bounds' : 'tracked_connection_entities',
           entityRegistrySha256,
@@ -786,7 +790,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           const wireStarted=performance.now()
           const terrainMessage=terrainValue?{...terrainValue,mode:sourceMode,entityState:injectTrackedMaidPresentation(world.entitySnapshot(terrainValue.bounds),ownPresentation,world.dimension?.name,player?.uuid),...common}:null
           const frameMessage={type:world.error?'unavailable':'frame',reason:world.error,epoch:world.epoch,...common,entityState:injectTrackedMaidPresentation(world.entitySnapshot(cachedSnapshot?.bounds),ownPresentation,world.dimension?.name,player?.uuid),packetSequence:world.lastSequence}
-          const encodedTerrain=terrainMessage&&(snapshot||[...clients].some(c=>!c.blocked&&c.needsSnapshot))?encodeNativeWorldEvent(terrainMessage):null
+          const terrain = terrainMessage && (snapshot || [...clients].some(c => !c.blocked && c.needsSnapshot)) ?
+            terrainDeltas ? terrainEncoder.prepare(terrainMessage, { requireFull: [...clients].some(c => !c.blocked && (c.needsSnapshot || c.terrainSequence !== terrainWireStatus?.sequence)) }) : { full: terrainMessage } : null
+          let encodedTerrain = terrain && (!terrainDeltas || terrain.fullWire) ? encodeNativeWorldEvent(terrain.fullWire ?? terrain.full) : null
+          const encodedDelta = terrain?.delta ? encodeNativeWorldEvent(terrain.delta) : null
+          if (terrainDeltas && terrain) terrainWireStatus = { enabled: true, fullCharacters: terrain.fullBytes, deltaCharacters: terrain.deltaBytes, sequence: terrain.sequence }
           const encodedFrame=encodeNativeWorldEvent(frameMessage)
           wireEncodeMs=performance.now()-wireStarted
           for (const client of clients) {
@@ -794,7 +802,9 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
             if (!sendIdentity(client) || client.blocked) { client.missedWorld ||= Boolean(snapshot) || cadence.dirty; continue }
             if (snapshot || client.needsSnapshot) {
               const value = snapshot || cachedSnapshot
-              if (value && sendNativeWorldEvent(client, encodedTerrain)) {
+              const encoded = value ? !client.needsSnapshot && client.terrainSequence === terrain?.baseSequence && encodedDelta ? encodedDelta : (encodedTerrain ??= encodeNativeWorldEvent(terrain.full)) : null
+              if (value && sendNativeWorldEvent(client, encoded)) {
+                client.terrainSequence = terrain?.sequence ?? null
                 client.needsSnapshot = false
                 if (value.type === 'snapshot' && !client.stopVisual) client.stopVisual = agentVisual.subscribe(value => {
                   if (!world.error && !connectionEnded && !client.needsSnapshot) sendNativeWorldEvent(client, { type: 'agent_visual', epoch: world.epoch, ...value })

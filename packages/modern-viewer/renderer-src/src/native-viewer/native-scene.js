@@ -279,6 +279,7 @@ async function start () {
         epoch = value.epoch; onUnavailable(value.reason || 'NATIVE_WORLD_WAITING'); return
       }
       if (value.type === 'snapshot') {
+        renderer.domElement.dataset.terrainTransport = JSON.stringify({ kind: received.type, sequence: value.terrainSequence ?? null, eventCharacters: message.data.length })
         if (epoch !== value.epoch) { clearScene(); epoch = value.epoch }
         current = value; receiveDisplay(); terrainQueue.request(value); void rebuildLatest()
         audio.connect(true)

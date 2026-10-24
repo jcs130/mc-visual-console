@@ -1,3 +1,4 @@
+import { applyNativeTerrainDelta, expandNativeTerrainSnapshot } from './native-terrain-wire.js'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const SHA = /^[a-f0-9]{64}$/
 const ownConnections = new Set(['live_same_player_connection', 'numen_server_body', 'paper_server_observation'])
@@ -8,7 +9,7 @@ const ownConnections = new Set(['live_same_player_connection', 'numen_server_bod
 export function createNativeSession(registrySha256, { entityRegistrySha256 = null } = {}) {
   if (!SHA.test(registrySha256 || '')) throw Error('NATIVE_WORLD_REGISTRY_HASH_INVALID')
   if (entityRegistrySha256 !== null && !SHA.test(entityRegistrySha256)) throw Error('NATIVE_ENTITY_REGISTRY_HASH_INVALID')
-  let identity = null, epoch = null, ready = false, effectSequence=-1,entityId=null
+  let identity = null, epoch = null, ready = false, effectSequence=-1,entityId=null,terrainBaseline=null
   return {
     receive(value) {
       if (!value || typeof value !== 'object') throw Error('NATIVE_WORLD_EVENT_INVALID')
@@ -17,16 +18,22 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
             !/^\.?[A-Za-z0-9_]{1,16}$/.test(value.player || '') || (value.playerUuid != null && !UUID.test(value.playerUuid))) throw Error('NATIVE_WORLD_IDENTITY_MISMATCH')
         const changed = identity && (identity.player !== value.player || identity.playerUuid !== value.playerUuid || identity.mode !== value.mode || identity.entityId !== value.entityId)
         if (changed) { ready = false; epoch = null }
+        terrainBaseline=null
         identity = { ...value, playerUuid: value.playerUuid?.toLowerCase() || null }
         entityId=Number.isSafeInteger(value.entityId)?value.entityId:null
         return { kind: 'identity', value: identity, reset: Boolean(changed) }
       }
       if (value.type === 'unavailable' || value.type === 'waiting') {
         const reset = value.type === 'unavailable' || epoch !== value.epoch
-        ready = false; epoch = value.epoch ?? null
+        ready = false; epoch = value.epoch ?? null; terrainBaseline=null
         return { kind: 'unavailable', value, reset }
       }
       if (!identity) throw Error('NATIVE_WORLD_IDENTITY_MISSING')
+      if (value.type === 'snapshot_compact') value = expandNativeTerrainSnapshot(value)
+      if (value.type === 'snapshot_delta') {
+        if (!ready || value.epoch !== epoch) return { kind: 'ignored' }
+        value = applyNativeTerrainDelta(terrainBaseline, value)
+      }
       if (value.type === 'agent_visual') {
         if (!ready || value.epoch !== epoch || !['agentVisualization', 'agentPresentation'].includes(value.event)) return { kind: 'ignored' }
         const subject = value.value?.subject
@@ -61,6 +68,9 @@ export function createNativeSession(registrySha256, { entityRegistrySha256 = nul
           value.entityState.entities.length > 512)) throw Error('NATIVE_ENTITY_STREAM_BINDING_MISMATCH')
       const reset = value.type === 'snapshot' && epoch !== value.epoch
       if(value.type==='snapshot'&&Number.isSafeInteger(value.selfPlayer?.entityId))entityId=value.selfPlayer.entityId
+      // The scene updates its current pose/presentation in place between
+      // terrain messages. Keep a private wire baseline for exact reconstruction.
+      if(value.type==='snapshot')terrainBaseline=Number.isSafeInteger(value.terrainSequence)?structuredClone(value):null
       if(reset)effectSequence=-1
       epoch = value.epoch; ready = true
       return { kind: value.type, value, reset }
