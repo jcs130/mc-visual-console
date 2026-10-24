@@ -36,6 +36,7 @@
     "packages/modern-viewer/renderer-src",
     "packages/modern-viewer/asset-packs/java-1.20.6",
     "packages/modern-viewer/asset-packs/java-1.21.1",
+    "packages/modern-viewer/asset-packs/java-1.21.11",
     "packages/modern-viewer/asset-packs/java-1.20.6-sounds",
     "packages/modern-viewer/asset-packs/java-1.21.1-sounds",
     "packages/modern-viewer/asset-packs/original-bgm",
@@ -92,6 +93,7 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "esbuild": "^0.24.0",
+    "prismarine-item": "1.18.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

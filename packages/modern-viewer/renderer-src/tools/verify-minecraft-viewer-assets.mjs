@@ -5,6 +5,7 @@ import path from 'node:path'
 import minecraftData from 'minecraft-data'
 import prismarineBlock from 'prismarine-block'
 import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
+import { assertViewerVersion } from '../host/viewer-version.mjs'
 
 const [jarArg, rootArg] = process.argv.slice(2)
 if (!jarArg || !rootArg) {
@@ -14,7 +15,7 @@ if (!jarArg || !rootArg) {
 const root = path.resolve(rootArg)
 const source = JSON.parse(await readFile(path.join(root, 'public', 'asset-source.json'), 'utf8'))
 const version = source.minecraftVersion
-if (!['1.20.6','1.21.1'].includes(version)) throw Error('Unsupported asset version')
+assertViewerVersion(version)
 const client = JSON.parse(await readFile(path.join(root, 'viewer-client.json'), 'utf8'))
 if (source.minecraftVersion !== version || client.minecraftVersion !== version ||
   client.clientJarSha256 !== source.clientJarSha256) throw Error('资源或浏览器 bundle 版本不符')
@@ -65,6 +66,9 @@ for (const name of Object.keys(mc.blocksByName)) {
 for (const [name, model] of Object.entries(renderModels.models.latest)) {
   for (const texture of Object.values(model.textures ?? {})) {
     if (typeof texture !== 'string' || texture.startsWith('#')) continue
+    // The exact Java air model uses the built-in missingno particle while
+    // containing no drawable faces. No visible model may use this exemption.
+    if (texture === 'missingno' && ['item/air', 'block/air'].includes(name) && !model.elements?.length) continue
     const atlas = name.startsWith('item/') && texture.startsWith('item/') ? itemAtlas : blockAtlas
     const key = atlas === itemAtlas ? texture.slice(5) : texture.replace(/^block\//, '')
     if (!atlas[key]) errors.push(`${name}: 渲染纹理缺失 ${texture}`)
@@ -103,7 +107,11 @@ function checkModel(name, item) {
   const model = item?.model
   if (!model) { errors.push(`${name}: 模型载荷缺失`); return }
   if (!Object.keys(model.textures ?? {}).length && !model.elements?.length) emptyModels.add(name)
-  for (const texture of Object.values(model.textures ?? {})) if (texture === null) nullTextures++
+  for (const texture of Object.values(model.textures ?? {})) {
+    // Java's three air states inherit a built-in missingno particle and have
+    // no faces. Keep that unavailable particle, never waive visible textures.
+    if (texture === null && !(new Set(['air','void_air','cave_air']).has(name) && !model.elements?.length)) nullTextures++
+  }
   for (const element of model.elements ?? []) {
     for (const face of Object.values(element.faces ?? {})) if (face.texture === null) nullTextures++
   }

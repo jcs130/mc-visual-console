@@ -1,4 +1,5 @@
 import {patchRendererMovement} from './minecraft-viewer-movement-patch.mjs';
+import {assertViewerVersion} from '../host/viewer-version.mjs';
 /** Build the portable modern viewer source against Minecraft 1.20.6 data. */
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -18,7 +19,7 @@ import { verifyViewerContentAssets } from './viewer-content-assets.mjs'
 import { verifyTextDisplayAssets } from './text-display-assets.mjs'
 import { viewerSourceDigest } from './viewer-build-source.mjs'
 import { patchObsRendererAlpha } from './minecraft-viewer-obs-alpha.mjs'
-import { viewerVersionCss } from '../host/viewer-version.mjs'
+import { viewerVersionCss, viewerVersionTexture } from '../host/viewer-version.mjs'
 import { prepareItemAppearanceAssets } from './item-appearance-assets.mjs'
 import { viewerReactiveModule } from './viewer-reactive-module.mjs'
 import { prepareSoundAssetPack } from '../../../../tools/prepare-viewer-assets.mjs'
@@ -61,8 +62,9 @@ const outputRoot = path.resolve(outputArg)
 const renderAssets = path.join(outputRoot, 'render-assets')
 const sourceManifest = JSON.parse(await readFile(path.join(outputRoot, 'public', 'asset-source.json'), 'utf8'))
 const version = sourceManifest.minecraftVersion
-if (!['1.20.6', '1.21.1'].includes(version) || !sourceManifest.clientJarSha256) {
-  throw Error('请先从 1.20.6 客户端 JAR 导出资源')
+assertViewerVersion(version)
+if (!/^[a-f0-9]{64}$/.test(sourceManifest.clientJarSha256 ?? '')) {
+  throw Error('请先从匹配版本的原版客户端 JAR 导出资源')
 }
 if (!options.includes('--no-sounds')) await prepareSoundAssetPack({ minecraftVersion: version, outputDirectory: outputRoot })
 const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256,{version})
@@ -294,7 +296,7 @@ const buildResult = await build({
         const file = request.slice('mc-assets/dist/'.length)
         const legacyTexture = file.match(/^other-textures\/(?:latest|1\.21\.2)\/(.+\.png)$/)
         if (legacyTexture) {
-          const local = path.join(outputRoot, 'public', 'textures', version, legacyTexture[1])
+          const local = path.join(outputRoot, 'public', viewerVersionTexture('textures/' + legacyTexture[1], version))
           return { path: local }
         }
         return replacements[file] ? { path: path.join(renderAssets, replacements[file]) } : undefined

@@ -9,6 +9,7 @@ function actionButton(label, action, disabled) { const button = node('button', l
 function safeLink(url) { try { const value = new URL(url); return ['http:', 'https:'].includes(value.protocol) && !value.username && !value.password ? value.href : null; } catch { return null; } }
 export function viewerUrl(state) {
   if (state.host?.paused || state.runtime?.phase !== 'started' || state.connection?.connection?.ready !== true) return null;
+  if (state.connection?.viewer?.phase && state.connection.viewer.phase !== 'ready') return null;
   for (const link of state.links ?? []) {
     try { const url = new URL(link.href); if (url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port && !url.username && !url.password
       && url.pathname === '/' && !url.search && !url.hash) return url.href; } catch { /* Unavailable is preferable to an unrelated frame. */ }
@@ -32,6 +33,20 @@ function renderViewer(state) {
   if (href && frame.getAttribute('src') !== href) frame.setAttribute('src', href);
   if (!href) frame.removeAttribute('src'); // No background WebGL/socket or stale disconnected scene.
   frame.hidden = !href; $('#game-empty').hidden = !!href;
+  const empty = $('#game-empty');
+  if (!href) {
+    const viewer = state?.connection?.viewer, ready = state?.connection?.connection?.ready === true;
+    let title = '尚未连接游戏', detail = '连接后显示同一 Agent 的实时画面；打开面板不会发起模型推理。';
+    if (!state) { title = '连接状态未知'; detail = '等待连接台恢复，当前游戏与画面状态尚未验证。'; }
+    else if (state.host?.paused) { title = 'Agent 已暂停'; detail = '恢复连接后显示实时画面。'; }
+    else if (ready) {
+      title = viewer?.phase === 'failed' ? '游戏已连接，画面加载失败' : viewer?.phase === 'disabled' ? '游戏已连接，网页画面未启用' : '游戏已连接，正在准备画面';
+      detail = viewer?.message || '画面使用实际协商版本的资源；游戏连接状态与画面加载状态分别检查。';
+    } else if (state.runtime?.phase === 'starting' || state.runtime?.phase === 'started') {
+      title = '等待游戏连接就绪'; detail = '正在连接或等待服务器认证，尚未进入可行动状态。';
+    }
+    empty.replaceChildren(node('strong', title), node('p', detail));
+  }
 }
 export function renderClientState(state) {
   latestState = state;
@@ -46,7 +61,13 @@ export function renderClientState(state) {
   $('#address').textContent = server.host ? `${server.host}:${server.port}` : '请配置服务器';
   $('#version').textContent = `${server.actualVersion ? `已协商 Java ${server.actualVersion}` : '协议尚未验证'} · ${server.requestedVersion === 'auto' ? '自动识别版本' : `指定 ${server.requestedVersion ?? '—'}`}`;
   const target = $('#accounts'); target.replaceChildren();
+  const nativeClients = state.capabilities?.nativeClients !== false;
+  $('#account-heading').textContent = nativeClients ? '账号与客户端' : 'Agent 账号';
+  $('#account-note').textContent = nativeClients ? '各账号分别授权' : '同一连接提供游戏画面';
+  $('#native-setup-help').hidden = !nativeClients;
+  $('#account-identity-help').textContent = '账号标识用于本地缓存；实际游戏名以验证结果为准。' + (nativeClients ? 'Agent、观察者和玩家同时进服需要不同账号。观察者附身由服务器权限或插件决定。' : '网页画面不需要另开游戏客户端或额外账号。');
   for (const [key, title] of [['agent','Agent 游戏连接'], ['observer','观察者客户端'], ['player','玩家客户端']]) {
+    if (key !== 'agent' && state.capabilities?.nativeClients === false) continue;
     const account = accounts[key] ?? {}, profile = account.profile, client = connection.clients?.[key];
     const row = node('div', undefined, 'account'), head = node('div', undefined, 'account-head');
     head.append(node('span', undefined, `dot ${account.phase ?? 'idle'}`), node('span', title, 'account-name'),
@@ -71,7 +92,7 @@ export function renderClientState(state) {
   const views = $('#views'); views.replaceChildren();
   for (const value of state.links ?? []) { const href = safeLink(value.href); if (!href) continue; const link = node('a', value.label || '游戏画面'); link.href = href; link.target = '_blank'; link.rel = 'noreferrer noopener'; views.append(link); }
   if (!views.children.length) views.append(node('span', '画面就绪后显示入口', 'empty'));
-  $('#asset-note').textContent = '主要维护 Java 1.21.1；画面须匹配实际连接版本与资源包。协议未验证时不宣称画面兼容。';
+  $('#asset-note').textContent = '自动识别服务器协议；网页画面使用实际版本的资源。Java 1.21.1 是主要维护版本，不限制游戏连接版本。';
   $('[data-action="connect"]').disabled = state.runtime?.phase !== 'disconnected';
   $('[data-action="disconnect"]').disabled = state.runtime?.phase === 'disconnected' || state.runtime?.phase === 'stopping';
   const failed = Object.values(state.operations ?? {}).find(value => value.status === 'failed');

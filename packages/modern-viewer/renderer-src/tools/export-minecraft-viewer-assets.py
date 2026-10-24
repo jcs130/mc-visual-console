@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -136,7 +137,7 @@ def add_block_entity_models(states: dict, models: dict, all_models: dict):
 
 def extract_inputs(jar_path: str, cache: str):
     os.makedirs(BLOCKS_DIR, exist_ok=True)
-    states, models, all_models = {}, {}, {}
+    states, models, all_models, item_definitions = {}, {}, {}, {}
     texture_count = 0
     item_pngs = {}
     with zipfile.ZipFile(jar_path) as jar:
@@ -151,6 +152,8 @@ def extract_inputs(jar_path: str, cache: str):
                 all_models[name[len('assets/minecraft/models/'):-5]] = model
             elif name.startswith('assets/minecraft/models/item/') and name.endswith('.json'):
                 all_models[name[len('assets/minecraft/models/'):-5]] = json.loads(jar.read(name))
+            elif name.startswith('assets/minecraft/items/') and name.endswith('.json'):
+                item_definitions[name[len('assets/minecraft/items/'):-5]] = json.loads(jar.read(name))
             elif name.startswith('assets/minecraft/textures/') and name.endswith('.png'):
                 rel = name[len('assets/minecraft/textures/'):]
                 dst = os.path.join(PUBLIC, 'textures', VERSION, *rel.split('/'))
@@ -217,7 +220,7 @@ def extract_inputs(jar_path: str, cache: str):
                    'models': {'latest': render_model_identifiers(all_models)},
                    'hardcodedModels': {}, 'latestRootItems': []}, out, separators=(',', ':'))
     with open(os.path.join(render_dir, 'itemDefinitions.json'), 'w', encoding='utf-8') as out:
-        json.dump({'latest': {}}, out)
+        json.dump({'latest': item_definitions}, out, separators=(',', ':'))
     derived_count = make_render_atlases(jar_path, render_dir)
     icon_count = export_icons(jar_path, PUBLIC)
     print(f'客户端资源：{len(states)} 个方块状态 / {len(models)} 个模型 / {texture_count} 张纹理 / {icon_count} 个物品图标')
@@ -230,22 +233,25 @@ def make_render_atlases(jar_path: str, output: str):
     from PIL import Image
     with zipfile.ZipFile(jar_path) as jar:
         derived = {}
-        for atlas_name in ('blocks', 'armor_trims'):
+        for atlas_name in ('blocks', 'items', 'armor_trims'):
+            if f'assets/minecraft/atlases/{atlas_name}.json' not in jar.namelist():
+                continue
             atlas_spec = json.loads(jar.read(f'assets/minecraft/atlases/{atlas_name}.json'))
             for source in atlas_spec.get('sources', []):
-                if source.get('type') != 'paletted_permutations':
+                if source.get('type', '').removeprefix('minecraft:') != 'paletted_permutations':
                     continue
                 key_image = Image.open(BytesIO(jar.read(
-                    f"assets/minecraft/textures/{source['palette_key']}.png"))).convert('RGBA')
+                    f"assets/minecraft/textures/{source['palette_key'].removeprefix('minecraft:')}.png"))).convert('RGBA')
                 key_colors = list(key_image.get_flattened_data())
                 for suffix, palette_path in source['permutations'].items():
                     palette = Image.open(BytesIO(jar.read(
-                        f'assets/minecraft/textures/{palette_path}.png'))).convert('RGBA')
+                        f"assets/minecraft/textures/{palette_path.removeprefix('minecraft:')}.png"))).convert('RGBA')
                     colors = list(palette.get_flattened_data())
                     if len(colors) != len(key_colors):
                         raise ValueError(f'纹饰调色板尺寸不符：{palette_path}')
                     mapping = {old[:3]: new[:3] for old, new in zip(key_colors, colors)}
                     for base in source['textures']:
+                        base = base.removeprefix('minecraft:')
                         image = Image.open(BytesIO(jar.read(
                             f'assets/minecraft/textures/{base}.png'))).convert('RGBA')
                         translated = [(*mapping.get(pixel[:3], pixel[:3]), pixel[3]) if pixel[3] else pixel
@@ -532,7 +538,7 @@ def main():
     global PUBLIC, BLOCKS_DIR, VERSION
     with zipfile.ZipFile(args.client_jar) as jar:
         VERSION = json.loads(jar.read("version.json"))["id"]
-    if VERSION not in ("1.20.6", "1.21.1"):
+    if not re.fullmatch(r'\d{1,3}\.\d{1,3}(?:\.\d{1,3})?', VERSION):
         raise ValueError("Unsupported Minecraft asset version: " + VERSION)
     PUBLIC = os.path.abspath(os.path.join(args.output_dir, 'public'))
     os.makedirs(os.path.join(PUBLIC, 'blocksStates'), exist_ok=True)
