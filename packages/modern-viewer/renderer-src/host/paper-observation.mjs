@@ -96,8 +96,11 @@ export class PaperObservedPlayer extends EventEmitter {
     if(newTick)this.emit('physicsTick');
     // Keep the existing low-frequency HUD/inventory path; only actual changes
     // bypass it. Faster pose delivery must not resend 46 SNBT slots at 20Hz.
-    const urgent=changed||inventoryChanged||p.selectedHotbarSlot!==previous?.selectedHotbarSlot||p.health!==previous?.health||p.food!==previous?.food;
-    if(urgent||this.now()-this.lastPresentationAt>=200){this.lastPresentationAt=this.now();this.events.emit('presentation');}
+    const urgent=changed||inventoryChanged||['selectedHotbarSlot','health','maxHealth','armor','food','airSupply','maxAirSupply','experienceLevel','experienceProgress']
+      .some(key=>p[key]!==previous?.[key]);
+    // Motion/hand state already has its own 20 Hz lane. Repeating 46 SNBT slots
+    // for every movement tick wastes bandwidth for every spectator.
+    if(urgent){this.lastPresentationAt=this.now();this.events.emit('presentation');}
     return { changed, after: this.wireSequence, generation: this.generation };
   }
   decode(data, state) {

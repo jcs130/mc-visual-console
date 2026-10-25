@@ -52,6 +52,18 @@ async function fixture(t, options = {}) {
   return { sourceUrl, portalUrl, relay, status, data, reads, streams, start, get, revoke: () => { allowed = false; }, revokeViewer: () => { viewAllowed = false; } };
 }
 
+test('guest status and SSE share the owner source but cannot receive authentication or Agent internals',async t=>{
+ const f=await fixture(t,{nativeStream:true,relay:{sharedStreams:true,authorizeViewer:req=>({scope:req.headers.cookie==='owner=A'?'owner':'scene'})}});
+ f.status.presentation={schemaVersion:1,playerUuid:uuid,self:{health:18,armor:9},inventory:{playerUuid:uuid,slots:[],selectedHotbarSlot:2},gameMessages:[{seq:1,kind:'chat',text:'一起冒险吧'},{seq:2,kind:'chat',text:'/login NEVER_PUBLIC_TEST'}]};
+ f.status.agent={private:'NEVER_PUBLIC_TEST'};await f.start();
+ const owner=await f.get('status.json').then(r=>r.json());assert.equal(owner.agent.private,'NEVER_PUBLIC_TEST');
+ const guest=await f.get('status.json',{headers:{}}).then(r=>r.json());assert.equal(guest.presentation.self.health,18);assert.equal(guest.presentation.inventory.selectedHotbarSlot,2);assert.ok(!JSON.stringify(guest).includes('NEVER_PUBLIC_TEST'));
+ const controller=new AbortController();t.after(()=>controller.abort());
+ const stream=await f.get('events',{headers:{},signal:controller.signal});assert.equal(stream.status,200);
+ const reader=stream.body.getReader();const bytes=await reader.read();assert.match(Buffer.from(bytes.value).toString(),/identity/);await reader.cancel();
+ assert.equal(f.reads.filter(row=>row.url==='/events').length,1);
+});
+
 test('only bounded relative observation paths are eligible; there is no action/HTML/JS tunnel', () => {
   for (const p of ['events', 'status.json', 'manifest.json', 'assets/minecraft/models/item/apple.json', 'assets/minecraft/textures/block/water_still.png.mcmeta', 'assets/minecraft/shaders/core/rendertype_glint.vsh', 'assets/minecraft/shaders/include/light.glsl', 'api/bundled-appearances/assets/alex.png', 'sounds/minecraft/test.ogg']) assert.ok(observationPath(p), p);
   for (const p of ['../status.json', 'assets/x/../../file.json', '/status.json', 'assets//x.png', 'assets/x/%2e%2e/a.png', 'file:///x.json', 'https://bad/a.json', 'api/command', 'control', 'index.html', 'index.js', 'status.json?token=secret', 'a\\b.json']) assert.equal(observationPath(p), null, p);

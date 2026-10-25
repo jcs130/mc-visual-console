@@ -64,7 +64,7 @@ test('actual biome hash, villager registries and oxygen are retained without exp
  assert.ok(!Object.hasOwn(r.player.world,'seed'));o.close();
 });
 
-test('20Hz observed poses retain fast hands/head while unchanged full inventory stays at 5Hz',()=>{
+test('20Hz poses retain fast hands/head; full inventory/HUD is sent only on changes',()=>{
  let now=100000,poses=0,presentations=0;
  const o=new PaperObservedPlayer({playerUuid:uuid,name:'ObservedAgent',registry:{},registrySha256:hash,decodePacket:bytes=>JSON.parse(bytes),now:()=>now});
  o.on('physicsTick',()=>poses++);o.events.on('presentation',()=>presentations++);
@@ -75,9 +75,12 @@ test('20Hz observed poses retain fast hands/head while unchanged full inventory 
   assert.equal(p.self.handAnimation.sampledAt,now);assert.equal(o.entity.bodyYaw,Math.PI-i*3*Math.PI/180);
   now+=50;
  }
- assert.equal(poses,20);assert.equal(presentations,5);
+ assert.equal(poses,20);assert.equal(presentations,1);
  const changed=receipt();changed.player.observedAt=now;changed.player.inventory[9].item.count=2;
- o.ingest(changed);assert.equal(presentations,6);assert.equal(o.presentation().inventory.slots[9].item.count,2);o.close();
+ o.ingest(changed);assert.equal(presentations,2);assert.equal(o.presentation().inventory.slots[9].item.count,2);
+ changed.player.health=7;o.ingest(changed);assert.equal(presentations,3);
+ changed.player.armor=12;o.ingest(changed);assert.equal(presentations,4);
+ o.ingest(changed);assert.equal(presentations,4);o.close();
 });
 
 test('one observed attack keeps its action token across unrelated packets and advances only on a new swing',()=>{

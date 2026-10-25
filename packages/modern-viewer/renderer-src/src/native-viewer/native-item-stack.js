@@ -234,6 +234,53 @@ export function assertNativeItemStack(stack) {
   return stack
 }
 
+// Public spectators need the visible model, not book text, container contents,
+// private custom_data or command-bearing item descriptions. Preserve the typed
+// visual components from the actual stack; never infer a replacement model.
+export function publicNativeItemStack(item) {
+  if (item == null) return null
+  const stack = parseNativeItemStack(item)
+  const visual = new Set(['custom_model_data', 'damage', 'max_damage', 'dyed_color', 'profile', 'trim',
+    'enchantment_glint_override', 'enchantments', 'stored_enchantments', 'potion_contents',
+    'banner_patterns', 'base_color', 'firework_explosion', 'map_color', 'map_id'])
+  const quote = s => '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
+  const encode = value => {
+    const type = typeOf(value)
+    if (type === 'string') return quote(value)
+    if (type === 'compound') return '{' + Object.entries(value).map(([k,v]) => quote(k)+':'+encode(v)).join(',') + '}'
+    if (type === 'list') return '[' + value.map(encode).join(',') + ']'
+    if (type.endsWith('Array')) return '['+({byteArray:'B',intArray:'I',longArray:'L'})[type]+';'+value.value.map(v=>String(v)+(type==='longArray'?'L':type==='byteArray'?'b':'')).join(',')+']'
+    if (type === 'int') return String(value)
+    return (value.literal ?? String(value.value))+({byte:'b',short:'s',long:'L',float:'f',double:'d'})[type]
+  }
+  const components = Object.fromEntries(Object.entries(stack.components).filter(([key]) =>
+    visual.has(key.replace(/^!/, '').replace(/^minecraft:/, '')) && /^!?minecraft:/.test(key)))
+  // Names are necessary for special items such as the personal backpack. Keep
+  // real text/styles while dropping click/hover actions and credential text.
+  const secret = /(?:MC_AUTH_|\/(?:[\w-]+:)?(?:login|register|changepass(?:word)?|password|2fa|totp|auth)\b|password|passwd|api[ _-]?key|authorization|bearer\s|(?:sk[-_]|(?:srv|obs|pub|pat)_)[A-Za-z0-9_-]{16}|eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]+\.|密码|口令|验证码|密钥|令牌)/i
+  const textComponent = (value, depth = 0) => {
+    if (depth > 12) return null
+    if (typeof value === 'string') return secret.test(value) ? null : value
+    if (Array.isArray(value)) return value.map(v => textComponent(v, depth + 1)).filter(v => v !== null)
+    if (!record(value)) return null
+    const result = {}
+    for (const key of ['text','color','font','bold','italic','underlined','strikethrough','obfuscated','extra']) {
+      if (!Object.hasOwn(value, key)) continue
+      if (key === 'extra') result.extra = textComponent(value.extra, depth + 1)
+      else if (typeof value[key] === 'boolean' || typeof value[key] === 'string' && !secret.test(value[key])) result[key] = value[key]
+    }
+    return typeof result.text === 'string' || Array.isArray(result.extra) ? result : null
+  }
+  for (const key of ['minecraft:custom_name','minecraft:item_name']) {
+    const raw = stack.components[key]
+    if (typeof raw === 'string' && raw.length <= 8192) {
+      try { const value = textComponent(JSON.parse(raw)); if (value !== null) components[key] = JSON.stringify(value) } catch {}
+    }
+    if (Object.hasOwn(stack.components, '!' + key)) components['!' + key] = stack.components['!' + key]
+  }
+  return { name: stack.id, count: stack.count, snbt: '{id:'+quote(stack.id)+',count:'+stack.count+',components:'+encode(components)+'}' }
+}
+
 // ItemContainerContents.copyOne() copies slot ZERO, not the first nonempty
 // entry. Reuse parser-produced nested values without losing numeric tag types
 // in a JSON round trip, or accepting a fabricated typed-tag lookalike.

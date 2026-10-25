@@ -1,6 +1,6 @@
 # Paper observation: HUD, motion and cached free camera
 
-2026-10-25 candidate. This is a shared renderer change; consuming websites and
+2026-10-26 candidate. This is a shared renderer change; consuming websites and
 observation workers must rebuild and deploy the same frozen revision.
 
 ## Actual failures and fixes
@@ -11,7 +11,7 @@ observation workers must rebuild and deploy the same frozen revision.
   the absent optional hand. Keep identity, size and private-state validation.
   The real adapter-to-host regression covers inventory, armor, maximum health,
   selection changes, idle/use transitions, position-derived locomotion and
-  public-scene inventory redaction.
+  public-scene credential and item-data filtering.
 - Pose samples are placed on the source timeline. An arrival-only 50 ms buffer
   with 150 ms transit continually clamped to the latest old sample, producing
   packet-sized steps at 60 FPS. Buffer measured source age plus arrival cadence,
@@ -39,7 +39,7 @@ semantics. Toolbar controls wrap on narrow screens.
 ## Evidence and limits
 
 Run `node tools/run-renderer-tests.mjs` in `renderer-src`. The candidate passes
-1,336 checks with 37 existing conditional skips. Set `PAPER_APPEARANCE_FIXTURES`,
+1,342 checks with 39 conditional skips; six original-model checks are also run with actual assets. Set `PAPER_APPEARANCE_FIXTURES`,
 `PAPER_APPEARANCE_NATIVE_ASSETS` and `PAPER_CORMY_ACTION_FIXTURE=1` to additionally
 exercise the operator's original NEKO, Kirito and Cormy assets; do not publish
 those private bundles. Tests check walk/run/stop, original bone motion between
@@ -50,3 +50,25 @@ synthetic explicitly labelled receipts, 50 ms sampling and 150 ms transit age.
 It is not a production connection or a mobile hardware performance benchmark.
 Full Java pixel parity, all model-specific actions and worn equipment remain
 unverified. No game server or player data change is needed for these fixes.
+
+## Shared public scene and changes-only HUD
+
+The relay accepts an explicit owner or scene scope. One source stream feeds both;
+public snapshots, deltas, frames and late-viewer checkpoints are projected once,
+then reused. Inventory, held items, armor and safe visible custom names remain.
+Book bodies, arbitrary custom data, interactive menus, private Agent state and
+known authentication messages are excluded. Unknown event types are not public.
+A consumer decides which roles are public; this library cannot grant ownership.
+
+Paper emits a presentation on inventory/vitals/selection changes, not every200ms.
+Motion remains50ms and ordinary frames omit the repeated inventory. The client
+advances only the cached presentation's movement fields using the same UUID,
+entity, epoch and monotonic source sample. It never lets a null generic health
+attribute erase a known Paper maximum, or expire original YSM locomotion merely
+because the inventory is unchanged. A real stopped stream still expires.
+
+The standalone site now bundles spectator-public.mjs and native-item-stack.js
+alongside the relay. Public and private HTTP/SSE, restart replay, scope revocation,
+exact typed custom appearance components and continuous motion after a five-second
+unchanged inventory are regression tested. Website dialogue history and book
+persistence belong to the consuming portal, not the visual scene protocol.

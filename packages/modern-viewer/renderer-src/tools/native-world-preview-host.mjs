@@ -793,6 +793,9 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           const wireStarted=performance.now()
           const terrainMessage=terrainValue?{...terrainValue,mode:sourceMode,entityState:injectTrackedMaidPresentation(world.entitySnapshot(terrainValue.bounds),ownPresentation,world.dimension?.name,player?.uuid),...common}:null
           const frameMessage={type:world.error?'unavailable':'frame',reason:world.error,epoch:world.epoch,...common,entityState:injectTrackedMaidPresentation(world.entitySnapshot(cachedSnapshot?.bounds),ownPresentation,world.dimension?.name,player?.uuid),packetSequence:world.lastSequence}
+          // Paper emits an explicit presentation event whenever inventory/HUD
+          // changes. Full terrain checkpoints still bootstrap late viewers.
+          if(sourceMode==='paper_server_observation')delete frameMessage.presentation
           const terrain = terrainMessage && (snapshot || [...clients].some(c => !c.blocked && c.needsSnapshot)) ?
             terrainDeltas ? terrainEncoder.prepare(terrainMessage, { requireFull: [...clients].some(c => !c.blocked && (c.needsSnapshot || c.terrainSequence !== terrainWireStatus?.sequence)) }) : { full: terrainMessage } : null
           let encodedTerrain = terrain && (!terrainDeltas || terrain.fullWire) ? encodeNativeWorldEvent(terrain.fullWire ?? terrain.full) : null

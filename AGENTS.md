@@ -1,3 +1,7 @@
+## 2026-10-26 public spectator and sparse HUD candidate
+
+Cloud fanout now projects explicit scene scope once per event while sharing the original source. Public inventory keeps exact visual components/name, excludes credential/book/custom metadata; owner scope unchanged. Paper inventory/vitals changes emit HUD, motion remains50ms. Cached browser presentation advances verified movement only (not nullable generic vitals), fixing stale YSM motion and lost hearts after sparse HUD. Standalone site includes the two new relay dependencies. Consumer portal/worker must freeze same revision; not deployed by committing. See renderer-src/docs/native-paper-observation-experience.md. Original model assets and private QA captures stay untracked.
+
 2026-10-25 HUD/动作/自由视角候选：Paper idle缺少activeHand经undefined触发整组PRESENTATION_INVALID，改为null保留严格私有校验；插值加入实测传输源龄，保持500ms/64样本有界不预测。原Paper YSM补齐背包镜像身份与能力，原模型/骨骼不替换；护甲槽/值已支持，模型穿甲仍未适配。自由视角仅当前已接收区块内操作，无新MC/源连接或世界加载。1336共享通过/37条件跳过、NEKO/Kirito/Cormy原资源专项及实际桌面/390px离线WebGL通过；非生产WAN/手机硬件验收。消费方须冻结匹配页面和worker再发布。见renderer-src/docs/native-paper-observation-experience.md。
 
 2026-10-25 观战启动候选：原材质磁盘缓存改为有界后台写入（256待写×64KiB、512持久条目），不再阻塞模型依赖链；SHA/私有资源边界保留。原模型层/色图/外观目录并行启动，可信哈希JS预加载，增加只含时长的首屏/预取诊断。原NEKO18,410格隔离回放冷构建27.254→3.082秒；每请求额外150ms时31.906→14.718秒，热缓存首屏3.059秒，非生产WAN/手机验收。16链实验无收益，保留8链。1299共享测试通过、38条件跳过，27专项通过；保留最新粒子/材质去重更新。门户默认第三人称由消费方设置，需冻结匹配页面/worker后另行发布，当前源码不代表官网已升级。见renderer-src/docs/native-startup-performance.md。

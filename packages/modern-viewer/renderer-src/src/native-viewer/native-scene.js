@@ -1,4 +1,5 @@
 import { NativeSelfDisplayPose, NativeFrameGaps, writeChanged } from './native-display-performance.js'
+import { advancePaperPresentation } from './native-paper-presentation.js'
 import { createNativeEventStream } from './native-event-stream.js'
 import * as THREE from 'three'
 import { nativeViewerUrl } from './native-url.js'
@@ -63,6 +64,7 @@ const terrainQueue=new NativeTerrainQueue(),terrainPhases={prefetchMs:0,signatur
 let firstTerrainRender=false
 const selfDisplay=new NativeSelfDisplayPose(),frameGaps=new NativeFrameGaps()
 const receiveDisplay=()=>{
+  current.presentation=advancePaperPresentation(current.presentation,current,playerUuid)
   const previous=selfDisplay.resetVersion
   const self=current?.presentation?.self,pose=current?.pose
   selfDisplay.receive(pose?{...pose,bodyYaw:pose.bodyYaw??self?.bodyYaw,headYaw:pose.headYaw??self?.headYaw}:pose,performance.now(),`${epoch}:${playerUuid}:${current?.selfPlayer?.entityId}:${current?.selfPlayer?.health===0}`,current?.motion)
@@ -294,7 +296,8 @@ async function start () {
         audio.connect(true)
       } else if (value.type === 'frame' && current && value.epoch === epoch) {
         current.pose = value.pose; current.selfPlayer = value.selfPlayer; current.motion = value.motion; current.time = value.time; current.packetSequence = value.packetSequence
-        current.presentation = value.presentation; current.entityState = value.entityState; receiveDisplay()
+        if(Object.hasOwn(value,'presentation'))current.presentation = value.presentation
+        current.entityState = value.entityState; receiveDisplay()
       } else if (value.type === 'motion' && current && value.epoch === epoch) {
         if(value.selfPlayer)current.selfPlayer={...current.selfPlayer,...value.selfPlayer}
         selfActor?.applyHandAnimation?.(value.handAnimation)
@@ -304,7 +307,7 @@ async function start () {
       } else if (value.type === 'presentation' && current && value.epoch === epoch) {
         current.presentation = value.presentation; selfActor?.applyHeldItems?.(value.presentation); onState(value); return
       } else return
-      onState(value); void ensureSelfActor(current.selfPlayer)
+      onState(Object.hasOwn(value,'presentation')?value:{...value,presentation:current.presentation}); void ensureSelfActor(current.selfPlayer)
       entityLayer.stage(current.entityState,{selfEntityId:current.selfPlayer?.entityId,playerUuid})
       const body = selfActor
       if (body?.applyHeldItems) void Promise.resolve(body.applyHeldItems(current.presentation)).catch(error => {
