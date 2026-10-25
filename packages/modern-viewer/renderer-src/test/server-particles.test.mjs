@@ -12,6 +12,18 @@ function setup() {
   return {particles,world,time:t=>time=t};
 }
 const event={name:'dust_color_transition',position:{x:11.25,y:65.5,z:-3.75},spread:{x:0,y:0,z:0},speed:0,count:1,size:1.5,color:[.25,.5,.75],colorEnd:[1,0,.125],exact:true};
+test('disabled particleBatch rendering does not queue or allocate GPU buffers and disposes existing buffers on toggle',()=>{
+  const world={scene:new Scene(),sceneOrigin:{toSceneX:x=>x,toSceneY:y=>y,toSceneZ:z=>z}};
+  const p=new ServerParticles({enabled:false,getWorld:()=>world,now:()=>0});
+  const batch={schemaVersion:1,events:[event]};
+  p.handleBatch(batch);assert.equal(p.pending.length,0);
+  p.setAssets(assets,new Texture());assert.equal(p.cloud,null);p.tick();assert.equal(world.scene.children.length,0);
+  p.setEnabled(true);assert.equal(p.stats().active,0);p.handleBatch(batch);p.tick();assert.equal(p.stats().active,1);
+  const cloud=p.cloud;let disposed=0;cloud.geometry.addEventListener('dispose',()=>disposed++);cloud.material.addEventListener('dispose',()=>disposed++);
+  p.setEnabled(false);assert.equal(disposed,2);assert.equal(p.cloud,null);assert.equal(world.scene.children.length,0);
+  p.handleBatch(batch);p.tick();assert.equal(p.pending.length,0);assert.equal(p.cloud,null);
+  p.setEnabled(true);assert.equal(p.stats().active,0);assert.equal(p.stats().suppressed,2);p.dispose();
+});
 test('actual GPU buffers preserve zero-speed positions, dust size and interpolated end color',()=>{
   const s=setup(),p=s.particles;p.handleBatch({schemaVersion:1,events:[event]});p.tick(0);
   const g=p.cloud.geometry;assert.deepEqual([...g.attributes.position.array.slice(0,3)],[1.25,1.5,1.25]);assert.equal(g.attributes.size.array[0],1.5);

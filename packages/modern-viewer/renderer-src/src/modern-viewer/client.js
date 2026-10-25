@@ -5734,6 +5734,8 @@ function enhanceRendererQuality() {
       const qualityChanged = qualityPreference !== settings.quality;
       sceneSettings = settings; qualityPreference = settings.quality;
       viewerEffectSystem?.setPreferences(settings);
+      globalThis.MinecraftViewerParticles?.setEnabled(settings.particles);
+      globalThis.cortiViewerContent?.setParticlesEnabled(settings.particles);
       applyServerWeather();
       if (qualityChanged) adaptiveQualityController = createAdaptiveQualityController({
         nativePixelRatio: finiteOr(globalThis.devicePixelRatio, 1), maximumPixelRatio: 1.75, preference: qualityPreference });

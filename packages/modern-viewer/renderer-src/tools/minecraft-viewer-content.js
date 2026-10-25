@@ -9,7 +9,7 @@ import {loadPaperBundledAppearances,PaperBundledAppearanceSelection} from './pap
 import paperYsmItemModels from 'mc-assets/dist/blockStatesModels.json';
 const cortiContentMinecraftVersion = '1.20.6';
 
-const cortiNativeParticles = new ServerParticles();
+const cortiNativeParticles = new ServerParticles({enabled:typeof sceneSettings==='undefined'?true:sceneSettings.particles});
 const cortiMapPhotos = new MapPhotos();
 const cortiTextDisplays = new TextDisplays();
 let cortiTextDisplayError = null;
@@ -125,5 +125,5 @@ function cortiAnimateNativeContent(now) {
   requestAnimationFrame(cortiAnimateNativeContent);
 }
 if (typeof isObsOverlay === 'undefined' || !isObsOverlay) requestAnimationFrame(cortiAnimateNativeContent);
-window.cortiViewerContent={stats:()=>({ysm:cortiYsmPlayers.stats(),bodyVisibility:cortiYsmRenderGuard?.diagnostics??null,particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
+window.cortiViewerContent={setParticlesEnabled:value=>cortiNativeParticles.setEnabled(value),stats:()=>({ysm:cortiYsmPlayers.stats(),bodyVisibility:cortiYsmRenderGuard?.diagnostics??null,particles:cortiNativeParticles.stats(),photos:cortiMapPhotos.stats(),textDisplays:cortiTextDisplays.stats(),textDisplayError:cortiTextDisplayError,error:cortiContentError,epoch:cortiContentEpoch})};
 window.addEventListener('pagehide',()=>{cortiContentDisposed=true;cortiYsmRenderGuard?.dispose();cortiYsmRenderGuard=null;appearanceUi.dispose();cortiYsmPlayers.clear();cortiNativeParticles.dispose();cortiMapPhotos.dispose();cortiTextDisplays.dispose();cortiContentStatus.remove();cortiHeldMapPreview.dispose();},{once:true});

@@ -2,18 +2,21 @@ import { BufferGeometry, BufferAttribute, Points, ShaderMaterial, TextureLoader,
 
 export const PARTICLE_LIMITS = Object.freeze({ active: 2048, batch: 256, pendingBatches: 4, distance: 80 });
 export class ServerParticles {
-  constructor({ getWorld = () => globalThis.world, now = () => performance.now(), random = Math.random } = {}) {
+  constructor({ getWorld = () => globalThis.world, now = () => performance.now(), random = Math.random, enabled = true } = {}) {
     this.getWorld = getWorld; this.now = now; this.random = random; this.entries = []; this.assets = null; this.cloud = null;
-    this.diagnostics = { received: 0, rendered: 0, dropped: 0, unsupported: 0 }; this.pending = [];
+    this.diagnostics = { received: 0, rendered: 0, dropped: 0, unsupported: 0, suppressed: 0 }; this.pending = [];this.enabled=enabled!==false;
   }
   setAssets(assets, texture) {
     this.reset(); this.assets = assets; this.texture = texture;
     texture.magFilter = texture.minFilter = NearestFilter; texture.generateMipmaps = false; texture.flipY = false;
+    if(this.enabled)this.createCloud();
+  }
+  createCloud() {
     const geometry = new BufferGeometry();
     for (const [name, size] of [['position',3],['color',3],['opacity',1],['size',1],['sprite',4]]) geometry.setAttribute(name,new BufferAttribute(new Float32Array(PARTICLE_LIMITS.active*size),size));
     geometry.setDrawRange(0,0);
     const material = new ShaderMaterial({ transparent: true, depthWrite: false, blending: NormalBlending, vertexColors: true, toneMapped: false,
-      uniforms: { atlas: { value: texture } },
+      uniforms: { atlas: { value: this.texture } },
       // The world renderer uses logarithmic depth. A linear-depth custom shader
       // is otherwise hidden behind nearby terrain despite valid GPU geometry.
       vertexShader: `#include <common>
@@ -35,12 +38,14 @@ export class ServerParticles {
   }
   handleBatch(batch) {
     if (!batch || batch.schemaVersion !== 1 || !Array.isArray(batch.events) || batch.events.length > PARTICLE_LIMITS.batch) return false;
+    if(!this.enabled){this.diagnostics.suppressed+=batch.events.length;return false;}
     if (!this.assets) { if (this.pending.length < PARTICLE_LIMITS.pendingBatches) this.pending.push({ batch, at: this.now() }); return false; }
     let rendered=false;
     for (const event of batch.events) rendered=this.spawn(event)||rendered;
     return rendered;
   }
   spawn(event) {
+    if(!this.enabled){this.diagnostics.suppressed++;return false;}
     this.diagnostics.received++;
     if (!event || !event.position || ![event.position.x,event.position.y,event.position.z].every(Number.isFinite)) return false;
     const definitions=this.assets?.particleDefinitions?.[event.name];
@@ -66,6 +71,7 @@ export class ServerParticles {
     return true;
   }
   tick(at=this.now()) {
+    if(!this.enabled)return;
     const world=this.getWorld(); if(!this.cloud || !world?.scene || !world?.sceneOrigin) return;
     if(this.scene!==world.scene) {if(this.scene)this.entries=[];this.scene=world.scene;world.scene.add(this.cloud);}
     const origin=world.sceneOrigin,g=this.cloud.geometry;
@@ -80,9 +86,11 @@ export class ServerParticles {
     g.setDrawRange(0,this.entries.length);for(const a of Object.values(g.attributes))a.needsUpdate=true;
   }
   clear() {this.entries=[];this.pending=[];this.cloud?.geometry.setDrawRange(0,0);}
+  setEnabled(value) {const next=value!==false;if(this.enabled===next)return;this.enabled=next;
+    if(!next)this.reset();else if(this.assets&&this.texture)this.createCloud();}
   reset() {this.clear();this.scene=null;this.cloud?.parent?.remove(this.cloud);this.cloud?.geometry.dispose();this.cloud?.material.dispose();this.cloud=null;}
   dispose() {this.reset();this.texture?.dispose();this.assets=null;}
-  stats() {return {...this.diagnostics,active:this.entries.length,drawn:this.cloud?.geometry.drawRange.count??0,mounted:!!this.cloud?.parent,ready:!!this.assets,
+  stats() {return {...this.diagnostics,enabled:this.enabled,allocated:!!this.cloud,active:this.entries.length,drawn:this.cloud?.geometry.drawRange.count??0,mounted:!!this.cloud?.parent,ready:!!this.assets,
     firstScenePosition:this.entries.length?[...this.cloud.geometry.attributes.position.array.slice(0,3)]:null};}
 }
 
