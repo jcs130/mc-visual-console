@@ -1,5 +1,7 @@
 import {patchRendererMovement} from './minecraft-viewer-movement-patch.mjs';
 import {assertViewerVersion} from '../host/viewer-version.mjs';
+import {viewerDataAlias} from './viewer-data-alias.mjs';
+import {withViewerMissingMaterial} from './viewer-missing-material.mjs';
 /** Build the portable modern viewer source against Minecraft 1.20.6 data. */
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -103,35 +105,7 @@ function correctRendererWorldHeight(source) {
 const dataPaths = sourceRequire('minecraft-data/minecraft-data/data/dataPaths.json').pc[version]
 if (!dataPaths) throw Error('minecraft-data 不支持 1.20.6')
 
-const fields = ['attributes', 'blocks', 'blockCollisionShapes', 'biomes', 'effects', 'items',
-  'enchantments', 'instruments', 'materials', 'language', 'entities', 'version', 'foods', 'particles', 'tints']
-const jsonModule = (field) => sourceRequire.resolve(`minecraft-data/minecraft-data/data/${dataPaths[field]}/${field}.json`)
-const alias = [
-  `const mcDataToNode = require(${JSON.stringify(sourceRequire.resolve('minecraft-data/lib/loader.js'))});`,
-  ...fields.map((field) => `const ${field} = require(${JSON.stringify(jsonModule(field))});`),
-  `const legacyPc = require(${JSON.stringify(sourceRequire.resolve('minecraft-data/minecraft-data/data/pc/common/legacy.json'))});`,
-  `const protocolVersions = require(${JSON.stringify(sourceRequire.resolve('minecraft-data/minecraft-data/data/pc/common/protocolVersions.json'))});`,
-  `const createSupportFeature = require(${JSON.stringify(sourceRequire.resolve('minecraft-data/lib/supportsFeature.js'))});`,
-  `const data = mcDataToNode({ ${fields.join(', ')} });`,
-  `data.type = 'pc';`,
-  `const protocolVersion = protocolVersions.find(row => row.minecraftVersion === '${version}');`,
-  `const compareTo = other => { const row = protocolVersions.find(entry => entry.minecraftVersion === String(other));
-    return protocolVersion?.dataVersion !== undefined && row?.dataVersion !== undefined
-      ? protocolVersion.dataVersion - row.dataVersion : compareVersions('${version}', other); };`,
-  `data.version = { ...version, dataVersion: protocolVersion?.dataVersion, type: 'pc', majorVersion: '${version.split('.').slice(0,2).join('.')}',
-    minecraftVersion: '${version}', '>=': other => compareTo(other) >= 0, '>': other => compareTo(other) > 0,
-    '<=': other => compareTo(other) <= 0, '<': other => compareTo(other) < 0, '==': other => compareTo(other) === 0 };`,
-  `data.isNewerOrEqualTo = other => compareVersions('${version}', other) >= 0;`,
-  `data.isOlderThan = other => compareVersions('${version}', other) < 0;`,
-  `data.supportFeature = createSupportFeature(data.version, protocolVersions);`,
-  `function MinecraftData() { return data; }`,
-  `MinecraftData.legacy = { pc: legacyPc, bedrock: { blocks: {}, items: {} } };`,
-  `MinecraftData.versions = { pc: protocolVersions, bedrock: [] };`,
-  `module.exports = MinecraftData;`,
-  `function compareVersions(left, right) { const a = String(left).split('.').map(Number), b = String(right).split('.').map(Number);
-    for (let i = 0; i < Math.max(a.length, b.length); i++) { const delta = (a[i] || 0) - (b[i] || 0); if (delta) return delta; }
-    return 0; }`,
-].join('\n')
+const alias = viewerDataAlias(sourceRequire,version)
 
 const temp = await mkdtemp(path.join(tmpdir(), 'mc-modern-viewer-'))
 const aliasFile = path.join(temp, `minecraft-data-${version}.cjs`)
@@ -302,7 +276,7 @@ const buildResult = await build({
         return replacements[file] ? { path: path.join(renderAssets, replacements[file]) } : undefined
       })
       context.onLoad({ filter: /[\\/]render-assets[\\/]blockStatesModels\.json$/ }, async ({ path: file }) => ({
-        contents: JSON.stringify(normalizeUntintedLeafModels(JSON.parse(await readFile(file, 'utf8')))),
+        contents: JSON.stringify(withViewerMissingMaterial(normalizeUntintedLeafModels(JSON.parse(await readFile(file, 'utf8'))))),
         loader: 'json',
       }))
       context.onResolve({ filter: /^valtio\/utils$/ }, () => ({ path: path.join(sourceRoot, 'src', 'modern-viewer', 'valtio-utils-shim.js') }))
@@ -403,6 +377,7 @@ const mesherSha256 = createHash('sha256').update(await readFile(biomeWorker.outp
 await writeViewerPages(outputRoot)
 await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
   minecraftVersion: version, clientJarSha256: sourceManifest.clientJarSha256,
+  runtimeRegistryVersion: 1,
   browserBundleSha256, mesherSha256, biomeCount: biomeWorker.biomeCount,
   buildSource: await viewerSourceDigest(sourceRoot),
   preset: options.includes('--preset=qiandengji') ? 'qiandengji' : null,

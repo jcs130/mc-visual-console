@@ -74,10 +74,10 @@ test('embeds only an actually ready same-agent local viewer and does not reconne
   assert.equal(frame.getAttribute('src'),null); assert.equal(frame.hidden,true);
   assert.equal(elements.get('#phase').textContent,'已暂停');
 });
-test('missing model settings remain unknown and connection help uses the primary version',()=>{
+test('missing model settings remain unknown and prebuilt materials are not presented as a connection requirement',()=>{
   renderClientState({runtime:{phase:'disconnected'}});
   assert.match(elements.get('#host-model').textContent,/模型未知.*设置未知/);
-  assert.match(elements.get('#asset-note').textContent,/Java 1.21.1/);
+  assert.match(elements.get('#asset-note').textContent,/没有预制材质也可连接/);
 });
 
 test('a host can omit native launcher controls while preserving the Agent account and OAuth', () => {
@@ -95,12 +95,13 @@ test('a connected 1.21.11 game reports viewer failure honestly and never embeds 
     links:[{href:'http://127.0.0.1:17852/'}]};
   showView('game');renderClientState(state);
   assert.equal(elements.get('#game-frame').getAttribute('src'), null);
-  assert.ok(all('#game-empty').some(n => n.textContent === '游戏已连接，画面加载失败'));
+  assert.ok(all('#game-empty').some(n => n.textContent === '游戏已连接，可以继续玩'));
   assert.ok(all('#game-empty').some(n => n.textContent.includes('1.21.11')));
-  assert.ok(all('#game-empty').some(n => n.textContent.includes('viewer-status')));
+  assert.ok(!all('#game-empty').some(n => /viewer-status|安装.*资源|构建/.test(n.textContent)));
   assert.ok(all('#game-empty').some(n => n.dataset.action==='viewer.retry'));
   renderClientState({...state,connection:{...state.connection,viewer:{phase:'starting'}}});
   assert.ok(all('#game-empty').some(n => n.textContent === '游戏已连接，正在准备画面'));
-  renderClientState({...state,connection:{...state.connection,viewer:{phase:'ready'}}});
+  renderClientState({...state,connection:{...state.connection,viewer:{phase:'ready',resources:{mode:'compatible'}}}});
   assert.equal(elements.get('#game-frame').getAttribute('src'), 'http://127.0.0.1:17852/');
+  assert.ok(elements.get('#asset-note').textContent.includes('兼容画面'));
 });
