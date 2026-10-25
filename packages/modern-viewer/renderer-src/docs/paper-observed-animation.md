@@ -1,5 +1,8 @@
 # Paper observed player animation
 
+The stream recovery follow-up is described in [native-stream-recovery.md](native-stream-recovery.md);
+its source and browser fixture checks do not by themselves confirm a consumer deployment.
+
 ## 2026-10-25 source and production consumer
 
 The Qiandengji consumer deployed portal 0.8.17 with renderer `19768897` and

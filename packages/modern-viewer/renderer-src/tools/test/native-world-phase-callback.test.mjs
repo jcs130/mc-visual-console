@@ -20,7 +20,7 @@ test('production world RAF and camera callbacks measure real camera rays/room ma
   const source = await readFile(new URL('../../src/native-viewer/native-scene.js', import.meta.url), 'utf8')
   // Execute the owning production callbacks verbatim. Only GPU submission, empty
   // entity/audio/texture services and the browser scheduler are substituted.
-  const loop = source.slice(source.indexOf('  renderer.setAnimationLoop(now => {'), source.indexOf('  events = new EventSource'))
+  const loop = source.slice(source.indexOf('  renderer.setAnimationLoop(now => {'), source.indexOf('  events = createNativeEventStream'))
   const cameraCallback = source.slice(source.indexOf('function updatePlayerCamera (now)'), source.indexOf('function rememberPointer'))
   assert.ok(loop.startsWith('  renderer.setAnimationLoop')); assert.ok(cameraCallback.startsWith('function updatePlayerCamera'))
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(70, 1, .05, 150), roomVisibility = createNativeRoomVisibility()

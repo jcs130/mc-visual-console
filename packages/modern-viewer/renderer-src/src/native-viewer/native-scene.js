@@ -1,4 +1,5 @@
 import { NativeSelfDisplayPose, NativeFrameGaps, writeChanged } from './native-display-performance.js'
+import { createNativeEventStream } from './native-event-stream.js'
 import * as THREE from 'three'
 import { nativeViewerUrl } from './native-url.js'
 import {createNativeAudio} from './native-audio.js'
@@ -252,8 +253,7 @@ async function start () {
         uiMs:afterUi-afterMap,diagnosticsMs:performance.now()-afterUi})
     } catch (error) { fail(error) }
   })
-  events = new EventSource(nativeViewerUrl('events'))
-  events.onmessage = message => {
+  events = createNativeEventStream({url:nativeViewerUrl('events'),statusUrl:nativeViewerUrl('status.json'),onMessage:message => {
     try {
       const received=JSON.parse(message.data)
       // A resource/registry deployment can invalidate the old session reader.
@@ -311,8 +311,7 @@ async function start () {
         body.root.userData.heldItems = { available: false, reason: error.message }; publishDiagnostics()
       })
     } catch (error) { fail(error) }
-  }
-  events.onerror = () => { session.receive({type:'unavailable'}); clearScene(); onUnavailable('NATIVE_WORLD_STREAM_DISCONNECTED') }
+  },onUnavailable:reason => { session.receive({type:'unavailable'}); clearScene(); onUnavailable(reason) }})
 }
 function orbitPosition () {
   orbitAnchor.reset()

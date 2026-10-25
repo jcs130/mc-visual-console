@@ -53,6 +53,16 @@ test('only bounded relative observation paths are eligible; there is no action/H
   for (const p of ['events', 'status.json', 'manifest.json', 'assets/minecraft/models/item/apple.json', 'assets/minecraft/textures/block/water_still.png.mcmeta', 'assets/minecraft/shaders/core/rendertype_glint.vsh', 'assets/minecraft/shaders/include/light.glsl', 'api/bundled-appearances/assets/alex.png', 'sounds/minecraft/test.ogg']) assert.ok(observationPath(p), p);
   for (const p of ['../status.json', 'assets/x/../../file.json', '/status.json', 'assets//x.png', 'assets/x/%2e%2e/a.png', 'file:///x.json', 'https://bad/a.json', 'api/command', 'control', 'index.html', 'index.js', 'status.json?token=secret', 'a\\b.json']) assert.equal(observationPath(p), null, p);
 });
+test('verified role waiting for source replacement is retryable and later resumes without cached authorization',async t=>{
+  let waiting=true;
+  const f=await fixture(t,{relay:{authorizeViewer(){if(waiting)throw Object.assign(Error('rebuilding'),{status:503,reason:'SPECTATOR_SOURCE_OFFLINE'})}}});
+  await f.start();const pending=await f.get('status.json');assert.equal(pending.status,503);assert.equal((await pending.json()).reason,'SPECTATOR_SOURCE_OFFLINE');
+  waiting=false;assert.equal((await f.get('status.json')).status,200);
+});
+test('arbitrary authorization errors cannot claim a retryable verified-role state',async t=>{
+  const f=await fixture(t,{relay:{authorizeViewer(){throw Object.assign(Error('private role detail'),{status:503,reason:'SOMETHING_ELSE'})}}});
+  await f.start();const denied=await f.get('status.json');assert.equal(denied.status,403);assert.ok(!(await denied.text()).includes('private role detail'));
+});
 test('publisher only reads explicit loopback sources and uses TLS for remote sites', () => {
   assert.equal(spectatorAddresses('http://127.0.0.1:3007/', 'https://mc.example.org', 'channel-a').socket.href, 'wss://mc.example.org/api/v1/live/channel-a/source');
   for (const source of ['http://192.168.3.163/', 'http://localhost/', 'http://127.0.0.1/?secret=x', 'http://user:pass@127.0.0.1/']) assert.throws(() => spectatorAddresses(source, 'https://mc.example.org', 'channel-a'));
