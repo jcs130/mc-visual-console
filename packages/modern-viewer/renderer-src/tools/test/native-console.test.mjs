@@ -30,6 +30,22 @@ const presentation = () => ({ schemaVersion: 1, playerUuid: UUID, available: tru
     slots: Array.from({ length: 46 }, (_, slot) => ({ slot, item: null })) },
   nativeMenu: { windowId: 0, stateId: 1, menuType: 'minecraft:inventory', slots: [] }, skills: null, gameMessages: [] })
 
+test('free camera is a local view switch over the existing scene and can return to following',async()=>{
+ const {document,window}=fullShell(),button=document.createElement('button'),hint=document.createElement('div')
+ button.id='native-free-camera-toggle';button.setAttribute('data-view','region');button.hidden=true;document.body.append(button)
+ hint.setAttribute('data-native-free-camera-hint','');hint.hidden=true;document.body.append(hint)
+ let mounts=0;const modes=[]
+ const console=await bootNativeConsole({document,window,startStatus:()=>()=>{},mount:async()=>{mounts++;return {setView:m=>modes.push(m),dispose(){},renderer:{setPixelRatio(){}}}}})
+ assert.equal(button.hidden,false)
+ button.dispatch('click',{preventDefault(){}})
+ assert.equal(modes.at(-1),'region');assert.equal(hint.hidden,false);assert.equal(document.body.dataset.viewMode,'region')
+ assert.equal(window.path,undefined,'free camera does not navigate to a new stream or connection')
+ document.querySelectorAll('[data-view]').find(link=>link.dataset.view==='third').dispatch('click',{preventDefault(){}})
+ assert.equal(modes.at(-1),'third');assert.equal(hint.hidden,true);assert.equal(mounts,1)
+ assert.match(renderViewerPage('third'),/data-view="region" hidden>自由视角/)
+ console.dispose()
+})
+
 test('world loading remains visible until current-epoch terrain commits, even when the HUD is live',async()=>{
   const {document,window}=fullShell();let hooks
   const console=await bootNativeConsole({document,window,startStatus:()=>()=>{},mount:async options=>{

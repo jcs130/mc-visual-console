@@ -10,6 +10,8 @@ import { EventEmitter } from 'node:events'
 import { prepareNativeWorldPreviewHost, parseNativeWorldPreviewArguments, encodeNativeWorldEvent, sendNativeWorldEvent, createNativePlayerPresentation, injectTrackedMaidPresentation } from '../native-world-preview-host.mjs'
 import { createNativeSession } from '../../src/native-viewer/native-session.js'
 import { NATIVE_YSM_SOURCE, NATIVE_YSM_JAR_SHA256 } from '../../src/native-viewer/native-ysm-state.js'
+import { PaperObservedPlayer } from '../../host/paper-observation.mjs'
+import { selectNativeHeldItems } from '../../src/native-viewer/native-held-items.js'
 
 let directory, prepared, registryHash
 const assetPath = 'assets/test/models/native.json'
@@ -276,6 +278,58 @@ test('foreign or unavailable server body state never becomes a fabricated HUD de
   assert.equal(value.self.equipment, null)
   menu.playerInventory = Array(45).fill(null); menu.windowId = 8
   assert.equal(createNativePlayerPresentation({ playerUuid, menu }).inventory, null)
+})
+
+test('idle Paper observation crosses the real host boundary with HUD, exact inventory and locomotion intact', async t => {
+  const uuid='01234567-89ab-cdef-0123-456789abcdef', world='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  let clock=10000
+  const observed=new PaperObservedPlayer({playerUuid:uuid,name:'PaperTest',registry:{},registrySha256:registryHash,
+    decodePacket:bytes=>JSON.parse(bytes),now:()=>clock})
+  const host=prepared.attach({bot:observed,nativeStream:observed,simplifyNBT:tag=>tag,expectedUsername:'PaperTest',
+    resolveDimension:p=>({name:p.name,minY:p.minY,height:p.height}),sourceMode:'paper_server_observation',
+    getPresentationState:()=>observed.presentation(),now:()=>clock})
+  t.after(async()=>{await host.close();observed.close()})
+  const receipt={available:true,uuid,generation:world,configurationPackets:[],packets:[],player:{
+    uuid,name:'PaperTest',entityId:8,world:{uuid:world,name:'minecraft:overworld',minY:0,height:128},
+    position:{x:0,y:64,z:0},velocity:{x:0,y:0,z:0},yawDegrees:0,pitchDegrees:0,eyeHeight:1.62,
+    gameTime:200,dayTime:6000,serverTick:200,observedAt:clock,bodyYaw:0,headYaw:0,pose:0,
+    health:25.6,maxHealth:25.6,armor:17,food:18,experienceLevel:88,experienceProgress:.3,
+    selectedHotbarSlot:2,mainArm:'right',onGround:true,sneaking:false,sprinting:true,flying:false,inWater:false,
+    airSupply:300,maxAirSupply:300,usingItem:false,useItemRemainingTicks:0,attackAnim:0,
+    // The actual Paper source omits activeHand/activeItemName while idle.
+    inventory:Array.from({length:46},(_,slot)=>({slot,item:slot===38?{name:'minecraft:diamond_sword',count:1,
+      snbt:'{id:"minecraft:diamond_sword",count:1}'}:slot===9?{name:'minecraft:paper',count:3,snbt:'{id:"minecraft:paper",count:3}'}:null}))}}
+  observed.ingest(receipt)
+  let state=host.status()
+  assert.equal(state.presentation.nativeState.available,true,JSON.stringify(state.presentation.nativeState))
+  assert.equal(state.presentation.self.maxHealth,25.6)
+  assert.equal(state.presentation.self.armor,17)
+  assert.equal(state.presentation.self.oxygen,20)
+  assert.equal(state.presentation.inventory.slots.length,46)
+  assert.equal(state.presentation.inventory.selectedHotbarSlot,2)
+  assert.equal(selectNativeHeldItems(state.presentation,uuid).hands.right.raw.name,'minecraft:diamond_sword')
+  clock+=100;receipt.player.serverTick+=2;receipt.player.observedAt=clock;receipt.player.position.x+=.6
+  observed.ingest(receipt);state=host.status()
+  assert.equal(state.selfPlayer.locomotion.available,true)
+  assert.equal(state.selfPlayer.locomotion.velocity.x,.3,'walking uses real position deltas even with zero impulse velocity')
+  assert.deepEqual(state.presentation.self.locomotion,state.selfPlayer.locomotion)
+  receipt.player.usingItem=true;receipt.player.activeHand='offhand';receipt.player.activeItemName='minecraft:apple'
+  receipt.player.useItemAnimation='eat';receipt.player.useItemDurationTicks=32;receipt.player.useItemRemainingTicks=20
+  clock+=50;receipt.player.serverTick++;receipt.player.observedAt=clock;observed.ingest(receipt)
+  assert.equal(host.status().presentation.self.handAnimation.use.hand,'offhand')
+  receipt.player.usingItem=false;delete receipt.player.activeHand;delete receipt.player.activeItemName
+  receipt.player.selectedHotbarSlot=0;clock+=50;receipt.player.serverTick++;receipt.player.observedAt=clock;observed.ingest(receipt)
+  state=host.status();assert.equal(state.presentation.nativeState.available,true)
+  assert.equal(state.presentation.self.handAnimation.activeHand,null);assert.equal(state.presentation.self.handAnimation.use,null)
+  assert.equal(state.presentation.inventory.selectedHotbarSlot,0)
+  assert.equal(selectNativeHeldItems(state.presentation,uuid).hands.right.raw,null,'an empty selected slot must clear the previous sword')
+  receipt.player.selectedHotbarSlot=2;clock+=50;receipt.player.serverTick++;receipt.player.observedAt=clock;observed.ingest(receipt)
+  // Switching the delivery scope must retain visible equipment/HUD, never bag contents.
+  observed.scope='scene';state=host.status()
+  assert.equal(state.presentation.inventory,null)
+  assert.equal(state.presentation.self.armor,17)
+  assert.equal(selectNativeHeldItems(state.presentation,uuid).hands.right.raw.name,'minecraft:diamond_sword')
+  assert.ok(!JSON.stringify(state.presentation).includes('minecraft:paper'))
 })
 
 test('native YSM attachment reaches both own self-player and presentation with bounded fields and no foreign fallback', t => {

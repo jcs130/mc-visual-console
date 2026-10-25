@@ -21,7 +21,7 @@ import {createNativeDeathUi} from './native-death-ui.js'
 
 // Full original page-template.html + viewer.css, with the same-player native
 // scene underneath. No additional Minecraft observer or browser action channel.
-const MODES = Object.freeze({ first: 'first', third: 'third', '3dview': '3dview', dungeon: '3dview' })
+const MODES = Object.freeze({ first: 'first', third: 'third', region: 'region', '3dview': '3dview', dungeon: '3dview' })
 export function consoleViewMode (path = '/', selected) {
   return MODES[selected] ?? (path.startsWith('/3dview') ? '3dview' : path.startsWith('/third') ? 'third' : 'first')
 }
@@ -39,6 +39,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   selectionScope = pageSelectionScope(document) } = {}) {
   if (!document?.body || !window) throw Error('NATIVE_CONSOLE_DOCUMENT_INVALID')
   const el = id => document.getElementById(id), q = selector => document.querySelector(selector)
+  const freeCameraButton=el('native-free-camera-toggle');if(freeCameraButton)freeCameraButton.hidden=false
   const buildChanged=createNativeViewerBuildGuard(q('meta[name="native-viewer-build"]')?.content,()=>window.location.reload())
   const listeners = [], listen = (target, event, callback) => { target?.addEventListener(event, callback); listeners.push([target, event, callback]) }
   let disposed = false, identity = null, sceneHost = null, latestState = null, lastDiagnostics = null
@@ -218,6 +219,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     }
     const crosshair = q('.corti-crosshair'); if (crosshair) crosshair.hidden = mode !== 'first'
     const dungeonNav=q('.dungeon-camera-controls');if(dungeonNav)dungeonNav.hidden=mode!=='3dview'
+    const freeHint=q('[data-native-free-camera-hint]');if(freeHint)freeHint.hidden=mode!=='region'
     updateDiagnosticText()
     transitionTiming.finish(timing)
   }
@@ -294,7 +296,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
           for(const row of options){const option=append(document,targetSelect,'option','',`${row.name} · #${row.id}${row.rendered?'':'（模型未适配）'}`);option.value=String(row.id);option.disabled=!row.rendered}
           targetSelect.value=value
         }
-        if(frame.camera){const text=`${({manual:'手动环绕',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称','3dview':'3D观战'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`;if(text!==lastCameraText){lastCameraText=text;cameraUi.status(text)}}
+        if(frame.camera){const text=`${({manual:'手动环绕',region:'自由视角 · 已载入区域',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称','3dview':'3D观战'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`;if(text!==lastCameraText){lastCameraText=text;cameraUi.status(text)}}
         if (sampledAt === null) sampledAt = frame.now
         if (frame.now - sampledAt >= 1000) {
           const result = quality.sample({ fps: frames * 1000 / (frame.now - sampledAt), hidden: document.hidden })

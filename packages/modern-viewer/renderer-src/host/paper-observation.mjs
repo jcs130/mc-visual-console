@@ -137,7 +137,11 @@ export class PaperObservedPlayer extends EventEmitter {
   handState() {
     const p=this.latest;if(!p)return null;
     return {source:PAPER_OBSERVATION_MODE,playerUuid:this.uuid,entityId:p.entityId,sampledAt:p.observedAt,
-      mainArm:p.mainArm,usingItem:p.usingItem,activeHand:p.activeHand,crouching:p.sneaking,spinAttack:p.spinAttack===true,
+      // Paper omits activeHand when the body is not using an item. Undefined
+      // invalidates the entire strict presentation copy (including inventory,
+      // health capacity, armor and gait). Unknown/idle is explicitly null;
+      // never invent a main-hand action or relax the shared identity validator.
+      mainArm:p.mainArm,usingItem:p.usingItem,activeHand:p.activeHand??null,crouching:p.sneaking,spinAttack:p.spinAttack===true,
       use:p.usingItem&&['eat','drink'].includes(p.useItemAnimation)&&Number.isInteger(p.useItemDurationTicks)&&p.useItemDurationTicks>0
         ?{source:'paper_use_item_state',hand:p.activeHand,name:p.activeItemName,kind:p.useItemAnimation,
           durationTicks:p.useItemDurationTicks,startedAt:p.observedAt-(p.useItemDurationTicks-p.useItemRemainingTicks)*50}:null,

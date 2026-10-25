@@ -8,6 +8,7 @@ import {NativeAssetReader} from '../../src/native-viewer/model-loader.js'
 import {nativePaperAppearanceBinding,readPaperAppearance,createNativePaperAppearanceActor} from '../../src/native-viewer/native-paper-appearance.js'
 import {NativeSelfPlayerController} from '../../src/native-viewer/native-self-player.js'
 import {paperObservedLocomotion} from '../../host/paper-observed-motion.mjs'
+import {mirrorInventoryPlayer,poseInventoryPlayer,releaseInventoryMirror} from '../../src/modern-viewer/inventory-player-preview.js'
 const uuid='6e8b395e-4349-3d44-99f5-b7488825e426',other='822d173a-7181-3b9b-be60-804f29b24ecc',sha=b=>createHash('sha256').update(b).digest('hex')
 const row={schemaVersion:1,source:'paper_server_appearance',available:true,playerUuid:uuid,entityId:12,kind:'ysm',bundleSha256:'a'.repeat(64),bytes:5,texture:'default'}
 const directory=process.env.PAPER_APPEARANCE_FIXTURES,assets=process.env.PAPER_APPEARANCE_NATIVE_ASSETS
@@ -90,10 +91,35 @@ test('original bundles render complete source geometry, scales, first-person arm
     const actor=await createNativePaperAppearanceActor(reader,{uuid:proof.playerUuid,paperAppearance:binding,readBundle:async()=>bundle,
       loadTexture:async input=>{const png=Buffer.from(input.split(',')[1],'base64');return new THREE.Texture({width:png.readUInt32BE(16),height:png.readUInt32BE(20)})}})
     assert.ok(actor.model.bones.size>10);assert.ok(actor.assetInfo.cubes>20);assert.equal(actor.assetInfo.scale.height,definition.properties.height_scale)
+    assert.equal(actor.root.userData.playerUuid,proof.playerUuid)
+    assert.equal(actor.assetInfo.inventoryPreviewAvailable,true)
+    assert.equal(actor.assetInfo.equipmentRenderingAvailable,false)
     assert.ok(actor.firstPersonRoot);const pose={x:100,y:67,z:-200,yaw:.4,pitch:.1};actor.applyPose(pose)
     const now=Date.now(),self={uuid:proof.playerUuid,entityId:proof.entityId,velocity:{x:.1,y:0,z:0},onGround:true,health:20,maxHealth:20,crouching:false,mainArm:'right',bodyYaw:.4,headYaw:.4}
     const frame={epoch:1,pose,selfPlayer:self,motion:{schemaVersion:1,source:'same_player_physics_tick',tickMs:50,epoch:1,tick:3,sampledAt:now},presentation:{available:true,source:'paper_server_observation',playerUuid:proof.playerUuid,sampledAt:now,self}}
     const motion=actor.applyMotion({current:frame,now});assert.equal(motion.available,true,name+': '+motion.reason);assert.equal(motion.base,'walk');assert.equal(motion.clip,'walk','shared diagnostics must not report waiting during a valid Paper animation');assert.deepEqual(actor.root.position.toArray(),[100,67,-200]);assert.equal(actor.root.visible,true)
+    // Paper movement is position delta, not impulse velocity. Exercise each
+    // actual original model, including a missed tick and frames between packets.
+    self.velocity={x:0,y:0,z:0};self.sprinting=true
+    self.locomotion={source:'paper_position_delta',playerUuid:proof.playerUuid,entityId:proof.entityId,tick:3,sampledAt:now,tickMs:50,spanTicks:2,available:true,velocity:{x:.3,y:0,z:0}}
+    const poses=[]
+    for(let age=0;age<=100;age+=1000/60){
+      const running=actor.applyMotion({current:frame,now:now+age})
+      assert.equal(running.available,true,name+': '+running.reason);assert.equal(running.base,'run')
+      assert.equal(running.locomotionSource,'paper_position_delta')
+      poses.push([...actor.model.bones.values()].flatMap(b=>[...b.position.toArray(),...b.quaternion.toArray()]))
+    }
+    assert.notDeepEqual(poses[0],poses.at(-1),name+' running bones must advance between packets')
+    const before=actor.root.position.toArray(),mirror=mirrorInventoryPlayer(THREE,actor.root)
+    poseInventoryPlayer(mirror,.2,.1)
+    for(const bone of actor.model.bones.values()){
+      assert.notStrictEqual(mirror.nodes.get(bone),bone)
+      assert.deepEqual(mirror.nodes.get(bone).quaternion.toArray(),bone.quaternion.toArray(),name+' preview preserves the original current pose')
+    }
+    assert.deepEqual(actor.root.position.toArray(),before,'read-only preview does not move the world actor')
+    releaseInventoryMirror(mirror)
+    self.locomotion.velocity.x=0;self.sprinting=false
+    assert.equal(actor.applyMotion({current:frame,now:now+150}).base,'idle',name+' stops instead of continuing to run')
     actor.applyPose({...pose,bodyYaw:.7,headYaw:.9})
     const stale=actor.applyMotion({current:frame,now:now+2000})
     assert.equal(stale.available,false);assert.match(stale.reason,/STALE/)

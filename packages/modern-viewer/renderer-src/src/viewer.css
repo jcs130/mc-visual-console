@@ -356,6 +356,10 @@ to{opacity:0}
 .corti-view-switch:hover,.corti-view-switch:focus-within{opacity:1}
 .corti-view-switch a{padding:4px 7px;border-radius:5px;color:#dce8e5;font:12px/1.2 system-ui;text-decoration:none;white-space:nowrap}
 .corti-view-switch a:hover,.corti-view-switch a:focus-visible{background:#ffffff25;outline:none}
+.corti-view-switch button{padding:4px 7px;border:0;border-radius:5px;color:#dce8e5;background:transparent;font:12px/1.2 system-ui;white-space:nowrap;cursor:pointer}
+.corti-view-switch button:hover,.corti-view-switch button:focus-visible{background:#ffffff25;outline:none}
+body[data-view-mode="region"] .corti-view-switch [data-view="region"]{background:#8acbb34d;color:#f5fff6;font-weight:700}
+.native-free-camera-hint{position:fixed;z-index:9;left:50%;bottom:145px;transform:translateX(-50%);max-width:min(520px,90vw);padding:7px 10px;border-radius:8px;background:#11242cde;color:#dce8e5;font:12px/1.5 system-ui;pointer-events:none}
 body[data-view-mode="first"] .corti-view-switch a[data-view="first"],body[data-view-mode="third"] .corti-view-switch a[data-view="third"],body[data-view-mode="3dview"] .corti-view-switch a[data-view="3dview"]{background:#8acbb34d;color:#f5fff6;font-weight:700}
 body[data-view-mode="third"] .corti-crosshair,body[data-view-mode="3dview"] .corti-crosshair{display:none}
 .corti-skills{top:56px}
@@ -497,10 +501,11 @@ to{opacity:1;transform:translateX(0)}
 /* Normal viewing: one tool strip, two flowing rails, and an unobstructed centre.
    OBS retains its independent absolute-position editor and saved transforms. */
 body[data-viewer-layout=docked]{--viewer-rail-width:220px;--viewer-top:60px;--viewer-gap:12px;--viewer-surface:#101c23e8;--viewer-line:#92b5ad40}
-.viewer-toolbar{position:fixed;z-index:30;inset:12px 12px auto;display:flex;align-items:center;gap:12px;min-height:36px;pointer-events:none;font:12px/1.3 system-ui}
+.viewer-toolbar{position:fixed;z-index:30;inset:12px 12px auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;min-height:36px;pointer-events:none;font:12px/1.3 system-ui}
 .viewer-toolbar-views,.viewer-toolbar-camera,.viewer-toolbar-tools{display:flex;align-items:center;gap:4px;min-width:0;pointer-events:auto;padding:3px;background:var(--viewer-surface);border:1px solid var(--viewer-line);border-radius:8px;box-shadow:0 3px 12px #0003}
 .viewer-toolbar-camera:empty{display:none}
-.viewer-toolbar-tools{margin-left:auto}
+.viewer-toolbar-views,.viewer-toolbar-camera{flex-shrink:0}
+.viewer-toolbar-tools{margin-left:auto;flex:1 1 480px;flex-wrap:wrap;justify-content:flex-end}
 .viewer-toolbar button,.viewer-toolbar summary,.viewer-toolbar a{box-sizing:border-box;min-height:28px;padding:6px 8px;border:0;border-radius:4px;background:transparent;color:#dce9e5;font:12px/1.2 system-ui;cursor:pointer;white-space:nowrap;text-decoration:none}
 .viewer-toolbar button:hover,.viewer-toolbar summary:hover,.viewer-toolbar a:hover{background:#ffffff12}
 .viewer-toolbar button:focus-visible,.viewer-toolbar summary:focus-visible,.viewer-toolbar a:focus-visible,.viewer-display-panel input:focus-visible{outline:2px solid #7ce0c6;outline-offset:2px}

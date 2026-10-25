@@ -73,6 +73,34 @@ test('batched SSE preserves measured source spacing and smooth 60Hz travel witho
  assert.ok(steps.every(x=>x>=-1e-9&&x<.09));assert.ok(steps.filter(x=>x>.01).length>90)
  assert.ok(d.samples.length<=64)
 })
+
+test('WAN transit age is buffered as well as arrival spacing, so a 20Hz source moves at display cadence',()=>{
+ const d=new NativeSelfDisplayPose(),epoch=1000000,shown=[];let latest=0
+ for(let frame=0;frame<=120;frame++){
+  const now=frame*1000/60
+  if(frame%3===0){
+   const sourceTime=now-150;latest=sourceTime/1000*4
+   d.receive(pose(latest),now,'a',{tick:frame/3,sampledAt:epoch+sourceTime},epoch+now)
+  }
+  const x=d.sample(now).x;assert.ok(x<=latest+1e-9);shown.push(x)
+ }
+ const steps=shown.slice(21).map((x,i)=>x-shown[i+20])
+ assert.ok(steps.every(x=>x>=-1e-9&&x<.09),`largest displayed step ${Math.max(...steps)}`)
+ assert.ok(steps.filter(x=>x>.01).length>95,'movement must continue between packets, not slide in 20Hz jumps')
+ assert.equal(d.status(2000).sourceAgeP90Ms,150)
+ assert.equal(d.delayMs,200)
+ assert.equal(d.sample(5000).x,latest,'a disconnected source never extrapolates')
+})
+
+test('invalid source clocks use arrival cadence and transit buffers stay bounded and reset with identity',()=>{
+ const d=new NativeSelfDisplayPose()
+ for(let i=0;i<30;i++)d.receive(pose(i*.1),i*50,'a',{tick:i,sampledAt:10000+i*50},10000+i*50+1200)
+ assert.equal(d.delayMs,500);assert.ok(d.sourceAges.length<=16)
+ d.receive(pose(),1500,'b',{tick:0,sampledAt:-100000},10000)
+ assert.equal(d.delayMs,50);assert.equal(d.status(1500).sourceAgeP90Ms,null)
+ d.receive(pose(.1),1550,'b',{tick:1,sampledAt:999999},10000)
+ assert.equal(d.delayMs,50);assert.equal(d.sample(1575).x,.05)
+})
 test('shortest yaw, identity, epoch, actual reset counters, jumps and stale gaps snap coherently',()=>{
  const d=new NativeSelfDisplayPose();d.receive(pose(0,Math.PI-.1),0,'a',{resetSequence:0});d.receive(pose(1,-Math.PI+.1),50,'a',{resetSequence:0})
  assert.ok(Math.abs(d.sample(75).yaw-Math.PI)<1e-12)

@@ -66,6 +66,11 @@ function originalArmMounts(definition,material){
 export async function createNativePaperAppearanceActor(reader,{uuid,paperAppearance:row,readBundle=readPaperAppearance,loadTexture=loadOriginalTexture,heldItemOptions={}}={}){
   const bundle=await readBundle(row),inner=await createPaperYsmActor(bundle,row.texture,{loadTexture})
   const root=new THREE.Group();root.name='native-server-original-player';root.visible=false;root.add(inner.root)
+  // The inventory preview mirrors the verified world actor, including its
+  // authored rig. Bind the wrapper too: UI identity checks must not fall back
+  // to a generic player or reject an otherwise valid Paper-selected model.
+  root.userData.playerUuid=uuid
+  if(inner.playerObject)root.playerObject=inner.playerObject
   let held,first,arms,disposed=false,motion
   const pngTexture=async bytes=>loadTexture('data:image/png;base64,'+encode64(bytes))
   try{
@@ -82,6 +87,7 @@ export async function createNativePaperAppearanceActor(reader,{uuid,paperAppeara
     }
     const assetInfo={...inner.assetInfo,kind:row.kind,uuid,source:'paper_server_appearance',selectionSource:'server_uuid_binding',authority:row.authority,
       bundleSha256:row.bundleSha256,modelId:row.modelId,texture:row.texture,ysmVersion:row.ysmVersion??null,
+      inventoryPreviewAvailable:true,equipmentRenderingAvailable:false,
       notice:row.kind==='ysm'?'服务器原 YSM 模型与实际动作；完整客户端动画一致性未验':'服务器绑定的原皮肤；当前未提供 YSM 模型状态'}
     return {root,assetInfo,model:inner.model,playerObject:inner.playerObject,firstPersonRoot:first.firstPersonRoot,
       applyPose(pose){if(disposed)throw Error('PAPER_APPEARANCE_DISPOSED');root.position.set(pose.x,pose.y,pose.z);root.rotation.y=Number.isFinite(pose.bodyYaw)?pose.bodyYaw:pose.yaw;root.visible=true},

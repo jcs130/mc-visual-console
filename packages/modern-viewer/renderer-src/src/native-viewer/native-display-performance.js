@@ -2,7 +2,7 @@
 export class NativeSelfDisplayPose {
   constructor () { this.reset() }
   reset () { this.resetVersion=(this.resetVersion??0)+1; this.samples=[]; this.identity=null; this.sequence=null; this.stale=false;this.received=0;this.duplicates=0;this.resetCadence() }
-  resetCadence () { this.arrivalGaps=[];this.delayMs=50;this.cadenceAt=null;this.cadenceTick=null;this.playhead=null }
+  resetCadence () { this.arrivalGaps=[];this.sourceAges=[];this.delayMs=50;this.cadenceAt=null;this.cadenceTick=null;this.playhead=null }
   receive (pose, at, identity, motion, wallNow = Date.now()) {
     if (!pose || !['x','y','z','yaw','pitch','eyeHeight'].every(k=>Number.isFinite(pose[k])) || !Number.isFinite(at)) return
     let last=this.samples.at(-1);const sequence=motion?.resetSequence??null
@@ -23,8 +23,6 @@ export class NativeSelfDisplayPose {
       const gap=this.cadenceAt===null?null:at-this.cadenceAt
       if(gap>=20&&gap<=1000){
         this.arrivalGaps.push(gap);if(this.arrivalGaps.length>16)this.arrivalGaps.shift()
-        const sorted=[...this.arrivalGaps].sort((a,b)=>a-b)
-        this.delayMs=Math.min(500,Math.max(50,Math.ceil(sorted[Math.ceil(sorted.length*.9)-1]/5)*5))
       }
       this.cadenceAt=at;this.cadenceTick=tick
     }
@@ -32,15 +30,25 @@ export class NativeSelfDisplayPose {
     // measured spacing instead of assigning every pose the same arrival time.
     // A skewed/unavailable source clock uses arrival time; never extrapolate.
     const age=wallNow-motion?.sampledAt
-    const sampledAt=Number.isFinite(age)&&age>=-100&&age<=1500?at-Math.max(0,age):at
+    const validAge=Number.isFinite(age)&&age>=-100&&age<=1500
+    const sampledAt=validAge?at-Math.max(0,age):at
+    if(validAge){this.sourceAges.push(Math.max(0,age));if(this.sourceAges.length>16)this.sourceAges.shift()}
+    const p90=values=>{const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.ceil(sorted.length*.9)-1]??0}
+    // Sample times are source times, not arrival times. With 150ms of transit,
+    // an arrival-only 50ms buffer would always clamp to the newest old sample:
+    // the actor would move in packet-sized jumps despite rendering at 60Hz.
+    // Include measured transit in the same bounded display timeline. A growing
+    // buffer can hold, but sample() never rewinds or predicts the player's body.
+    this.delayMs=Math.min(500,Math.max(50,Math.ceil((p90(this.sourceAges)+Math.max(50,p90(this.arrivalGaps))-1e-6)/5)*5))
     this.samples.push({pose:{...pose},at:Math.max(last?.at??-Infinity,sampledAt),arrivedAt:at,tick})
     this.received++
     if(this.samples.length>64)this.samples.shift()
   }
   status (now) {
-    const last=this.samples.at(-1),sorted=[...this.arrivalGaps].sort((a,b)=>a-b)
+    const last=this.samples.at(-1),sorted=[...this.arrivalGaps].sort((a,b)=>a-b),ages=[...this.sourceAges].sort((a,b)=>a-b)
     return {receivedSamples:this.received,duplicateTickFrames:this.duplicates,bufferedSamples:this.samples.length,bufferMs:this.delayMs,
       arrivalP90Ms:sorted.length?sorted[Math.ceil(sorted.length*.9)-1]:null,
+      sourceAgeP90Ms:ages.length?ages[Math.ceil(ages.length*.9)-1]:null,
       lastSampleAgeMs:last?Math.max(0,now-last.at):null,stale:this.stale}
   }
   sample (now) {

@@ -27,7 +27,7 @@ import { installAgentVisualization } from '../modern-viewer/agent-visual-overlay
 import { createAgentWorldProjector } from '../modern-viewer/agent-visual-projection.js'
 import { createNativeMiniMap } from './native-mini-map.js'
 import { normalizeCameraSettings } from '../modern-viewer/camera-preferences.js'
-import { NativeOrbitCameraAnchor, nativeCameraTarget, nativeCameraCollisionDistance } from './native-camera.js'
+import { NativeOrbitCameraAnchor, nativeCameraTarget, nativeCameraCollisionDistance, nativeCachedCameraLimits, constrainNativeFreeCamera } from './native-camera.js'
 import { createNativeTerrainRaycast } from './native-terrain-raycast.js'
 import { pickEntity } from '../modern-viewer/entity-picker.js'
 import { createNativeRoomVisibility } from './native-room-visibility.js'
@@ -57,6 +57,7 @@ const roomVisibility=createNativeRoomVisibility()
 const orbitAnchor=new NativeOrbitCameraAnchor()
 let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
 let observerPose=null,observerTarget=null
+let freeCameraCoverage=null,freeCameraLimits=null
 let frameCost=null,lastCostAt=0,displayPose=null
 const terrainQueue=new NativeTerrainQueue(),terrainPhases={prefetchMs:0,signatureMs:0,environmentMs:0,prepareMs:0,commitMs:0,indexMs:0,firstRenderMs:null}
 let firstTerrainRender=false
@@ -244,8 +245,8 @@ async function start () {
           mapCalls:mapDrawn?renderer.info.render.calls:0,mapTriangles:mapDrawn?renderer.info.render.triangles:0,
           mapReadback:miniMap.root.dataset.readback??null,room:roomStatus?.reason??null}
         lastCostAt=now;renderer.domElement.dataset.frameCost=JSON.stringify(frameCost);renderer.domElement.dataset.motionCadence=JSON.stringify(selfDisplay.status(now));publishDiagnostics()
-        renderer.domElement.dataset.cameraTracking=JSON.stringify({view:viewMode,mode:cameraOptions.mode,
-          camera:{x:camera.position.x,y:camera.position.y,z:camera.position.z},target:observerTarget?.position??null,
+        renderer.domElement.dataset.cameraTracking=JSON.stringify({view:viewMode,mode:viewMode==='region'?'region':cameraOptions.mode,
+          camera:{x:camera.position.x,y:camera.position.y,z:camera.position.z},target:viewMode==='region'?{x:controls.target.x,y:controls.target.y,z:controls.target.z}:observerTarget?.position??null,
           actor:selfActor?{x:selfActor.root.position.x,y:selfActor.root.position.y,z:selfActor.root.position.z}:null,fov:camera.fov})
       }
       transitionTiming?.worldFinish(timingFrame,{cameraMs,roomMs,updateMs:beforeRender-frameStarted,
@@ -323,6 +324,7 @@ function setView (mode) {
   if(mode==='first'&&selectedEntity)selectTarget(null)
   director?.reset();cameraFrame=null
   camera.fov = mode === '3dview' ? 48 : 70; camera.updateProjectionMatrix()
+  controls.maxDistance = mode === 'region' ? 64 : 9
   controls.enabled = mode === 'region'||mode==='third'&&cameraOptions.mode==='manual'; if (controls.enabled) orbitPosition()
   viewport.dataset.view = mode; onMode(mode)
 }
@@ -342,7 +344,12 @@ function updatePlayerCamera (now) {
   if (viewMode === 'region'||viewMode==='third'&&cameraOptions.mode==='manual'&&!director.shot) {
     orbitAnchor.initialize({pose:observerPose,mode:viewMode,camera,controls})
     orbitAnchor.follow({pose:observerPose,mode:viewMode,camera,controls})
-    controls.enabled=true;controls.update();cameraFrame={mode:'manual'};return
+    controls.enabled=true;controls.update()
+    if(viewMode==='region'){
+      if(freeCameraCoverage!==current.viewCoverage){freeCameraCoverage=current.viewCoverage;freeCameraLimits=nativeCachedCameraLimits(current.bounds,current.viewCoverage?.receivedColumns)}
+      constrainNativeFreeCamera(camera,controls,freeCameraLimits)
+    }
+    cameraFrame={mode:viewMode==='region'?'region':'manual'};return
   }
   controls.enabled=false
   if(viewMode==='third') {

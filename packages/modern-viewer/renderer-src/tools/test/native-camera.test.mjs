@@ -1,7 +1,25 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
-import { NativeOrbitCameraAnchor,nativeCameraTarget,nativeCameraCollisionDistance } from '../../src/native-viewer/native-camera.js'
+import { NativeOrbitCameraAnchor,nativeCameraTarget,nativeCameraCollisionDistance,nativeCachedCameraLimits,constrainNativeFreeCamera } from '../../src/native-viewer/native-camera.js'
+
+test('free camera pans only over received columns, without following a moving player or requesting chunks',()=>{
+ const limits=nativeCachedCameraLimits({minX:0,maxX:47,minY:50,maxY:80,minZ:0,maxZ:31},['0,0','2,1','invalid'])
+ assert.deepEqual(limits.project({x:8,y:70,z:9}),{x:8,y:70,z:9})
+ const hole=limits.project({x:24,y:70,z:9});assert.ok(hole.x<16||hole.x>=32)
+ assert.equal(limits.project({x:8,y:-100,z:9}).y,50.05)
+ assert.equal(limits.project({x:8,y:1000,z:9}).y,112)
+ const camera=new THREE.PerspectiveCamera(),controls={target:new THREE.Vector3(100,70,100)}
+ camera.position.set(100,80,90)
+ assert.equal(constrainNativeFreeCamera(camera,controls,limits),true)
+ for(const p of [camera.position,controls.target])assert.deepEqual({...limits.project(p)},{x:p.x,y:p.y,z:p.z})
+ const before=camera.position.clone(),anchor=new NativeOrbitCameraAnchor();anchor.rebase({x:8,y:64,z:8})
+ assert.equal(anchor.follow({pose:{x:12,y:64,z:8},mode:'region',camera,controls}),false)
+ assert.ok(camera.position.equals(before),'free view is independent from the source player')
+ assert.equal(nativeCachedCameraLimits(null,[]),null)
+ assert.equal(nativeCachedCameraLimits({minX:0,maxX:1,minY:50,maxY:80,minZ:0,maxZ:1},['9,9']),null)
+ assert.equal(constrainNativeFreeCamera(camera,controls,null),false)
+})
 
 test('manual orbit waits for the first actual pose and points at the new terrain without an avatar',()=>{
   const anchor=new NativeOrbitCameraAnchor(),camera=new THREE.PerspectiveCamera(70,1,.05,150)

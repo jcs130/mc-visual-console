@@ -40,6 +40,41 @@ export function nativeCameraTarget(state,actor) {
     yaw:Number.isFinite(state.pose?.yaw)?state.pose.yaw:0,height:1.8}
 }
 
+// Read-only free camera over the received snapshot. Compile these bounds once
+// per coverage change; moving the camera never requests/loading game chunks.
+export function nativeCachedCameraLimits(bounds, receivedColumns = []) {
+  if (!bounds || !['minX','maxX','minY','maxY','minZ','maxZ'].every(k=>Number.isFinite(bounds[k]))) return null
+  const boxes=[]
+  for(const key of receivedColumns){
+    if(typeof key!=='string'||! /^-?\d+,-?\d+$/.test(key))continue
+    const [x,z]=key.split(',').map(Number)
+    const b={minX:Math.max(bounds.minX,x*16),maxX:Math.min(bounds.maxX+1,(x+1)*16)-.01,
+      minZ:Math.max(bounds.minZ,z*16),maxZ:Math.min(bounds.maxZ+1,(z+1)*16)-.01}
+    if(b.minX<=b.maxX&&b.minZ<=b.maxZ)boxes.push(b)
+  }
+  if(!boxes.length)return null
+  const clamp=(n,a,b)=>Math.max(a,Math.min(b,n))
+  return {project(p){
+    if(!p||!['x','y','z'].every(k=>Number.isFinite(p[k])))return null
+    let best=null,distance=Infinity
+    for(const b of boxes){
+      const x=clamp(p.x,b.minX,b.maxX),z=clamp(p.z,b.minZ,b.maxZ),d=(x-p.x)**2+(z-p.z)**2
+      if(d<distance){distance=d;best={x,y:clamp(p.y,bounds.minY+.05,bounds.maxY+32),z};if(d===0)break}
+    }
+    return best
+  }}
+}
+
+export function constrainNativeFreeCamera(camera, controls, limits) {
+  const target=limits?.project(controls.target)
+  if(!target)return false
+  for(const axis of ['x','y','z']){camera.position[axis]+=target[axis]-controls.target[axis];controls.target[axis]=target[axis]}
+  const position=limits.project(camera.position)
+  for(const axis of ['x','y','z'])camera.position[axis]=position[axis]
+  camera.lookAt(controls.target)
+  return true
+}
+
 // Seven rays protect the near plane using only the actual rendered original
 // meshes. Unknown/unreceived volume is a camera boundary, not invented terrain.
 export function nativeCameraCollisionDistance(focus,direction,distance,{fov=70,aspect=16/9,scene,bounds,receivedColumns=[],raycast}={}) {
