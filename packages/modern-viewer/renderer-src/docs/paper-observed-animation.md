@@ -1,6 +1,18 @@
 # Paper observed player animation
 
-## 2026-10-25 candidate; production consumer must be updated separately
+## 2026-10-25 source and production consumer
+
+The Qiandengji consumer deployed portal 0.8.17 with renderer `19768897` and
+Freesia af5 at 18:42 (Asia/Shanghai). Its original Cormy YSM is visible in the
+production third-person page, with the saved native model file unchanged. One
+desktop page recorded terrain/model readiness at 3.979/3.516 seconds and static
+frame p50/p95/p99 of 7/14/15 ms. This is not mobile or moving-action acceptance.
+Dungeon teleport subsequently exposed repeated scene rebuilds and an old page
+waiting for terrain; a manual refresh recovered the dungeon view. The precise
+exception and automatic recovery remain unresolved. Additional diagnostic
+deployment was cancelled at the operating-system confirmation. Do not mark
+that follow-up, full Java animation parity, or every authored action verified.
+Private resources, packets and screenshots remain outside this repository.
 
 Paper's ServerPlayer velocity is an impulse vector, not a reliable measure of a
 network-controlled player's walking. The observer preserves that native velocity
