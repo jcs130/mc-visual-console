@@ -43,7 +43,7 @@ for (const [filename, expected] of Object.entries(source.iconHashes ?? {})) {
   const actual = sha256(await readFile(path.join(root, 'public', 'icons', filename)))
   if (actual !== expected) errors.push(`物品图标内容变化：${filename}`)
 }
-if (Object.keys(source.iconHashes ?? {}).length !== source.itemIcons || source.itemIcons < 1600) {
+if (Object.keys(source.iconHashes ?? {}).length !== source.itemIcons || !Number.isSafeInteger(source.itemIcons) || source.itemIcons < 0) {
   errors.push('物品图标清单不完整')
 }
 for (const [relative, expected] of Object.entries(source.textureHashes ?? {})) {

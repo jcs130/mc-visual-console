@@ -46,6 +46,12 @@ function renderViewer(state) {
       title = '等待游戏连接就绪'; detail = '正在连接或等待服务器认证，尚未进入可行动状态。';
     }
     empty.replaceChildren(node('strong', title), node('p', detail));
+    if(ready&&viewer?.code==='VIEWER_ASSETS_MISSING'){
+      empty.append(node('p','这不是游戏协议限制。Agent 可调用 mc_connection action:viewer-status，补全当前版本资源后用 viewer-retry 恢复画面，无需退出游戏。'));
+      const guide=safeLink(viewer.repair?.guide);
+      if(guide){const link=node('a','查看资源补全方法');link.href=guide;link.target='_blank';link.rel='noreferrer noopener';empty.append(link);}
+      empty.append(actionButton('资源已补全，重试画面','viewer.retry',inFlight));
+    }
   }
 }
 export function renderClientState(state) {

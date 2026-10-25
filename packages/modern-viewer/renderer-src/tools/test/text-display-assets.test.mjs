@@ -16,9 +16,11 @@ test('original bitmap and Unihex bytes are bound to the exact client and asset i
 test('missing or incomplete font inputs tell the operator to prepare the matching assets and fail closed',async()=>{
   const root=await mkdtemp(path.join(tmpdir(),'text-display-assets-'));
   try {
+    assert.equal(await verifyTextDisplayAssets(root,'a'.repeat(64),'1.21.5',{required:false}),null);
     await assert.rejects(verifyTextDisplayAssets(root,'a'.repeat(64)),/prepare java-1.20.6 assets/);
     await mkdir(path.join(root,'public'));
     await writeFile(path.join(root,'public/text-display-font.json'),JSON.stringify({schemaVersion:1,minecraftVersion:'1.20.6',clientJarSha256:'a'.repeat(64),uniform:false,jp:false,providers:[],files:{}}));
     await assert.rejects(verifyTextDisplayAssets(root,'a'.repeat(64)),/font_version/);
+    await assert.rejects(verifyTextDisplayAssets(root,'a'.repeat(64),'1.20.6',{required:false}),/font_version/);
   } finally {await rm(root,{recursive:true,force:true});}
 });
