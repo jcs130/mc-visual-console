@@ -92,7 +92,7 @@ function injectedPresentation (provider, uuid) {
     const ownSelf = copy.self && copy.self.playerUuid === uuid ? Object.fromEntries(
       ['health', 'maxHealth', 'absorption', 'armor', 'food', 'saturation', 'oxygen', 'airSupply', 'maxAirSupply',
         'inWater', 'experienceLevel', 'experienceProgress', 'experiencePoints', 'equipment', 'mainArm', 'usingItem',
-        'bodyYaw', 'headYaw', 'sprinting', 'climbing', 'flying', 'vehicleType', 'extraAction', 'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'handAnimation', 'pose', 'ysm', 'motion']
+        'bodyYaw', 'headYaw', 'sprinting', 'climbing', 'flying', 'vehicleType', 'extraAction', 'useItemRemainingTicks', 'crouching', 'isPassenger', 'swimAmount', 'fallFlying', 'spinAttack', 'swinging', 'attackAnim', 'attackStrengthScale', 'handAnimation', 'pose', 'ysm', 'motion', 'locomotion']
         .filter(key => Object.hasOwn(copy.self, key)).map(key => [key, key === 'ysm' ? projectNativeYsmState(copy.self.ysm, uuid)
           : key === 'motion' ? projectNativePlayerRenderState(copy.self.motion, uuid) : copy.self[key]])) : null
     const effects=Array.isArray(copy.effects)?copy.effects.slice(0,32).flatMap(row=>
@@ -502,6 +502,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           surfaceBlock: audioPack.metadata.blocks ? states.get(world.stateIdAt({x:Math.floor(entity.position.x),y:Math.floor(entity.position.y-.2),z:Math.floor(entity.position.z)}))?.name ?? null : null,
           sneaking: typeof entity.crouching === 'boolean' ? entity.crouching : null, velocity: vector(entity.velocity), skin,
           ...(appearanceSource?{paperAppearance:appearanceSource.binding({uuid:uuid.toLowerCase(),entityId:entity.id})}:{}),
+          ...Object.fromEntries(['locomotion','pose','spinAttack','usingItem','useItemRemainingTicks','attackAnim','climbing','isPassenger','vehicleType']
+            .filter(key=>Object.hasOwn(nativeSelf??{},key)).map(key=>[key,nativeSelf[key]])),
           ...(Object.hasOwn(nativeSelf ?? {}, 'ysm') ? { ysm: nativeSelf.ysm } : {}) }
       }
       const playerPose = player => player && [player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)
@@ -661,12 +663,13 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
         const player = selfPlayer()
         if (!player) { motionTracker.reset('connection'); return }
         const state = player.health > 0
-          ? motionTracker.record({ epoch: world.epoch, tick: ++physicsTickCount, sampledAt: now(), pose: player.position })
+          ? motionTracker.record({ epoch: world.epoch, ...(nativeStream.motionSample?.()??{tick:++physicsTickCount,sampledAt:now()}), pose: player.position })
           : motionTracker.reset(player.health === 0 ? 'death' : 'connection')
         const motion = { ...state, epoch: world.epoch }
         if (!clients.size || ![player.yaw, player.pitch, player.eyeHeight].every(Number.isFinite)) return
         const currentPose = playerPose(player)
-        const selfMotion=Object.fromEntries(['uuid','name','entityId','velocity','onGround','health','food','sneaking','sprinting','flying','inWater','bodyYaw','headYaw']
+        const selfMotion=Object.fromEntries(['uuid','name','entityId','velocity','locomotion','onGround','health','food','sneaking','sprinting','flying','inWater','bodyYaw','headYaw',
+          'pose','spinAttack','usingItem','useItemRemainingTicks','attackAnim','climbing','isPassenger','vehicleType']
           .filter(key=>Object.hasOwn(player,key)).map(key=>[key,player[key]]))
         const value = { type: 'motion', epoch: world.epoch, playerUuid: player.uuid, pose: currentPose, motion,selfPlayer:selfMotion,
           handAnimation: nativeStream.handState?.() ?? null }

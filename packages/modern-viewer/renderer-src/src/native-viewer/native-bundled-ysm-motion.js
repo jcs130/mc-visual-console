@@ -32,7 +32,12 @@ export function bundledYsmMotionInput(current, uuid, now) {
   if (physics?.source !== 'same_player_physics_tick' || physics.schemaVersion !== 1 || physics.tickMs !== 50 ||
       !Number.isSafeInteger(current.epoch) || current.epoch < 0 || physics.epoch !== current.epoch ||
       (!dead && (!Number.isSafeInteger(physics.tick) || physics.tick < 0 || !fresh(physics.sampledAt, now, 500)))) throw Error('BUNDLED_YSM_PHYSICS_STALE_OR_MISSING')
-  const v = self.velocity
+  const locomotion=p.source==='paper_server_observation'?self.locomotion:null
+  if(!dead&&locomotion!=null&&(locomotion.source!=='paper_position_delta'||locomotion.available!==true||
+    locomotion.playerUuid!==uuid||locomotion.entityId!==self.entityId||locomotion.tick!==physics.tick||
+    locomotion.tickMs!==50||!Number.isInteger(locomotion.spanTicks)||locomotion.spanTicks<1||locomotion.spanTicks>20||
+    !fresh(locomotion.sampledAt,now,500)))throw Error('PAPER_YSM_LOCOMOTION_UNAVAILABLE')
+  const v = locomotion?.available===true?locomotion.velocity:self.velocity
   if (!dead && (!v || ![v.x, v.y, v.z].every(Number.isFinite) || typeof self.onGround !== 'boolean')) throw Error('BUNDLED_YSM_VELOCITY_OR_GROUND_MISSING')
   const hand = self.handAnimation
   const hands = ['same_player_vanilla_hand_packets','paper_server_observation'].includes(hand?.source) && hand.playerUuid === uuid && hand.entityId === self.entityId && fresh(hand.sampledAt, now, 1500) ? hand : null
@@ -53,6 +58,7 @@ export function bundledYsmMotionInput(current, uuid, now) {
     bodyYaw, headingSource: Number.isFinite(self.bodyYaw) ? 'same_player_body_yaw' : 'same_player_look_yaw',
     headYawDegrees: angle(bodyYaw - headYaw) * 180 / Math.PI, headPitchDegrees: -pose.pitch * 180 / Math.PI,
     horizontalSpeed: dead ? 0 : Math.hypot(v.x, v.z) * 20, verticalSpeed: dead ? 0 : v.y * 20,
+    locomotionSource:locomotion?.available===true?'paper_position_delta':'same_player_velocity',
     onGround: self.onGround, inWater: typeof self.inWater === 'boolean' ? self.inWater : null,
     waterSource: typeof self.inWater === 'boolean' ? 'same_player_connection' : null,
     crouching: hands?.crouching ?? self.crouching ?? self.sneaking,

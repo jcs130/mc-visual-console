@@ -20,7 +20,8 @@ export function applyNativeSelfPlayerMotion (actor, current, { dt = 0, now = Dat
     // from overwriting the received, interpolated actor/camera orientation.
     const fast=current?.selfPlayer
     const observed=fast?.uuid===playerUuid&&Number.isSafeInteger(self?.entityId)&&fast.entityId===self.entityId
-      ?Object.fromEntries(['velocity','onGround','health','sneaking','sprinting','flying','inWater'].filter(key=>Object.hasOwn(fast,key)).map(key=>[key,fast[key]])):{}
+      ?Object.fromEntries(['velocity','locomotion','onGround','health','sneaking','sprinting','flying','inWater',
+        'pose','spinAttack','usingItem','useItemRemainingTicks','attackAnim','climbing','isPassenger','vehicleType'].filter(key=>Object.hasOwn(fast,key)).map(key=>[key,fast[key]])):{}
     const hasDisplay=!!displayPose||Object.keys(observed).length>0
     const presentedSelf=hasDisplay&&self?{...self,...observed,
       ...(typeof observed.sneaking==='boolean'?{crouching:observed.sneaking}:{}),

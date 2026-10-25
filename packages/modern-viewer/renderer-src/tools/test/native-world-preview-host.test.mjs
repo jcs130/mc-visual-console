@@ -674,6 +674,24 @@ test('only consecutive ticks from the supplied body send private motion; telepor
   assert.equal(bot.listenerCount('physicsTick'), 0); assert.equal(bot._client.listenerCount('position'), 0)
 })
 
+test('Paper source ticks and fast action fields survive the actual HTTP motion stream without inventory',async t=>{
+  let observedAt=5000,tick=80,uuid,entityId;
+  const {bot,host,nativeStream}=attachment(t,{getPresentationState:()=>({schemaVersion:1,playerUuid:uuid,self:{playerUuid:uuid,
+    pose:3,usingItem:true,useItemRemainingTicks:20,locomotion:{source:'paper_position_delta',playerUuid:uuid,entityId,tick,sampledAt:observedAt,
+      tickMs:50,spanTicks:2,available:true,velocity:{x:.2,y:0,z:0}}},inventory:null})});
+  const entity=playerEntity(bot);bot.registry.dimensionsArray[0].height=128;uuid=bot._client.uuid;entityId=entity.id;ownPlayerInfo(bot);
+  nativeStream.motionSample=()=>({tick,sampledAt:observedAt});
+  nativeStream.events.emit('packet',{registrySha256:registryHash,sequence:1,name:'login',params:{worldState:{dimension:0}}});
+  host.world.setPose({...entity.position,yaw:entity.yaw,pitch:entity.pitch,eyeHeight:entity.eyeHeight});
+  await host.listen();const stream=await events(host);t.after(()=>stream.close());await untilEvent(stream,e=>e.type==='snapshot');
+  bot.emit('physicsTick');const first=await untilEvent(stream,e=>e.type==='motion');
+  assert.equal(first.motion.tick,80);assert.equal(first.motion.sampledAt,5000);
+  tick=82;observedAt=5100;entity.position.x+=.4;bot.emit('physicsTick');const next=await untilEvent(stream,e=>e.type==='motion');
+  assert.equal(next.motion.tick,82);assert.equal(next.selfPlayer.locomotion.velocity.x,.2);
+  assert.equal(next.selfPlayer.pose,3);assert.equal(next.selfPlayer.usingItem,true);assert.equal(next.selfPlayer.useItemRemainingTicks,20);
+  assert.equal(next.presentation,undefined);assert.equal(next.selfPlayer.inventory,undefined);assert.equal(next.selfPlayer.equipment,undefined);
+});
+
 test('an unavailable native stream discards cached terrain before a second viewer connects', async t => {
   const { bot, host, nativeStream } = attachment(t)
   const entity = playerEntity(bot); bot.registry.dimensionsArray[0].height = 128

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { prepareNativeWorldPreviewHost } from '../tools/native-world-preview-host.mjs';
 import { vanillaWireItem } from './vanilla-activity.mjs';
+import { paperObservedLocomotion } from './paper-observed-motion.mjs';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const PAPER_OBSERVATION_MODE = 'paper_server_observation';
@@ -42,6 +43,13 @@ export class PaperObservedPlayer extends EventEmitter {
       || !Array.isArray(receipt.packets) || receipt.packets.length > 4096) throw Error('PAPER_OBSERVATION_IDENTITY_OR_STATE');
     const changed = this.generation !== receipt.generation || this.game.worldUuid !== p.world.uuid || this.entity?.id !== p.entityId;
     const previous=this.latest,inventorySignature=JSON.stringify(p.inventory??null);
+    const sourceTick=Number.isSafeInteger(p.serverTick)&&p.serverTick>=0;
+    if(!changed&&sourceTick&&Number.isSafeInteger(previous?.serverTick)&&p.serverTick<previous.serverTick)throw Error('PAPER_OBSERVATION_TICK_REGRESSED');
+    const newTick=changed||!sourceTick||p.serverTick!==previous?.serverTick;
+    if(newTick){
+      this.locomotion=paperObservedLocomotion(this.motionPrevious,p,changed);
+      this.motionPrevious={uuid:p.uuid,entityId:p.entityId,world:{uuid:p.world.uuid},position:{...p.position},serverTick:p.serverTick,observedAt:p.observedAt};
+    }
     const inventoryChanged=changed||inventorySignature!==this.inventorySignature;
     if(inventoryChanged){this.inventorySignature=inventorySignature;this.inventoryRows=null;}
     if(changed){this.swingSequence=0;this.attackProgress=0;this.swing=null;}
@@ -83,7 +91,9 @@ export class PaperObservedPlayer extends EventEmitter {
       this.feed(packet.name, packet.params); this._client.emit(packet.name, packet.params); this.wireSequence = row.sequence;
     }
     this.feed('update_time', { age: BigInt(p.gameTime), time: BigInt(p.dayTime) });
-    this.emit('physicsTick');
+    // Repeated HTTP samples of one Paper tick still carry ordered world packets,
+    // but must not invent extra movement ticks or zero-speed gait samples.
+    if(newTick)this.emit('physicsTick');
     // Keep the existing low-frequency HUD/inventory path; only actual changes
     // bypass it. Faster pose delivery must not resend 46 SNBT slots at 20Hz.
     const urgent=changed||inventoryChanged||p.selectedHotbarSlot!==previous?.selectedHotbarSlot||p.health!==previous?.health||p.food!==previous?.food;
@@ -117,7 +127,7 @@ export class PaperObservedPlayer extends EventEmitter {
       oxygen: Number.isFinite(p.airSupply) && p.maxAirSupply > 0 ? Math.max(0, Math.min(20, p.airSupply * 20 / p.maxAirSupply)) : null,
       bodyYaw: Math.PI - p.bodyYaw * Math.PI / 180, headYaw: Math.PI - p.headYaw * Math.PI / 180,
       usingItem: p.usingItem, useItemRemainingTicks: p.useItemRemainingTicks, attackAnim: p.attackAnim,
-      equipment, handAnimation:this.handState() };
+      equipment, handAnimation:this.handState(),locomotion:this.locomotion };
     return { schemaVersion: 1, playerUuid: this.uuid, profile: 'vanilla_1.21.1', self,
       inventory: this.scope === 'owner' && rows ? { playerUuid: this.uuid, windowId: 0, selectedHotbarSlot: p.selectedHotbarSlot,
         inventoryStart: 9, hotbarStart: 36, offhandSlot: 45, slots: rows, carried: null } : null,
@@ -132,6 +142,11 @@ export class PaperObservedPlayer extends EventEmitter {
         ?{source:'paper_use_item_state',hand:p.activeHand,name:p.activeItemName,kind:p.useItemAnimation,
           durationTicks:p.useItemDurationTicks,startedAt:p.observedAt-(p.useItemDurationTicks-p.useItemRemainingTicks)*50}:null,
       swing:this.swing&&{...this.swing}};
+  }
+  motionSample() {
+    const p=this.latest;
+    return Number.isSafeInteger(p?.serverTick)&&p.serverTick>=0&&Number.isFinite(p.observedAt)
+      ?{tick:p.serverTick,sampledAt:p.observedAt}:null;
   }
   close() { if (this.closed) return; this.closed = true; this.entity = null; this.latest = null; this.emit('end'); this.events.removeAllListeners(); this._client.removeAllListeners(); this.removeAllListeners(); }
 }

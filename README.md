@@ -1,5 +1,7 @@
 # mc-visual-console
 
+2026-10-25 Paper 观战动作候选：连续服务器位置驱动原模型行走，保留原受力速度；重复 tick 去重并补齐高频姿态/使用物品字段。原可米模型回放已验，正式消费端须独立更新，见[动作来源与验收边界](packages/modern-viewer/renderer-src/docs/paper-observed-animation.md)。
+
 Mineflayer 驱动的 Minecraft 网页可视化。现代画面渲染器的源码在
 [`packages/modern-viewer/renderer-src`](packages/modern-viewer/renderer-src/README.md)；
 按版本提交的模型、贴图、物品图标和可选音频位于 [`asset-packs`](packages/modern-viewer/asset-packs/README.md)，浏览器 bundle 从当前源码构建。
