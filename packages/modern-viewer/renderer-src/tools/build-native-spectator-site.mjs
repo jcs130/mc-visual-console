@@ -24,7 +24,7 @@ export async function buildSpectatorSite(output) {
   }
   // These standalone modules have only Node built-ins; the portal injects its
   // explicit ws dependency. There is no game connector in this site artifact.
-  for (const name of ['spectator-protocol.mjs', 'spectator-site.mjs', 'spectator-relay.mjs']) {
+  for (const name of ['spectator-protocol.mjs', 'spectator-site.mjs', 'spectator-relay.mjs', 'spectator-fanout.mjs']) {
     await copyFile(path.join(root, 'host', name), path.join(output, name));
   }
   await writeFile(path.join(output, 'spectator-site.json'), JSON.stringify(manifest, null, 2) + '\n');

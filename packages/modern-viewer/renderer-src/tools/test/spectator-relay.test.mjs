@@ -29,8 +29,11 @@ async function fixture(t, options = {}) {
     else if (req.url === '/events') {
       headers('text/event-stream'); streams.add(res);
       res.write('data: ' + JSON.stringify({ type: 'identity', playerUuid: status.identity.playerUuid }) + '\n\n');
-      const timer = setInterval(() => res.write('data: {"type":"frame","mana":23}\n\n'), 30);
+      if(options.nativeStream)res.write('data: '+JSON.stringify({type:'snapshot',epoch:1,terrainSequence:1,groups:[],registrySha256:'e'.repeat(64),mode:'paper_server_observation'})+'\n\n');
+      const timer = setInterval(() => res.write('data: {"type":"frame","epoch":1,"mana":23}\n\n'), 30);
       res.on('close', () => { clearInterval(timer); streams.delete(res); });
+    } else if(options.asset&&req.url==='/assets/minecraft/textures/test.png') {
+      setTimeout(()=>{headers('image/png');res.end(options.asset);},30);
     } else { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('source should not serve html'); }
   });
   const sourceUrl = await listening(source);
@@ -180,4 +183,34 @@ test('bounded simultaneous native viewers return a clear limit rather than growi
   const f = await fixture(t, { relay: { maxViewers: 1 } }); await f.start();
   const abort = new AbortController(), response = await f.get('events', { headers: { cookie: 'owner=A' }, signal: abort.signal });
   await response.body.getReader().read(); assert.equal((await f.get('events')).status, 429); abort.abort();
+});
+test('32 cloud spectators share exactly one upstream SSE and late visitors receive its checkpoint',async t=>{
+  const f=await fixture(t,{nativeStream:true,relay:{sharedStreams:true,maxViewers:32}});await f.start();
+  const controllers=Array.from({length:32},()=>new AbortController());t.after(()=>controllers.forEach(c=>c.abort()));
+  const responses=await Promise.all(controllers.map(c=>f.get('events',{headers:{cookie:'owner=A'},signal:c.signal})));
+  assert.ok(responses.every(r=>r.status===200));
+  const firstChunks=await Promise.all(responses.map(r=>r.body.getReader().read()));
+  assert.ok(firstChunks.every(r=>Buffer.from(r.value).toString().includes(uuid)));
+  assert.equal(f.reads.filter(r=>r.url==='/events').length,1);assert.equal(f.streams.size,1);
+  assert.equal(f.relay.state('channel-a').viewers,32);assert.equal(f.relay.state('channel-a').upstreamStreams,1);
+  assert.equal((await f.get('events')).status,429);
+  f.relay.invalidate('channel-a');assert.equal(f.relay.state('channel-a').available,false);assert.equal(f.relay.state('channel-a').replayBytes,0);
+});
+test('concurrent original assets are fetched once, private cache hits reauthorize, and conditional reads preserve exact SHA',async t=>{
+  const bytes=Buffer.from([0,255,1,34]),f=await fixture(t,{asset:bytes,relay:{cacheAssets:true}});await f.start();
+  const path='assets/minecraft/textures/test.png';
+  const results=await Promise.all(Array.from({length:16},()=>f.get(path).then(async r=>({status:r.status,etag:r.headers.get('etag'),bytes:Buffer.from(await r.arrayBuffer())}))));
+  assert.ok(results.every(r=>r.status===200&&r.bytes.equals(bytes)));
+  assert.equal(f.reads.filter(r=>r.url.endsWith('/test.png')).length,1);
+  const cached=await f.get(path,{headers:{cookie:'owner=A','if-none-match':results[0].etag}});assert.equal(cached.status,304);
+  assert.equal((await f.get(path,{headers:{cookie:'owner=B'}})).status,403);
+  f.revokeViewer();assert.equal((await f.get(path)).status,403);
+  assert.equal(f.reads.filter(r=>r.url.endsWith('/test.png')).length,1);
+});
+test('a shared cache miss cannot send a private asset after source invalidation',async t=>{
+  const f=await fixture(t,{asset:Buffer.from('private-asset'),relay:{cacheAssets:true}});await f.start();
+  const result=f.get('assets/minecraft/textures/test.png');
+  for(let i=0;i<30&&!f.reads.some(r=>r.url.endsWith('test.png'));i++)await pause(2);
+  f.relay.invalidate('channel-a');const response=await result;
+  assert.equal(response.status,503);assert.ok(!(await response.text()).includes('private-asset'));
 });
