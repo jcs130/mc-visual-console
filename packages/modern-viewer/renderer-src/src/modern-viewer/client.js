@@ -907,7 +907,7 @@ async function initializeRenderer(version) {
     const resources = new ResourcesManager();
     resources.currentConfig = {
       version,
-      texturesVersion: version,
+      texturesVersion: globalThis.__MC_VIEWER_RESOURCE_INFO__?.assetVersion ?? version,
       noInventoryGui: true,
     };
     resources.resetResources();
@@ -6293,7 +6293,11 @@ function showRendererFailure(error) {
 
 function setStatus(message, error = false, compact = false) {
   if (!statusElement) return;
+  const resources=globalThis.__MC_VIEWER_RESOURCE_INFO__;
+  if(compact&&!error&&resources?.mode==='compatible')
+    message+=` · 兼容画面（Java ${resources.requestedVersion}，部分新素材可稍后补全）`;
   statusElement.textContent = message;
+  statusElement.dataset.resourceMode=resources?.mode??'exact';
   statusElement.classList.toggle("is-error", error);
   statusElement.classList.toggle("is-compact", isObsOverlay || compact);
   statusElement.hidden = isObsOverlay && !error && document.body.dataset.overlayReady === "true";

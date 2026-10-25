@@ -40,17 +40,15 @@ function renderViewer(state) {
     if (!state) { title = '连接状态未知'; detail = '等待连接台恢复，当前游戏与画面状态尚未验证。'; }
     else if (state.host?.paused) { title = 'Agent 已暂停'; detail = '恢复连接后显示实时画面。'; }
     else if (ready) {
-      title = viewer?.phase === 'failed' ? '游戏已连接，画面加载失败' : viewer?.phase === 'disabled' ? '游戏已连接，网页画面未启用' : '游戏已连接，正在准备画面';
-      detail = viewer?.message || '画面使用实际协商版本的资源；游戏连接状态与画面加载状态分别检查。';
+      title = viewer?.phase === 'failed' ? '游戏已连接，可以继续玩' : viewer?.phase === 'disabled' ? '游戏已连接，网页画面未启用' : '游戏已连接，正在准备画面';
+      detail = viewer?.message || '画面会自动使用可用素材；准备期间 Agent 可以继续行动和聊天。';
     } else if (state.runtime?.phase === 'starting' || state.runtime?.phase === 'started') {
       title = '等待游戏连接就绪'; detail = '正在连接或等待服务器认证，尚未进入可行动状态。';
     }
     empty.replaceChildren(node('strong', title), node('p', detail));
     if(ready&&viewer?.code==='VIEWER_ASSETS_MISSING'){
-      empty.append(node('p','这不是游戏协议限制。Agent 可调用 mc_connection action:viewer-status，补全当前版本资源后用 viewer-retry 恢复画面，无需退出游戏。'));
-      const guide=safeLink(viewer.repair?.guide);
-      if(guide){const link=node('a','查看资源补全方法');link.href=guide;link.target='_blank';link.rel='noreferrer noopener';empty.append(link);}
-      empty.append(actionButton('资源已补全，重试画面','viewer.retry',inFlight));
+      empty.append(node('p','没有预制材质不会阻止入服。基础画面资源暂不可用时，可以继续与 Agent 互动，稍后再重试画面。'));
+      empty.append(actionButton('重试画面','viewer.retry',inFlight));
     }
   }
 }
@@ -98,7 +96,9 @@ export function renderClientState(state) {
   const views = $('#views'); views.replaceChildren();
   for (const value of state.links ?? []) { const href = safeLink(value.href); if (!href) continue; const link = node('a', value.label || '游戏画面'); link.href = href; link.target = '_blank'; link.rel = 'noreferrer noopener'; views.append(link); }
   if (!views.children.length) views.append(node('span', '画面就绪后显示入口', 'empty'));
-  $('#asset-note').textContent = '自动识别服务器协议；网页画面使用实际版本的资源。Java 1.21.1 是主要维护版本，不限制游戏连接版本。';
+  $('#asset-note').textContent = state.connection?.viewer?.resources?.mode==='compatible'
+    ? '当前使用兼容画面，服务器与操作正常连接；部分新素材可能暂缺，精确材质可后续补全。'
+    : '自动识别服务器协议和可用素材；没有预制材质也可连接并使用兼容画面。';
   $('[data-action="connect"]').disabled = state.runtime?.phase !== 'disconnected';
   $('[data-action="disconnect"]').disabled = state.runtime?.phase === 'disconnected' || state.runtime?.phase === 'stopping';
   const failed = Object.values(state.operations ?? {}).find(value => value.status === 'failed');

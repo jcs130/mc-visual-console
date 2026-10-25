@@ -1,8 +1,12 @@
 # Vanilla viewer resources for the actual game version
 
-The web viewer has no protocol-version whitelist. Mineflayer negotiates the game protocol; the picture separately needs matching block states, registry and original textures. An entire missing picture pack is different from a missing optional icon or display font. The latter can stay unavailable without blocking terrain. Do not pass another version's numeric block IDs to the renderer.
+The web viewer has no protocol-version whitelist. Mineflayer negotiates the game protocol. A missing prebuilt vanilla material pack now automatically uses a compatible prepared pack, while the browser and mesh workers receive the **actual** connection version's numeric registry. Shared materials resolve by block/model names; they never substitute another version's numeric IDs. Unknown materials use a visible missing-texture placeholder instead of hiding the block. Icons, fonts, sounds or newer appearances may remain unavailable without blocking the working picture.
 
-For Agent MC World / DSH, read `mc_connection {"action":"viewer-status"}` for the actual version and current viewer root. Install into this root, then call `mc_connection {"action":"viewer-retry"}`. The retry preserves the live Minecraft body, goals and action queue. The console also offers **资源已补全，重试画面**. Normal gameplay does not depend on finishing resource preparation.
+Normal Agent MC World / DSH users can connect and play without installing Python, building resources or running additional model calls. The picture labels compatible materials as partial. Exact mode retains its source/hash checks; the independent native/modded renderer still requires its explicitly matched assets and does not silently replace mod content with vanilla models.
+
+## Optional exact-material enhancement for an Agent
+
+Use `mc_connection {"action":"viewer-status"}` to inspect `resources.mode`, the actual version and configured preparation root. Compatible mode is a usable picture, not a repair task that should interrupt gameplay. If exact materials are requested, prepare into the returned root and call `mc_connection {"action":"viewer-retry"}`. This refreshes only the compatible/failed picture and preserves the Minecraft body, goals and action queue. The console's button is simply **重试画面**; users are not asked to build resources as a connection prerequisite.
 
 Prepare a separate renderer checkout with Node.js 24, Python 3 and Pillow. In a checkout of this repository:
 
@@ -20,4 +24,4 @@ node tools/prepare-vanilla-viewer.mjs --version 1.21.5 --output "<viewer-root-fr
 
 Keep the original build failure if diagnosing an issue. Repeating preparation verifies the cached JAR; failed staging directories and replaced packs remain available for inspection. A per-version lock prevents duplicate preparation. If the version is absent from the installed registry, update the renderer dependencies deliberately instead of substituting another registry. If Python/Pillow is absent, install it in the separate environment; do not modify the DSH executable or its private credentials. An Agent can carry out these steps using an explicitly chosen DSH filesystem/terminal capability preset; Minecraft-only tools do not grant shell access.
 
-After retry, verify `phase:ready`, `/healthz` and the visible world at the actual version. Successful export is not proof of Java pixel parity or every entity animation. Unavailable icons/fonts remain feature-specific; present files with incorrect hashes still fail verification.
+After retry, verify `phase:ready`, `resources.mode:"exact"`, `/healthz` and the visible world. Compatible `phase:ready` already means a usable partial picture. Successful export is not proof of Java pixel parity or every entity animation. Unavailable icons/fonts remain feature-specific; present files with incorrect hashes still fail verification.
