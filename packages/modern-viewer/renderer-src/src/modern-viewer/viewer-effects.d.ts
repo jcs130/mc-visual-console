@@ -39,10 +39,12 @@ export class ViewerEffectSystem {
     now?: () => number;
     requestFrame?: (callback: FrameRequestCallback) => number;
     cancelFrame?: (handle: number) => void;
+    preferences?: { particles?: boolean; effectCues?: boolean };
   });
   handle(value: unknown): boolean;
   ingestChat(messages: unknown[]): SkillChatHint | null;
   setSuspended(value: boolean): void;
+  setPreferences(value: { particles?: boolean; effectCues?: boolean }): void;
   getDiagnostics(): Record<string, unknown>;
   dispose(): void;
 }

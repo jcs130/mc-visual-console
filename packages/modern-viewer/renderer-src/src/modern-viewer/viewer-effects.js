@@ -169,11 +169,13 @@ export class ViewerEffectSystem {
     this.suspended = false;
     this.disposed = false;
     this.activeParticles = 0;
+    this.preferences = { particles: options.preferences?.particles !== false, effectCues: options.preferences?.effectCues !== false };
     this.cueExpiresAt = 0;
     this.diagnostics = {
       received: 0,
       rendered: 0,
       dropped: 0,
+      suppressed: 0,
       serverDropped: 0,
       expired: 0,
       actualParticleEvents: 0,
@@ -194,6 +196,10 @@ export class ViewerEffectSystem {
       return false;
     }
     this.diagnostics.serverDropped += event.serverDropped;
+    if (!this.allows(event.kind)) {
+      this.diagnostics.suppressed += 1;
+      return false;
+    }
     const now = this.now();
     this.prune(now);
     this.recentEventTimes = this.recentEventTimes.filter((at) => now - at < 1_000);
@@ -230,7 +236,7 @@ export class ViewerEffectSystem {
     while (this.seenChatHints.size > VIEWER_EFFECT_LIMITS.maximumChatHintsRemembered) {
       this.seenChatHints.delete(this.seenChatHints.values().next().value);
     }
-    if (!newest) return null;
+    if (!newest || !this.preferences.effectCues) return null;
     this.diagnostics.chatInferences += 1;
     this.showCue(newest.sourceLabel, `${newest.actor} · ${newest.skill}`, newest.evidence, 3_800);
     return newest;
@@ -248,9 +254,23 @@ export class ViewerEffectSystem {
     }
   }
 
+  allows(kind) {
+    return kind === 'particle' || kind === 'burst' ? this.preferences.particles : this.preferences.effectCues;
+  }
+
+  setPreferences(value = {}) {
+    this.preferences = { particles: value.particles !== false, effectCues: value.effectCues !== false };
+    for (const entry of [...this.entries]) if (!this.allows(entry.kind)) this.removeEntry(entry);
+    if (!this.preferences.effectCues) this.hideCue();
+    if (this.entries.length === 0 && this.cueExpiresAt === 0 && this.frame !== null) {
+      this.cancelFrame(this.frame); this.frame = null;
+    }
+  }
+
   getDiagnostics() {
     return {
       ...this.diagnostics,
+      preferences: { ...this.preferences },
       eventsByKind: { ...this.diagnostics.eventsByKind },
       activeEffects: this.entries.length,
       activeParticles: this.activeParticles,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { Document, Element } from './fixtures/native-console-dom.mjs';
-import { normalizeSceneSettings, loadSceneSettings, resolveSceneQuality, applySceneQuality, sceneColourFilter, SCENE_SETTINGS_KEY } from '../../src/modern-viewer/scene-quality.js';
+import { normalizeSceneSettings, loadSceneSettings, resolveSceneQuality, applySceneQuality, applySceneWeather, sceneColourFilter, SCENE_SETTINGS_KEY } from '../../src/modern-viewer/scene-quality.js';
 import { installSceneSettings } from '../../src/modern-viewer/scene-settings.js';
 
 const settings = (extra = {}) => ({ ...normalizeSceneSettings(null), ...extra });
@@ -12,6 +12,10 @@ test('corrupt preferences and URL values cannot inject arbitrary renderer flags'
   const s = loadSceneSettings({getItem:()=>'{bad'}, {quality:'high',style:'javascript:bad',avatarSampling:'smooth'});
   assert.equal(s.quality,'high'); assert.equal(s.style,'soft'); assert.equal(s.avatarSampling,'smooth');
   assert.equal(normalizeSceneSettings({version:1,occlusion:'false'}).occlusion,true);
+  for(const key of ['particles','effectCues','weather','shadows']) {
+    assert.equal(normalizeSceneSettings({version:1,[key]:false})[key],false);
+    assert.equal(normalizeSceneSettings({version:1,[key]:'false'})[key],true);
+  }
 });
 test('only confirmed first-person survival/adventure with a ready camera section may cull', () => {
   const safe={gameMode:'survival',view:'first',sectionReady:true};
@@ -32,6 +36,16 @@ test('style remains selected at every performance tier; only cinematic shadows r
   const profile={saturation:1.1,contrast:1.04,brightness:1.02,warmth:.04};
   assert.equal(sceneColourFilter(profile,{style:'native'}),'none');
   assert.notEqual(sceneColourFilter(profile,{style:'soft'}),sceneColourFilter(profile,{style:'cinematic'}));
+  assert.equal(resolveSceneQuality(settings({style:'cinematic',shadows:false}),{mode:'high'}).shadows,false);
+});
+
+test('weather preference disables the actual renderer module and retains the received weather', () => {
+  const calls=[],backend={setRain:value=>calls.push(value)},weather={raining:true,thunder:1};
+  assert.equal(applySceneWeather(backend,settings({weather:false}),weather),false);
+  assert.deepEqual(weather,{raining:true,thunder:1});
+  assert.equal(applySceneWeather(backend,settings(),weather),true);
+  applySceneWeather(backend,settings(),{raining:false});
+  assert.deepEqual(calls,[false,true,false]);
 });
 test('applying policy opens both actual renderer culling gates and restores them on mode change', () => {
   const world={worldRendererConfig:{},reactiveDebugParams:{smartCull:false},renderer:{shadowMap:{enabled:true}}};
@@ -60,6 +74,14 @@ test('settings persist without a game action and remove all UI listeners on disp
   const ui=installSceneSettings({document,window,settings:settings(),onChange:s=>changed.push(s)});
   const select=document.querySelectorAll('select').find(el=>el.dataset.sceneSetting==='quality');select.value='performance';select.dispatch('change');
   assert.equal(changed.at(-1).quality,'performance');assert.equal(JSON.parse(saved.get(SCENE_SETTINGS_KEY)).quality,'performance');
+  for(const key of ['particles','effectCues','weather','shadows']) {
+    const input=document.querySelectorAll('input').find(el=>el.dataset.sceneSetting===key);
+    assert.ok(input,key+' has a visible control');input.checked=false;input.dispatch('change');
+    assert.equal(changed.at(-1)[key],false);
+  }
+  const restored=loadSceneSettings({getItem:key=>saved.get(key)});
+  assert.equal(restored.quality,'performance');
+  for(const key of ['particles','effectCues','weather','shadows'])assert.equal(restored[key],false);
   ui.status('省电');assert.equal(document.querySelector('output').textContent,'省电');
   ui.dispose();assert.equal(document.querySelector('.viewer-scene-settings'),null);
   for(const hidden of [true]) {installSceneSettings({document,window,settings:settings(),hidden}).dispose();assert.equal(document.body.children.length,0);}
