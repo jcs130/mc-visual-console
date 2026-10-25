@@ -3,12 +3,14 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {assertViewerVersion} from '../host/viewer-version.mjs';
 const hash=b=>createHash('sha256').update(b).digest('hex');
-export async function verifyTextDisplayAssets(root,clientJarSha256,version='1.20.6') {
+export async function verifyTextDisplayAssets(root,clientJarSha256,version='1.20.6',{required=true}={}) {
   assertViewerVersion(version);
   const raw=await readFile(path.join(root,'public/text-display-font.json')).catch(error=>{
-    if(error.code==='ENOENT')throw Error('text_display_font_missing: prepare java-1.20.6 assets with tools/prepare-viewer-assets.mjs; custom exports also need tools/export-text-display-font.py');
+    if(error.code==='ENOENT'&&!required)return null;
+    if(error.code==='ENOENT')throw Error(`text_display_font_missing: prepare java-${version} assets with tools/prepare-viewer-assets.mjs; custom exports also need tools/export-text-display-font.py`);
     throw error;
   });
+  if(raw===null)return null;
   const font=JSON.parse(raw);
   if(font.schemaVersion!==1||font.minecraftVersion!==version||font.clientJarSha256!==clientJarSha256
       ||font.uniform!==false||font.jp!==false||!Array.isArray(font.providers)||font.providers.length>16

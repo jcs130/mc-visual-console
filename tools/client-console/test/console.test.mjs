@@ -97,6 +97,8 @@ test('a connected 1.21.11 game reports viewer failure honestly and never embeds 
   assert.equal(elements.get('#game-frame').getAttribute('src'), null);
   assert.ok(all('#game-empty').some(n => n.textContent === '游戏已连接，画面加载失败'));
   assert.ok(all('#game-empty').some(n => n.textContent.includes('1.21.11')));
+  assert.ok(all('#game-empty').some(n => n.textContent.includes('viewer-status')));
+  assert.ok(all('#game-empty').some(n => n.dataset.action==='viewer.retry'));
   renderClientState({...state,connection:{...state.connection,viewer:{phase:'starting'}}});
   assert.ok(all('#game-empty').some(n => n.textContent === '游戏已连接，正在准备画面'));
   renderClientState({...state,connection:{...state.connection,viewer:{phase:'ready'}}});

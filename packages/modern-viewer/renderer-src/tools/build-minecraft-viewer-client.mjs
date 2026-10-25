@@ -68,7 +68,7 @@ if (!/^[a-f0-9]{64}$/.test(sourceManifest.clientJarSha256 ?? '')) {
 }
 if (!options.includes('--no-sounds')) await prepareSoundAssetPack({ minecraftVersion: version, outputDirectory: outputRoot })
 const viewerContent = await verifyViewerContentAssets(outputRoot,sourceManifest.clientJarSha256,{version})
-const textDisplays = await verifyTextDisplayAssets(outputRoot,sourceManifest.clientJarSha256,version)
+const textDisplays = await verifyTextDisplayAssets(outputRoot,sourceManifest.clientJarSha256,version,{required:false})
 const itemAppearances = await prepareItemAppearanceAssets(outputRoot, {
   qiandengji: options.includes('--preset=qiandengji'),
   source: fileURLToPath(new URL('../../asset-packs/qiandengji-items-1.20.6/', import.meta.url)),
