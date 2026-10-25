@@ -13,7 +13,7 @@ import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
 import { installObsLayout } from "./obs-layout.js";
 import { installViewerLayout } from "./viewer-layout.js";
-import { loadSceneSettings, resolveSceneQuality, applySceneQuality, sceneColourFilter } from './scene-quality.js';
+import { loadSceneSettings, resolveSceneQuality, applySceneQuality, applySceneWeather, sceneColourFilter } from './scene-quality.js';
 import { installSceneSettings } from './scene-settings.js';
 import { CameraDirector, loadCameraSettings, cameraCollisionDistance } from './camera-director.js';
 import { installCameraSettings } from './camera-settings.js';
@@ -1022,6 +1022,7 @@ async function initializeRenderer(version) {
       });
     };
     viewerEffectSystem = new ViewerEffectSystem({
+      preferences: sceneSettings,
       getWorld: () => globalThis.world,
       getEntity: (id) => globalThis.world?.entities?.entities?.[String(id)] ?? null,
       cueElement: document.getElementById("skill-cue"),
@@ -3315,7 +3316,7 @@ function applyServerTime() {
 
 function applyServerWeather() {
   if (!rendererReady) return;
-  viewer?.backend?.backendMethods?.setRain?.(pendingWeather.raining);
+  applySceneWeather(viewer?.backend?.backendMethods, sceneSettings, pendingWeather);
 }
 
 function maybeApplyPaintingEntity(entity) {
@@ -5732,6 +5733,8 @@ function enhanceRendererQuality() {
     onChange(settings) {
       const qualityChanged = qualityPreference !== settings.quality;
       sceneSettings = settings; qualityPreference = settings.quality;
+      viewerEffectSystem?.setPreferences(settings);
+      applyServerWeather();
       if (qualityChanged) adaptiveQualityController = createAdaptiveQualityController({
         nativePixelRatio: finiteOr(globalThis.devicePixelRatio, 1), maximumPixelRatio: 1.75, preference: qualityPreference });
       applyRendererQuality(adaptiveQualityController.getSnapshot());
@@ -5957,6 +5960,7 @@ function publishDiagnostics(version) {
     renderDistance,
     textureAnisotropy,
     qualityPreference,
+    get visualSettings() { return { ...sceneSettings }; },
     dayNightSource: "server-time-day-cycle",
     weatherSource: "server-rain-stream",
     unknownEntityFallback: "vanilla-painting-textures-plus-hidden-unresolved-protocol-entity",

@@ -4,9 +4,9 @@ export function installSceneSettings({ document, window, settings, onChange, hid
   if (hidden) return { status() {}, dispose() {} };
   let current = normalizeSceneSettings(settings), disposed = false;
   const root = document.createElement('details'); root.className = 'viewer-scene-settings viewer-quality-settings';
-  root.setAttribute('aria-label', '画质与光影设置');
+  root.setAttribute('aria-label', '画质与特效设置');
   const make = (tag, parent, text) => { const el = document.createElement(tag); if (text) el.textContent = text; parent.append(el); return el; };
-  make('summary', root, '画质与光影');
+  make('summary', root, '画质与特效');
   const panel = make('div', root); panel.className = 'viewer-scene-panel';
   const listeners = [];
   for (const [key, title, options] of [
@@ -21,11 +21,17 @@ export function installSceneSettings({ document, window, settings, onChange, hid
     const change = () => { current = normalizeSceneSettings({ ...current, [key]: select.value }); publish(); };
     select.addEventListener('change', change); listeners.push([select, 'change', change]);
   }
-  const label = make('label', panel, '自动剔除遮挡区域'), checkbox = make('input', label);
-  checkbox.type = 'checkbox'; checkbox.checked = current.occlusion; checkbox.setAttribute('aria-label', '自动剔除遮挡区域');
-  const toggle = () => { current = { ...current, occlusion: checkbox.checked }; publish(); };
-  checkbox.addEventListener('change', toggle); listeners.push([checkbox, 'change', toggle]);
-  make('small', panel, '风格独立于画质：原色忠实，柔和明亮，电影对比更强。人物保留原贴图；电影阴影仅在精细档启用。');
+  for (const [key, title] of [
+    ['particles', '粒子与受击特效'], ['effectCues', '声音波纹、光环与技能提示'],
+    ['weather', '雨雪画面'], ['shadows', '动态人物阴影'], ['occlusion', '自动剔除遮挡区域'],
+  ]) {
+    const label = make('label', panel, title), checkbox = make('input', label);
+    checkbox.type = 'checkbox'; checkbox.checked = current[key]; checkbox.dataset.sceneSetting = key;
+    checkbox.setAttribute('aria-label', title);
+    const toggle = () => { current = normalizeSceneSettings({ ...current, [key]: checkbox.checked }); publish(); };
+    checkbox.addEventListener('change', toggle); listeners.push([checkbox, 'change', toggle]);
+  }
+  make('small', panel, '关闭特效立即清理画面并停止生成；生命值、状态图标和游戏行为不变。声音仍由音效开关控制。阴影还需电影风格与精细档；设置自动保存在当前浏览器。');
   const status = make('output', panel); status.setAttribute('aria-live', 'polite');
   const close = e => { if (e.code === 'Escape') root.open = false; };
   window.addEventListener('keydown', close); listeners.push([window, 'keydown', close]);

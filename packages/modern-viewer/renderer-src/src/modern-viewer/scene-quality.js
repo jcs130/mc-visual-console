@@ -6,7 +6,9 @@ export function normalizeSceneSettings(value) {
   return { version: 1, quality: choice(v.quality, ['auto', 'high', 'balanced', 'performance'], 'auto'),
     style: choice(v.style, ['native', 'soft', 'cinematic'], 'soft'),
     avatarSampling: choice(v.avatarSampling, ['auto', 'original', 'smooth'], 'auto'),
-    occlusion: v.occlusion !== false };
+    occlusion: v.occlusion !== false,
+    particles: v.particles !== false, effectCues: v.effectCues !== false,
+    weather: v.weather !== false, shadows: v.shadows !== false };
 }
 export function loadSceneSettings(storage, overrides = {}) {
   let saved; try { saved = JSON.parse(storage?.getItem(SCENE_SETTINGS_KEY)); } catch {}
@@ -23,9 +25,15 @@ export function resolveSceneQuality(settings, { mode = 'balanced', view = 'first
     : !sectionReady ? 'loading-section' : null;
   return { mode: tier, style: s.style,
     smartCull: reason === null, cullingReason: reason,
-    shadows: !overlay && s.style === 'cinematic' && tier === 'high',
+    shadows: s.shadows && !overlay && s.style === 'cinematic' && tier === 'high',
     avatarSampling: s.avatarSampling === 'auto' ? 'original' : s.avatarSampling,
     anisotropy: tier === 'high' ? 8 : tier === 'balanced' ? 4 : 1 };
+}
+/** Presentation only: retain the actual weather in the connection state. */
+export function applySceneWeather(backend, settings, weather) {
+  const enabled = settings?.weather !== false && weather?.raining === true;
+  backend?.setRain?.(enabled);
+  return enabled;
 }
 export function applySceneQuality(world, policy) {
   if (!world || !policy) return;
