@@ -7,6 +7,30 @@ let cortiParticlePositions = null;
 let cortiParticleColors = null;
 let cortiParticleOpacity = null;
 let cortiParticleLastAt = performance.now();
+let cortiParticleEnabled = true;
+let cortiParticleFrame = null;
+
+function cortiDisposeParticleScene() {
+  cortiParticleCloud?.parent?.remove(cortiParticleCloud);
+  cortiParticleCloud?.geometry?.dispose(); cortiParticleCloud?.material?.dispose();
+  for (const ring of cortiVisualRings) {
+    ring.mesh.parent?.remove(ring.mesh); ring.mesh.geometry.dispose(); ring.mesh.material.dispose();
+  }
+  cortiVisualParticles.length = 0; cortiVisualRings.length = 0;
+  cortiParticleCloud = null; cortiParticleScene = null;
+  cortiParticlePositions = cortiParticleColors = cortiParticleOpacity = null;
+}
+function cortiSetParticlesEnabled(value) {
+  cortiParticleEnabled = value !== false;
+  if (!cortiParticleEnabled) {
+    if (cortiParticleFrame !== null) cancelAnimationFrame(cortiParticleFrame);
+    cortiParticleFrame = null; cortiDisposeParticleScene();
+  }
+}
+function cortiEnsureParticleFrame() {
+  if (cortiParticleEnabled && cortiParticleFrame === null && (cortiVisualParticles.length || cortiVisualRings.length))
+    cortiParticleFrame = requestAnimationFrame(cortiAnimateServerParticles);
+}
 
 function cortiParticleColor(name, explicit) {
   const three = globalThis.THREE;
@@ -23,6 +47,7 @@ function cortiParticleColor(name, explicit) {
 }
 
 function cortiEnsureParticleScene() {
+  if (!cortiParticleEnabled) return false;
   const three = globalThis.THREE;
   const scene = globalThis.world?.scene;
   if (!three || !scene) return false;
@@ -93,6 +118,7 @@ function cortiSpawnParticleBurst(event) {
   }
   if (cortiVisualParticles.length > 480)
     cortiVisualParticles.splice(0, cortiVisualParticles.length - 480);
+  cortiEnsureParticleFrame();
 }
 
 function cortiSpawnExplosion(event) {
@@ -116,6 +142,8 @@ function cortiSpawnExplosion(event) {
 }
 
 function cortiAnimateServerParticles(now) {
+  cortiParticleFrame = null;
+  if (!cortiParticleEnabled) return;
   const delta = Math.min(.05, Math.max(0, (now - cortiParticleLastAt) / 1000));
   cortiParticleLastAt = now;
   const origin = globalThis.world?.sceneOrigin;
@@ -150,7 +178,8 @@ function cortiAnimateServerParticles(now) {
       ring.mesh.material.opacity = .65 * (1 - progress);
     }
   }
-  requestAnimationFrame(cortiAnimateServerParticles);
+  if (cortiVisualParticles.length || cortiVisualRings.length) cortiEnsureParticleFrame();
+  else cortiDisposeParticleScene();
 }
 
 if (typeof socket !== 'undefined') socket.on('presentationEvent', event => {
@@ -172,4 +201,10 @@ if (typeof socket !== 'undefined') socket.on('presentationEvent', event => {
       spread: { x: .15, y: .15, z: .15 }, speed: .12, count: 4 });
   }
 });
-requestAnimationFrame(cortiAnimateServerParticles);
+globalThis.MinecraftViewerParticles = {
+  setEnabled: cortiSetParticlesEnabled,
+  getDiagnostics: () => ({ enabled: cortiParticleEnabled, particles: cortiVisualParticles.length,
+    rings: cortiVisualRings.length, allocated: cortiParticleCloud !== null, scheduled: cortiParticleFrame !== null }),
+};
+cortiSetParticlesEnabled(typeof sceneSettings === 'undefined' ? true : sceneSettings.particles);
+window.addEventListener('pagehide', () => cortiSetParticlesEnabled(false), { once: true });
