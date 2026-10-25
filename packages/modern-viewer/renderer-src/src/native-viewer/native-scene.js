@@ -41,6 +41,8 @@ export async function mountNativeWorld({viewport, transitionTiming, mode='third'
   defaultAppearance='server', selectionStorage, selectionScope} = {}) {
 if (!viewport?.append || !['third', 'first', 'region', '3dview'].includes(mode)) throw Error('NATIVE_SCENE_OPTIONS_INVALID')
 const pointKey = p => `${p.x},${p.y},${p.z}`
+const startupStarted=performance.now(),startup={manifestMs:null,bootstrapMs:null,firstSnapshotMs:null,modelReadyMs:null,firstTerrainMs:null}
+const milestone=key=>{if(startup[key]===null)startup[key]=Math.round(performance.now()-startupStarted)}
 let renderer, loader, events, current, epoch = null, player = null, generation = 0
 const templates = new Map(), actors = new Map(), bedTemplates = new Set()
 const staticBatches=new Map()
@@ -55,7 +57,7 @@ const orbitAnchor=new NativeOrbitCameraAnchor()
 let roomStatus=null,sceneOptions={occlusion:true},dungeonCamera={yaw:Math.PI*.75,pitch:-.82,distance:16}
 let observerPose=null,observerTarget=null
 let frameCost=null,lastCostAt=0,displayPose=null
-const terrainQueue=new NativeTerrainQueue(),terrainPhases={signatureMs:0,environmentMs:0,commitMs:0,indexMs:0,firstRenderMs:null}
+const terrainQueue=new NativeTerrainQueue(),terrainPhases={prefetchMs:0,signatureMs:0,environmentMs:0,prepareMs:0,commitMs:0,indexMs:0,firstRenderMs:null}
 let firstTerrainRender=false
 const selfDisplay=new NativeSelfDisplayPose(),frameGaps=new NativeFrameGaps()
 const receiveDisplay=()=>{
@@ -90,6 +92,7 @@ async function start () {
   const response = await fetch(nativeViewerUrl('manifest.json'))
   if (!response.ok) throw Error('NATIVE_WORLD_MANIFEST_UNAVAILABLE')
   const manifest = await response.json()
+  milestone('manifestMs')
   const cachedAsset = createNativeAssetCache()
   const reader = new NativeAssetReader(manifest, async path => {
     return cachedAsset(path, manifest.assets[path], async () => {
@@ -99,28 +102,32 @@ async function start () {
     })
   })
   assetReader = reader
-  if(manifest.assets[ORIGINAL_MODEL_LAYERS_PATH])originalModelLayers=await loadOriginalModelLayers(reader)
   vanillaRegistry=manifest.registryHashes['block-states.jsonl']==='55893d269459e1e05387903c77b2db877d7cece875ed31a5a6a2f965822ea546'
   audio=createNativeAudio({onChange:publishDiagnostics});void audio.load()
   const session = createNativeSession(manifest.registryHashes['block-states.jsonl'], { entityRegistrySha256: manifest.registryHashes['entities.tsv'] ?? null })
   loader = new NativeModelLoader(reader)
-  colormaps = {}
-  for (const name of ['grass', 'foliage']) {
+  const [layers, maps, bundledAppearanceReader] = await Promise.all([
+    manifest.assets[ORIGINAL_MODEL_LAYERS_PATH] ? loadOriginalModelLayers(reader) : null,
+    Promise.all(['grass', 'foliage'].map(async name => {
     const pixels = await reader.bytes(resourcePath(`minecraft:${name}`, 'textures/colormap', '.png'))
     const image = await createImageBitmap(new Blob([pixels], { type: 'image/png' }), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
     const canvas = new OffscreenCanvas(image.width, image.height), context = canvas.getContext('2d', { willReadFrequently: true })
-    context.drawImage(image, 0, 0); colormaps[name] = context.getImageData(0, 0, image.width, image.height).data; image.close()
-  }
+    context.drawImage(image, 0, 0); const colors = context.getImageData(0, 0, image.width, image.height).data; image.close()
+    return [name, colors]
+    })),
+    BundledAppearanceReader.load(nativeViewerUrl('api/bundled-appearances'))
+  ])
+  originalModelLayers=layers;colormaps=Object.fromEntries(maps);milestone('bootstrapMs')
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#111820')
   worldRoot = new THREE.Group(); statics = new THREE.Group(); worldRoot.add(statics); scene.add(worldRoot)
   roomVisibility.attach(worldRoot)
-  const bundledAppearanceReader=await BundledAppearanceReader.load(nativeViewerUrl('api/bundled-appearances'))
   if(selectionStorage===undefined){try{selectionStorage=window.localStorage}catch{selectionStorage=null}}
   selfController = new NativeSelfPlayerController(reader, { bundledAppearanceReader, defaultAppearance, selectionStorage,
     selectionScope: selectionScope ?? nativeViewerUrl('manifest.json'), onChange (actor, status) {
     selfActor = actor; skinState = status
     selfMotionState = null; selfMotionSignature = null; lastPlayerFrameTime = null
     if (actor) {
+      milestone('modelReadyMs')
       worldRoot.add(actor.root)
       if (actor.firstPersonRoot) firstPersonScene.add(actor.firstPersonRoot)
       actor.setFirstPersonViewport?.(firstPersonCamera)
@@ -211,7 +218,7 @@ async function start () {
       const beforeRender=performance.now()
       renderer.render(scene, camera)
       const afterRender=performance.now()
-      if(firstTerrainRender){terrainPhases.firstRenderMs=afterRender-beforeRender;firstTerrainRender=false}
+      if(firstTerrainRender){terrainPhases.firstRenderMs=afterRender-beforeRender;firstTerrainRender=false;milestone('firstTerrainMs')}
       const mainDraw={...renderer.info.render}
       if(selfActor?.firstPersonRoot){
         selfActor.firstPersonRoot.visible=viewMode==='first'
@@ -279,6 +286,7 @@ async function start () {
         epoch = value.epoch; onUnavailable(value.reason || 'NATIVE_WORLD_WAITING'); return
       }
       if (value.type === 'snapshot') {
+        milestone('firstSnapshotMs')
         renderer.domElement.dataset.terrainTransport = JSON.stringify({ kind: received.type, sequence: value.terrainSequence ?? null, eventCharacters: message.data.length })
         if (epoch !== value.epoch) { clearScene(); epoch = value.epoch }
         current = value; receiveDisplay(); terrainQueue.request(value); void rebuildLatest()
@@ -435,7 +443,7 @@ function publishDiagnostics() {
     kineticClock: kineticClockState,
     deviceVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeDevice).map(actor => ({ position: actor.position, stateId: actor.state.stateId, ...actor.root.userData.nativeDevice })),
     windmillVisuals: [...actors.values()].filter(actor => actor.root.userData.nativeBearing).map(actor => ({ position: actor.position, ...actor.root.userData.nativeBearing })),
-    terrainWork:{...terrainQueue.diagnostics(),phases:{...terrainPhases}},frameCost,frameGaps:frameGaps.value,selfDisplay:{delayMs:selfDisplay.delayMs,stale:selfDisplay.stale},skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
+    terrainWork:{...terrainQueue.diagnostics(),phases:{...terrainPhases}},startup:{...startup},frameCost,frameGaps:frameGaps.value,selfDisplay:{delayMs:selfDisplay.delayMs,stale:selfDisplay.stale},skinState, bounds: current?.bounds ?? null, coverage: current?.viewCoverage ?? null, completeSceneParityVerified: false })
 }
 function clearStatics () {
   if (!statics) return
@@ -509,7 +517,9 @@ async function rebuildLatest () {
       const isCurrent=()=>run===generation&&!disposed&&terrainCurrent()
       try {
       const definitions = new Map(snapshot.states.map(s => [s.stateId, s]))
+      const prefetchStarted=performance.now()
       await loader.prefetchBlockModels(snapshot.groups, definitions, { isCurrent })
+      terrainPhases.prefetchMs=performance.now()-prefetchStarted
       const cuttingBoards = new Map((snapshot.cuttingBoards || []).map(board => [pointKey(board.position), board]))
       const signatureStarted=performance.now()
       const signature = nativeStaticSignature(snapshot)
@@ -525,7 +535,7 @@ async function rebuildLatest () {
         const next = new NativeStaticStage(), environment = createNativeEnvironment(snapshot, colormaps), tintColor = new THREE.Color()
         const faceVisibility=nativeFaceVisibility(snapshot)
         terrainPhases.environmentMs=performance.now()-environmentStarted
-        const work = createNativeRebuildWork({ isCurrent })
+        const work = createNativeRebuildWork({ isCurrent }), prepareStarted=performance.now()
         let count = 0
         try {
         for (const group of snapshot.groups) {
@@ -609,6 +619,7 @@ async function rebuildLatest () {
             nextStaticIssues.push(`${state.name}：${error.message}`)
           }
         }
+        terrainPhases.prepareMs=performance.now()-prepareStarted
         const commitStarted=performance.now()
         next.commit(statics, isCurrent)
         terrainPhases.commitMs=performance.now()-commitStarted

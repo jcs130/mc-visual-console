@@ -36,6 +36,8 @@ test('trusted immutable scripts share one hash URL across roles; role pages, CSS
   const f = await fixture(t), build = 'a'.repeat(64) + ':' + 'b'.repeat(64)
   const a = f.site.page('/watch/role-a/', build, 'third').toString(), b = f.site.page('/watch/role-b/', build, 'third').toString()
   const script = '/watch/_static/' + f.manifest.files['native-console.js'].sha256 + '/native-console.js'
+  assert.deepEqual(f.site.preload(), [script], 'the shell can preload only exact trusted application code before a private scene starts')
+  assert.throws(() => f.site.preload('https://untrusted.example'), /SPECTATOR_PAGE_INVALID/)
   assert.ok(a.includes(script) && b.includes(script)); assert.ok(a.includes('/watch/role-a/viewer.css'))
   assert.equal((await get({ url: f.origin + script })).status, 200)
   for (const resource of ['status.json', 'events', 'api/server-appearance/assets/' + 'a'.repeat(64) + '.json', 'assets/minecraft/test.png', 'native-console.js']) {

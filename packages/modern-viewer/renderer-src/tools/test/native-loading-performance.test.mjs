@@ -17,19 +17,43 @@ test('verified original assets survive a new viewer/channel; corrupt data is dis
   let reads = 0
   const options = { storage: f.storage, origin: 'https://viewer.example', maxEntries: 2 }
   const read = async () => { reads++; return bytes.buffer }
-  await createNativeAssetCache(options)('assets/minecraft/models/block/stone.json', entry, read)
-  await createNativeAssetCache(options)('assets/minecraft/models/block/stone.json', entry, read)
+  const first = createNativeAssetCache(options)
+  await first('assets/minecraft/models/block/stone.json', entry, read); await first.flush()
+  const second = createNativeAssetCache(options)
+  await second('assets/minecraft/models/block/stone.json', entry, read); await second.flush()
   assert.equal(reads, 1)
   for (const path of ['status.json','events','api/server-items','api/bundled-appearances/assets/private.png','assets/upload/textures/a.png']) await createNativeAssetCache(options)(path, entry, read)
   assert.equal(f.rows.size, 1); assert.equal(reads, 6)
   await f.cache.put([...f.rows.keys()][0], new Response('corrupt'))
-  await createNativeAssetCache(options)('assets/minecraft/models/block/stone.json', entry, read)
+  const repaired = createNativeAssetCache(options)
+  await repaired('assets/minecraft/models/block/stone.json', entry, read); await repaired.flush()
   assert.equal(reads, 7)
   for (let n = 0; n < 4; n++) {
     const data = new TextEncoder().encode('original ' + n)
-    await createNativeAssetCache(options)('assets/minecraft/models/block/other.json', { bytes: data.length, sha256: sha(data) }, async () => data.buffer)
+    const next = createNativeAssetCache(options)
+    await next('assets/minecraft/models/block/other.json', { bytes: data.length, sha256: sha(data) }, async () => data.buffer); await next.flush()
   }
   assert.equal(f.rows.size, 2, 'cache eviction bounds storage across many scene switches')
+})
+
+test('slow disk persistence never blocks foreground reads; background writes remain bounded and hash checked', { timeout: 2000 }, async () => {
+  const f = cacheFixture(), put = f.cache.put, rows = []
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  f.cache.put = async (...args) => { await gate; return put(...args) }
+  const cache = createNativeAssetCache({ storage: f.storage, origin: 'https://viewer.example', maxEntries: 2, maxPendingWrites: 2 })
+  for (let n = 0; n < 5; n++) {
+    const bytes = new TextEncoder().encode('texture ' + n), entry = { bytes: bytes.length, sha256: sha(bytes) }
+    rows.push(entry)
+    assert.equal(await cache('assets/minecraft/textures/block/stone.png', entry, async () => bytes), bytes)
+  }
+  assert.equal(f.rows.size, 0, 'all reads completed while the disk is still blocked')
+  release(); await cache.flush()
+  assert.equal(f.rows.size, 2, 'overflow only skips optional persistence')
+  assert.deepEqual([...f.rows.keys()].map(key => key.split('/').at(-1)), rows.slice(0, 2).map(row => row.sha256))
+  const invalid = new Uint8Array([9,9])
+  await cache('assets/minecraft/textures/block/stone.png', {bytes:2,sha256:sha(new Uint8Array([1,2]))}, async()=>invalid)
+  await cache.flush(); assert.equal(f.rows.size, 2, 'unverified bytes never reach disk')
 })
 test('blocked cache storage and oversized files preserve the exact normal download path', async () => {
   const bytes = new Uint8Array([1,2]), entry = { bytes: bytes.length, sha256: sha(bytes) }

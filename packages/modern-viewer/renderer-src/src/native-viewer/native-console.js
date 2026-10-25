@@ -140,6 +140,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
     const d = lastDiagnostics
     // Small terrain-only contract for the existing page, never chat/config/player data.
     writeChanged(viewport.dataset,'terrainProgress',JSON.stringify(d?.terrainWork??null))
+    writeChanged(viewport.dataset,'startupTiming',JSON.stringify(d?.startup??null))
     const boundsText=b=>b?`X[${b.minX},${b.maxX}] Y[${b.minY},${b.maxY}] Z[${b.minZ},${b.maxZ}]`:'尚无'
     appearanceUi.update(d?.appearance ? { ...d.appearance, subject: identity?.player || '当前观战人物' } : null)
     ysmNotice.hidden = d?.selfModel?.kind !== 'ysm'

@@ -138,3 +138,8 @@ logout/ownership/publisher revocation. The local real portal was isolated from
 production accounts. Full scene parity, all mod GUIs and every remote consumer
 remain separate acceptance work. Private packets/worlds/credentials/screenshots
 and generated site bundles stay outside Git.
+
+Startup caching, trusted code preloading and the portal's third-person default are
+documented in [native observer startup](native-startup-performance.md). A matching
+consumer page/worker rebuild is required; publishing shared source alone does not
+update an existing website.
