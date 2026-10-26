@@ -49,3 +49,15 @@ test('actual host records published before viewer attachment survive bootstrap w
   const socket = new EventEmitter(); socket.connected = true; const frames = []; socket.on('agentActivity', f => frames.push(f)); bridge.subscribeSocket(socket);
   assert.equal(frames.at(-1).records[0].id, 'before-viewer'); bridge.dispose();
 });
+test('public review status stays visible without expanding raw records, expires, and clears on disconnect', () => {
+  const document = new Document(), window = new Element('window', document); let now = Date.now(), id = 0;
+  Object.assign(window, { setTimeout: () => ++id, clearTimeout() {}, setInterval: () => ++id, clearInterval() {} });
+  const socket = new EventEmitter(), ui = installAgentActivity({ document, window, socket, now: () => now });
+  const progress = row('public-review', { at: new Date(now).toISOString(), kind: 'phase', session: 'audience-progress',
+    title: '复盘 · 路线选择', text: '候选建议待核验', result: { schema: 'audience-progress/v1', expiresAt: new Date(now + 20000).toISOString() } });
+  socket.emit('agentActivity', { schema: 'agent-activity-frame/v1', available: true, records: [progress] }); ui.render();
+  const card = document.querySelector('.agent-activity-preview'); assert.equal(card.hidden, false); assert.match(card.textContent, /路线选择.*候选建议待核验/);
+  socket.emit('disconnect'); ui.render(); assert.equal(card.hidden, true);
+  now += 21000; socket.emit('agentActivity', { schema: 'agent-activity-frame/v1', available: true, records: [progress] }); ui.render();
+  assert.equal(card.hidden, true); ui.dispose();
+});

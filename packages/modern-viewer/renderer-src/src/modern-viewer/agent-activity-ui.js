@@ -3,12 +3,14 @@ import { AGENT_DECISION_COLORS, AGENT_DECISION_LABELS } from './agent-visual-pro
 const stateLabels = { started: '开始', accepted: '已受理', running: '执行中', completed: '完成', failed: '失败', cancelled: '取消', unknown: '未确认' };
 const kindLabels = { reasoning: '思考', message: '回应', tool: '工具调用', execution: '执行终态', decision: '快决策', phase: '当前状态' };
 /** Only render text actually supplied by the host. Details stay collapsed by default. */
-export function installAgentActivity({ socket, document, window, visible = () => true } = {}) {
-  const history = new AgentActivityHistory(), listeners = [], roots = []; let disposed = false, scheduled = null, connected = false;
+export function installAgentActivity({ socket, document, window, visible = () => true, now = Date.now } = {}) {
+  const history = new AgentActivityHistory(), listeners = [], roots = []; let disposed = false, scheduled = null, connected = false, progress = null;
   const make = (tag, parent, className = '', text = '') => { const el = document.createElement(tag); el.className = className; el.textContent = text; parent.append(el); return el; };
   const panel = make('section', document.body, 'agent-activity-panel'); panel.id = 'agent-activity'; roots.push(panel);
   const header = make('div', panel, 'agent-activity-header'); make('strong', header, '', '思考与工具');
   const live = make('span', header, 'agent-activity-live', '等待宿主记录'); live.setAttribute('aria-live', 'polite');
+  const publicCard = make('div', panel, 'agent-activity-preview'); publicCard.hidden = true; publicCard.setAttribute('aria-live', 'polite');
+  const publicTopic = make('strong', publicCard), publicText = make('div', publicCard);
   const details = make('details', panel, 'agent-activity-timeline');
   const summary = make('summary', details, '', '展开决策记录');
   const hint = make('p', details, 'agent-activity-hint', '显示模型返回的思考和真实调用；“已受理”不等于游戏动作完成。');
@@ -32,9 +34,19 @@ export function installAgentActivity({ socket, document, window, visible = () =>
     if (row.arguments !== undefined) section('调用参数', row.arguments);
     if (row.result !== undefined) section('工具回执', row.result);
   }
+  function refreshPublicCard() {
+    panel.hidden = !visible('agentActivity');
+    publicCard.hidden = !connected || !progress || !Number.isFinite(Date.parse(progress.result.expiresAt))
+      || Date.parse(progress.result.expiresAt) <= now();
+    if (!publicCard.hidden) { publicTopic.textContent = progress.title; publicText.textContent = progress.text || ''; }
+  }
   function render() {
     scheduled = null; if (disposed) return; panel.hidden = !visible('agentActivity');
     const records = history.snapshot(), ids = new Set(records.map(row => row.id));
+    // An explicit public status record is not a model reasoning transcript.
+    progress = records.filter(row => row.kind === 'phase' && row.session === 'audience-progress'
+      && row.result?.schema === 'audience-progress/v1').sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+    refreshPublicCard();
     for (const [id, entry] of rows) if (!ids.has(id)) { entry.root.remove(); rows.delete(id); }
     for (const row of records) updateRow(row);
     const latest = records.at(-1); live.textContent = connected ? (latest ? `${kindLabels[latest.kind]} · ${stateLabels[latest.status]}` : '已连接，等待记录') : (records.length ? '连接断开 · 历史记录' : '等待宿主记录');
@@ -50,7 +62,8 @@ export function installAgentActivity({ socket, document, window, visible = () =>
     schedule();
   });
   on('disconnect', () => { connected = false; schedule(); });
-  const refresh = window.setInterval(() => { panel.hidden = !visible('agentActivity'); }, 1000);
+  // Expiry needs no history scan, row serialization or rebuilding collapsed details.
+  const refresh = window.setInterval(refreshPublicCard, 1000);
   function dispose() { if (disposed) return; disposed = true; for (const [name, fn] of listeners) socket.off(name, fn); if (scheduled !== null) window.clearTimeout(scheduled); window.clearInterval(refresh); for (const root of roots) root.remove(); window.removeEventListener('pagehide', dispose); }
   window.addEventListener('pagehide', dispose, { once: true }); render();
   return { dispose, snapshot: () => history.snapshot(), render };
