@@ -56,7 +56,9 @@ export function bundledYsmMotionInput(current, uuid, now) {
     activeItem?.name === use.name && fresh(use.startedAt, now, use.durationTicks * 50) ? use.kind : undefined
   return { entityId: self.entityId, epoch: current.epoch, tick: physics.tick, resetSequence: dead ? 'death' : physics.resetSequence,
     bodyYaw, headingSource: Number.isFinite(self.bodyYaw) ? 'same_player_body_yaw' : 'same_player_look_yaw',
-    headYawDegrees: angle(bodyYaw - headYaw) * 180 / Math.PI, headPitchDegrees: -pose.pitch * 180 / Math.PI,
+    // YSM head_yaw is negative Java (head-body), hence positive Mineflayer
+    // (head-body). Keep authored turn/bank expressions on that same contract.
+    headYawDegrees: angle(headYaw - bodyYaw) * 180 / Math.PI, headPitchDegrees: -pose.pitch * 180 / Math.PI,
     horizontalSpeed: dead ? 0 : Math.hypot(v.x, v.z) * 20, verticalSpeed: dead ? 0 : v.y * 20,
     locomotionSource:locomotion?.available===true?'paper_position_delta':'same_player_velocity',
     onGround: self.onGround, inWater: typeof self.inWater === 'boolean' ? self.inWater : null,

@@ -8,6 +8,28 @@ const snapshot = () => ({ type: 'snapshot', schemaVersion: 1, epoch: 1, mode: id
   groups: [{ stateId: 1, positions: Array.from({ length: 9000 }, (_, n) => n) }], occludedSolidRuns: [[2, 3, 1, 8, 1], [2, 3, 9, 10, 2]],
   states: [{ stateId: 1, name: 'minecraft:stone' }, { stateId: 2, name: 'minecraft:dirt' }], neighbors: [3, 4, 5, 1],
   biomeGrid: { ids: [1, 2, 3] }, pose: { x: 1, y: 2, z: 3 }, selfPlayer: { uuid, name: identity.player }, futureField: '原始资料' })
+
+test('anchored terrain patches preserve duplicates, reordered rows and fractional provider coordinates', () => {
+  let seed = 112035
+  const random = n => { seed = (1664525 * seed + 1013904223) >>> 0; return seed % n }
+  for (let round = 0; round < 120; round++) {
+    const before = { ...snapshot(), terrainSequence: 1 }
+    const tuples = Array.from({ length: 180 }, (_, i) => [i % 21, Math.floor(i / 21), i % 7 + .5])
+    before.groups[0].positions = tuples.flat()
+    before.occludedSolidRuns = tuples.map(([x, y, z]) => [y, z, x, x + 1, 1])
+    const after = structuredClone(before); after.terrainSequence = 2
+    for (let i = 0; i < 25; i++) {
+      const at = random(tuples.length), row = tuples[random(tuples.length)]
+      tuples.splice(at, random(3), [...row])
+    }
+    if (round % 3 === 0) tuples.reverse()
+    after.groups[0].positions = tuples.flat()
+    after.occludedSolidRuns = tuples.map(([x, y, z]) => [y, z, x, x + 1, 1])
+    const copy = structuredClone(before), delta = nativeTerrainDelta(before, after)
+    assert.deepEqual(applyNativeTerrainDelta(before, delta), after)
+    assert.deepEqual(before, copy, 'decoding never mutates a cached baseline')
+  }
+})
 test('one block terrain edits preserve all original geometry/state/collision data without retransmitting unchanged arrays', () => {
   const encoder = createNativeTerrainEncoder(), first = encoder.prepare(snapshot()), next = snapshot()
   next.groups[0].positions.splice(300, 3); next.occludedSolidRuns[1][4] = 1; next.pose.x = 2; delete next.futureField
@@ -101,4 +123,29 @@ test('bad compact volume, out-of-range coordinates and row-crossing hidden runs 
     { occludedSolidRuns: [[9, 2, 1]] }, { bounds: { ...value.bounds, maxY: 1000000 } }, { terrainEncoding: 'unknown' }]) {
     assert.throws(() => expandNativeTerrainSnapshot({ ...packed, ...patch }), /DELTA_INVALID/)
   }
+})
+
+test('walking one block reuses the overlapping terrain rows instead of replacing a complete scene', () => {
+  const scene = offset => ({ ...snapshot(), bounds:{minX:offset,maxX:offset+31,minY:64,maxY:67,minZ:0,maxZ:31},
+    groups:[{stateId:1,positions:Array.from({length:32*32},(_,i)=>[offset+i%32,64,Math.floor(i/32)]).flat()}],
+    occludedSolidRuns:[],neighbors:[] })
+  const encoder=createNativeTerrainEncoder(),first=encoder.prepare(scene(0)),next=encoder.prepare(scene(1))
+  assert.ok(next.delta,'overlapping rows must survive the moving view boundary')
+  assert.deepEqual(applyNativeTerrainDelta(first.full,next.delta),next.full)
+  assert.ok(JSON.stringify(next.delta).length<JSON.stringify(compactNativeTerrainSnapshot(next.full)).length*.8)
+  const session=createNativeSession(hash);session.receive(identity);session.receive(first.fullWire)
+  assert.deepEqual(session.receive(next.delta).value,next.full)
+})
+
+test('multiple terrain splices reject overlap, out-of-bounds and excessive output without mutating their baseline', () => {
+  const before={...snapshot(),terrainSequence:1},next={...before,terrainSequence:2},base=nativeTerrainDelta(before,next)
+  const patch={length:before.groups[0].positions.length,splices:[{start:3,remove:3,values:[100,64,100]},{start:15,remove:3,values:[]}]}
+  const delta={...base,groups:{order:[1],patches:[{stateId:1,patch}]}}
+  const expected=before.groups[0].positions.slice();expected.splice(15,3);expected.splice(3,3,100,64,100)
+  assert.deepEqual(applyNativeTerrainDelta(before,delta).groups[0].positions,expected)
+  for(const splices of [[{start:3,remove:12,values:[]},{start:6,remove:3,values:[]}],[{start:9001,remove:0,values:[]}],
+    [{start:0,remove:0,values:Array(1024*1024+1).fill(1)}],Array.from({length:4097},()=>({start:0,remove:0,values:[]}))]) {
+    assert.throws(()=>applyNativeTerrainDelta(before,{...delta,groups:{...delta.groups,patches:[{stateId:1,patch:{...patch,splices}}]}}),/DELTA_INVALID/)
+  }
+  assert.equal(before.groups[0].positions.length,9000)
 })

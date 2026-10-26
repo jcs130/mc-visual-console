@@ -83,6 +83,15 @@ function transformMatrix(transform) {
     new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.radians, 'XYZ')), new THREE.Vector3(...transform.scale))
 }
 
+// Original ItemInHandLayer in Java ModelPart (Y-down pixel) coordinates.
+// Skinview arms additionally need Rx(PI); native mob arms must not inherit it.
+export function nativeModelPartHeldMountMatrix({arm,transform}={}) {
+  if(!['left','right'].includes(arm)||transform?.context!==`thirdperson_${arm}hand`)throw Error('NATIVE_MODEL_PART_HELD_MOUNT_INVALID')
+  return new THREE.Matrix4().makeScale(16,16,16)
+    .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2)).multiply(new THREE.Matrix4().makeRotationY(Math.PI))
+    .multiply(new THREE.Matrix4().makeTranslation(arm==='left'?-1/16:1/16,.125,-.625)).multiply(transformMatrix(transform))
+}
+
 // ItemInHandLayer relative to an arm ModelPart; PlayerModel's slim +/-.5 X
 // occurs BEFORE the arm rotation, so compensate in the arm-local frame rather
 // than making the held object orbit the wrong pivot. Java model coordinates

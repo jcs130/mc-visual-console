@@ -179,7 +179,10 @@ export class PaperYsmAnimation {
     for(let n=0;n<8;n++)if(this.main.animations?.['parallel'+n])layer('parallel'+n,this.main,'parallel'+n,{loop:true,additiveRotation:true});
     // The native Head bone also follows the actual look direction, even when
     // the authored animation has no head channel.
-    const head=this.model.bones.get(this.lookBone);if(head && !restricted){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y+=queries['ysm.head_yaw']*Math.PI/180;}
+    // The inner model is mounted in Y-down coordinates with reflected X/Y.
+    // Convert live look here, once; changing the query sign instead reverses
+    // authored whole-body banking (e.g. Cormy's run Root.rotation.z).
+    const head=this.model.bones.get(this.lookBone);if(head && !restricted){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y-=queries['ysm.head_yaw']*Math.PI/180;}
     for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
     if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
     return {base:downed?'downed':base,canAct:!inhibited,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};

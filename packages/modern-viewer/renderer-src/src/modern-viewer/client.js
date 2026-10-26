@@ -73,7 +73,7 @@ import {
   resolveNpcPortraitSpec,
 } from "./npc-portraits.js";
 import { normalizeMotionFrame } from "./avatar-motion.js";
-import { rendererEntityEquipment } from "./renderer-equipment.js";
+import { rendererEntityEquipment, installRendererEquipmentHandedness } from "./renderer-equipment.js";
 import { CUTAWAY_MATERIAL_VERSION, hasRoomCeiling, hasDeepRoof, roomCutoffWorldY, roomOcclusionMode, createCutawayUniforms, patchCutawayMaterial, advanceReveal, roomRevealRadius, setRoomFloorMask } from "./room-visibility.js";
 import { installObserverSectionCulling } from "./observer-section-culling.js";
 import { RoomCoverCache } from "./room-cover-cache.js";
@@ -969,6 +969,7 @@ async function initializeRenderer(version) {
     await viewer.startWorld(emptyWorld, renderDistance, viewer.playerState.reactive, initial);
     try { await loadItemAppearancePack(paperItemAppearances, { enabled: globalThis.itemAppearancePackAvailable !== false }); }
     catch (error) { paperItemAppearances.error=String(error.message); }
+    installRendererEquipmentHandedness(globalThis.world?.entities);
     installItemAppearanceRenderer(globalThis.world,paperItemAppearances);
     installItemHeadRenderer(globalThis.world,paperItemHeads);
     globalThis.itemHeadDiagnostics = () => paperItemHeads.stats();

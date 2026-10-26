@@ -4,6 +4,7 @@ import {EventEmitter} from 'node:events';
 import * as THREE from 'three';
 import {createViewerYsmMotion} from '../../host/viewer-ysm-motion.mjs';
 import {createPaperYsmActor,PaperYsmPlayers} from '../../src/modern-viewer/paper-ysm.js';
+import {bundledYsmMotionInput} from '../../src/native-viewer/native-bundled-ysm-motion.js';
 
 const uuid='00000000-0000-3000-8000-000000000001';
 const encode=value=>({base64:Buffer.from(JSON.stringify(value)).toString('base64')});
@@ -20,6 +21,38 @@ const bundle={modelId:'look-test',assetSha256:'test',model:'model.json',animatio
   }}),'texture.png':{base64:''}
 }};
 const close=(a,b)=>assert.ok(Math.abs(a-b)<1e-8,`${a} != ${b}`);
+
+test('Paper observation and Mineflayer agree on left/right look and authored running bank at every heading',async()=>{
+  const source=structuredClone(bundle);
+  source.files['animation.json']=encode({format_version:'1.8.0',animations:{
+    idle:{loop:true,bones:{}},run:{loop:true,bones:{Root:{rotation:[0,0,'0.4*ysm.head_yaw']}}}
+  }});
+  const actor=await createPaperYsmActor(source,'main',{loadTexture:async()=>new THREE.Texture({width:16,height:16})});
+  const parent=new THREE.Group();parent.add(actor.root);
+  try{
+    let clock=1000;
+    for(const bodyYaw of [0,Math.PI/2,-Math.PI/2,Math.PI-.1])for(const delta of [-.6,.6]){
+      const now=clock,headYaw=bodyYaw+delta;clock+=2000;
+      const frame={epoch:1,pose:{x:0,y:0,z:0,yaw:headYaw,pitch:0},selfPlayer:{uuid,entityId:7},
+        motion:{schemaVersion:1,source:'same_player_physics_tick',tickMs:50,epoch:1,tick:20,sampledAt:now,resetSequence:0},
+        presentation:{available:true,source:'paper_server_observation',playerUuid:uuid,sampledAt:now,
+          self:{uuid,entityId:7,bodyYaw,headYaw,health:20,onGround:true,sprinting:true,velocity:{x:0,y:0,z:.25}}}};
+      const observed=bundledYsmMotionInput(frame,uuid,now);
+      close(observed.headYawDegrees,delta*180/Math.PI);
+      // Live look alone must point toward the actual received head direction.
+      parent.rotation.y=bodyYaw;actor.animate({motion:{...observed,horizontalSpeed:0}},now);actor.animate({motion:{...observed,horizontalSpeed:0}},now+300);parent.updateMatrixWorld(true);
+      const direction=new THREE.Vector3(0,0,-1).transformDirection(actor.model.bones.get('Head').matrixWorld);
+      close(direction.distanceTo(new THREE.Vector3(-Math.sin(headYaw),0,-Math.cos(headYaw))),0);
+      // The unchanged authored Root channel leans into, rather than away from,
+      // the same turn; this is the channel used by the original Cormy run clip.
+      actor.animate({motion:observed},now+500);actor.animate({motion:observed},now+800);parent.updateMatrixWorld(true);
+      const up=new THREE.Vector3(0,-1,0).transformDirection(actor.model.bones.get('Root').matrixWorld);
+      const left=new THREE.Vector3(-Math.cos(bodyYaw),0,Math.sin(bodyYaw));
+      assert.equal(Math.sign(up.dot(left)),Math.sign(delta));
+      assert.deepEqual(actor.animationState.errors,[]);
+    }
+  }finally{actor.dispose();}
+});
 
 for(const own of [true,false])test(`YSM world-space look follows ${own?'own':'remote'} Mineflayer pitch through live, stale and legacy motion`,async()=>{
   const actor=await createPaperYsmActor(bundle,'main',{loadTexture:async()=>new THREE.Texture()});

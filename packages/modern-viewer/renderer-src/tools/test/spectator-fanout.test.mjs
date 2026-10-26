@@ -81,3 +81,28 @@ test('asset singleflight keeps exact bytes, LRU size bound and no cache populati
   const late=cache.read('c',open);cache.clear();pending[2].writeHead(200,{});pending[2].write(Buffer.from('1'));pending[2].end();
   assert.equal(await late,null);assert.equal(cache.bytes,0);
 });
+
+test('texture bursts coalesce while queued, respect concurrency and reject overload instead of bypassing the cache',async()=>{
+  const cache=new SpectatorAssetCache({maxInflight:2,maxQueued:2}),opened=[];
+  const open=sink=>opened.push(sink);
+  const a=cache.read('a',open),b=cache.read('b',open),c=cache.read('c',open),duplicate=cache.read('c',open),d=cache.read('d',open);
+  assert.equal(opened.length,2);assert.equal(cache.pending.length,2);
+  await assert.rejects(cache.read('e',open),/SPECTATOR_ASSET_QUEUE_FULL/);
+  const finish=(index,text)=>{opened[index].writeHead(200,{'Content-Type':'image/png'});opened[index].write(Buffer.from(text));opened[index].end();};
+  finish(0,'a');assert.equal(opened.length,3);assert.equal(cache.active.size,2);
+  finish(1,'b');assert.equal(opened.length,4);finish(2,'c');finish(3,'d');
+  assert.deepEqual((await c).bytes,(await duplicate).bytes);
+  assert.deepEqual((await Promise.all([a,b,c,d])).map(row=>row.bytes.toString()),['a','b','c','d']);
+  assert.equal(cache.loading.size,0);assert.equal(cache.active.size,0);
+  assert.equal((await cache.read('c',()=>assert.fail('cache hit'))).bytes.toString(),'c');
+});
+
+test('invalidating a saturated asset cache cancels active and queued reads without opening stale jobs',async()=>{
+  const cache=new SpectatorAssetCache({maxInflight:1,maxQueued:3}),opened=[];
+  const values=['a','b','c'].map(path=>cache.read(path,sink=>opened.push(sink)));
+  cache.clear();
+  assert.deepEqual(await Promise.all(values),[null,null,null]);
+  assert.equal(opened.length,1);assert.equal(opened[0].destroyed,true);
+  assert.equal(cache.loading.size,0);assert.equal(cache.pending.length,0);
+  assert.equal(await cache.read('new',()=>assert.fail('closed cache')),null);
+});

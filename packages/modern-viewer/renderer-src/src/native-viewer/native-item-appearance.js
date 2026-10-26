@@ -14,6 +14,7 @@ import {nativeTwilightFlaskEligible,prepareNativeTwilightFlask} from './native-t
 import {nativeTwilightOreMeterEligible,prepareNativeTwilightOreMeter} from './native-twilight-ore-meter.js'
 import {nativeTwilightTravellerEligible,prepareNativeTwilightTraveller} from './native-twilight-travellers.js'
 import {nativeTwilightJarEligible,prepareNativeTwilightJar} from './native-twilight-jars.js'
+import {nativeRangedItemEligible,prepareNativeRangedItem} from './native-ranged-items.js'
 
 export const NATIVE_ITEM_APPEARANCE_CONTEXTS = Object.freeze(['gui', 'ground',
   'firstperson_lefthand', 'firstperson_righthand', 'thirdperson_lefthand', 'thirdperson_righthand'])
@@ -86,7 +87,9 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
   if (reader?.manifest?.minecraftVersion !== '1.21.1' || reader.manifest.assetIntegrityVerified !== true ||
       (!gui && reader.manifest.clientJarSha256 !== BLOCK_ICON_CLIENT_SHA256) || typeof reader.json !== 'function' || typeof reader.bytes !== 'function') throw Error('NATIVE_ITEM_APPEARANCE_READER_UNVERIFIED')
   let family, prepared = null, evidence = null, model = null, effect = null, modelId = stack.id.replace(':', ':item/')
-  if(gui&&nativeTwilightJarEligible(stack.id)){
+  if(!gui&&nativeRangedItemEligible(stack.id)){
+    family='ranged';prepared=await prepareNativeRangedItem(reader,stack,context.observed);model=prepared.model;effect=prepared.effect
+  } else if(gui&&nativeTwilightJarEligible(stack.id)){
     family='twilight-jar';prepared=await prepareNativeTwilightJar(reader,stack);model=prepared.model
   } else if(gui&&nativeTwilightTravellerEligible(stack.id)){
     family='twilight-traveller';prepared=await prepareNativeTwilightTraveller(reader,stack,context.observed);model=prepared.model
@@ -129,13 +132,13 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     }
   }
   const geometry = family === 'static' ? nativeBlockItemEligible(stack.id) && !model.nativeGenerated ? 'block' : 'generated'
-    : ['guide','potion','soul-slab','twilight-traveller','twilight-ore-meter'].includes(family) ? 'generated' : 'specialized'
+    : ['ranged','guide','potion','soul-slab','twilight-traveller','twilight-ore-meter'].includes(family) ? 'generated' : 'specialized'
   if (gui && ['static', 'guide'].includes(family) && geometry === 'generated') validateFlatModel(model)
   if (gui && geometry === 'block') prepared = await prepareNativeBlockGuiPlan(reader, { name: stack.id, model, evidence })
   const display = model.display ?? {}, right = context.kind.replace('_lefthand', '_righthand')
   const geometryId = family === 'ars' ? `ars_nouveau:spellbook_${gui || prepared.leaf === 'worn_notebook' ? 'closed' : 'open'}` : modelId
   let glint = null, effectUnavailableReason = prepared?.effectUnavailableReason ?? (effect?.foil ? gui ? 'NATIVE_GUI_GLINT_ATLAS_UV_UNAVAILABLE' : 'NATIVE_HELD_GLINT_ATLAS_UV_UNAVAILABLE' : null)
-  if (effect?.foil && ['static','shield'].includes(family) && stack.id.startsWith('minecraft:')) {
+  if (effect?.foil && ['static','shield','ranged'].includes(family) && stack.id.startsWith('minecraft:')) {
     try { glint = await prepareNativeGlint(reader); effectUnavailableReason = null } catch (error) { effectUnavailableReason = error.message }
   }
   return { stack, context, family, geometry, geometryId, modelId, model, display,
@@ -145,5 +148,5 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     requirements: { material: prepared?.originalMaterial ?? (gui && ['block', 'specialized'].includes(geometry) && family !== 'chest' ? 'original_opaque_gui' : 'entityCutout'),
       tintColors: family === 'potion' ? { 0: prepared.color } : null,
       glint, effectUnavailableReason,
-      propertyEvaluation: 'not_implemented', pixelParityVerified: false } }
+      propertyEvaluation: family==='ranged'?'observed_inactive_ranged':'not_implemented', pixelParityVerified: false } }
 }

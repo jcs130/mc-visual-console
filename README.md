@@ -1,5 +1,7 @@
 # mc-visual-console
 
+2026-10-26 公网观战候选：地形重叠增量、多人材质请求合并、缓存限额与可测计数，另修正YSM转向倾斜及怪物持械方向。消费者须同时更新匹配页面和观战源；[改动、实测及未支持范围](packages/modern-viewer/renderer-src/docs/native-public-cache-and-direction.md)。
+
 2026-10-25 Paper 观战动作候选：连续服务器位置驱动原模型行走，保留原受力速度；重复 tick 去重并补齐高频姿态/使用物品字段。原可米模型回放已验，正式消费端须独立更新，见[动作来源与验收边界](packages/modern-viewer/renderer-src/docs/paper-observed-animation.md)。
 
 Mineflayer 驱动的 Minecraft 网页可视化。现代画面渲染器的源码在

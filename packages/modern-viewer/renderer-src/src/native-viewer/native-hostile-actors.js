@@ -1,9 +1,9 @@
 import * as THREE from 'three'
 import { createNativeModelPart, ENTITY_MODEL_CLIENT_SHA256 } from './native-entity-model.js'
-import { nativeHostileState } from './native-living-state.js'
+import { nativeHostileState,nativeLivingMeta } from './native-living-state.js'
 import { nativeHostileModelDefinition, NATIVE_HOSTILE_TEXTURES } from './native-hostile-models.js'
 import { nativePlayerSin as sin, nativePlayerCos as cos } from './native-player-motion.js'
-import { prepareNativeHeldItem, buildNativeHeldItemObject, disposeNativeHeldItemObject } from './native-held-items.js'
+import { prepareNativeHeldItem, buildNativeHeldItemObject, disposeNativeHeldItemObject,nativeModelPartHeldMountMatrix } from './native-held-items.js'
 import { NATIVE_MOB_MOTION_SOURCE } from './native-entity-motion.js'
 
 const F=Math.fround,PI=F(Math.PI),RAD=F(.017453292),wrap=v=>((v+180)%360+360)%360-180,clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
@@ -114,13 +114,13 @@ export async function createNativeHostileActor(reader,entity,{loadTexture,readPi
       if(![0,1].includes(row.slot)||!base.bones.has('right_arm')){issues.push('NATIVE_MOB_ARMOR_OR_SPECIAL_ITEM_LAYER_UNAVAILABLE');continue}
       const arm=row.slot===0?initial.mainArm:initial.mainArm==='right'?'left':'right',textures=new Map()
       try {
-        const plan=await prepareNativeHeldItem(reader,stack,arm,{...(readPixels?{readPixels}:{})})
+        const useFlags=nativeLivingMeta(entity,8,'byte',0),activeSlot=useFlags&2?1:0
+        const plan=await prepareNativeHeldItem(reader,stack,arm,{...(readPixels?{readPixels}:{}),contextInput:{kind:`thirdperson_${arm}hand`,
+          observed:{source:'same_connection_entity_metadata',entityId:entity.entityId,usingItem:!!(useFlags&1)&&row.slot===activeSlot}}})
         for(const [path,value]of plan.textureLayers??new Map([[plan.texturePath,{bytes:plan.textureBytes}]]))textures.set(path,await loadTexture(value.bytes))
         const object=buildNativeHeldItemObject(plan,plan.textureLayers?textures:textures.get(plan.texturePath)),mount=new THREE.Group()
         mount.matrixAutoUpdate=false
-        const transform=plan.transform,modelMatrix=new THREE.Matrix4().compose(new THREE.Vector3(...transform.translation),new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.radians,'XYZ')),new THREE.Vector3(...transform.scale))
-        mount.matrix.makeScale(16,16,16).multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2)).multiply(new THREE.Matrix4().makeRotationY(Math.PI))
-          .multiply(new THREE.Matrix4().makeTranslation(arm==='left'?-1/16:1/16,.125,-.625)).multiply(modelMatrix)
+        mount.matrix.copy(nativeModelPartHeldMountMatrix({arm,transform:plan.transform}))
         // Skeleton.translateToHand shifts the pivot before the arm rotation.
         if(skeleton(leaf))mount.userData.pivotOffset=arm==='right'?1:-1
         mount.userData.originalMatrix=mount.matrix.clone();mount.add(object);base.bones.get(`${arm}_arm`).add(mount);held.push({object,textures,mount,arm})

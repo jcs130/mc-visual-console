@@ -32,7 +32,7 @@ async function fixture(t, options = {}) {
       if(options.nativeStream)res.write('data: '+JSON.stringify({type:'snapshot',epoch:1,terrainSequence:1,groups:[],registrySha256:'e'.repeat(64),mode:'paper_server_observation'})+'\n\n');
       const timer = setInterval(() => res.write('data: {"type":"frame","epoch":1,"mana":23}\n\n'), 30);
       res.on('close', () => { clearInterval(timer); streams.delete(res); });
-    } else if(options.asset&&req.url==='/assets/minecraft/textures/test.png') {
+    } else if(options.asset&&(req.url==='/assets/minecraft/textures/test.png'||options.assetBurst&&/^\/assets\/minecraft\/textures\/burst-\d+\.png$/.test(req.url))) {
       setTimeout(()=>{headers('image/png');res.end(options.asset);},30);
     } else { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('source should not serve html'); }
   });
@@ -225,4 +225,12 @@ test('a shared cache miss cannot send a private asset after source invalidation'
   for(let i=0;i<30&&!f.reads.some(r=>r.url.endsWith('test.png'));i++)await pause(2);
   f.relay.invalidate('channel-a');const response=await result;
   assert.equal(response.status,503);assert.ok(!(await response.text()).includes('private-asset'));
+});
+
+test('the relay shares an atlas burst larger than the active cache window across viewers',async t=>{
+  const bytes=Buffer.from('exact-public-texture'),f=await fixture(t,{asset:bytes,assetBurst:true,relay:{cacheAssets:true,assetCacheOptions:{maxInflight:2,maxQueued:32}}});await f.start();
+  const paths=Array.from({length:12},(_,i)=>'assets/minecraft/textures/burst-'+i+'.png');
+  const results=await Promise.all(Array.from({length:4},()=>paths).flat().map(path=>f.get(path).then(async r=>({status:r.status,bytes:Buffer.from(await r.arrayBuffer())}))));
+  assert.ok(results.every(row=>row.status===200&&row.bytes.equals(bytes)));
+  for(const path of paths)assert.equal(f.reads.filter(row=>row.url==='/'+path).length,1);
 });
