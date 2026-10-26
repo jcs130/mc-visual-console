@@ -942,6 +942,9 @@ function cortiRenderSkills() {
   cortiRenderMana();
   const list = root.querySelector('[data-skill-list]');
   const abilities = root.querySelector('[data-ability-list]');
+  // Icon slots must not inherit the native text-skill catalogue's two wide columns.
+  abilities.dataset.abilityLayout = 'icons';
+  abilities.dataset.expanded = String(cortiShowAllAbilities);
   const data = cortiPanelSkills;
   const allAbilities = data?.abilities || [];
   const pins = cortiAbilityPins(allAbilities);
