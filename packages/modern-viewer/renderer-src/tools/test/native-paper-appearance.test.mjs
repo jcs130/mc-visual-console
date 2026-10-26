@@ -95,9 +95,14 @@ test('original bundles render complete source geometry, scales, first-person arm
     assert.equal(actor.assetInfo.inventoryPreviewAvailable,true)
     assert.equal(actor.assetInfo.equipmentRenderingAvailable,false)
     assert.ok(actor.firstPersonRoot);const pose={x:100,y:67,z:-200,yaw:.4,pitch:.1};actor.applyPose(pose)
+    assert.equal(actor.model?.root.visible ?? false,false,'a world position is not an initialized original animation')
+    const waiting=actor.applyMotion({current:{},now:0});assert.equal(waiting.available,false)
+    assert.equal(actor.model.root.visible,false,'missing first-frame state cannot expose original bind-pose props')
     const now=Date.now(),self={uuid:proof.playerUuid,entityId:proof.entityId,velocity:{x:.1,y:0,z:0},onGround:true,health:20,maxHealth:20,crouching:false,mainArm:'right',bodyYaw:.4,headYaw:.4}
     const frame={epoch:1,pose,selfPlayer:self,motion:{schemaVersion:1,source:'same_player_physics_tick',tickMs:50,epoch:1,tick:3,sampledAt:now},presentation:{available:true,source:'paper_server_observation',playerUuid:proof.playerUuid,sampledAt:now,self}}
     const motion=actor.applyMotion({current:frame,now});assert.equal(motion.available,true,name+': '+motion.reason);assert.equal(motion.base,'walk');assert.equal(motion.clip,'walk','shared diagnostics must not report waiting during a valid Paper animation');assert.deepEqual(actor.root.position.toArray(),[100,67,-200]);assert.equal(actor.root.visible,true)
+    assert.equal(actor.model.root.visible,true)
+    if(name==='cormy-winefox-cream')for(const prop of ['UmbrellaArm','chair2','FOX'])assert.equal(actor.model.bones.get(prop).scale.length(),0,prop+' remains hidden in normal movement')
     // Paper movement is position delta, not impulse velocity. Exercise each
     // actual original model, including a missed tick and frames between packets.
     self.velocity={x:0,y:0,z:0};self.sprinting=true
@@ -119,10 +124,14 @@ test('original bundles render complete source geometry, scales, first-person arm
     assert.deepEqual(actor.root.position.toArray(),before,'read-only preview does not move the world actor')
     releaseInventoryMirror(mirror)
     self.locomotion.velocity.x=0;self.sprinting=false
-    assert.equal(actor.applyMotion({current:frame,now:now+150}).base,'idle',name+' stops instead of continuing to run')
+    const stopped=actor.applyMotion({current:frame,now:now+150})
+    assert.equal(stopped.base,'idle',name+' stops instead of continuing to run')
+    if(name!=='qiandengji_kirito')assert.equal(stopped.available,true,name+': '+JSON.stringify(stopped))
+    else assert.equal(stopped.reason,'YSM_CLIP_UNAVAILABLE:idle','retain original missing-idle diagnostic without hiding a valid static body')
     actor.applyPose({...pose,bodyYaw:.7,headYaw:.9})
     const stale=actor.applyMotion({current:frame,now:now+2000})
     assert.equal(stale.available,false);assert.match(stale.reason,/STALE/)
+    assert.equal(actor.model.root.visible,true,'a stale sample preserves the last verified pose instead of resetting to bind pose')
     assert.equal(actor.root.rotation.y,.7,'stale animation may not snap the body back to raw head yaw')
     actor.dispose();actor.dispose()
     await assert.rejects(readPaperAppearance({...binding,bundleSha256:'f'.repeat(64)},{resolveUrl:p=>'http://127.0.0.1/'+p,fetcher:async()=>new Response(bytes)}),/HASH_MISMATCH/)

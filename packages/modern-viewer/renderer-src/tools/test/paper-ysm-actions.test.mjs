@@ -167,7 +167,8 @@ const itemOptions={textureLoader:async()=>new THREE.Texture({width:2,height:2}),
 test('original centred block vertices stay at the grip, with only one Java centre translation',async()=>{
   const block=await createPaperHeldItem(itemModels,{name:'stone'},'right',itemOptions);
   const center=new THREE.Box3().setFromObject(block.root).getCenter(new THREE.Vector3());
-  assert.ok(center.distanceTo(new THREE.Vector3(0,-.0625,-.1))<1e-6);
+  // ModelPart Y-down local offset becomes the original YSM -1px world grip.
+  assert.ok(center.distanceTo(new THREE.Vector3(0,.0625,-.1))<1e-6);
   for(const yaw of [0,Math.PI/2,Math.PI,-Math.PI/2]){
     const forward=new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
     assert.ok(forward.distanceTo(new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)))<1e-8);

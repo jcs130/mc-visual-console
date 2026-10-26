@@ -61,6 +61,10 @@ Server implementation: `minecraft-ai-friend/paper/integrations/freesia-optional/
 
 ## Browser renderer
 
+The 2026-10-26 [item-grip and initial-pose correction](ysm-grip-and-initial-pose.md)
+adds the common YSM/Bedrock basis conversion and withholds authored bind-pose
+props until the first valid animation evaluation. Original assets stay intact.
+
 `src/modern-viewer/paper-ysm.js` consumes arbitrary validated model IDs, original Bedrock1.12 geometry/UV and PNGs, through the shared geometry engine. Bone names retain bounded Unicode. Original faces are merged only within identical transforms. Actual entity UUID/ID and state revision guard asynchronous mounts; teardown restores hidden vanilla children and name positions. Names stay visible above the model rather than overlapping tall ears. The omitted YSM2.4.1 scale is correctly .7; authored width/height scales remain authoritative.
 
 `paper-ysm-animation.js` layers original locomotion, lower-priority pre-parallel, arm hold/use/swing, hurt, extra and additive parallel rotation tracks. It samples original numeric/Molang vectors, pre/post discontinuities, linear/Catmull-Rom interpolation and one-shot timeline commands. The bounded interpreter never executes JavaScript or host functions. Action tokens preserve phase and combo variables; terminal timelines still run when a frame skips the final keyframe. An unsupported optional layer reports its reason without freezing valid base motion. Unknown native queries, custom controllers and advanced physical expressions remain unsupported; `completeEntityParityVerified=false`.

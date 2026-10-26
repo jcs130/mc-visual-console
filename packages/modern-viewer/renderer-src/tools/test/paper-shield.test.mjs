@@ -24,8 +24,7 @@ test('original shield plate, handle, UV atlas and special-renderer transform rea
   const front=native.getObjectByName('plate').children.find(m=>m.userData.nativeFace==='north');
   assert.deepEqual(Array.from(front.geometry.attributes.uv.array),[13/64,63/64,1/64,63/64,1/64,41/64,13/64,41/64]);
   const expected=paperYsmItemMount(models['item/shield'].display['thirdperson_'+arm+'hand'],arm)
-   .multiply(new THREE.Matrix4().makeTranslation(-.5,-.5,-.5)).multiply(new THREE.Matrix4().makeScale(1,-1,-1))
-   .multiply(new THREE.Matrix4().makeTranslation(0,0,4/16)).multiply(new THREE.Matrix4().makeRotationY(Math.PI));
+   .multiply(new THREE.Matrix4().makeTranslation(-.5,-.5,-.5)).multiply(new THREE.Matrix4().makeScale(1,-1,-1));
   assert.ok(item.root.matrix.elements.every((v,i)=>Math.abs(v-expected.elements[i])<1e-8));
   // Physical invariant in the actual YSM actor basis (X/Y inverted): plate
   // outside the palm, handle inside, in BOTH hands and at any player yaw.

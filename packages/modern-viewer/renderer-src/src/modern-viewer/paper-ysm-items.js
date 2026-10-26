@@ -5,6 +5,7 @@ import {nativeGeneratedItemElements,nativeHeldItemTransform} from '../native-vie
 import {createNativeModelPart} from '../native-viewer/native-entity-model.js';
 import {paperItemAppearances} from './item-appearances.js';
 import {paperItemHeads} from './item-heads.js';
+import {nativeYsmItemMount} from '../native-viewer/native-ysm-item-mount.js';
 
 export function resolvePaperHeldModel(models,name,ancestry=[]) {
   name=name.replace(/^minecraft:/,'');
@@ -19,15 +20,7 @@ export function resolvePaperHeldModel(models,name,ancestry=[]) {
   return {...parent,...own,textures:{...parent.textures,...own.textures},display:{...parent.display,...own.display},elements:own.elements??parent.elements??[],sourceModels:[...(parent.sourceModels??[]),name]};
 }
 export function paperYsmItemMount(display,arm) {
-  const transform=nativeHeldItemTransform(display,arm);
-  // Locked original YSM2.4.1 o000O0o0O00OOo0o0o0oo0O0 item layer:
-  // locator -> translate(0,-.0625,-.1) -> Rx(-90deg) -> native ItemTransform.
-  // The geometry helper's bone coordinates are Y-down. bakeFaces already
-  // centres original Java vertices at (-.5,-.5,-.5); never centre them twice.
-  return new THREE.Matrix4().makeTranslation(0,-.0625,-.1)
-    .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
-    .multiply(new THREE.Matrix4().compose(new THREE.Vector3(...transform.translation),
-      new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.radians,'XYZ')),new THREE.Vector3(...transform.scale)));
+  return nativeYsmItemMount(nativeHeldItemTransform(display,arm));
 }
 async function loadTexture(id) {
   if(!/^minecraft:(?:item|block)\/[a-z0-9_/-]{1,128}$/.test(id) && id!=='minecraft:entity/shield_base_nopattern')throw Error('YSM_ITEM_TEXTURE_UNSUPPORTED');
@@ -68,12 +61,7 @@ async function createPaperShield(model,item,arm,textureLoader,componentNames){
     const display=model.display['thirdperson_'+arm+'hand']??model.display.thirdperson_righthand??{};
     root.applyMatrix4(paperYsmItemMount(display,arm)
       .multiply(new THREE.Matrix4().makeTranslation(-.5,-.5,-.5))
-      .multiply(new THREE.Matrix4().makeScale(1,-1,-1))
-      // YSM's authored hand frame faces the opposite way to ModelPart's
-      // shield grip. Turn around the handle centre (z=2 pixels), not the
-      // plate origin: the grip stays in the palm and the face points out.
-      .multiply(new THREE.Matrix4().makeTranslation(0,0,4/16))
-      .multiply(new THREE.Matrix4().makeRotationY(Math.PI)));
+      .multiply(new THREE.Matrix4().makeScale(1,-1,-1)));
     root.name='paper-ysm-held-'+arm;
     root.userData={item:'shield',sourceModels:model.sourceModels,source:'minecraft_1.20.6_ShieldModel',
       effectReason:item.enchantments?.length?'原版附魔光效尚未适配':null,completeEntityParityVerified:false};
@@ -136,11 +124,8 @@ export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTex
     }
     const display=model.display['thirdperson_'+arm+'hand']??model.display.thirdperson_righthand??{};
     const mount=paperYsmItemMount(display,arm);
-    // YSM's crossbow hand pose and Java's generated crossbow sprite use
-    // opposite stock-to-muzzle axes. Roll the centred sprite in its own plane;
-    // preserve the original display/grip translation, UVs and handedness.
-    // Custom geometric appearances and other held items keep their own frames.
-    if(name==='crossbow' && model.generated)mount.multiply(new THREE.Matrix4().makeRotationZ(Math.PI));
+    // All items use the same corrected locator basis. A crossbow-only sprite
+    // roll used to mask the missing conversion and must not be applied twice.
     group.applyMatrix4(mount);group.name='paper-ysm-held-'+arm;
     group.userData={item:name,sourceModels:model.sourceModels,source:'minecraft_1.20.6_original_models',completeEntityParityVerified:false};
     let disposed=false;

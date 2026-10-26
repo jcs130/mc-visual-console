@@ -1,4 +1,5 @@
-import { Group, Matrix4, Vector3, Quaternion, Euler } from 'three'
+import { Group } from 'three'
+import { nativeYsmItemMount } from './native-ysm-item-mount.js'
 import { selectNativeHeldItems, prepareNativeHeldItem, buildNativeHeldItemObject, disposeNativeHeldItemObject } from './native-held-items.js'
 import { parseNativeItemStack } from './native-item-stack.js'
 
@@ -56,15 +57,9 @@ export class BundledYsmHeldItems {
       }
       object = buildNativeHeldItemObject(plan, plan.textureLayers ? textures : textures.get(plan.texturePath))
       const mount = new Group(); mount.matrixAutoUpdate = false
-      // Original locator -> T(0,-.0625,-.1) -> Rx(-90deg) -> ItemTransform.
-      const t = plan.transform
-      mount.matrix.makeTranslation(0, -.0625, -.1).multiply(new Matrix4().makeRotationX(-Math.PI / 2))
-        .multiply(new Matrix4().compose(new Vector3(...t.translation), new Quaternion().setFromEuler(new Euler(...t.radians, 'XYZ')), new Vector3(...t.scale)))
-      // Shield ModelPart grip faces opposite to this authored YSM locator.
-      // Turn around the handle's centre, after the native item display transform.
-      if (plan.appearance.family === 'shield') mount.matrix.multiply(new Matrix4().makeTranslation(-.5, -.5, -.5))
-        .multiply(new Matrix4().makeTranslation(0, 0, -.25)).multiply(new Matrix4().makeRotationY(Math.PI))
-        .multiply(new Matrix4().makeTranslation(.5, .5, .5))
+      mount.matrix.copy(nativeYsmItemMount(plan.transform))
+      // Shield faces already include the native special-renderer transform.
+      // The corrected locator basis needs no additional per-item turn.
       mount.add(object); mount.visible = this.visible; locator.add(mount)
       Object.assign(row, { object, mount, textures, status: 'ready', reason: null, glint: object.userData.glint, effectUnavailableReason: plan.appearance.requirements.effectUnavailableReason }); retained = true
     } catch (error) {
@@ -73,10 +68,11 @@ export class BundledYsmHeldItems {
     } finally { if (!retained) for (const texture of textures.values()) { texture.dispose(); texture.image?.close?.() } }
   }
   setVisible(value) { this.visible = !!value; for (const row of this.hands.values()) if (row.mount) row.mount.visible = this.visible }
-  state() { const rows = [...this.hands.values()], available = rows.some(row => row.status === 'ready' && row.mount.visible)
+  state() { const rows = [...this.hands.values()], poseVisible = this.model.root?.visible !== false,
+    available = poseVisible && rows.some(row => row.status === 'ready' && row.mount.visible)
     return { available, reason: available ? null : this.reason ?? rows.find(row => row.reason)?.reason ??
       (rows.some(row => row.status === 'loading') ? 'NATIVE_HELD_ITEMS_LOADING' : rows.some(row => row.status === 'ready') ? 'BUNDLED_YSM_HELD_POSE_HIDDEN' : 'NATIVE_HELD_HANDS_EMPTY'),
-    hands: Object.fromEntries([...this.hands].map(([arm, row]) => [arm, { status: row.status, reason: row.reason ?? null, glint: row.glint ?? null, effectUnavailableReason: row.effectUnavailableReason ?? null, name: row.name, slot: row.slot, visible: !!row.mount?.visible }])),
+    hands: Object.fromEntries([...this.hands].map(([arm, row]) => [arm, { status: row.status, reason: row.reason ?? null, glint: row.glint ?? null, effectUnavailableReason: row.effectUnavailableReason ?? null, name: row.name, slot: row.slot, visible: poseVisible && !!row.mount?.visible }])),
     source: 'native_item_stack_original_ysm_locator', completeEntityParityVerified: false } }
   dispose() { if (this.disposed) return; this.disposed = true; for (const arm of ['right', 'left']) this.retire(arm) }
 }

@@ -51,6 +51,10 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
     texture.flipY=true;texture.colorSpace=THREE.SRGBColorSpace;texture.magFilter=THREE.NearestFilter;texture.minFilter=THREE.NearestFilter;texture.generateMipmaps=false;texture.needsUpdate=true;
     material=new THREE.MeshLambertMaterial({map:texture,side:THREE.DoubleSide,alphaTest:.1});
     model=createNativeBedrockModel(geometry,material,{maxBones:512,maxCubesPerBone:256,maxCubes:2048,allowNegativeSizes:true});
+    // An authored bind pose can contain every optional prop (chairs, parasols,
+    // alternate arms). It is not a player's idle state. Keep geometry hidden
+    // until the original animation layers have been evaluated from real state.
+    model.root.visible=false;
     if(model.cubeCount>2048)throw Error('YSM_GEOMETRY_BUDGET');
     const extra=kind=>{const path=bundle.animations?.[kind]??definition.files?.player?.animation?.[kind];return path&&bundle.files[path]?json(bundle,path):null;};
     const arm=extra('arm'),extraAnimation=extra('extra');
@@ -81,7 +85,11 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
         model.root.traverse(part => { if (part.isMesh) { part.castShadow = shadows; part.receiveShadow = shadows; } });
       },
       animate(state,now) {
+        model.root.visible=false;
         this.animationState=animationController.apply(state,now);this.animationReason=this.animationState.errors[0]??null;
+        // Individual unsupported clips retain their existing diagnostics; an
+        // otherwise valid static model need not disappear (e.g. no idle clip).
+        model.root.visible=true;
         const downed=this.animationState.base==='downed';
         const sleeping=this.animationState.base==='sleep';
         // A presentation pose only: no collision, server position or inventory changes.
