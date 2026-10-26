@@ -473,6 +473,7 @@ let viewerEffectSystem = null;
 let fishingVisuals = null;
 let selfAvatarCameraVisibility = null;
 let rendererReady = false;
+let worldPositionReady = false;
 let perceptionGrid = null;
 let initializing = false;
 let selectedPlayerSkin = resolvePlayerSkin(DEFAULT_PLAYER_SKIN_ID);
@@ -754,7 +755,8 @@ socket.on("position", (data) => {
   latestPosition = normalizePositionPacket(data);
   if (data?.player) pendingPlayerEntity = normalizeEntity(data.player);
   if (rendererReady) {
-    applyPosition();
+    if (worldPositionReady || isObsOverlay) applyPosition();
+    else flushPendingWorld();
     scheduleTrustedNpcAvatarRebalance("position");
   }
 });
@@ -834,7 +836,7 @@ socket.on("loadChunk", (data) => {
   const normalized = normalizeChunk(data);
   perceptionGrid?.ingest(normalized);
   dungeonRoomCoverCache?.ingestColumn(data.x, data.z, normalized.chunk);
-  if (rendererReady) {
+  if (rendererReady && worldPositionReady) {
     worldView.emit("loadChunk", normalized);
     refreshChunkLoadingGuards();
     scheduleDungeonOcclusionCheck();
@@ -848,7 +850,7 @@ socket.on("unloadChunk", (data) => {
   const key = `${data.x},${data.z}`;
   perceptionGrid?.remove(data.x,data.z);
   dungeonRoomCoverCache?.removeColumn(data.x, data.z);
-  if (rendererReady) {
+  if (rendererReady && worldPositionReady) {
     worldView.emit("unloadChunk", data);
     refreshChunkLoadingGuards();
     scheduleDungeonOcclusionCheck();
@@ -860,10 +862,10 @@ socket.on("blockUpdate", (data) => {
   if (isObsOverlay) return;
   if (!data?.pos || !Number.isFinite(data.stateId)) return;
   const normalized = { ...data, pos: toVec3(data.pos) };
-  clearRemovedSpecialBlockMaterial(globalThis.world, normalized.pos, globalThis.mcData?.blocksByStateId?.[data.stateId]?.name);
   perceptionGrid?.update(normalized.pos,normalized.stateId);
   dungeonRoomCoverCache?.setBlockStateId(Math.floor(data.pos.x), Math.floor(data.pos.y), Math.floor(data.pos.z), data.stateId);
-  if (rendererReady) {
+  if (rendererReady && worldPositionReady) {
+    clearRemovedSpecialBlockMaterial(globalThis.world, normalized.pos, globalThis.mcData?.blocksByStateId?.[data.stateId]?.name);
     worldView.emit("blockUpdate", normalized);
     scheduleDungeonOcclusionCheck();
   }
@@ -873,8 +875,10 @@ socket.on("blockUpdate", (data) => {
 socket.on("blockEntities", (data) => {
   if (isObsOverlay) return;
   pendingBlockEntities = data && typeof data === "object" ? data : {};
-  if (rendererReady) worldView.emit("blockEntities", pendingBlockEntities);
-  syncSpecialBlockMaterials(globalThis.world, pendingBlockEntities);
+  if (rendererReady && worldPositionReady) {
+    worldView.emit("blockEntities", pendingBlockEntities);
+    syncSpecialBlockMaterials(globalThis.world, pendingBlockEntities);
+  }
 });
 
 socket.on("time", (time) => {
@@ -1094,13 +1098,21 @@ async function initializeRenderer(version) {
 }
 
 function flushPendingWorld() {
-  if (!rendererReady || !worldView) return;
+  // The renderer's distance/dirty-section calculations require a real viewer
+  // position. A block update can arrive while assets are loading, or before
+  // the first position packet; keep that data queued until both are ready.
+  if (!rendererReady || !worldView || !latestPosition) return;
+  applyPosition(true);
+  worldPositionReady = true;
   syncSpecialBlockMaterials(globalThis.world, pendingBlockEntities);
   for (const event of pendingChunks.values()) worldView.emit(event.type === "load" ? "loadChunk" : "unloadChunk", event.data);
   pendingChunks.clear();
   refreshChunkLoadingGuards();
   if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);
-  for (const update of pendingBlockUpdates.splice(0)) worldView.emit("blockUpdate", update);
+  for (const update of pendingBlockUpdates.splice(0)) {
+    clearRemovedSpecialBlockMaterial(globalThis.world, update.pos, globalThis.mcData?.blocksByStateId?.[update.stateId]?.name);
+    worldView.emit("blockUpdate", update);
+  }
   applyServerTime();
   applyServerWeather();
   for (const entity of entityCache.values()) {

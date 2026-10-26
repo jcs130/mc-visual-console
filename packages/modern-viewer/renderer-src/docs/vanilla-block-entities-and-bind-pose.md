@@ -35,3 +35,14 @@ remote-player binding and use-to-idle transitions. Source tests and isolated
 scene rendering do not establish complete Java pixel parity or deploy copied
 consumer assets. Consumers must freeze matching rebuilt assets and verify their
 served bundle hashes before claiming the change is loaded.
+# Initial terrain ordering
+
+After refreshing the real viewer, an ordinary `blockUpdate` exposed a pre-existing
+startup race: pending deltas were replayed before `applyPosition`, and the mesher's
+distance calculation dereferenced an unset `viewerChunkPosition`. The browser now
+keeps its existing bounded terrain queue until both the renderer and the first
+observed position are ready, publishes that position first, then replays terrain
+and material state once. No fabricated origin or dropped delta is used. Subsequent
+position packets update the camera without replaying the scene. The regression
+uses the installed renderer's actual distance calculation and the client event
+handlers for both packet arrival orders.
