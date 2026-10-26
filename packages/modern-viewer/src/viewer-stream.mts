@@ -91,7 +91,7 @@ export function createViewerChunkStream({ bot, socket, emit, viewDistance = 3, o
 /** Coalesce per-entity changes; send compact movement instead of repeated NBT/equipment. */
 export function createViewerEntityStream({ bot, socket, serialize, isHidden = () => false, distance = 48, maxEntities = 128 }) {
   const pending = new Map(), known = new Map(); let closed = false
-  const transient = entity => ['arrow', 'spectral_arrow', 'trident'].includes(String(entity?.name ?? '').replace(/^minecraft:/, ''))
+  const transient = entity => entity?.type === 'projectile' || ['arrow', 'spectral_arrow', 'trident', 'eye_of_ender'].includes(String(entity?.name ?? '').replace(/^minecraft:/, ''))
   const counters = { sent: 0, coalesced: 0, filtered: 0 }
   const visible = entity => entity && entity !== bot.entity && entity.id !== undefined && entity.position && bot.entity?.position
     && Math.hypot(entity.position.x - bot.entity.position.x, entity.position.z - bot.entity.position.z) <= distance && !isHidden(entity)

@@ -12,6 +12,12 @@ function fixture(options = {}) {
 const arrow = (id = 2) => ({ id, name: 'arrow', position: { x: 1, y: 65, z: 0 }, velocity: { x: 1, y: -.1, z: 0 }, width: .5, height: .5 });
 
 describe('observed projectile stream', () => {
+  for(const name of ['potion','snowball','egg','ender_pearl','experience_bottle','small_fireball','fireball','dragon_fireball','shulker_bullet','llama_spit','wind_charge','breeze_wind_charge','wither_skull','firework_rocket'])it('retains short-lived '+name,()=>{
+    const {events,stream}=fixture();try{
+      const e={...arrow(),name,type:'projectile'};stream.queue(e,true);e.position.x++;stream.queue(e);stream.remove(e);stream.flush();
+      assert.deepEqual(events.map(e=>e[0]),['entity','entityMoved','entity']);assert.equal(events[2][1].delete,true);
+    }finally{stream.close();}
+  });
   it('sends close-range spawn, motion and destruction even before the 100 ms batch tick', () => {
     const { events, stream } = fixture();
     try {

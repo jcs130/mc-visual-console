@@ -69,7 +69,7 @@ async function createPaperShield(model,item,arm,textureLoader,componentNames){
     return {root,dispose(){if(disposed)return;disposed=true;root.removeFromParent();geometry.dispose();material.dispose();texture.dispose();root.clear();}};
   }catch(error){geometry?.dispose();material.dispose();texture.dispose();throw error;}
 }
-export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTexture,readPixels=pixels,itemAppearances=paperItemAppearances}={}) {
+export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTexture,readPixels=pixels,itemAppearances=paperItemAppearances,context='thirdperson',tint=null,fullBright=false}={}) {
   const name=String(item?.name??'').replace(/^minecraft:/,'');if(!/^[a-z0-9_]{1,96}$/.test(name))throw Error('YSM_ITEM_NAMESPACE_UNSUPPORTED');
   if(item.visualDataUnavailable)throw Error('YSM_ITEM_COMPONENTS_UNAVAILABLE');
   if (paperItemHeads.reserved(item)) {
@@ -99,7 +99,7 @@ export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTex
       for(let n=0;n<5;n++) {
         const ref=model.textures['layer'+n];if(!ref)break;
         const id=textureId(model.textures,ref),texture=await getTexture(id);
-        const elements=nativeGeneratedItemElements(await readPixels(texture)).map(e=>({...e,faces:Object.fromEntries(Object.entries(e.faces).map(([side,f])=>[side,{...f,texture:'#layer'+n}]))}));
+        const elements=nativeGeneratedItemElements(await readPixels(texture)).map(e=>({...e,faces:Object.fromEntries(Object.entries(e.faces).map(([side,f])=>[side,{...f,texture:'#layer'+n,tintindex:n}]))}));
         modelsToBake.push({...model,elements});
       }
       if(!modelsToBake.length)throw Error('YSM_ITEM_TEXTURE_UNAVAILABLE');
@@ -109,7 +109,11 @@ export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTex
     const batches=new Map();
     for(const part of modelsToBake)for(const face of bakeFaces(part,{}, {allowTint:true})) {
       if(face.tintIndex>=0 && !model.generated)throw Error('YSM_ITEM_TINT_UNSUPPORTED');
-      if(!materials.has(face.texture))materials.set(face.texture,new THREE.MeshLambertMaterial({map:await getTexture(face.texture),side:THREE.DoubleSide,alphaTest:.1}));
+      if(!materials.has(face.texture)) {
+        const Material=fullBright?THREE.MeshBasicMaterial:THREE.MeshLambertMaterial;
+        materials.set(face.texture,new Material({map:await getTexture(face.texture),side:THREE.DoubleSide,alphaTest:.1,
+          ...(typeof tint==='function'&&face.tintIndex>=0?{color:tint(face.tintIndex)}:{})}));
+      }
       const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(face.position,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(face.uv,2));geometry.setIndex(face.indices);geometry.computeVertexNormals();
       unmerged.add(geometry);
       if(!batches.has(face.texture))batches.set(face.texture,[]);
@@ -122,8 +126,9 @@ export async function createPaperHeldItem(models,item,arm,{textureLoader=loadTex
       if(!merged)throw Error('YSM_ITEM_GEOMETRY_MERGE_FAILED');
       group.add(new THREE.Mesh(merged,materials.get(id)));
     }
-    const display=model.display['thirdperson_'+arm+'hand']??model.display.thirdperson_righthand??{};
-    const mount=paperYsmItemMount(display,arm);
+    const display=context==='ground'?(model.display.ground??{}):(model.display['thirdperson_'+arm+'hand']??model.display.thirdperson_righthand??{});
+    const ground=context==='ground'?nativeHeldItemTransform(display,arm,'ground'):null;
+    const mount=ground?new THREE.Matrix4().compose(new THREE.Vector3(...ground.translation),new THREE.Quaternion().setFromEuler(new THREE.Euler(...ground.radians,'XYZ')),new THREE.Vector3(...ground.scale)):paperYsmItemMount(display,arm);
     // All items use the same corrected locator basis. A crossbow-only sprite
     // roll used to mask the missing conversion and must not be applied twice.
     group.applyMatrix4(mount);group.name='paper-ysm-held-'+arm;

@@ -180,10 +180,9 @@ const adaptedClient = clientSource
   .replace('  entityCache.set(id, normalized);',
     '  if (cortiPruneSelfEntities(normalized)) return;\n  entityCache.set(id, normalized);')
   .replace(potionRenderAnchor,
-    '  const renderEntity = normalized.name === "potion"\n' +
-    '    ? { ...normalized, name: "splash_potion", type: "projectile" } : normalized;\n' +
-    '  worldView.emit(isMove ? "entityMoved" : "entity",\n' +
-    '    isMove ? renderEntity : rendererEntityEquipment(renderEntity, globalThis.mcData?.itemsByName));')
+    '  if (!isObservedProjectile(normalized.name) || isObservedArrow(normalized.name))\n' +
+    '    worldView.emit(isMove ? "entityMoved" : "entity",\n' +
+    '      isMove ? normalized : rendererEntityEquipment(normalized, globalThis.mcData?.itemsByName));')
   .replace('  renderMotionHud();\n}\n\nfunction applyEntityAnimation',
     '  cortiAlignAvatarArmor(state.entity);\n  cortiSyncAvatarShield(state.entity, state.offhand ?? equipment?.[1]);\n  renderMotionHud();\n}\n\nfunction applyEntityAnimation')
   .replace('socket.on("entityAnimation", (event) => applyEntityAnimation(event));',

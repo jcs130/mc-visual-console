@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {observedHandUse} from './observed-hand-use.js';
 import {batchStaticYsmBones} from './ysm-bone-batch.js';
 import {createNativeBedrockModel} from '../native-viewer/native-entity-model-bedrock.js';
 import {PaperYsmAnimation} from './paper-ysm-animation.js';
@@ -58,7 +59,7 @@ export async function createPaperYsmActor(bundle,textureId,{itemModels={},loadTe
     if(model.cubeCount>2048)throw Error('YSM_GEOMETRY_BUDGET');
     const extra=kind=>{const path=bundle.animations?.[kind]??definition.files?.player?.animation?.[kind];return path&&bundle.files[path]?json(bundle,path):null;};
     const arm=extra('arm'),extraAnimation=extra('extra');
-    batch=batchStaticYsmBones(model,material,[animation,arm,extraAnimation]);
+    batch=batchStaticYsmBones(model,material,[animation,arm,extraAnimation],['LeftArm','LeftForeArm','LeftHand','RightArm','RightForeArm','RightHand']);
     const root=new THREE.Group(),orientation=new THREE.Group(),content=new THREE.Group();
     root.name='paper-ysm-player';
     root.add(orientation);orientation.add(content);orientation.scale.set(-1,-1,1);orientation.position.y=Math.fround(.01);content.position.y=-1.5;content.add(model.root);
@@ -212,6 +213,7 @@ export class PaperYsmPlayers {
       local.sleepState={...entity.sleepState,epoch:binding.epoch,entityId:entity.id};
     }
     local.body={at:now,epoch:binding.epoch,entityId:entity.id,
+      handUse:observedHandUse(entity,row),
       ...(typeof row.inWater==='boolean'?{inWater:row.inWater}:{}),
       ...(typeof row.onGround==='boolean'?{onGround:row.onGround}:{})};
     // avatarState's Mineflayer velocity is blocks/tick; YSM documents m/s.
@@ -239,6 +241,7 @@ export class PaperYsmPlayers {
     if(!local.movedAt || now-local.movedAt>250)local.speed=0;
     local.position=pos?{...pos}:null;local.at=now;this.fallback.set(uuid,local);
     const motion=latest && now-latest.at<2000?{...latest.row}:{horizontalSpeed:local.speed,equipment:entity.equipment,crouching:!!(Number(entity.metadata?.[0])&2),sprinting:!!(Number(entity.metadata?.[0])&8),pose:entity.metadata?.[6],headPitchDegrees:-(entity.pitch??0)*180/Math.PI};
+    if (!latest || now-latest.at>=2000) Object.assign(motion,observedHandUse(entity));
     if(local.body && now-local.body.at<600 && local.body.entityId===entity.id && local.body.epoch===this.states.get(uuid)?.epoch) {
       for(const key of ['inWater','onGround'])if(typeof local.body[key]==='boolean')motion[key]=local.body[key];
       for(const key of ['verticalSpeed','health','maxHealth'])if(Number.isFinite(local.body[key]))motion[key]=local.body[key];
@@ -246,6 +249,7 @@ export class PaperYsmPlayers {
       if(typeof local.body.sprinting==='boolean')motion.sprinting=local.body.sprinting;
       if(typeof local.body.sneaking==='boolean')motion.crouching=local.body.sneaking;
       motion.waterSource='same_connection_body';
+      Object.assign(motion,local.body.handUse);
     }
     if(latest?.row.swing)motion.swing={...latest.row.swing,ageSeconds:latest.row.swing.ageSeconds+(now-latest.at)/1000};
     if(latest?.row.hurt)motion.hurt={...latest.row.hurt,ageSeconds:latest.row.hurt.ageSeconds+(now-latest.at)/1000};

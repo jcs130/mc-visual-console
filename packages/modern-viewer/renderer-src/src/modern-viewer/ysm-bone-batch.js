@@ -39,8 +39,8 @@ export function batchYsmBones(model, material) {
 /** Merge only geometry whose relative transform can never be animated.
  * Bone nodes/locators remain intact. Each movable ancestor keeps a separate
  * draw, so authored non-uniform/zero scales still use Three's normal matrix. */
-export function batchStaticYsmBones(model,material,definitions) {
-  const animated=new Set(['Head','head']);
+export function batchStaticYsmBones(model,material,definitions,dynamicBones=[]) {
+  const animated=new Set(['Head','head',...dynamicBones]);
   for(const definition of definitions)for(const clip of Object.values(definition?.animations??{}))
     for(const name of Object.keys(clip.bones??{}))animated.add(name);
   const bones=new Set(model.bones.values()),groups=new Map(),geometries=[];

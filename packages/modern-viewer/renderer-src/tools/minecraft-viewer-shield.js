@@ -1,19 +1,20 @@
-/** A shield model for the renderer's offhand camera and the world avatar. */
+import {observedHandUse} from './observed-hand-use.js';
+import {PAPER_SHIELD_PARTS} from './paper-ysm-items.js';
+import {createNativeModelPart} from '../native-viewer/native-entity-model.js';
+let cortiShieldTexture = null;
+/** Original shield geometry/UVs for both first-person hands and vanilla avatars. */
 function cortiShieldModel() {
   const three = globalThis.THREE;
   const root = new three.Group();
   root.name = 'corti-shield';
-  const part = (width, height, depth, color, x, y, z, metalness = 0) => {
-    const mesh = new three.Mesh(new three.BoxGeometry(width, height, depth),
-      new three.MeshStandardMaterial({ color, metalness, roughness: metalness ? .52 : .84 }));
-    mesh.position.set(x, y, z);
-    root.add(mesh);
-  };
-  part(.78, 1.02, .105, 0x755634, 0, 0, 0);
-  part(.84, 1.08, .055, 0x96918a, 0, 0, .034, .42);
-  part(.69, .92, .025, 0x8e6a43, 0, 0, .072);
-  part(.19, .28, .045, 0xb1aba1, 0, 0, .107, .56);
-  part(.13, .51, .12, 0x5a3b25, 0, 0, -.09);
+  if(!cortiShieldTexture){
+    cortiShieldTexture=new three.TextureLoader().load('/textures/'+cortiContentMinecraftVersion+'/entity/shield_base_nopattern.png');
+    cortiShieldTexture.colorSpace=three.SRGBColorSpace;cortiShieldTexture.magFilter=three.NearestFilter;
+    cortiShieldTexture.minFilter=three.NearestFilter;cortiShieldTexture.generateMipmaps=false;
+  }
+  const material=new three.MeshLambertMaterial({map:cortiShieldTexture,alphaTest:.1,side:three.DoubleSide});
+  const original=createNativeModelPart(PAPER_SHIELD_PARTS,material,[64,64]);root.add(original.root);
+  root.userData.dispose=()=>{root.removeFromParent();original.dispose();material.dispose();};
   return root;
 }
 
@@ -23,7 +24,7 @@ function cortiShieldPose(raised) {
     : { x: .26, y: -.23, z: -.20, yaw: -.70, pitch: .10, scale: .49 };
 }
 
-function cortiApplyFirstPersonShield(offhand, raised, now = performance.now()) {
+function cortiApplyFirstPersonShield(offhand, raised, now = performance.now(), hand='left') {
   const model = offhand.holdingBlock;
   if (model?.name !== 'corti-shield') return;
   const state = offhand.cortiShieldMotion ??= { blend: raised ? 1 : 0, at: now };
@@ -33,13 +34,13 @@ function cortiApplyFirstPersonShield(offhand, raised, now = performance.now()) {
   const idle = cortiShieldPose(false);
   const guard = cortiShieldPose(true);
   const lerp = (key) => idle[key] + (guard[key] - idle[key]) * state.blend;
-  model.position.set(lerp('x'), lerp('y'), lerp('z'));
-  model.rotation.set(lerp('pitch'), lerp('yaw'), -.11);
+  const sign=hand==='left'?1:-1;
+  model.position.set(sign*lerp('x'), lerp('y'), lerp('z'));
+  model.rotation.set(lerp('pitch'), sign*lerp('yaw'), sign*-.11);
   model.scale.setScalar(lerp('scale'));
 }
 
-function cortiInitializeShield() {
-  const offhand = globalThis.world?.holdingBlockLeft;
+function cortiInstallShieldHand(offhand, hand) {
   if (!offhand || offhand.cortiShieldInstalled) return;
   const createItemModel = offhand.createItemModel;
   if (typeof createItemModel !== 'function') return;
@@ -57,41 +58,52 @@ function cortiInitializeShield() {
   const updateCameraGroup = offhand.updateCameraGroup;
   if (typeof updateCameraGroup === 'function') offhand.updateCameraGroup = function (...args) {
     updateCameraGroup.apply(this, args);
-    const raised = typeof pendingAvatarState !== 'undefined' && pendingAvatarState?.shieldRaised === true;
-    cortiApplyFirstPersonShield(this, raised);
+    const use=observedHandUse(pendingAvatarState?.entity,pendingAvatarState);
+    const raised=use.shieldRaised&&use.shieldHand===(hand===use.mainArm?'mainhand':'offhand');
+    cortiApplyFirstPersonShield(this, raised, performance.now(), hand);
   };
   offhand.cortiShieldInstalled = true;
   offhand.lastHeldItemRenderKey = undefined;
   offhand.updateItem?.();
 }
+function cortiInitializeShield() {
+  cortiInstallShieldHand(globalThis.world?.holdingBlockLeft,'left');
+  cortiInstallShieldHand(globalThis.world?.holdingBlock,'right');
+}
 
-function cortiSyncAvatarShield(entity, item) {
+function cortiSyncAvatarShield(entity) {
   if (entity?.id === undefined) return;
   const rendered = globalThis.world?.entities?.entities?.[String(entity.id)];
-  const arm = rendered?.playerObject?.skin?.leftArm;
+  const own=entity.isSelf===true||entity.id===pendingAvatarState?.entity?.id;
+  const use=observedHandUse(entity,own?pendingAvatarState:null);
+  for(const [index,side]of [use.mainArm,use.mainArm==='left'?'right':'left'].entries()){
+  const arm = rendered?.playerObject?.skin?.[side+'Arm'];
   if (!arm) return;
-  const shield = String(item?.name || '').replace(/^minecraft:/, '') === 'shield';
+  const shield = String(use.equipment?.[index]?.name || '').replace(/^minecraft:/, '') === 'shield';
   const existing = arm.getObjectByName('corti-shield');
-  const native = rendered.getObjectByName?.('custom_item_left');
+  if(rendered.getObjectByName?.('paper-ysm-player')?.visible){existing?.userData.dispose?.();continue;}
+  const native = rendered.getObjectByName?.('custom_item_'+side);
   if (native) native.visible = !shield;
   if (!shield) {
-    if (existing) arm.remove(existing);
-    return;
+    existing?.userData.dispose?.();
+    continue;
   }
   if (existing) {
     existing.traverse?.((part) => { if (part.isMesh) part.visible = true; });
-    cortiPoseAvatarShield(existing, entity);
-    return;
+    cortiPoseAvatarShield(existing, entity, side, use);
+    continue;
   }
   const model = cortiShieldModel();
   model.scale.setScalar(8.2);
-  cortiPoseAvatarShield(model, entity);
+  cortiPoseAvatarShield(model, entity, side, use);
   arm.add(model);
+  }
 }
 
-function cortiPoseAvatarShield(model, entity) {
-  const raised = entity?.isSelf === true && typeof pendingAvatarState !== 'undefined' &&
-    pendingAvatarState?.shieldRaised === true;
-  model.position.set(raised ? -1.2 : .7, raised ? -4.8 : -7, raised ? 5.2 : 2.5);
-  model.rotation.set(raised ? -.22 : -.10, raised ? .35 : -.70, -.12);
+function cortiPoseAvatarShield(model, entity, side='left', use=observedHandUse(entity)) {
+  const raised=use.shieldRaised&&use.shieldHand===(side===use.mainArm?'mainhand':'offhand');
+  const sign=side==='left'?1:-1;
+  model.position.set(sign*(raised ? -1.2 : .7), raised ? -4.8 : -7, raised ? 5.2 : 2.5);
+  model.rotation.set(raised ? -.22 : -.10, sign*(raised ? .35 : -.70), sign*-.12);
+  model.userData.raised=raised;
 }

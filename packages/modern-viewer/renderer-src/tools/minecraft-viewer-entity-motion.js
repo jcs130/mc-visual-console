@@ -1,5 +1,7 @@
 /** Read-only projectile and hostile-mob motion layered over the 1.20.6 scene. */
 import { createObservedArrowVisual, isObservedArrow, observedArrowDirection, preloadObservedArrowTextures, refreshObservedArrowVisual } from './observed-arrows.js';
+import {ObservedProjectileLayer,isObservedProjectile,preloadObservedProjectileTextures} from './observed-projectiles.js';
+let cortiObservedProjectiles=null;
 const cortiProjectileModels = new Map();
 let cortiArrowTexturesRequested = false;
 const cortiMobActions = new Map();
@@ -9,9 +11,7 @@ const cortiHostiles = new Set(['zombie', 'husk', 'drowned', 'skeleton', 'stray',
   'guardian', 'elder_guardian', 'wither_skeleton', 'piglin_brute', 'zombified_piglin',
   'zombie_villager', 'breeze', 'shulker', 'warden', 'hoglin', 'zoglin', 'piglin',
   'vex', 'endermite']);
-const cortiPotionNames = new Set(['potion', 'splash_potion', 'lingering_potion']);
-const cortiProjectileNames = new Set(['arrow', 'spectral_arrow', 'tipped_arrow', 'trident',
-  'small_fireball', 'fireball', ...cortiPotionNames]);
+const cortiProjectileNames = new Set(['arrow','spectral_arrow','tipped_arrow']);
 const cortiArcherWeapons = { skeleton: 'bow', stray: 'bow', bogged: 'bow', pillager: 'crossbow' };
 const cortiRangedMobNames = new Set([...Object.keys(cortiArcherWeapons), 'piglin']);
 const cortiBabyBipeds = new Set(['zombie', 'husk', 'drowned', 'zombie_villager', 'zombified_piglin', 'piglin']);
@@ -25,90 +25,19 @@ function cortiOwnEquipmentChanged(entity) {
   return true;
 }
 
-function cortiProjectileModel(name, entity) {
-  const three = globalThis.THREE;
-  if (!three) return null;
-  if (isObservedArrow(name)) return createObservedArrowVisual(name, entity, { version: cortiContentMinecraftVersion });
-  if (name === 'small_fireball' || name === 'fireball') {
-    const root = new three.Group();
-    root.name = 'corti-fireball-flight';
-    const size = name === 'small_fireball' ? .30 : .82;
-    const glow = new three.Mesh(new three.SphereGeometry(size * .35, 8, 6),
-      new three.MeshBasicMaterial({ color: 0xffc247, transparent: true, opacity: .95 }));
-    root.add(glow);
-    const texture = new three.TextureLoader().load('/textures/1.20.6/block/fire_0.png');
-    texture.magFilter = three.NearestFilter;
-    texture.minFilter = three.NearestFilter;
-    texture.repeat.set(1, 1 / 32);
-    const flame = new three.MeshBasicMaterial({ map: texture, transparent: true,
-      alphaTest: .06, side: three.DoubleSide, depthWrite: false });
-    for (const angle of [0, Math.PI / 2]) {
-      const face = new three.Mesh(new three.PlaneGeometry(size, size), flame);
-      face.rotation.y = angle;
-      root.add(face);
-    }
-    return root;
-  }
-  if (cortiPotionNames.has(name)) {
-    const root = new three.Group();
-    root.name = 'corti-thrown-potion';
-    const itemName = String(cortiMobMetadata(entity, 8)?.name || '').replace(/^minecraft:/, '');
-    const bottle = name === 'lingering_potion' || itemName === 'lingering_potion'
-      ? 'lingering_potion' : 'splash_potion';
-    const base = new three.MeshBasicMaterial({ map: cortiBowTexture(bottle), transparent: true,
-      alphaTest: .04, side: three.DoubleSide, depthWrite: false });
-    const liquid = new three.MeshBasicMaterial({ map: cortiBowTexture('potion_overlay'),
-      color: 0xb979e6, transparent: true, alphaTest: .04,
-      side: three.DoubleSide, depthWrite: false });
-    for (const angle of [0, Math.PI / 2]) {
-      const face = new three.Group();
-      face.rotation.y = angle;
-      const shape = new three.PlaneGeometry(.34, .34);
-      const glass = new three.Mesh(shape, base);
-      const fill = new three.Mesh(shape, liquid);
-      fill.position.z = .002;
-      face.add(glass, fill);
-      root.add(face);
-    }
-    return root;
-  }
-  const trident = name === 'trident';
-  const root = new three.Group();
-  root.name = 'corti-projectile-flight';
-  const shaft = new three.Mesh(new three.CylinderGeometry(trident ? .023 : .012,
-    trident ? .023 : .012, trident ? .92 : .56, 6),
-    new three.MeshStandardMaterial({ color: trident ? 0x785746 : 0x8b6849, roughness: .76 }));
-  root.add(shaft);
-  const metal = new three.MeshStandardMaterial({ color: trident ? 0x76b9b8 : 0xc5c9c7,
-    emissive: trident ? 0x123b43 : 0x000000, roughness: .28, metalness: .65 });
-  const tip = new three.Mesh(new three.ConeGeometry(trident ? .046 : .037, trident ? .23 : .13, 6), metal);
-  tip.position.y = trident ? .57 : .34;
-  root.add(tip);
-  if (trident) {
-    for (const side of [-1, 1]) {
-      const tine = new three.Mesh(new three.CylinderGeometry(.012, .013, .27, 5), metal);
-      tine.position.set(side * .11, .51, 0);
-      root.add(tine);
-      const prong = new three.Mesh(new three.ConeGeometry(.024, .15, 5), metal);
-      prong.position.set(side * .11, .71, 0);
-      root.add(prong);
-      const bridge = new three.Mesh(new three.BoxGeometry(.11, .025, .03), metal);
-      bridge.position.set(side * .055, .39, 0);
-      root.add(bridge);
-    }
-  } else {
-    const feather = new three.MeshBasicMaterial({ color: name === 'spectral_arrow' ? 0xe6e38a : 0xe7e5df,
-      side: three.DoubleSide });
-    for (const angle of [0, Math.PI / 2]) {
-      const fin = new three.Mesh(new three.PlaneGeometry(.13, .18), feather);
-      fin.position.y = -.27;
-      fin.rotation.y = angle;
-      root.add(fin);
-    }
-  }
-  return root;
+function cortiProjectileModel(name,entity) {
+ return isObservedArrow(name)?createObservedArrowVisual(name,entity,{version:cortiContentMinecraftVersion}):null;
 }
-
+function cortiSyncObservedProjectiles() {
+ if(!globalThis.world?.scene)return;
+ cortiObservedProjectiles??=new ObservedProjectileLayer({scene:()=>globalThis.world.scene,origin:()=>globalThis.world.sceneOrigin,
+  models:paperYsmItemModels.models.latest,version:cortiContentMinecraftVersion,registry:()=>globalThis.mcData});
+ for(const id of cortiObservedProjectiles.records.keys())if(!isObservedProjectile(entityCache.get(id)?.name))cortiObservedProjectiles.remove(id);
+ for(const entity of entityCache.values())if(isObservedProjectile(entity.name))cortiObservedProjectiles.update(entity);
+ cortiObservedProjectiles.tick(globalThis.world.camera);
+}
+socket.on('viewerReset',()=>cortiObservedProjectiles?.clear());
+socket.on('disconnect',()=>cortiObservedProjectiles?.clear());
 socket.on('entityAnimation', event => {
   if (event?.id != null && event.animation === 'oneSwing') {
     const id = String(event.id);
@@ -356,7 +285,7 @@ function cortiMobProjectileLaunch(projectile, now) {
   const pos = projectile.pos || projectile.position;
   if (!pos) return;
   const sceneEntities = globalThis.world?.entities?.entities;
-  const isPotion = cortiPotionNames.has(String(projectile.name || '').replace(/^minecraft:/, ''));
+  const isPotion = String(projectile.name || '').replace(/^minecraft:/, '') === 'potion';
   const isFireball = ['small_fireball', 'fireball'].includes(
     String(projectile.name || '').replace(/^minecraft:/, ''));
   let nearest = null;
@@ -385,14 +314,19 @@ function cortiAnimateWorldEntities(now) {
   const three = globalThis.THREE;
   const sceneEntities = globalThis.world?.entities?.entities;
   if (three && sceneEntities) {
+    cortiSyncObservedProjectiles();
     if (!cortiArrowTexturesRequested) {
       preloadObservedArrowTextures(cortiContentMinecraftVersion);
+      void preloadObservedProjectileTextures(cortiContentMinecraftVersion);
       cortiArrowTexturesRequested = true;
     }
     for (const [id, entity] of entityCache) {
       const name = String(entity.name || '').replace(/^minecraft:/, '');
       const scene = sceneEntities[id];
       if (!scene) continue;
+      if(isObservedProjectile(name)&&!isObservedArrow(name)){
+        const native=scene.children.find(child=>child.name==='mesh');if(native)native.visible=false;continue;
+      }
       cortiSyncEntityFire(scene, entity, now);
       if (name === 'player') cortiSyncAvatarShield(entity, entity.equipment?.[1]);
       cortiUpdateWorldEquipmentGlint(scene, entity, now);
@@ -416,9 +350,7 @@ function cortiAnimateWorldEntities(now) {
           refreshObservedArrowVisual(record.model, name, entity, cortiContentMinecraftVersion);
           record.model.visible &&= Boolean(record.lastDir);
         }
-        if (cortiPotionNames.has(name) || name === 'small_fireball' || name === 'fireball') {
-          record.model.rotation.set(now * .008, now * .012, now * .006);
-        } else if (record.lastDir) {
+        if (record.lastDir) {
           const parentQ = scene.getWorldQuaternion(new three.Quaternion());
           const aim = new three.Quaternion().setFromUnitVectors(new three.Vector3(0, 1, 0), record.lastDir);
           record.model.quaternion.copy(parentQ.invert().multiply(aim));

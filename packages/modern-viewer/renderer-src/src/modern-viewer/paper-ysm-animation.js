@@ -1,4 +1,5 @@
 import {compilePaperMolang} from './paper-ysm-molang.js';
+import {applyPaperShieldPose} from './paper-ysm-shield-pose.js';
 const object = v => v && typeof v === 'object' && !Array.isArray(v);
 const vector = v => Array.isArray(v) && v.length === 3;
 const catmull = (a, b, c, d, t) => .5 * ((2 * b) + (-a + c) * t + (2*a - 5*b + 4*c - d) * t*t + (-a + 3*b - 3*c + d) * t*t*t);
@@ -108,6 +109,7 @@ export class PaperYsmAnimation {
   clip(def,name){let map=this.compiled.get(def);if(!map){map=new Map();this.compiled.set(def,map);}if(!map.has(name))map.set(name,compilePaperYsmClip(def,name,this.model.bones));return map.get(name);}
   apply(state,now) {
     const previous=this.waterTransition?.lastPose;
+    let shieldFallback=null;
     this.start??=now;this.model.reset();this.errors=[];this.selected=[];
     const m=state.motion??state, speed=m.horizontalSpeed??0, pose=m.pose===2?'sleeping':m.pose;
     this.moving = speed > (this.moving ? 0.03 : 0.08);
@@ -158,7 +160,8 @@ export class PaperYsmAnimation {
       if(hold)layer('hold'+index,this.arm,hold,{loop:true,token:JSON.stringify(item??null)});
       if(m.usingItem===true && (m.activeHand??'mainhand')===hand) {
         const condition=selectArmClip(this.arm,'use',hand,item,m.useKind);
-        layer('use'+index,condition?this.arm:this.main,condition??'use_'+hand,{loop:true});
+        if(paperYsmItemCategory(item)==='shield' && (!condition || condition==='use_'+hand)) shieldFallback={hand,mainArm:m.mainArm??'right',pitch:headPitch};
+        else layer('use'+index,condition?this.arm:this.main,condition??'use_'+hand,{loop:true});
       }
       const swing=m.swing;
       if(swing && (swing.hand??'mainhand')===hand) {
@@ -185,7 +188,8 @@ export class PaperYsmAnimation {
     const head=this.model.bones.get(this.lookBone);if(head && !restricted){head.rotation.x-=queries['ysm.head_pitch']*Math.PI/180;head.rotation.y-=queries['ysm.head_yaw']*Math.PI/180;}
     for(const key of this.layers.keys())if(!keep.has(key))this.layers.delete(key);
     if(this.controllers.length)this.errors.push('YSM_CUSTOM_CONTROLLERS_UNSUPPORTED');
-    return {base:downed?'downed':base,canAct:!inhibited,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
+    const shieldPose=shieldFallback?applyPaperShieldPose(this.model,shieldFallback.hand,shieldFallback.mainArm,shieldFallback.pitch):null;
+    return {base:downed?'downed':base,canAct:!inhibited,shieldPose,waterSource:m.waterSource??(pose==='swimming'?'entity_pose':null),inWater:m.inWater??null,clips:[...this.selected],errors:[...new Set(this.errors)],ignoredBones:[...ignoredBones],completeEntityParityVerified:false};
   }
   // Blend the authored locomotion before applying live look, attacks and held
   // item layers; easing a gait must never delay a hit or reuse an old aim.
