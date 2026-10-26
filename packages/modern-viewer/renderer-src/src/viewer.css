@@ -1,4 +1,7 @@
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#080d12;color:#f3f5f6;font:14px/1.4 system-ui,sans-serif}
+/* Model support notes are already retained in the native diagnostics panel.
+   Keep them off the picture; loading, disconnect and integrity errors remain. */
+#viewer-canvas > .native-ysm-preview-notice{display:none}
 /* OBS browser source: transparent original item/hand passes + configurable HUD. */
 html[data-obs-overlay=true],body[data-obs-overlay=true]{background:transparent!important}
 body[data-obs-overlay=true] #viewer-canvas:not([data-obs-hands-ready=true]),
