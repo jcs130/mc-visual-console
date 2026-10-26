@@ -227,16 +227,16 @@ to{background-position:128px -128px,-120% 0}
 .corti-ability-glyph{color:#d4eaff;font:800 20px/1 system-ui;text-shadow:0 0 8px #91bff7}
 /* Fixed action-bar slots: rail width changes must never stretch skill icons.
    Native text catalogues keep their separate readable two-column layout. */
-#corti-skills [data-ability-layout="icons"]{--ability-slot:34px;grid-template-columns:repeat(auto-fill,var(--ability-slot));justify-content:start;gap:4px;margin-top:4px;padding:4px 2px;max-height:156px;overflow:auto;scrollbar-width:thin}
-#corti-skills [data-ability-layout="icons"] .corti-ability{box-sizing:border-box;width:var(--ability-slot);height:var(--ability-slot);min-height:0;gap:0;border-width:1px;border-radius:3px;box-shadow:inset 0 1px 2px #dfd6b72b,0 1px 2px #0007}
-#corti-skills [data-ability-layout="icons"] .corti-ability img{width:26px;height:26px}
-#corti-skills [data-ability-layout="icons"] .corti-ability[data-state="ready"]{box-shadow:inset 0 0 4px #aaeaff44}
-#corti-skills [data-ability-layout="icons"] .corti-ability-name{display:none}
-#corti-skills [data-ability-layout="icons"][data-expanded="true"]{max-height:208px}
-#corti-skills [data-ability-layout="icons"][data-expanded="true"] .corti-ability-name{display:block;font-size:8px}
-#corti-skills [data-ability-layout="icons"] .corti-ability-overlay{font-size:13px}
-#corti-skills [data-ability-layout="icons"] .corti-ability-pin{font-size:9px;right:1px;top:1px}
-@media(pointer:coarse){#corti-skills [data-ability-layout="icons"]{--ability-slot:40px}}
+#corti-skills [data-ability-list]:has(>.corti-ability){--ability-slot:34px;grid-template-columns:repeat(auto-fill,var(--ability-slot));justify-content:start;gap:4px;margin-top:4px;padding:4px 2px;max-height:156px;overflow:auto;scrollbar-width:thin}
+#corti-skills [data-ability-list]:has(>.corti-ability) .corti-ability{box-sizing:border-box;width:var(--ability-slot);height:var(--ability-slot);min-height:0;gap:0;border-width:1px;border-radius:3px;box-shadow:inset 0 1px 2px #dfd6b72b,0 1px 2px #0007}
+#corti-skills [data-ability-list]:has(>.corti-ability) .corti-ability img{width:26px;height:26px}
+#corti-skills [data-ability-list]:has(>.corti-ability) .corti-ability[data-state="ready"]{box-shadow:inset 0 0 4px #aaeaff44}
+#corti-skills [data-ability-list]:has(>.corti-ability) .corti-ability-name{display:none}
+#corti-skills [data-ability-list]:has(>.corti-ability)[data-expanded="true"]{max-height:208px}
+#corti-skills [data-ability-list]:has(>.corti-ability)[data-expanded="true"] .corti-ability-name{display:block;font-size:8px}
+#corti-skills [data-ability-list]:has(>.corti-ability) .corti-ability-overlay{font-size:13px}
+#corti-skills [data-ability-list]:has(>.corti-ability) .corti-ability-pin{font-size:9px;right:1px;top:1px}
+@media(pointer:coarse){#corti-skills [data-ability-list]:has(>.corti-ability){--ability-slot:40px}}
 @media(max-width:720px){.corti-skills [data-ability-list]{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 .corti-ability-name{font-size:8px}
 }
