@@ -91,6 +91,7 @@ export function createViewerChunkStream({ bot, socket, emit, viewDistance = 3, o
 /** Coalesce per-entity changes; send compact movement instead of repeated NBT/equipment. */
 export function createViewerEntityStream({ bot, socket, serialize, isHidden = () => false, distance = 48, maxEntities = 128 }) {
   const pending = new Map(), known = new Map(); let closed = false
+  const transient = entity => ['arrow', 'spectral_arrow', 'trident'].includes(String(entity?.name ?? '').replace(/^minecraft:/, ''))
   const counters = { sent: 0, coalesced: 0, filtered: 0 }
   const visible = entity => entity && entity !== bot.entity && entity.id !== undefined && entity.position && bot.entity?.position
     && Math.hypot(entity.position.x - bot.entity.position.x, entity.position.z - bot.entity.position.z) <= distance && !isHidden(entity)
@@ -105,6 +106,29 @@ export function createViewerEntityStream({ bot, socket, serialize, isHidden = ()
     if (pending.has(id)) counters.coalesced++
     if (pending.size >= 512 && !pending.has(id)) { counters.filtered++; return }
     pending.set(id, { entity, full: full || pending.get(id)?.full === true })
+    // A close-range shot can spawn and hit within the 100 ms batch window.
+    // Send its observed samples now; never extend its lifetime after removal.
+    // Keep the same visibility, entity budget and transport backpressure gates.
+    if (transient(entity) && viewerTransportWritable(socket)) {
+      const row = pending.get(id); pending.delete(id); send(row)
+    }
+  }
+  function send({ entity, full }) {
+    const id = String(entity.id); if (!visible(entity)) { remove(entity); return }
+    if (!known.has(id) && known.size >= maxEntities) { counters.filtered++; return }
+    const initial = !known.has(id), previous = known.get(id), complete = initial || full ? serialize(entity) : null
+    const properties = complete ? { ...complete } : null
+    if (properties) for (const key of ['pos', 'position', 'yaw', 'pitch', 'headYaw', 'velocity']) delete properties[key]
+    const fullSignature = properties ? JSON.stringify(properties) : previous?.fullSignature
+    const changedProperties = initial || fullSignature !== previous?.fullSignature
+    const value = changedProperties ? complete : {
+      id: entity.id, pos: { x: entity.position.x, y: entity.position.y, z: entity.position.z },
+      position: { x: entity.position.x, y: entity.position.y, z: entity.position.z }, yaw: entity.yaw, pitch: entity.pitch, headYaw: entity.headYaw,
+      ...(transient(entity) && [entity.velocity?.x, entity.velocity?.y, entity.velocity?.z].every(Number.isFinite)
+        ? { velocity: { x: entity.velocity.x, y: entity.velocity.y, z: entity.velocity.z } } : {}) }
+    const signature = JSON.stringify(value)
+    if (previous?.signature === signature) return
+    socket.emit(changedProperties ? 'entity' : 'entityMoved', value); known.set(id, { entity, signature, fullSignature }); counters.sent++
   }
   function flush() {
     if (closed || !viewerTransportWritable(socket)) return
@@ -113,21 +137,7 @@ export function createViewerEntityStream({ bot, socket, serialize, isHidden = ()
     const entries = [...pending.values()].sort((a, b) => Number(b.entity.type === 'player') - Number(a.entity.type === 'player')
       || distanceToBot(a.entity) - distanceToBot(b.entity))
     pending.clear()
-    for (const { entity, full } of entries) {
-      const id = String(entity.id); if (!visible(entity)) { remove(entity); continue }
-      if (!known.has(id) && known.size >= maxEntities) { counters.filtered++; continue }
-      const initial = !known.has(id), previous = known.get(id), complete = initial || full ? serialize(entity) : null
-      const properties = complete ? { ...complete } : null
-      if (properties) for (const key of ['pos', 'position', 'yaw', 'pitch', 'headYaw', 'velocity']) delete properties[key]
-      const fullSignature = properties ? JSON.stringify(properties) : previous?.fullSignature
-      const changedProperties = initial || fullSignature !== previous?.fullSignature
-      const value = changedProperties ? complete : {
-        id: entity.id, pos: { x: entity.position.x, y: entity.position.y, z: entity.position.z },
-        position: { x: entity.position.x, y: entity.position.y, z: entity.position.z }, yaw: entity.yaw, pitch: entity.pitch, headYaw: entity.headYaw }
-      const signature = JSON.stringify(value)
-      if (previous?.signature === signature) continue
-      socket.emit(changedProperties ? 'entity' : 'entityMoved', value); known.set(id, { entity, signature, fullSignature }); counters.sent++
-    }
+    for (const row of entries) send(row)
   }
   const timer = setInterval(flush, 100); timer.unref()
   return { queue, remove, visible, flush, stats: () => ({ ...counters, pendingEntities: pending.size, visibleEntities: known.size, maxEntities }),

@@ -1,5 +1,7 @@
 /** Read-only projectile and hostile-mob motion layered over the 1.20.6 scene. */
+import { createObservedArrowVisual, isObservedArrow, observedArrowDirection, preloadObservedArrowTextures, refreshObservedArrowVisual } from './observed-arrows.js';
 const cortiProjectileModels = new Map();
+let cortiArrowTexturesRequested = false;
 const cortiMobActions = new Map();
 const cortiHostiles = new Set(['zombie', 'husk', 'drowned', 'skeleton', 'stray', 'bogged',
   'spider', 'cave_spider', 'creeper', 'witch', 'pillager', 'vindicator', 'evoker', 'ravager',
@@ -26,6 +28,7 @@ function cortiOwnEquipmentChanged(entity) {
 function cortiProjectileModel(name, entity) {
   const three = globalThis.THREE;
   if (!three) return null;
+  if (isObservedArrow(name)) return createObservedArrowVisual(name, entity, { version: cortiContentMinecraftVersion });
   if (name === 'small_fireball' || name === 'fireball') {
     const root = new three.Group();
     root.name = 'corti-fireball-flight';
@@ -382,6 +385,10 @@ function cortiAnimateWorldEntities(now) {
   const three = globalThis.THREE;
   const sceneEntities = globalThis.world?.entities?.entities;
   if (three && sceneEntities) {
+    if (!cortiArrowTexturesRequested) {
+      preloadObservedArrowTextures(cortiContentMinecraftVersion);
+      cortiArrowTexturesRequested = true;
+    }
     for (const [id, entity] of entityCache) {
       const name = String(entity.name || '').replace(/^minecraft:/, '');
       const scene = sceneEntities[id];
@@ -396,23 +403,22 @@ function cortiAnimateWorldEntities(now) {
           const model = cortiProjectileModel(name, entity);
           if (!model) continue;
           scene.add(model);
-          record = { scene, native, model, lastDir: new three.Vector3(0, 0, -1),
-            lastPos: entity.pos ? { ...entity.pos } : null };
+          record = { scene, native, model, lastDir: null, lastPos: null };
           cortiProjectileModels.set(id, record);
           if (name !== 'trident') cortiMobProjectileLaunch(entity, now);
         }
         if (record.native) record.native.visible = false;
-        const velocity = entity.velocity;
         const pos = entity.pos || entity.position;
-        const dir = record.lastPos && pos
-          ? new three.Vector3(pos.x - record.lastPos.x, pos.y - record.lastPos.y, pos.z - record.lastPos.z)
-          : new three.Vector3(Number(velocity?.x) || 0,
-            Number(velocity?.y) || 0, Number(velocity?.z) || 0);
+        const dir = observedArrowDirection(entity, record.lastPos, record.lastDir);
         if (pos) record.lastPos = { x: pos.x, y: pos.y, z: pos.z };
-        if (dir.lengthSq() > .0002) record.lastDir.copy(dir.normalize());
+        if (dir) record.lastDir = dir;
+        if (isObservedArrow(name)) {
+          refreshObservedArrowVisual(record.model, name, entity, cortiContentMinecraftVersion);
+          record.model.visible &&= Boolean(record.lastDir);
+        }
         if (cortiPotionNames.has(name) || name === 'small_fireball' || name === 'fireball') {
           record.model.rotation.set(now * .008, now * .012, now * .006);
-        } else {
+        } else if (record.lastDir) {
           const parentQ = scene.getWorldQuaternion(new three.Quaternion());
           const aim = new three.Quaternion().setFromUnitVectors(new three.Vector3(0, 1, 0), record.lastDir);
           record.model.quaternion.copy(parentQ.invert().multiply(aim));

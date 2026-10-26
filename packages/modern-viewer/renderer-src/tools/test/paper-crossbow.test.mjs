@@ -14,6 +14,28 @@ const models={'item/generated':{parent:'builtin/generated'},'item/crossbow':{par
 }}};
 const options={textureLoader:async()=>new THREE.Texture(),readPixels:async()=>({width:2,height:2,pixels:new Uint8Array(16).fill(255)})};
 
+test('drawn bow arrow points away from the character in both original YSM arm poses',async()=>{
+ const bowModels={'item/generated':models['item/generated'],'item/bow':{parent:'item/generated',textures:{layer0:'item/bow_pulling_2'},display:{
+  thirdperson_righthand:{rotation:[-80,260,-40],translation:[-1,-2,2.5],scale:[.9,.9,.9]},
+  thirdperson_lefthand:{rotation:[-80,-280,40],translation:[-1,-2,2.5],scale:[.9,.9,.9]},
+ }}};
+ for(const hand of ['mainhand','offhand']){
+  const model=createNativeBedrockModel(read('models/main.json'),new THREE.MeshBasicMaterial(),{maxBones:512,maxCubes:2048,maxCubesPerBone:256,allowNegativeSizes:true});
+  const root=new THREE.Group(),basis=new THREE.Group();root.add(basis);basis.scale.set(-1,-1,1);basis.add(model.root);
+  applyPaperYsmAnimation(model,read('animations/arm.animation.json'),'use_'+hand+':bow',1,{headYaw:0,headPitch:0});
+  const side=hand==='mainhand'?'right':'left',item=await createPaperHeldItem(bowModels,{name:'bow'},side,options);
+  model.bones.get(side==='right'?'RightHandLocator':'LeftHandLocator').add(item.root);
+  // Original bow_pulling_2 pixels: nock towards (12,12), arrowhead (3,3).
+  for(const yaw of [0,Math.PI/2,Math.PI,-Math.PI/2]){
+   root.rotation.y=yaw;root.updateMatrixWorld(true);
+   const firing=new THREE.Vector3(-1,1,0).transformDirection(item.root.matrixWorld);
+   const forward=new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+   assert.ok(firing.dot(forward)>.98,`${hand}: arrow points towards the target`);
+  }
+  item.dispose();model.dispose();
+ }
+});
+
 test('crossbow muzzle points outwards in original YSM charged poses, both hands and all body yaws',async()=>{
  const geometry=read('models/main.json'),armClips=read('animations/arm.animation.json');
  for(const hand of ['mainhand','offhand']){
