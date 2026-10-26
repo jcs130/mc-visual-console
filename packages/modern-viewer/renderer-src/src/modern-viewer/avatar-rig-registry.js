@@ -192,10 +192,15 @@ function createMinecraftPlayerRig(context) {
   const hadOwnAnimation = Object.prototype.hasOwnProperty.call(model, "animation");
   const previousAnimation = model.animation;
   const animation = new PoseDrivenPlayerAnimation(context.animationOptions);
-  // Entity creation may already have written the first network look angle.
-  // Capture joint positions, but never retain that transient look as a bind-pose offset.
+  // The previous renderer may already have written look, riding or arm-use
+  // animation. Skinview's six joints have zero bind rotations; treating an
+  // in-flight pose as their bind freezes raised arms even after explicit idle.
+  // Only this vanilla adapter normalizes them; authored/custom rigs keep their
+  // own bind transforms. Keep joint positions and root/world placement intact.
   animation.ensureDefaults(model);
-  if (animation.defaults?.head) animation.defaults.head.rotation = { x: 0, y: 0, z: 0 };
+  for (const name of ['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg']) {
+    if (animation.defaults?.[name]) animation.defaults[name].rotation = { x: 0, y: 0, z: 0 };
+  }
   let disposed = false;
   model.animation = animation;
 

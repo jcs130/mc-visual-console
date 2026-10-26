@@ -86,6 +86,7 @@ import { installSelfAvatarCameraVisibility } from "./self-avatar-camera-visibili
 import { installEntityRenderBounds } from "./entity-render-bounds.js";
 import { villagerIdentityConceptColors, NPC_NAMED_ROLE_LABELS, NPC_NAMED_DIALOGUE_LINES, NPC_NAMED_QUEST_TEMPLATES } from "./presets/qiandengji/npc-copy.js";
 import { AvatarRigRegistry } from "./avatar-rig-registry.js";
+import { syncSpecialBlockMaterials, clearRemovedSpecialBlockMaterial } from "./special-block-materials.js";
 import { resolveCharacterVisualProfile } from "./character-visual-profiles.js";
 import { TrustedAvatarAssetPipeline } from "./trusted-avatar-assets.js";
 import {
@@ -859,6 +860,7 @@ socket.on("blockUpdate", (data) => {
   if (isObsOverlay) return;
   if (!data?.pos || !Number.isFinite(data.stateId)) return;
   const normalized = { ...data, pos: toVec3(data.pos) };
+  clearRemovedSpecialBlockMaterial(globalThis.world, normalized.pos, globalThis.mcData?.blocksByStateId?.[data.stateId]?.name);
   perceptionGrid?.update(normalized.pos,normalized.stateId);
   dungeonRoomCoverCache?.setBlockStateId(Math.floor(data.pos.x), Math.floor(data.pos.y), Math.floor(data.pos.z), data.stateId);
   if (rendererReady) {
@@ -872,6 +874,7 @@ socket.on("blockEntities", (data) => {
   if (isObsOverlay) return;
   pendingBlockEntities = data && typeof data === "object" ? data : {};
   if (rendererReady) worldView.emit("blockEntities", pendingBlockEntities);
+  syncSpecialBlockMaterials(globalThis.world, pendingBlockEntities);
 });
 
 socket.on("time", (time) => {
@@ -1092,6 +1095,7 @@ async function initializeRenderer(version) {
 
 function flushPendingWorld() {
   if (!rendererReady || !worldView) return;
+  syncSpecialBlockMaterials(globalThis.world, pendingBlockEntities);
   for (const event of pendingChunks.values()) worldView.emit(event.type === "load" ? "loadChunk" : "unloadChunk", event.data);
   pendingChunks.clear();
   refreshChunkLoadingGuards();

@@ -2,6 +2,7 @@ import {patchRendererMovement} from './minecraft-viewer-movement-patch.mjs';
 import {assertViewerVersion} from '../host/viewer-version.mjs';
 import {viewerDataAlias} from './viewer-data-alias.mjs';
 import {withViewerMissingMaterial} from './viewer-missing-material.mjs';
+import {withOriginalBlockEntityModels} from './viewer-original-block-entities.mjs';
 /** Build the portable modern viewer source against Minecraft 1.20.6 data. */
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -276,7 +277,7 @@ const buildResult = await build({
         return replacements[file] ? { path: path.join(renderAssets, replacements[file]) } : undefined
       })
       context.onLoad({ filter: /[\\/]render-assets[\\/]blockStatesModels\.json$/ }, async ({ path: file }) => ({
-        contents: JSON.stringify(withViewerMissingMaterial(normalizeUntintedLeafModels(JSON.parse(await readFile(file, 'utf8'))))),
+        contents: JSON.stringify(withViewerMissingMaterial(await withOriginalBlockEntityModels(normalizeUntintedLeafModels(JSON.parse(await readFile(file, 'utf8'))), version))),
         loader: 'json',
       }))
       context.onResolve({ filter: /^valtio\/utils$/ }, () => ({ path: path.join(sourceRoot, 'src', 'modern-viewer', 'valtio-utils-shim.js') }))
