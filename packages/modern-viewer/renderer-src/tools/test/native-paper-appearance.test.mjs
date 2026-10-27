@@ -17,6 +17,32 @@ test('server appearance binding requires the actual observed UUID, body ID and b
   for(const patch of [{playerUuid:other},{entityId:13},{bytes:9*1024*1024},{bundleSha256:'../secret'},{available:false}])assert.throws(()=>nativePaperAppearanceBinding({...self,paperAppearance:{...row,...patch}},uuid))
 })
 
+test('an unsupported optional first-person arm hierarchy retains the original third-person model and animation',async()=>{
+  const encode=value=>({base64:Buffer.from(JSON.stringify(value)).toString('base64')})
+  const geometry={format_version:'1.12.0','minecraft:geometry':[{description:{texture_width:16,texture_height:16},bones:[{name:'Root',pivot:[0,0,0],cubes:[{origin:[0,0,0],size:[1,1,1],uv:[0,0]}]}]}]}
+  const bundle={modelId:'custom-arm-rig',model:'main.json',animation:'main.animation.json',textures:{default:'texture.png'},files:{
+    'ysm.json':encode({spec:2,properties:{free:true},files:{player:{model:{arm:'arm.json'}}}}),
+    'main.json':encode(geometry),'arm.json':encode(geometry),
+    'main.animation.json':encode({format_version:'1.8.0',animations:{idle:{loop:true,bones:{}},walk:{loop:true,bones:{}}}}),'texture.png':{base64:''}}}
+  const original=JSON.stringify(bundle)
+  const actor=await createNativePaperAppearanceActor(null,{uuid,paperAppearance:{kind:'ysm',texture:'default',modelId:bundle.modelId},readBundle:async()=>bundle,loadTexture:async()=>new THREE.Texture()})
+  try{
+    actor.applyPose({x:12,y:64,z:20,yaw:0,pitch:0})
+    const now=10000,self={uuid,entityId:12,velocity:{x:.1,y:0,z:0},onGround:true,health:20,mainArm:'right'}
+    const current={epoch:1,pose:{x:12,y:64,z:20,yaw:0,pitch:0},selfPlayer:self,
+      motion:{schemaVersion:1,source:'same_player_physics_tick',epoch:1,tick:1,tickMs:50,sampledAt:now},
+      presentation:{available:true,source:'paper_server_observation',playerUuid:uuid,sampledAt:now,self}}
+    const motion=actor.applyMotion({current,now});assert.equal(motion.available,true,motion.reason)
+    assert.equal(actor.model.root.visible,true)
+    assert.equal(actor.assetInfo.firstPersonArmsAvailable,false)
+    assert.equal(actor.assetInfo.firstPersonArmReason,'PAPER_FIRST_PERSON_ARM_RIG_UNSUPPORTED')
+    assert.deepEqual(actor.root.position.toArray(),[12,64,20])
+    assert.equal(JSON.stringify(bundle),original)
+  }finally{actor.dispose()}
+  const broken=structuredClone(bundle);broken.files['arm.json']={base64:Buffer.from('{bad json').toString('base64')}
+  await assert.rejects(createNativePaperAppearanceActor(null,{uuid,paperAppearance:{kind:'ysm',texture:'default'},readBundle:async()=>broken,loadTexture:async()=>new THREE.Texture()}),SyntaxError)
+})
+
 test('original Cormy tracks advance between source samples and retain actual sword/eat/drink actions',
  {skip:!directory||!assets||!process.env.PAPER_CORMY_ACTION_FIXTURE},async()=>{
   const manifest=JSON.parse(await fs.readFile(path.join(assets,'native-assets.json'),'utf8')),reader=new NativeAssetReader(manifest,p=>fs.readFile(path.join(assets,p)))

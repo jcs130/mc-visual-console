@@ -61,6 +61,12 @@ function originalArmMounts(definition,material){
   for(const [arm,name]of [['left','LeftArm'],['right','RightArm']]){const mount=new THREE.Group();mount.matrixAutoUpdate=false;mount.add(model.bones.get(name));mounts.set(arm,mount)}
   return {model,mounts,dispose(){for(const m of mounts.values()){m.removeFromParent();m.clear()}model.dispose()}}
 }
+function unavailableFirstPerson(reason){
+  const root=new THREE.Group();root.visible=false
+  const state=()=>({available:false,reason})
+  return {firstPersonRoot:root,apply:state,frame:state,firstPersonState:state,applyHandAnimation:state,setFirstPersonViewport:state,
+    dispose(){root.removeFromParent();root.clear()}}
+}
 // Original server-selected 2.4.1 assets, independent of the strict native 2.6.5
 // integration. The outer world anchor cannot be reset by a local sleep pose.
 export async function createNativePaperAppearanceActor(reader,{uuid,paperAppearance:row,readBundle=readPaperAppearance,loadTexture=loadOriginalTexture,heldItemOptions={}}={}){
@@ -71,7 +77,7 @@ export async function createNativePaperAppearanceActor(reader,{uuid,paperAppeara
   // to a generic player or reject an otherwise valid Paper-selected model.
   root.userData.playerUuid=uuid
   if(inner.playerObject)root.playerObject=inner.playerObject
-  let held,first,arms,disposed=false,motion
+  let held,first,arms,disposed=false,motion,firstPersonArmReason=null
   const pngTexture=async bytes=>loadTexture('data:image/png;base64,'+encode64(bytes))
   try{
     if(row.kind==='ysm'){
@@ -79,15 +85,28 @@ export async function createNativePaperAppearanceActor(reader,{uuid,paperAppeara
       const definition=JSON.parse(new TextDecoder().decode(bytes64(bundle.files['ysm.json'].base64))),armPath=definition.files?.player?.model?.arm
       if(armPath&&bundle.files[armPath]){
         let material;inner.model.root.traverse(p=>{if(!material&&p.isMesh)material=p.material})
-        if(material)arms=originalArmMounts(JSON.parse(new TextDecoder().decode(bytes64(bundle.files[armPath].base64))),material)
+        if(material){
+          try{arms=originalArmMounts(JSON.parse(new TextDecoder().decode(bytes64(bundle.files[armPath].base64))),material)}
+          catch(error){
+            // Some valid authors use a custom first-person arm hierarchy. Its
+            // unsupported camera mount must not hide the independent world rig.
+            // Keep the original bytes; report unavailable arms instead of
+            // substituting a different character or swallowing corrupt assets.
+            if(error.message!=='PAPER_FIRST_PERSON_ARM_RIG_UNSUPPORTED')throw error
+            firstPersonArmReason=error.message
+          }
+        }
       }
-      first=new NativeHeldItems(reader,{...heldItemOptions,uuid,firstPersonOnly:true,...(arms?{firstPersonArms:arms.mounts,emptyArmMatrix:bundledYsmFirstPersonArmMatrix}:{}),loadHeldTexture:pngTexture})
+      first=arms?new NativeHeldItems(reader,{...heldItemOptions,uuid,firstPersonOnly:true,firstPersonArms:arms.mounts,emptyArmMatrix:bundledYsmFirstPersonArmMatrix,loadHeldTexture:pngTexture}):
+        unavailableFirstPerson(firstPersonArmReason??'PAPER_FIRST_PERSON_ARM_SOURCE_MISSING')
     }else{
       first=new NativeHeldItems(reader,{...heldItemOptions,uuid,playerObject:inner.playerObject,slim:row.texture==='slim',loadHeldTexture:pngTexture})
     }
     const assetInfo={...inner.assetInfo,kind:row.kind,uuid,source:'paper_server_appearance',selectionSource:'server_uuid_binding',authority:row.authority,
       bundleSha256:row.bundleSha256,modelId:row.modelId,texture:row.texture,ysmVersion:row.ysmVersion??null,
       inventoryPreviewAvailable:true,equipmentRenderingAvailable:false,
+      firstPersonArmsAvailable:row.kind==='skin'||!!arms,
+      firstPersonArmReason:row.kind==='ysm'&&!arms?(firstPersonArmReason??'PAPER_FIRST_PERSON_ARM_SOURCE_MISSING'):null,
       notice:row.kind==='ysm'?'服务器原 YSM 模型与实际动作；完整客户端动画一致性未验':'服务器绑定的原皮肤；当前未提供 YSM 模型状态'}
     return {root,assetInfo,model:inner.model,playerObject:inner.playerObject,firstPersonRoot:first.firstPersonRoot,
       applyPose(pose){if(disposed)throw Error('PAPER_APPEARANCE_DISPOSED');root.position.set(pose.x,pose.y,pose.z);root.rotation.y=Number.isFinite(pose.bodyYaw)?pose.bodyYaw:pose.yaw;root.visible=true},

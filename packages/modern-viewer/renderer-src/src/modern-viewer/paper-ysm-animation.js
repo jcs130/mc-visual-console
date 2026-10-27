@@ -128,6 +128,7 @@ export class PaperYsmAnimation {
     const headPitch=m.headPitchDegrees!==undefined?-m.headPitchDegrees:(state.pitch??0)*180/Math.PI;
     const queries={'query.life_time':(now-this.start)/1000,'query.ground_speed':speed,'query.is_jumping':Number(m.onGround===false),
       'ysm.head_yaw':m.headYawDegrees??0,'ysm.head_pitch':headPitch,'ysm.is_close_eyes':0};
+    if(typeof m.onGround==='boolean')queries['query.is_on_ground']=Number(m.onGround);
     const equipment=m.equipment??state.equipment??[];
     queries['ysm.has_mainhand']=Number(!!equipment[0]);queries['ysm.has_offhand']=Number(!!equipment[1]);
     for(const [field,query]of [['health','query.health'],['maxHealth','query.max_health'],['verticalSpeed','query.vertical_speed']])if(Number.isFinite(m[field]))queries[query]=m[field];

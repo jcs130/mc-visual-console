@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {PaperYsmPlayers,applyPaperYsmAnimation,createPaperYsmActor,paperYsmHeadAnchor,paperYsmAvailabilityText} from '../../src/modern-viewer/paper-ysm.js';
+import {PaperYsmAnimation} from '../../src/modern-viewer/paper-ysm-animation.js';
+
+test('original on-ground queries use the observed boolean and remain unavailable when absent',()=>{
+ const bone=new THREE.Group(),model={bones:new Map([['Root',bone]]),initial:new Map([['Root',{position:bone.position.clone(),rotation:bone.rotation.clone()}]]),reset(){bone.rotation.set(0,0,0);}};
+ const clip={loop:true,bones:{Root:{rotation:[0,'query.is_on_ground * 30',0]}}};
+ const animation=new PaperYsmAnimation(model,{format_version:'1.8.0',animations:{idle:clip,jump:clip}});
+ assert.deepEqual(animation.apply({motion:{onGround:true}},1000).errors,[]);assert.ok(Math.abs(bone.rotation.y-Math.PI/6)<1e-10);
+ assert.deepEqual(animation.apply({motion:{onGround:false}},1050).errors,[]);
+ assert.deepEqual(animation.apply({motion:{onGround:false}},1350).errors,[]);assert.equal(bone.rotation.y,0);
+ assert.ok(animation.apply({motion:{}},1500).errors.includes('YSM_MOLANG_INPUT_UNAVAILABLE:query.is_on_ground'));
+});
 
 test('YSM status distinguishes the live worker waiting for a player binding from missing original assets',()=>{
  const uuid='822d173a-7181-3b9b-be60-804f29b24ecc';
