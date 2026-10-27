@@ -84,6 +84,10 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
     copy.visible = node.visible;
     if (node.morphTargetInfluences) copy.morphTargetInfluences = node.morphTargetInfluences.slice();
   }
+  // A scene-origin/camera controller may author the live root matrix directly.
+  // The UI owns this copy's TRS: do not retain that world translation/yaw after
+  // setting a neutral preview pose. Hand-item matrices remain authored below.
+  root.matrixAutoUpdate = true;
   root.position.set(0, 0, 0);
   root.rotation.set(0, Math.PI + .20 + yaw, 0);
   root.visible = true; // World culling and first-person hiding do not hide the UI.
@@ -103,6 +107,7 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
   for (let parent = playerCopy.parent; parent && parent !== root; parent = parent.parent) front.applyQuaternion(parent.quaternion);
   root.rotation.y = .20 + yaw - Math.atan2(front.x, front.z);
   playerCopy.visible = true;
+  playerCopy.matrixAutoUpdate = true;
   playerCopy.position.set(0, 16, 0);
   playerCopy.rotation.set(0, 0, 0);
   // Neutral Minecraft pose, including slim arms' existing inner mesh offsets.
@@ -112,6 +117,7 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
     leftLeg: [1.9, -12, -.1], rightLeg: [-1.9, -12, -.1] })) {
     const part = nodes.get(skin[key]);
     if (!part) continue;
+    part.matrixAutoUpdate = true;
     part.position.set(...position);
     part.rotation.set(0, 0, 0);
     parts[key] = part;
@@ -122,11 +128,13 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
   // Native armor is a sibling of the skin wrapper, in its opposite-facing
   // frame. Use the same mirrored pivots as the existing live renderer patch.
   for (const armor of root.children.filter((node) => node.name.startsWith('geometry_armor_'))) {
+    armor.matrixAutoUpdate = true;
     armor.position.set(0, 0, 0);
     armor.rotation.set(0, (player.parent?.rotation.y || 0) + Math.PI, 0);
     const bind = (name, part, mirrored = false) => {
       const bone = armor.getObjectByName(`bone_${name}`);
       if (!bone || !part) return;
+      bone.matrixAutoUpdate = true;
       bone.position.set((mirrored ? -1 : 1) * part.position.x, 12 + part.position.y,
         (mirrored ? -1 : 1) * part.position.z);
       bone.rotation.set(-part.rotation.x, part.rotation.y,
@@ -139,6 +147,7 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
       for (const [name, part] of [['leftarm', parts.leftArm], ['rightarm', parts.rightArm]]) {
         const bone = armor.getObjectByName(`bone_${name}`);
         if (!bone || !part) continue;
+        bone.matrixAutoUpdate = true;
         bone.position.set(part.position.x, 12 + part.position.y, part.position.z);
         bone.rotation.copy(part.rotation);
       }

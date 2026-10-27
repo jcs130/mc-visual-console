@@ -81,6 +81,21 @@ test('mirrors real skinview3d BodyParts without constructors, circular userData 
   assert.equal(inventoryMirrorMatches(mirror, source), true);
 });
 
+test('matrix-authored world anchors and skin pivots do not override the private inventory pose',()=>{
+  const source=avatar();
+  for(const node of [source,source.playerObject,...Object.values(source.playerObject.skin).filter(value=>value?.isObject3D)]){
+    node.updateMatrix();node.matrixAutoUpdate=false;
+  }
+  const oldMatrix=source.matrix.clone(),oldPlayerMatrix=source.playerObject.matrix.clone();
+  const mirror=mirrorInventoryPlayer(THREE,source);poseInventoryPlayer(mirror,.2,.1);mirror.root.updateMatrixWorld(true);
+  assert.deepEqual(mirror.root.getWorldPosition(new THREE.Vector3()).toArray(),[0,0,0]);
+  assert.equal(mirror.root.matrixAutoUpdate,true);assert.equal(mirror.nodes.get(source.playerObject).matrixAutoUpdate,true);
+  const facing=new THREE.Vector3(0,0,1).transformDirection(mirror.nodes.get(source.playerObject).matrixWorld);
+  assert.ok(facing.z>.9,'server/world yaw cannot turn the preview away from its camera');
+  assert.equal(source.matrixAutoUpdate,false);assert.ok(source.matrix.equals(oldMatrix));assert.ok(source.playerObject.matrix.equals(oldPlayerMatrix));
+  releaseInventoryMirror(mirror);
+});
+
 test('armor skeleton uses only copied bones, sharing texture/material/geometry without touching the world', () => {
   const source = avatar();
   const mirror = mirrorInventoryPlayer(THREE, source);
