@@ -1,4 +1,5 @@
 import { PlayerObject } from 'skinview3d/libs/model.js';
+import { loadSkinToCanvas } from 'skinview-utils';
 import { Vector3 } from 'three';
 import { rendererEntityEquipment } from './renderer-equipment.js';
 
@@ -88,7 +89,8 @@ export function poseInventoryPlayer(mirror, yaw = 0, pitch = 0) {
   root.visible = true; // World culling and first-person hiding do not hide the UI.
   // Keep the selected custom model and its original pose. Enabling the hidden
   // classic body here would draw a second player through the YSM model.
-  if (source.children.some(node => node.name === 'paper-ysm-player' && node.visible)) return;
+  if (source.children.some(node => node.visible && (node.name === 'paper-ysm-player'
+    || node.userData?.lanternFullPlayerModel === true))) return;
   const player = source.playerObject;
   const skin = player?.skin;
   if (!player || !skin) return;
@@ -167,6 +169,7 @@ export function releaseInventoryMirror(mirror) {
  */
 export function createInventoryPreviewFallback(THREE, { getAvatar, getSkin, getEntities,
   createPlayer = () => new PlayerObject(),
+  createSkinCanvas = () => globalThis.document?.createElement('canvas'),
   loadTexture = (url, ready, failed) => new THREE.TextureLoader().load(url, ready, undefined, failed) }) {
   const root = new THREE.Group();
   const wrapper = new THREE.Group();
@@ -238,6 +241,18 @@ export function createInventoryPreviewFallback(THREE, { getAvatar, getSkin, getE
         const sequence = ++skinSequence;
         loadTexture(nextUrl, (loaded) => {
           if (disposed || sequence !== skinSequence) { loaded.dispose(); return; }
+          // SkinObject always uses the modern square UV layout. A raw legacy
+          // 64x32 server PNG reads the torso as the head/arms and leaves missing
+          // limbs; use the same original-skin normalization as the world actor.
+          const image = loaded.image;
+          if (image?.width && image?.height) {
+            const canvas = createSkinCanvas();
+            if (canvas) {
+              try { loadSkinToCanvas(canvas, image); }
+              catch { loaded.dispose(); ready = false; return; }
+              loaded.dispose(); loaded = new THREE.CanvasTexture(canvas);
+            }
+          }
           texture?.dispose();
           texture = loaded;
           loaded.magFilter = loaded.minFilter = THREE.NearestFilter;

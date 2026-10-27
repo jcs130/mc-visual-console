@@ -4,6 +4,7 @@ import {viewerDataAlias} from './viewer-data-alias.mjs';
 import {withViewerMissingMaterial} from './viewer-missing-material.mjs';
 import {withOriginalBlockEntityModels} from './viewer-original-block-entities.mjs';
 import {withIntentionalEmptyModels} from './viewer-empty-models.mjs';
+import {originalArmorTextures} from './viewer-armor-textures.mjs';
 import {patchOriginalWorldBanners,verifyOriginalWorldBannerTextures} from './minecraft-viewer-banner-patch.mjs';
 /** Build the portable modern viewer source against Minecraft 1.20.6 data. */
 import { createRequire } from 'node:module'
@@ -67,6 +68,7 @@ const outputRoot = path.resolve(outputArg)
 const renderAssets = path.join(outputRoot, 'render-assets')
 const sourceManifest = JSON.parse(await readFile(path.join(outputRoot, 'public', 'asset-source.json'), 'utf8'))
 const version = sourceManifest.minecraftVersion
+const armorTextures = await originalArmorTextures(outputRoot,version)
 assertViewerVersion(version)
 await verifyOriginalWorldBannerTextures(outputRoot,version)
 if (!/^[a-f0-9]{64}$/.test(sourceManifest.clientJarSha256 ?? '')) {
@@ -329,6 +331,10 @@ const buildResult = await build({
           export const resolvePlayerSkin = () => PLAYER_SKINS[0];`,
         loader: 'js', resolveDir: sourceRoot,
       }))
+      context.onLoad({ filter: /[\\/]modern-viewer[\\/]armor-textures\.js$/ }, async ({path:file}) => ({
+        contents:(await readFile(file,'utf8')).replace('const ORIGINAL_ARMOR_TEXTURES = {};',`const ORIGINAL_ARMOR_TEXTURES = ${JSON.stringify(armorTextures)};`),
+        loader:'js',resolveDir:path.dirname(file),
+      }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]player-models\.js$/ }, () => ({
         contents: `export const DEFAULT_PLAYER_MODEL_ID = 'minecraft-classic';
           export const PLAYER_MODELS = Object.freeze([{ id: 'minecraft-classic', label: '原版方块人',
@@ -387,5 +393,6 @@ await writeFile(path.join(outputRoot, 'viewer-client.json'), `${JSON.stringify({
   viewerContent,
   textDisplays,
   itemAppearances,
+  armorTextures,
 })}\n`)
 console.log(`${version} modern viewer 已生成：${outputRoot}`)

@@ -1,5 +1,16 @@
 import { Vector3 } from 'three';
 
+const displayCameraPosition = new Vector3();
+/** The renderer anchor can differ from the rendered eye during interpolation. */
+export function displayCameraWorldPosition(world, camera = world?.camera) {
+  const origin = world?.sceneOrigin;
+  if (!camera?.getWorldPosition || !origin?.toWorldX || !origin?.toWorldY || !origin?.toWorldZ) return null;
+  camera.parent?.updateMatrixWorld?.(true);
+  camera.updateMatrixWorld?.(true);
+  camera.getWorldPosition(displayCameraPosition);
+  return { x: origin.toWorldX(displayCameraPosition.x), y: origin.toWorldY(displayCameraPosition.y), z: origin.toWorldZ(displayCameraPosition.z) };
+}
+
 // Reuse the pinned renderer's section-connectivity graph from the *display*
 // camera. While a roof is cut, retain the observed room as a second seed.
 // This only removes draw spans; it never changes the world or Agent perception.
@@ -9,7 +20,6 @@ export function installObserverSectionCulling(manager, getRoomSeed) {
   const originals = new Map();
   let revision = 0, signature = '', visible = null, lastSeed = '';
   let lastCameraSignature = '';
-  const cameraPosition = new Vector3();
   const diagnostics = { mode: 'camera', rebuilds: 0, visibleSections: 0 };
   const key = (p, h = 16) => `${Math.floor(p.x / 16) * 16},${Math.floor(p.y / h) * h},${Math.floor(p.z / 16) * 16}`;
   const seed = () => {
@@ -17,12 +27,7 @@ export function installObserverSectionCulling(manager, getRoomSeed) {
     return p && [p.x, p.y, p.z].every(Number.isFinite) ? p : null;
   };
   function displayPosition(camera = manager.worldRenderer?.camera) {
-    const origin = manager.worldRenderer?.sceneOrigin;
-    if (!camera?.getWorldPosition || !origin?.toWorldX || !origin?.toWorldY || !origin?.toWorldZ) return null;
-    camera.parent?.updateMatrixWorld?.(true);
-    camera.updateMatrixWorld?.(true);
-    camera.getWorldPosition(cameraPosition);
-    return { x: origin.toWorldX(cameraPosition.x), y: origin.toWorldY(cameraPosition.y), z: origin.toWorldZ(cameraPosition.z) };
+    return displayCameraWorldPosition(manager.worldRenderer, camera);
   }
   const wrap = (object, name, factory) => {
     if (typeof object[name] !== 'function') return;

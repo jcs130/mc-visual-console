@@ -82,3 +82,20 @@ test('unreceived observer sections cannot prove that received terrain is hidden'
   setRoom(null);
   assert.equal(cull.update(params).size,5,'retain received sections for the normal frustum pass');
 });
+
+test('first-person eye entering an unmeshed cave section retains walls without waiting for the quality sampler',()=>{
+  const {cull,manager,params,setRoom,controller}=fixture();
+  const camera=new PerspectiveCamera(75,16/9,.05,1000);
+  manager.worldRenderer={camera,sceneOrigin:{toWorldX:x=>x,toWorldY:y=>y,toWorldZ:z=>z}};
+  setRoom(null);
+  camera.position.set(1,15.9,1);camera.updateMatrixWorld(true);
+  cull.update(params);
+  camera.position.y=16.1;camera.updateMatrixWorld(true);
+  assert.equal(cull.update(params).size,5,'unknown eye section is not evidence of an occluding roof');
+  assert.equal(controller.diagnostics.mode,'unreceived-observer');
+  camera.position.y=15.9;camera.updateMatrixWorld(true);
+  const restored=cull.update(params);
+  assert.equal(restored.has('0,0,0'),true);
+  assert.equal(restored.has('64,0,0'),false,'received eye section rebuilds actual connectivity');
+  controller.dispose();
+});
