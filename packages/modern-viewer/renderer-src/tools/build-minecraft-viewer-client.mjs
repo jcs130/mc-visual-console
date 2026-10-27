@@ -3,6 +3,8 @@ import {assertViewerVersion} from '../host/viewer-version.mjs';
 import {viewerDataAlias} from './viewer-data-alias.mjs';
 import {withViewerMissingMaterial} from './viewer-missing-material.mjs';
 import {withOriginalBlockEntityModels} from './viewer-original-block-entities.mjs';
+import {withIntentionalEmptyModels} from './viewer-empty-models.mjs';
+import {patchOriginalWorldBanners,verifyOriginalWorldBannerTextures} from './minecraft-viewer-banner-patch.mjs';
 /** Build the portable modern viewer source against Minecraft 1.20.6 data. */
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -66,6 +68,7 @@ const renderAssets = path.join(outputRoot, 'render-assets')
 const sourceManifest = JSON.parse(await readFile(path.join(outputRoot, 'public', 'asset-source.json'), 'utf8'))
 const version = sourceManifest.minecraftVersion
 assertViewerVersion(version)
+await verifyOriginalWorldBannerTextures(outputRoot,version)
 if (!/^[a-f0-9]{64}$/.test(sourceManifest.clientJarSha256 ?? '')) {
   throw Error('请先从匹配版本的原版客户端 JAR 导出资源')
 }
@@ -276,7 +279,7 @@ const buildResult = await build({
         return replacements[file] ? { path: path.join(renderAssets, replacements[file]) } : undefined
       })
       context.onLoad({ filter: /[\\/]render-assets[\\/]blockStatesModels\.json$/ }, async ({ path: file }) => ({
-        contents: JSON.stringify(withViewerMissingMaterial(await withOriginalBlockEntityModels(normalizeUntintedLeafModels(JSON.parse(await readFile(file, 'utf8'))), version))),
+        contents: JSON.stringify(withViewerMissingMaterial(withIntentionalEmptyModels(await withOriginalBlockEntityModels(normalizeUntintedLeafModels(JSON.parse(await readFile(file, 'utf8'))), version),version,{originalBanners:true}))),
         loader: 'json',
       }))
       context.onResolve({ filter: /^valtio\/utils$/ }, () => ({ path: path.join(sourceRoot, 'src', 'modern-viewer', 'valtio-utils-shim.js') }))
@@ -315,7 +318,7 @@ const buildResult = await build({
           .replace(itemFallbackAnchor, 'let l=a=>a?.top??a;')
           .replace(itemUnknownAnchor,
             'return o??(o=l(e.currentResources.itemsRenderer.getItemTexture("unknown"))),o??={type:"gui",slice:[0,0,16,16]},"type"in o?')))
-        return { contents: patchObsRendererAlpha(patchRendererPlayerSkin(patchRendererEntityDamage(patchRendererEntityVisibility(patchRendererMovement(corrected))))), loader: 'js', resolveDir: path.dirname(file) }
+        return { contents: patchOriginalWorldBanners(patchObsRendererAlpha(patchRendererPlayerSkin(patchRendererEntityDamage(patchRendererEntityVisibility(patchRendererMovement(corrected))))),version), loader: 'js', resolveDir: path.dirname(file) }
       })
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]painting-variants\.js$/ }, () => ({ contents: changedPaintings, loader: 'js', resolveDir: path.dirname(paintingFile) }))
       context.onLoad({ filter: /[\\/]modern-viewer[\\/]player-skins\.js$/ }, () => ({

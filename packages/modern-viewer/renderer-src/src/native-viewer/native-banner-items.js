@@ -2,16 +2,13 @@ import {nativeCubeFaces} from './native-entity-model.js';
 import {nativeGuiItemTransform} from './native-block-item-icons.js';
 import {verifyNativeStaticItemEvidence} from './native-static-item-providers.js';
 import {NATIVE_BANNER_COLORS,nativeBannerLayers} from './native-banner-data.js';
+import {NATIVE_BANNER_PARTS} from './native-banner-geometry.js';
 export {NATIVE_BANNER_COLORS} from './native-banner-data.js';
+export {NATIVE_BANNER_PARTS} from './native-banner-geometry.js';
 
 // Original 1.21.1 DyeColor textureDiffuseColor order (cti), not map colors.
 // BannerRenderer.createBodyLayer (ggu). GUI dispatch uses the detached block
 // entity: no world-time animation is inferred from another player's world.
-export const NATIVE_BANNER_PARTS=Object.freeze([
- {name:'pole',origin:[-1,-30,-1],size:[2,42,2],uv:[44,0]},
- {name:'bar',origin:[-10,-32,-1],size:[20,2,2],uv:[0,42]},
- {name:'flag',origin:[-10,0,-2],size:[20,40,1],uv:[0,0]}
-]);
 export async function prepareNativeBannerItem(reader,name,stack){
  const evidence=verifyNativeStaticItemEvidence(reader,name),color=name.slice(10,-7);
  if(evidence.kind!=='banner'||!Object.hasOwn(NATIVE_BANNER_COLORS,color))throw Error('NATIVE_BANNER_ITEM_UNSUPPORTED');

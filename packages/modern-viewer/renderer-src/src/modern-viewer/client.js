@@ -4,6 +4,7 @@ import {
   createGraphicsBackendSingleThread,
 } from "minecraft-renderer/dist/minecraft-renderer.js";
 import { io } from "socket.io-client";
+import { installOriginalWorldBanners } from './original-world-banners.js';
 import { pendingChunkOrigins } from "./chunk-loading-guard.js";
 import { captureOverview } from "./overview-capture.js";
 import { installSceneMinimap, dimensionLabel } from "./scene-minimap.js";
@@ -910,6 +911,7 @@ async function initializeRenderer(version) {
   }
   setStatus("正在建立现代方块与实体图集…");
   try {
+    await installOriginalWorldBanners(version);
     ensureWebGl2();
     const resources = new ResourcesManager();
     resources.currentConfig = {
