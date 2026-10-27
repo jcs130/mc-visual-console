@@ -976,6 +976,7 @@ function cortiRenderSkills() {
   abilities.replaceChildren();
   for (const ability of allAbilities.filter((entry) =>
     cortiShowAllAbilities || pins.has(cortiAbilityKey(entry.id)))) {
+    const displayName = globalThis.mcViewerSkillLabel?.(ability.id, ability.name) || ability.name;
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'corti-ability';
@@ -984,9 +985,9 @@ function cortiRenderSkills() {
     row.dataset.pinned = String(pins.has(row.dataset.abilityId));
     row.dataset.cooldownStatus = Number.isFinite(ability.cooldownRemainingMs)
       ? ability.cooldownRemainingMs === 0 ? 'ready' : 'running' : 'unknown';
-    row.dataset.abilityName = ability.name;
+    row.dataset.abilityName = displayName;
     row.dataset.manaCost = Number.isFinite(ability.manaCost) ? String(ability.manaCost) : '';
-    row.setAttribute('aria-label', ability.name);
+    row.setAttribute('aria-label', displayName);
     row.setAttribute('aria-pressed', row.dataset.pinned);
     row.addEventListener('click', () => cortiToggleAbilityPin(row.dataset.abilityId, allAbilities));
     const image = document.createElement('img');
@@ -996,7 +997,7 @@ function cortiRenderSkills() {
     image.onerror = () => {
       if (!image.isConnected) return;
       image.replaceWith(Object.assign(document.createElement('span'),
-        { className: 'corti-ability-glyph', textContent: ability.name.slice(0, 1) }));
+        { className: 'corti-ability-glyph', textContent: displayName.slice(0, 1) }));
     };
     const mask = document.createElement('span');
     mask.className = 'corti-ability-mask';
@@ -1004,7 +1005,7 @@ function cortiRenderSkills() {
     overlay.className = 'corti-ability-overlay';
     const name = document.createElement('span');
     name.className = 'corti-ability-name';
-    name.textContent = ability.name;
+    name.textContent = displayName;
     const pin = document.createElement('span');
     pin.className = 'corti-ability-pin';
     pin.textContent = row.dataset.pinned === 'true' ? '★' : '☆';

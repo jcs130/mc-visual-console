@@ -18,3 +18,11 @@ function mcViewerQiandengjiSpellVisual(spellId) {
   return null;
 }
 globalThis.mcViewerSpellVisualPreset = mcViewerQiandengjiSpellVisual;
+
+// Optional display translations only; IDs and executable server contracts stay unchanged.
+globalThis.mcViewerSpellLabelPreset = spellId => ({
+  blink: '闪现', selfheal: '圣光自愈', food: '饱食术',
+  conjure_bread: '造物术·面包', conjure_cake: '造物术·蛋糕', conjure_chest: '造物术·箱子',
+  conjure_cobblestone: '造物术·圆石', conjure_crafting_table: '造物术·工作台',
+  conjure_glass: '造物术·玻璃', conjure_oak_log: '造物术·橡木', conjure_torch: '造物术·火把',
+})[String(spellId || '').split(':').pop().toLowerCase()] || null;

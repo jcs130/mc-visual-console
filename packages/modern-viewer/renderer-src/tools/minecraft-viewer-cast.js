@@ -13,6 +13,15 @@ const cortiSkillPalettes = Object.freeze({
   wind: [0x80e2ec, 0xf2ffff], blood: [0xff6585, 0xffc2d0],
 });
 
+function cortiSkillLabel(spellId, suppliedName) {
+  const id = String(spellId || '').split(':').pop().toLowerCase();
+  const observed = typeof cortiPanelSkills === 'undefined' ? null : cortiPanelSkills?.abilities?.find(
+    ability => String(ability.id || '').split(':').pop().toLowerCase() === id)?.name;
+  const chinese = value => typeof value === 'string' && /[\u3400-\u9fff]/u.test(value) ? value.slice(0, 80) : null;
+  return chinese(observed) || chinese(suppliedName) || chinese(globalThis.mcViewerSpellLabelPreset?.(spellId)) || '技能';
+}
+globalThis.mcViewerSkillLabel = cortiSkillLabel;
+
 function cortiSpellVisual(spellId, tone) {
   const preset = globalThis.mcViewerSpellVisualPreset?.(spellId);
   if (preset) return preset;
@@ -58,8 +67,8 @@ function cortiDisposeSkillEffect(effect) {
 }
 
 function cortiStartSkillEffect(event) {
-  // A request is only a quiet wind-up. The server's success reply owns the main effect.
-  if (event.phase === 'failed') return;
+  // Submission and failure are diagnostics; only a success receipt owns a visible effect.
+  if (event.phase !== 'succeeded') return;
   if (event.position && event.dimension && event.dimension !== cortiCastDimension) return;
   const three = globalThis.THREE;
   const world = globalThis.world;
@@ -276,19 +285,25 @@ function cortiInstallCastCue(socket) {
     if (!event || !Number.isSafeInteger(event.seq) || event.seq < 0 ||
         !['sent', 'succeeded', 'failed'].includes(event.phase) ||
         typeof event.spellName !== 'string' || event.spellName.length > 80) return;
-    if (event.seq === cortiCastSequence && cortiCastPhase !== 'sent' && event.phase === 'sent') return;
+    if (event.phase !== 'succeeded') {
+      if (event.phase === 'failed' && event.seq === cortiCastSequence) {
+        root.hidden = true;
+        if (cortiCastTimer !== null) clearTimeout(cortiCastTimer);
+        cortiCastTimer = null;
+      }
+      return;
+    }
+    if (event.seq < cortiCastSequence) return;
     cortiCastSequence = event.seq;
     cortiCastPhase = event.phase;
     cortiStartSkillEffect(event);
     root.hidden = false;
     root.dataset.phase = event.phase;
     root.dataset.tone = typeof event.tone === 'string' ? event.tone : 'arcane';
-    root.querySelector('[data-cast-phase]').textContent = event.phase === 'sent'
-      ? '✦ 使用技能 · 咏唱' : event.phase === 'succeeded'
-        ? '✦ 使用技能 · 生效' : '✦ 使用技能 · 受阻';
-    root.querySelector('[data-cast-name]').textContent = event.spellName;
-    root.querySelector('[data-cast-detail]').textContent = event.phase === 'sent'
-      ? '法术已发出，等待回应' : typeof event.detail === 'string' ? event.detail.slice(0, 80) : '';
+    root.querySelector('[data-cast-phase]').textContent = '✦ 使用技能 · 生效';
+    root.querySelector('[data-cast-name]').textContent = cortiSkillLabel(event.spellId, event.spellName);
+    root.querySelector('[data-cast-name]').title = `${event.spellName} (${String(event.spellId || '')})`;
+    root.querySelector('[data-cast-detail]').textContent = '已收到施法生效回执';
     const line = root.querySelector('.corti-cast-line');
     line.style.animation = 'none';
     void line.offsetWidth;
@@ -298,7 +313,7 @@ function cortiInstallCastCue(socket) {
     cortiCastTimer = setTimeout(() => {
       if (cortiCastSequence === sequence) root.hidden = true;
       cortiCastTimer = null;
-    }, event.phase === 'sent' ? 5_000 : 4_000);
+    }, 4_000);
   });
 }
 
