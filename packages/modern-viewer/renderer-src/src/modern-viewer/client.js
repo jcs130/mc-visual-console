@@ -76,7 +76,8 @@ import {
 import { normalizeMotionFrame } from "./avatar-motion.js";
 import { rendererEntityEquipment, installRendererEquipmentHandedness } from "./renderer-equipment.js";
 import { CUTAWAY_MATERIAL_VERSION, hasRoomCeiling, hasDeepRoof, roomCutoffWorldY, roomOcclusionMode, createCutawayUniforms, patchCutawayMaterial, advanceReveal, roomRevealRadius, setRoomFloorMask } from "./room-visibility.js";
-import { installObserverSectionCulling } from "./observer-section-culling.js";
+import { displayCameraWorldPosition, installObserverSectionCulling } from "./observer-section-culling.js";
+import { installOriginalArmorTextures } from "./armor-textures.js";
 import { RoomCoverCache } from "./room-cover-cache.js";
 import { RoomFloorMask } from "./room-floor-mask.js";
 import { createRoomCutawayCap } from "./room-cutaway-cap.js";
@@ -921,6 +922,7 @@ async function initializeRenderer(version) {
     };
     resources.resetResources();
     await resources.updateAssetsData({});
+    installOriginalArmorTextures(resources);
     const mcData = resources.currentResources?.mcData;
     if (!mcData) throw new Error("Minecraft 版本数据未能载入");
     // minecraft-renderer's main-thread entity and item renderers still read
@@ -4302,6 +4304,7 @@ function mountSelectedPlayerModel({ id, signature, entity, sceneEntity, nativeRo
         nativeBodySuppressed: false,
       };
       created.root.visible = !isEntityInvisible(resolveOwnAvatarEntity());
+      created.root.userData.lanternFullPlayerModel = true;
       sceneEntity.add(created.root);
       playerModelInstance = instance;
       hideNativePlayerBody(instance);
@@ -4352,11 +4355,18 @@ function hideNativePlayerBody(instance) {
   // Keep the native hierarchy alive so hand items, entity transforms and the
   // non-mesh nametag continue to update. Suppress only renderable body/armor/
   // cape meshes; item meshes below custom_item_* remain visible.
-  nativeRoot.traverse?.((object) => {
+  const hide = (object) => {
     if (!object?.isMesh || isInsideHeldItemRoot(object, nativeRoot)) return;
     if (!instance.nativeBodyVisibility.has(object)) instance.nativeBodyVisibility.set(object, object.visible !== false);
     object.visible = false;
-  });
+  };
+  nativeRoot.traverse?.(hide);
+  // The pinned renderer places armor beside the skin wrapper, not inside it.
+  // Leaving those meshes alive overlays floating classic limbs on a full
+  // custom actor, and the inventory mirror faithfully repeats that corruption.
+  for (const child of instance.sceneEntity.children) {
+    if (child.name.startsWith('geometry_armor_')) child.traverse(hide);
+  }
   if (playerObject.cape) {
     if (instance.nativeCapeWasVisible === undefined) instance.nativeCapeWasVisible = playerObject.cape.visible !== false;
     playerObject.cape.visible = false;
@@ -5853,14 +5863,17 @@ function applyRendererQuality(quality) {
 
 function refreshSceneQuality(quality) {
   const world = globalThis.world;
-  if (usesWorldAvatar && !observerSectionCulling && world?.chunkMeshManager) {
+  // First-person eyes can cross into an unmeshed/empty section too. The
+  // upstream graph treats that as a sky seed and drops received cave walls.
+  // Protect every view at the actual draw boundary, not just the 1s sampler.
+  if (!observerSectionCulling && world?.chunkMeshManager) {
     observerSectionCulling = installObserverSectionCulling(world.chunkMeshManager, () => {
       const region = dungeonUpperCutawayRegion;
       return region?.roomMask?.contains(region.center) && dungeonVisibilityUniforms.u_lanternReveal.value > 0
         ? { ...region.center, y: region.center.y + 1 } : null;
     });
   }
-  const p = world?.cameraWorldPos, height = world?.getSectionHeight?.() ?? 16;
+  const p = displayCameraWorldPosition(world) ?? world?.cameraWorldPos, height = world?.getSectionHeight?.() ?? 16;
   const section = p ? `${Math.floor(p.x / 16) * 16},${Math.floor(p.y / height) * height},${Math.floor(p.z / 16) * 16}` : '';
   activeScenePolicy = resolveSceneQuality(sceneSettings, { mode: quality?.mode, view: viewMode,
     gameMode: pendingAvatarState?.gameMode, overlay: isObsOverlay, observerCullReady: !!observerSectionCulling,
