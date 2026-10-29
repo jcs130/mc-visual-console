@@ -1,3 +1,4 @@
+import { nativeRpgSummary } from './native-rpg-state.js'
 const bounded = value => typeof value === 'string' ? value.slice(0, 128) : ''
 const rows = value => (Array.isArray(value) ? value : []).filter(row => typeof row?.name === 'string').slice(0, 64)
 const add = (document, parent, tag, text, attribute) => {
@@ -12,6 +13,9 @@ const add = (document, parent, tag, text, attribute) => {
 export function renderNativeSkillLists (document, skills) {
   const panel = document.getElementById('corti-skills'), list = panel?.querySelector('[data-skill-list]'), abilities = panel?.querySelector('[data-ability-list]')
   if (!panel || !list || !abilities) return
+  let rpg = panel.querySelector('[data-rpg-summary]')
+  if (!rpg) rpg = add(document, panel, 'div', '', 'data-rpg-summary')
+  rpg.textContent = nativeRpgSummary(skills); rpg.hidden = !rpg.textContent
   let detail = panel.querySelector('[data-skill-details]')
   if (!detail) {
     add(document, panel, 'div', '', 'data-skill-preview')

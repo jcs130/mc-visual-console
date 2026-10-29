@@ -12,6 +12,15 @@ function receipt(){return{available:true,uuid,generation:world,configurationPack
  gameTime:100,dayTime:6000,selectedHotbarSlot:0,mainArm:'right',health:20,maxHealth:20,usingItem:false,attackAnim:0,
  inventory:Array.from({length:46},(_,slot)=>({slot,item:slot===36?{name:'minecraft:diamond_sword',count:1,snbt:'{id:"minecraft:diamond_sword",count:1}'}:slot===9?{name:'minecraft:paper',count:1,snbt:'{private:"bag_only_secret"}'}:null}))}};}
 function observer(scope='owner'){return new PaperObservedPlayer({playerUuid:uuid,name:'ObservedAgent',registry:{},registrySha256:hash,decodePacket:bytes=>JSON.parse(bytes),scope});}
+test('RPG snapshots follow the observed identity, push class-only changes and clear missing data',()=>{
+ const o=observer(),r=receipt();let sent=0;o.events.on('presentation',()=>sent++);
+ r.player.experienceLevel=91;r.player.viewerState={schemaVersion:1,playerUuid:uuid,mana:{current:4,max:20},skills:[],abilities:[],rpg:{available:true,backend:'vortex',combat:'ranger',className:'游侠',level:4,xp:100,nextLevelXp:300,skillPoints:2}};
+ o.ingest(r);assert.equal(o.presentation().self.experienceLevel,91);assert.equal(o.presentation().skills.rpg.level,4);
+ const count=sent;const next=structuredClone(r);next.configurationPackets=undefined;next.player.viewerState.rpg.level=5;
+ o.ingest(next);assert.equal(sent,count+1);assert.equal(o.presentation().skills.rpg.level,5);
+ next.player.viewerState.playerUuid=world;o.ingest(next);assert.equal(o.presentation().skills,null);
+ delete next.player.viewerState;o.ingest(next);assert.equal(o.presentation().skills,null);o.close();
+});
 test('Paper adapter has no game connection, action method or writable client',()=>{
  const o=observer();assert.equal(o._client.state,'observation');assert.equal(o.chat,undefined);assert.equal(o.connect,undefined);assert.equal(o.quit,undefined);
  assert.throws(()=>o._client.write('command'),/READ_ONLY/);o.close();

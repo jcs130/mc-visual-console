@@ -406,6 +406,16 @@ test('real icon bindings keep accessible base image, report effect decode failur
   canvas.dispatch('native-glint-error');assert.equal(slot.dataset.glintSource,undefined);assert.match(slot.title,/minecraft:stick/);assert.doesNotMatch(slot.title,/解码失败/)
 })
 
+test('RPG class/level is displayed separately from vanilla XP and clears after target loss',()=>{
+  const h=harness(),skills={rpg:{available:true,combat:'mage',className:'法师',level:4,xp:100,nextLevelXp:300,skillPoints:2},skills:[],abilities:[]}
+  h.ui.update({epoch:1,presentation:presentation({skills,self:{uuid:UUID,experienceLevel:91}})})
+  assert.match(h.document.querySelector('[data-rpg-summary]').textContent,/法师 · RPG Lv.4/)
+  assert.doesNotMatch(h.document.querySelector('[data-rpg-summary]').textContent,/Lv.91/)
+  h.ui.update({epoch:1,presentation:presentation({skills:null})})
+  assert.equal(h.document.querySelector('[data-rpg-summary]').textContent,'')
+  assert.equal(h.document.querySelector('[data-rpg-summary]').hidden,true)
+})
+
 test('long skills stay in closed disclosures with a bounded preview and keep expansion across updated readings', () => {
   const h = harness(), skills = { source: 'plugin', skills: Array.from({ length: 11 }, (_, i) => ({ name: `等级${i}`, level: i })),
     abilities: Array.from({ length: 40 }, (_, i) => ({ id: `extension:${i}`, name: `能力${i}`, cooldownRemainingMs: null })) }
