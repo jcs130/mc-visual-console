@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "mcvisual-native-observer",
+  "version": "0.1.0",
+  "name": "MC Visual Native Observer",
+  "description": "Explicitly scoped, read-only HUD for the actual spectator camera. Does not connect another player or send gameplay commands.",
+  "environment": "client",
+  "license": "MIT",
+  "entrypoints": { "client": ["org.mcvisual.observer.NativeObserverClient"] },
+  "mixins": ["mcvisual-native-observer.mixins.json"],
+  "depends": { "fabricloader": ">=0.16.13", "minecraft": "1.21.1", "java": ">=21", "fabric-api": "*" }
+}
