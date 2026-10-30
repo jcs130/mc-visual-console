@@ -11,7 +11,7 @@ public final class DroneFollow {
     private static double angle(double value){return ((value+180)%360+360)%360-180;}
     private static boolean finite(double... v){for(double n:v)if(!Double.isFinite(n))return false;return true;}
     public Pose next(String id,double x,double y,double z,float bodyYaw,long nanos,double distance,double height){
-        if(id==null||!finite(x,y,z,bodyYaw,distance,height)||distance<2||distance>10||height<0.5||height>5)
+        if(id==null||!finite(x,y,z,bodyYaw,distance,height)||distance<2||distance>10||height<0.5||height>12)
             throw new IllegalArgumentException("Invalid observed camera sample or explicit rig dimensions");
         double dt=previousNanos==0?0:(nanos-previousNanos)/1_000_000_000.0;
         double dx=x-ax,dy=y-ay,dz=z-az;

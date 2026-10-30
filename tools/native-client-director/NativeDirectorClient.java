@@ -18,6 +18,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private static boolean droneEnabled,droneActive;
     private static String droneUuid,droneReason="disabled";
     private static double droneDistance=7,droneHeight=3;
+    private static boolean droneOverview;
     private static long droneRenderedAt;
     private static float droneRequestedDistance,droneClippedDistance;
     private DirectorPolicy policy;
@@ -95,7 +96,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                     if(changed!=lastFileTime){
                         lastFileTime=changed;
                         var request=new Gson().fromJson(Files.readString(file),DirectorPolicy.Request.class);
-                        if(request!=null&&"drone_follow".equals(request.view())&&!droneEnabled)
+                        if(request!=null&&request.view()!=null&&request.view().startsWith("drone_")&&!droneEnabled)
                             throw new IllegalArgumentException("drone_rig_not_explicitly_enabled");
                         policy.offer(request,frame(client,request==null?null:request.target()),now);
                         requestProblem=null;
@@ -112,19 +113,20 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(action.view()!=null){
             stopDrone("normal_perspective");
             class_5498 view=switch(action.view()){
-                case "third_person_back","drone_follow"->class_5498.field_26665;
+                case "third_person_back","drone_follow","drone_overview"->class_5498.field_26665;
                 case "third_person_front"->class_5498.field_26666;
                 default->class_5498.field_26664;
             };
             client.field_1690.method_31043(view);
-            if("drone_follow".equals(action.view())&&droneEnabled){
+            if(action.view().startsWith("drone_")&&droneEnabled){
+                droneOverview="drone_overview".equals(action.view());
                 droneUuid=frame(client,policy.target()).cameraUuid();droneActive=true;droneReason="awaiting_render";
             }
         }
         if(tick%20==0)diagnostics(client,true);
     }
     private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneReason=reason;DRONE.reset();}
-    static boolean droneMayRender(class_1297 target){
+    public static boolean droneMayRender(class_1297 target){
         if(!droneEnabled||!droneActive||target==null||!target.method_5667().toString().equals(droneUuid))return false;
         var client=class_310.method_1551();
         if(client.field_1724==null||!client.field_1724.method_7325()) {stopDrone("not_spectator");return false;}
@@ -132,11 +134,11 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(client.field_1755!=null){DRONE.reset();return false;}
         return true;
     }
-    static DroneFollow.Pose dronePose(class_1297 target,class_243 eye){
+    public static DroneFollow.Pose dronePose(class_1297 target,class_243 eye){
         return DRONE.next(droneUuid,eye.field_1352,eye.field_1351,eye.field_1350,target.method_36454(),
-            System.nanoTime(),droneDistance,droneHeight);
+            System.nanoTime(),droneOverview?3.5:droneDistance,droneOverview?9:droneHeight);
     }
-    static void droneRendered(float requested,float clipped){
+    public static void droneRendered(float requested,float clipped){
         droneRequestedDistance=requested;droneClippedDistance=clipped;
         droneRenderedAt=System.currentTimeMillis();droneReason="rendered_with_native_collision";
     }
@@ -154,6 +156,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("drone",Map.of("enabled",droneEnabled,"active",droneActive,
                 "reason",droneReason,"lastRenderedAt",droneRenderedAt,
                 "requestedDistance",droneRequestedDistance,"clippedDistance",droneClippedDistance));
+            data.put("droneShot",droneOverview?"overview":"follow");
             data.put("screenOpen",client.field_1755!=null);
             data.put("hudFramesPerSecond",System.currentTimeMillis()-lastRenderedAt<3000?hudFramesPerSecond:null);
             data.put("configProblem",configProblem);data.put("requestProblem",requestProblem);
