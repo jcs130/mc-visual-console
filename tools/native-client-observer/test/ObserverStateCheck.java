@@ -4,6 +4,7 @@ import java.util.*;
 import org.mcvisual.observer.ObserverState;
 import org.mcvisual.observer.ObserverView;
 import org.mcvisual.observer.TargetInventory;
+import org.mcvisual.observer.BossBarState;
 
 public final class ObserverStateCheck {
     private static int checks;
@@ -121,6 +122,16 @@ public final class ObserverStateCheck {
         s.clear("disconnect");s.camera(camera);s.accept(bytes(d),t+14);
         check(bag.view(s.current(t+14),t+14)==null,"connection epoch clears same UUID inventory");
         check(!bag.accept(new ObserverState.Camera(VIEWER,VIEWER,8,WORLD,false),s.epoch(),VIEWER,hotbar,false,t+15),"observer inventory cannot become target inventory");
+        var bars=new BossBarState();var barId=UUID.fromString(A);
+        check(!bars.accept(barId,false,false),"UPDATE without native ADD is unavailable, cannot crash native map lookup");
+        check(bars.missing()==1&&bars.uninitializedUpdates()==1,"missing source lifecycle remains explicit");
+        check(!bars.accept(barId,false,false)&&bars.missing()==1,"same incomplete bar deduplicated");
+        check(bars.accept(barId,true,false)&&bars.missing()==0,"original ADD resolves unavailable bar");
+        check(bars.accept(barId,false,true),"complete native bar receives original updates unchanged");
+        check(bars.accept(barId,true,false),"REMOVE of absent bar is idempotent");
+        for(int i=0;i<100;i++)bars.accept(new UUID(10,i),false,false);
+        check(bars.missing()==64,"source fault bookkeeping bounded");
+        bars.clear();check(bars.missing()==0&&bars.uninitializedUpdates()>0,"native world clear drops identities but keeps fault counter");
         System.out.println("Observer protocol and display: "+checks+" checks passed");
     }
 }

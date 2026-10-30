@@ -31,6 +31,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     private class_304 details, next;
     private List<String> rows = List.of();
     private final TargetInventory<class_1799> inventory = new TargetInventory<>();
+    private final BossBarState nativeBars = new BossBarState();
     private String problem;
     private boolean diagnosticsFailure;
     @Override public void onInitializeClient() {
@@ -54,7 +55,7 @@ public final class NativeObserverClient implements ClientModInitializer {
         next=KeyBindingHelper.registerKeyBinding(new class_304("key.mcvisual_observer.page",GLFW.GLFW_KEY_F10,"key.categories.mcvisual_observer"));
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
-            state.clear("disconnected");inventory.reconcile(null,state.epoch());rows=List.of();
+            state.clear("disconnected");inventory.reconcile(null,state.epoch());nativeBars.clear();rows=List.of();
             if(config!=null&&config.writeDiagnostics)diagnostics(false);config=null;
         });
         ClientTickEvents.END_CLIENT_TICK.register(client->{
@@ -71,7 +72,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     }
     private void join(class_310 client) {
         config=null;problem=null;mode=0;page=0;ticks=0;diagnosticsFailure=false;
-        state.clear("joining");inventory.reconcile(null,state.epoch());rows=List.of();
+        state.clear("joining");inventory.reconcile(null,state.epoch());nativeBars.clear();rows=List.of();
         try {
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-native-observer.json");
             if(!Files.isRegularFile(file)||Files.size(file)>16_384)return;
@@ -123,6 +124,15 @@ public final class NativeObserverClient implements ClientModInitializer {
         return camera!=null&&camera.observer();
     }
     private boolean zh(){return config!=null&&"zh_cn".equalsIgnoreCase(config.language);}
+    public static boolean scoped(){return instance!=null&&instance.config!=null;}
+    public static boolean nativeBarPacket(UUID id,boolean complete,boolean present){
+        if(!scoped())return true;
+        boolean valid=instance.nativeBars.accept(id,complete,present);
+        if(!valid&&instance.nativeBars.uninitializedUpdates()==1)
+            System.out.println("[MCVisualObserver] Native bossbar UPDATE before ADD; incomplete bar unavailable, awaiting original ADD");
+        return valid;
+    }
+    public static void nativeBarsCleared(){if(instance!=null)instance.nativeBars.clear();}
     private void refresh() {
         if(config==null)return;var current=state.current(System.nanoTime());
         if(current==null){rows=List.of(zh()?"观战目标信息待同步":"Waiting for target state");return;}
@@ -156,6 +166,7 @@ public final class NativeObserverClient implements ClientModInitializer {
                 wrapped.add(part);left=left.substring(part.length());
             }while(!left.isEmpty());
         }
+        if(nativeBars.missing()>0)wrapped.add(zh()?"原生进度条缺完整数据 · "+nativeBars.missing():"Native bars awaiting complete data · "+nativeBars.missing());
         rows=List.copyOf(wrapped);
     }
     private void render(class_332 draw) {
@@ -192,6 +203,8 @@ public final class NativeObserverClient implements ClientModInitializer {
             data.put("inventoryKnownSlots",view==null?0:view.slots().stream().filter(TargetInventory.Slot::known).count());
             data.put("inventoryHotbarAgeMs",view==null?null:view.hotbarAgeMs());
             data.put("inventoryFullAgeMs",view==null?null:view.fullAgeMs());
+            data.put("nativeBossBarsMissing",nativeBars.missing());
+            data.put("nativeBossBarUpdatesBeforeAdd",nativeBars.uninitializedUpdates());
             data.put("problem",problem);
             Path out=FabricLoader.getInstance().getGameDir().resolve("diagnostics/mcvisual-native-observer.json");
             Files.createDirectories(out.getParent());Files.writeString(out,new GsonBuilder().serializeNulls().create().toJson(data));

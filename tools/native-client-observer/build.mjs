@@ -23,9 +23,11 @@ const contract={
  'com.hpfxd.spectatorplus.fabric.client.sync.screen.ScreenSyncController':['handle(com.hpfxd.spectatorplus.fabric.sync.packet.ClientboundInventorySyncPacket, net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking$Context)'],
  'com.hpfxd.spectatorplus.fabric.sync.packet.ClientboundHotbarSyncPacket':['java.util.UUID playerId()','net.minecraft.class_1799[] items()'],
  'com.hpfxd.spectatorplus.fabric.sync.packet.ClientboundInventorySyncPacket':['java.util.UUID playerId()','net.minecraft.class_1799[] items()'],
+ 'net.minecraft.class_337':['method_1795(net.minecraft.class_2629)','method_1801()','field_2060'],
+ 'net.minecraft.class_2629':['method_34091(net.minecraft.class_2629$class_5881)'],
  'net.minecraft.class_329':['method_1757(net.minecraft.class_332, net.minecraft.class_266)']};
 for(const [type,signatures]of Object.entries(contract)){const out=run('javap',['-p','-classpath',cp,type]);for(const signature of signatures)if(!out.includes(signature))throw Error('Native hook contract missing: '+type+' '+signature);}
-const sources=['ObserverState.java','ObserverView.java','TargetInventory.java','NativeObserverClient.java','SpectatorHotbarMixin.java','SpectatorInventoryMixin.java','ObserverSidebarMixin.java','test/ObserverStateCheck.java'];
+const sources=['ObserverState.java','ObserverView.java','TargetInventory.java','BossBarState.java','NativeObserverClient.java','SpectatorHotbarMixin.java','SpectatorInventoryMixin.java','ObserverSidebarMixin.java','ObserverBossBarMixin.java','test/ObserverStateCheck.java'];
 const argfile=path.join(scratch,'javac.args');fs.writeFileSync(argfile,['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources.map(p=>path.join(source,p))].map(x=>'"'+x.replaceAll('\\','/').replaceAll('"','\\"')+'"').join('\n'));
 run('javac',['@'+argfile]);
 const checks=run('java',['-cp',classes+path.delimiter+cp,'ObserverStateCheck']);process.stdout.write(checks);

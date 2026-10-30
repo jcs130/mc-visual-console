@@ -75,6 +75,12 @@ SpectatorPlus is absent.
   do not refresh old full-bag data. This HUD sends no inventory polling request.
 - Health, armor and mana use one decimal place in the overview. The all-fields
   inspector retains exact received numbers; economy and XP keep their precision.
+- A native boss-bar UPDATE whose UUID has no original ADD cannot be rendered.
+  In this explicitly matched observer profile only, it is rejected before vanilla's
+  null map lookup can disconnect the whole client. A visible unavailable-data row
+  and diagnostic counter retain the source fault. No title, color or progress is
+  invented; an original ADD restores that bar. Fix the producer's lifecycle before
+  claiming complete bar coverage. Native world clear drops pending identities.
 
 `hideObserverSidebar` is an explicit display choice for servers that otherwise
 leave the observer's own sidebar on screen. It suppresses that native sidebar
