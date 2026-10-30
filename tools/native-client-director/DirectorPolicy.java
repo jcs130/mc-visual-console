@@ -46,7 +46,7 @@ public final class DirectorPolicy {
         if(!f.authenticated())return refuse("await_authentication");
         if(r==null||r.id()==null||r.lease()==null||!r.id().matches("[A-Za-z0-9:_-]{1,80}")
             ||!r.lease().matches("[A-Za-z0-9_-]{1,80}")||!allowed(r.target())
-            ||r.view()==null||!Set.of("first_person","third_person_back","third_person_front").contains(r.view()))
+            ||r.view()==null||!Set.of("first_person","third_person_back","third_person_front","drone_follow").contains(r.view()))
             return refuse("invalid_request");
         if(r.issuedAt()>now+1000||r.expiresAt()<=now||r.expiresAt()-r.issuedAt()>10_000
             ||r.expiresAt()<=r.issuedAt())return refuse("expired_request");

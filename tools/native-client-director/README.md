@@ -17,13 +17,25 @@ Config fields:
     observer: existing observer account
     targets: explicit player-name list, at most 16
     minSwitchMs: at least 10000; the scene selector should normally dwell longer
+    droneEnabled: false by default; explicitly allow the optional rendered-camera rig
+    droneDistance: 2–10 blocks, default 7
+    droneHeight: 0.5–5 blocks, default 3
 
 An enabled host writes a bounded request to config/mcvisual-director-request.json:
 
     id, lease, target, view, issuedAt, expiresAt
 
 IDs and leases are bounded identifiers. Request validity is at most ten seconds.
-Views are first_person, third_person_back and third_person_front. Commands are
+Views are first_person, third_person_back, third_person_front and drone_follow.
+The last view additionally requires droneEnabled in the matching observer profile.
+It follows the actual attached player with frame-rate independent position and
+travel-heading smoothing. Standing head turns do not spin the camera. Native
+vanilla near-plane collision rays shorten the boom; target UUID changes,
+teleports and long render gaps reset interpolation instead of flying across the map.
+The camera entity, target HUD and corner-avatar identity stay native. A manual
+perspective change releases the rig; screens pause it. No extra player or
+render target is created. The rig is display composition, not AI scene understanding.
+Commands are
 fixed internally: put only the observer in spectator mode; detach its previous
 camera before a remote teleport and confirm its own native UUID; teleport only that
 observer to the whitelisted, currently online native player UUID; request native
@@ -42,6 +54,8 @@ The companion's diagnostics contain camera identity, request/phase, command coun
 and measured HUD render cadence. They contain no payloads, chat, passwords or
 prompts. Status is written once per second; request files are polled twice per
 second. This is a typed local companion contract, not a network control server.
+Rig diagnostics separately report activation, last rendered time and requested/
+clipped boom distance. A packaged build passing checks is not live rendering proof.
 
 Use the separate native-client-observer module for actual subject data and the
 matched appearance helper for the camera player's YSM corner avatar. This module

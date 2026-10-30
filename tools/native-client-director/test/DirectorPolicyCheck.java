@@ -10,6 +10,8 @@ public class DirectorPolicyCheck {
         return new DirectorPolicy.Request(id,"lease-one",target,view,t,t+5000);}
     public static void main(String[] args){
         var p=policy();long t=100_000;
+        var drone=policy();check(drone.offer(r("drone","Alice","drone_follow",t),f(true,true,true,"uuid-a"),t),"explicit drone request admitted");
+        check("drone_follow".equals(drone.step(f(true,true,true,"uuid-a"),t).view()),"drone requires native UUID attachment");
         check(DirectorPolicy.authReceipt(false,"§a[MC_AUTH_SUCCESS] native"),"native authentication receipt");
         check(!DirectorPolicy.authReceipt(true,"[MC_AUTH_UNAVAILABLE] wait"),"unavailable invalidates authentication");
         check(!DirectorPolicy.authReceipt(true,"[MC_AUTH_LOGIN] required"),"login challenge invalidates authentication");
