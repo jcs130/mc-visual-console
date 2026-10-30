@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "mcvisual-native-director",
+  "version": "0.1.0",
+  "name": "MC Visual Native Director",
+  "description": "Opt-in camera-only requests for one authenticated observer, with native attachment receipts. No new player, gameplay agent or model loop.",
+  "environment": "client",
+  "license": "MIT",
+  "entrypoints": { "client": ["org.mcvisual.director.NativeDirectorClient"] },
+  "depends": { "fabricloader": ">=0.16.13", "minecraft": "1.21.1", "java": ">=21", "fabric-api": "*" }
+}
