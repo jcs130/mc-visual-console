@@ -3,6 +3,6 @@
   "minVersion": "0.8",
   "compatibilityLevel": "JAVA_21",
   "package": "org.mcvisual.observer.mixin",
-  "client": ["ObserverInventoryMixin", "ObserverSidebarMixin"],
+  "client": ["SpectatorHotbarMixin", "SpectatorInventoryMixin", "ObserverSidebarMixin"],
   "injectors": { "defaultRequire": 1 }
 }

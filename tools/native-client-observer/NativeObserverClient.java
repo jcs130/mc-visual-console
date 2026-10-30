@@ -30,9 +30,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     private int mode, page, ticks;
     private class_304 details, next;
     private List<String> rows = List.of();
-    private List<class_1799> inventory = List.of();
-    private ObserverState.Camera inventoryCamera;
-    private long inventoryEpoch;
+    private final TargetInventory<class_1799> inventory = new TargetInventory<>();
     private String problem;
     private boolean diagnosticsFailure;
     @Override public void onInitializeClient() {
@@ -56,7 +54,7 @@ public final class NativeObserverClient implements ClientModInitializer {
         next=KeyBindingHelper.registerKeyBinding(new class_304("key.mcvisual_observer.page",GLFW.GLFW_KEY_F10,"key.categories.mcvisual_observer"));
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
-            state.clear("disconnected");inventory=List.of();inventoryCamera=null;rows=List.of();
+            state.clear("disconnected");inventory.reconcile(null,state.epoch());rows=List.of();
             if(config!=null&&config.writeDiagnostics)diagnostics(false);config=null;
         });
         ClientTickEvents.END_CLIENT_TICK.register(client->{
@@ -73,7 +71,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     }
     private void join(class_310 client) {
         config=null;problem=null;mode=0;page=0;ticks=0;diagnosticsFailure=false;
-        state.clear("joining");inventory=List.of();inventoryCamera=null;rows=List.of();
+        state.clear("joining");inventory.reconcile(null,state.epoch());rows=List.of();
         try {
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-native-observer.json");
             if(!Files.isRegularFile(file)||Files.size(file)>16_384)return;
@@ -106,29 +104,23 @@ public final class NativeObserverClient implements ClientModInitializer {
     }
     private void reconcile(class_310 client) {
         ObserverState.Camera camera=readCamera(client);state.camera(camera);
-        if(inventoryCamera!=null&&(camera==null||camera.world()!=inventoryCamera.world()
-                ||camera.entity()!=inventoryCamera.entity()||!Objects.equals(camera.player(),inventoryCamera.player())||!camera.observer())) {
-            inventory=List.of();inventoryCamera=null;
-        }
+        state.current(System.nanoTime());
+        inventory.reconcile(camera,state.epoch());
     }
-    /** Called after a genuine native inventory packet is applied. Never reads another connection. */
-    public static void inventoryChanged(int syncId) {
+    /** Read the actual UUID-bearing SpectatorPlus packet after its native handler. */
+    public static void targetInventory(UUID subject,class_1799[] delta,boolean full) {
         var self=instance;var client=class_310.method_1551();
-        if(self==null||self.config==null||syncId!=0||client.field_1724==null)return;
+        if(self==null||self.config==null||subject==null||delta==null||delta.length!=(full?36:9))return;
         self.reconcile(client);ObserverState.Camera camera=self.readCamera(client);
         if(camera==null||!camera.observer())return;
-        var bag=client.field_1724.method_31548();List<class_1799> copy=new ArrayList<>();
-        for(int i=0;i<Math.min(64,bag.method_5439());i++)copy.add(bag.method_5438(i).method_7972());
-        self.inventory=List.copyOf(copy);self.inventoryCamera=camera;self.inventoryEpoch=self.state.epoch();self.refresh();
+        List<class_1799> copy=new ArrayList<>();
+        for(var stack:delta)copy.add(stack==null?null:stack.method_7972());
+        if(self.inventory.accept(camera,self.state.epoch(),subject.toString(),copy,full,System.nanoTime()))self.refresh();
     }
     public static boolean hideSidebar() {
         var self=instance;if(self==null||self.config==null||!self.config.hideObserverSidebar)return false;
         var client=class_310.method_1551();self.reconcile(client);var camera=self.readCamera(client);
         return camera!=null&&camera.observer();
-    }
-    private boolean inventoryBound(ObserverState.Snapshot s) {
-        return inventoryCamera!=null&&inventoryEpoch==s.epoch()&&inventoryCamera.world()==s.camera().world()
-                &&inventoryCamera.entity()==s.camera().entity()&&Objects.equals(inventoryCamera.player(),s.camera().player());
     }
     private boolean zh(){return config!=null&&"zh_cn".equalsIgnoreCase(config.language);}
     private void refresh() {
@@ -138,10 +130,16 @@ public final class NativeObserverClient implements ClientModInitializer {
             case 1->ObserverView.abilities(current.data(),zh());
             case 2->{
                 List<String> lines=new ArrayList<>();lines.add(zh()?"观战对象 · 原生背包（只读）":"Target · Native inventory (read only)");
-                if(!inventoryBound(current))lines.add(zh()?"背包尚未同步，不使用观战者旧物品":"Waiting for native inventory; old observer items hidden");
-                else for(int i=0;i<inventory.size();i++){
-                    var stack=inventory.get(i);if(stack.method_7960())continue;
-                    lines.add("#"+i+" "+stack.method_7964().getString()+" ×"+stack.method_7947());
+                var view=inventory.view(current,System.nanoTime());
+                if(view==null)lines.add(zh()?"等待目标背包包；按 E 原生只读查看":"Waiting for target inventory; E opens original read-only screen");
+                else {
+                    lines.add((view.full()?(zh()?"完整背包":"Full inventory"):(zh()?"仅快捷栏；完整背包按 E":"Hotbar only; E for full inventory"))
+                            +String.format(Locale.ROOT,zh()?" · 收包 %.1f 秒前":" · received %.1fs ago",view.hotbarAgeMs()/1000.0));
+                    for(var slot:view.slots()){
+                        if(!slot.known()){lines.add("#"+slot.index()+" ?");continue;}
+                        var stack=slot.item();if(stack.method_7960())continue;
+                        lines.add("#"+slot.index()+" "+stack.method_7964().getString()+" ×"+stack.method_7947());
+                    }
                 }
                 yield lines;
             }
@@ -173,10 +171,12 @@ public final class NativeObserverClient implements ClientModInitializer {
         draw.method_25294(x-4,y-4,x+width+4,y+(end-start)*11+16,0xB0101820);
         for(int i=start;i<end;i++)draw.method_51433(client.field_1772,client.field_1772.method_27523(visible.get(i),width),x,y+(i-start)*11,i==0?0xFF9EE7FF:0xFFF3F5FA,true);
         draw.method_51433(client.field_1772,"F9 / F10  "+(start+1)+"–"+end+"/"+visible.size(),x,y+(end-start)*11+3,0xFFBCC5D6,true);
-        if(mode==2&&snapshot!=null&&inventoryBound(snapshot)) {
+        var inventoryView=inventory.view(snapshot,System.nanoTime());
+        if(mode==2&&inventoryView!=null) {
             // Original native ItemStacks retain components and original resource-pack models.
             int gridY=14+(end-start)*11+24,slot=0;
-            for(var stack:inventory){if(gridY+(slot/9)*19+18>=draw.method_51443())break;
+            for(var item:inventoryView.slots()){if(gridY+(slot/9)*19+18>=draw.method_51443())break;
+                if(!item.known()){slot++;continue;}var stack=item.item();
                 draw.method_51427(stack,x+(slot%9)*19,gridY+(slot/9)*19);
                 draw.method_51446(client.field_1772,stack,x+(slot%9)*19,gridY+(slot/9)*19);slot++;}
         }
@@ -185,7 +185,13 @@ public final class NativeObserverClient implements ClientModInitializer {
         try {
             Map<String,Object> data=new LinkedHashMap<>(state.diagnostics(System.nanoTime()));
             data.put("recordedAt",Instant.now().toString());data.put("connected",connected);
-            data.put("nativeInventoryReceived",inventoryCamera!=null);data.put("nativeInventorySlots",inventory.size());
+            var view=inventory.view(state.current(System.nanoTime()),System.nanoTime());
+            data.put("nativeInventoryReceived",view!=null);data.put("nativeInventorySlots",view==null?0:view.slots().size());
+            data.put("inventorySource",view==null?null:"spectatorplus_uuid_packet");
+            data.put("inventoryScope",view==null?null:view.full()?"full":"hotbar_only");
+            data.put("inventoryKnownSlots",view==null?0:view.slots().stream().filter(TargetInventory.Slot::known).count());
+            data.put("inventoryHotbarAgeMs",view==null?null:view.hotbarAgeMs());
+            data.put("inventoryFullAgeMs",view==null?null:view.fullAgeMs());
             data.put("problem",problem);
             Path out=FabricLoader.getInstance().getGameDir().resolve("diagnostics/mcvisual-native-observer.json");
             Files.createDirectories(out.getParent());Files.writeString(out,new GsonBuilder().serializeNulls().create().toJson(data));

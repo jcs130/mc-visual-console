@@ -38,7 +38,10 @@ Create `config/mcvisual-native-observer.json` there:
 `language` also accepts `zh_cn`. F9 cycles overview, skills, native inventory,
 all received fields, and hidden mode. F10 advances the current page. These are
 local display keys; they do not perform or click game actions. Existing original
-inventory/merchant screens and SpectatorPlus controls are retained.
+inventory/merchant screens and SpectatorPlus controls are retained. The optional
+inventory bridge is verified against SpectatorPlus **1.2.1+mc1.21**; its JAR is a
+compile-only input and is never bundled. Pseudo Mixin targets are optional when
+SpectatorPlus is absent.
 
 ## Data and subject binding
 
@@ -61,10 +64,17 @@ inventory/merchant screens and SpectatorPlus controls are retained.
   rescue, academy, equipment effects and future extensions. Fields not sent by the
   server are unavailable. Reading every supplied field does not manufacture full
   quests, effects, attributes or a private scoreboard the server did not publish.
-- Inventory icons use copied, actual native ItemStacks after real vanilla mirror
-  packets. They retain original item components and resource-pack models. An old
-  observer inventory is not used as a fallback, and its camera/expiry epoch must
-  still match. The optional server mirror must actually supply those native packets.
+- Inventory icons use copied original ItemStacks from **UUID-bearing SpectatorPlus
+  packets** after their native handler on this connection. Vanilla observer-owned
+  inventory cannot establish target ownership and is not substituted. Camera,
+  recipient, world, entity and epoch must match. Null delta entries mean unchanged;
+  unknown initial slots stay unknown, distinct from explicit empty stacks.
+  The nine-slot hotbar is labelled separately from the complete 36-slot inventory.
+  Use original **E** to request the target's read-only inventory. Packet receipt
+  age is explicit; items older than 12 seconds are hidden, and new hotbar deltas
+  do not refresh old full-bag data. This HUD sends no inventory polling request.
+- Health, armor and mana use one decimal place in the overview. The all-fields
+  inspector retains exact received numbers; economy and XP keep their precision.
 
 `hideObserverSidebar` is an explicit display choice for servers that otherwise
 leave the observer's own sidebar on screen. It suppresses that native sidebar

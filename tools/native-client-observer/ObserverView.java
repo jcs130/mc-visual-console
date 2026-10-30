@@ -16,14 +16,20 @@ public final class ObserverView {
         if (!ObserverState.range(v, 0, 1e15)) return "?";
         return java.math.BigDecimal.valueOf(v.getAsDouble()).stripTrailingZeros().toPlainString();
     }
+    /** Readable display only; the original numeric value stays in the field inspector. */
+    public static String gauge(JsonElement v) {
+        if (!ObserverState.range(v, 0, 1e15)) return "?";
+        return java.math.BigDecimal.valueOf(v.getAsDouble()).setScale(1,java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros().toPlainString();
+    }
     public static List<String> overview(JsonObject d, boolean zh) {
         List<String> rows = new ArrayList<>();
         rows.add((zh ? "观战 · " : "Following · ") + text(at(d,"viewerSession","playerName")));
-        rows.add((zh ? "生命 " : "HP ") + num(at(d,"vitals","health")) + "/" + num(at(d,"vitals","maxHealth"))
-                + (zh ? "  护甲 " : "  Armor ") + num(at(d,"vitals","armor")));
+        rows.add((zh ? "生命 " : "HP ") + gauge(at(d,"vitals","health")) + "/" + gauge(at(d,"vitals","maxHealth"))
+                + (zh ? "  护甲 " : "  Armor ") + gauge(at(d,"vitals","armor")));
         rows.add((zh ? "饥饿 " : "Food ") + num(at(d,"vitals","food")) + "/20"
                 + (zh ? "  原版经验 Lv." : "  Vanilla XP Lv.") + num(at(d,"vitals","experienceLevel")));
-        rows.add((zh ? "魔力 " : "MP ") + num(at(d,"mana","current")) + "/" + num(at(d,"mana","max")));
+        rows.add((zh ? "魔力 " : "MP ") + gauge(at(d,"mana","current")) + "/" + gauge(at(d,"mana","max")));
         JsonObject r = ObserverState.object(d.get("rpg"));
         if (r != null && ObserverState.bool(r.get("available"))) {
             JsonElement label = at(r,"className"); if (ObserverState.string(label) == null) label = at(r,"combat");

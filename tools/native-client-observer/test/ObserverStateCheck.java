@@ -3,6 +3,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.mcvisual.observer.ObserverState;
 import org.mcvisual.observer.ObserverView;
+import org.mcvisual.observer.TargetInventory;
 
 public final class ObserverStateCheck {
     private static int checks;
@@ -84,6 +85,42 @@ public final class ObserverStateCheck {
         check(ObserverView.overview(bad,false).stream().anyMatch(x->x.contains("Balance 9999")),"confirmed available balance displayed");
         bad.getAsJsonObject("rpg").addProperty("available",false);
         check(ObserverView.overview(bad,false).stream().noneMatch(x->x.contains("Balance 9999")),"unavailable RPG cannot leak its stale balance");
+        bad.getAsJsonObject("vitals").addProperty("health",15.42033576965332);
+        bad.getAsJsonObject("vitals").addProperty("armor",15.879999999999999);
+        check(ObserverView.overview(bad,false).stream().anyMatch(x->x.contains("HP 15.4/30  Armor 15.9")),"floating gauges have readable precision");
+        check(ObserverView.fields(bad).stream().anyMatch(x->x.equals("vitals.health = 15.42033576965332")),"field inspector keeps exact gauge precision");
+        check(ObserverView.gauge(JsonNull.INSTANCE).equals("?"),"unknown gauge stays unknown");
+        var bag=new TargetInventory<String>();s=state(A,8);s.accept(bytes(d),t);
+        var camera=s.current(t).camera();long epoch=s.epoch();
+        List<String> hotbar=new ArrayList<>(Collections.nCopies(9,null));hotbar.set(0,"original-bow");hotbar.set(1,"");
+        check(!bag.accept(camera,epoch,B,hotbar,false,t),"foreign UUID inventory rejected");
+        check(bag.view(s.current(t),t)==null,"foreign packet does not create target inventory");
+        check(bag.accept(camera,epoch,A,hotbar,false,t),"UUID-bearing partial hotbar accepted");
+        var projected=bag.view(s.current(t),t);
+        check(!projected.full()&&projected.slots().size()==9,"hotbar never claims complete inventory");
+        check(projected.slots().get(1).known()&&projected.slots().get(1).item().isEmpty(),"empty distinct from unknown");
+        check(!projected.slots().get(2).known(),"missing initial slot stays unknown");
+        List<String> delta=new ArrayList<>(Collections.nCopies(9,null));delta.set(2,"original-arrow-3");
+        bag.accept(camera,epoch,A,delta,false,t+1);
+        check(bag.view(s.current(t),t+1).slots().get(0).item().equals("original-bow"),"null delta preserves received item");
+        check(bag.view(s.current(t),t+1).slots().get(2).item().equals("original-arrow-3"),"changed delta applies");
+        check(!bag.accept(camera,epoch,A,Collections.nCopies(10,"invalid"),false,t+2),"bad length rejected");
+        List<String> full=new ArrayList<>(Collections.nCopies(36,""));full.set(0,"original-bow");full.set(9,"original-ore-17");
+        check(bag.accept(camera,epoch,A,full,true,t+3),"full native inventory accepted");
+        check(bag.view(s.current(t),t+4).full()&&bag.view(s.current(t),t+4).slots().get(9).item().equals("original-ore-17"),"native slot indexes retained");
+        var frame=s.current(t);
+        check(bag.view(frame,t+ObserverState.STALE_NS+4)==null,"old item receipt not presented as fresh");
+        bag.accept(camera,epoch,A,delta,false,t+ObserverState.STALE_NS+5);
+        check(!bag.view(frame,t+ObserverState.STALE_NS+5).full(),"hotbar delta cannot refresh old bag");
+        s.camera(new ObserverState.Camera(VIEWER,B,9,WORLD,true));s.accept(bytes(data(B,9)),t+10);
+        check(bag.view(s.current(t+10),t+10)==null,"new target cannot inherit inventory");
+        check(!bag.accept(s.current(t+10).camera(),s.epoch(),A,hotbar,false,t+11),"late foreign target rejected");
+        s.camera(camera);s.accept(bytes(d),t+12);
+        check(bag.view(s.current(t+12),t+12)==null,"returning UUID needs fresh inventory");
+        bag.accept(camera,s.epoch(),A,hotbar,false,t+13);
+        s.clear("disconnect");s.camera(camera);s.accept(bytes(d),t+14);
+        check(bag.view(s.current(t+14),t+14)==null,"connection epoch clears same UUID inventory");
+        check(!bag.accept(new ObserverState.Camera(VIEWER,VIEWER,8,WORLD,false),s.epoch(),VIEWER,hotbar,false,t+15),"observer inventory cannot become target inventory");
         System.out.println("Observer protocol and display: "+checks+" checks passed");
     }
 }
