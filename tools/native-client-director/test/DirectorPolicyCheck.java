@@ -5,7 +5,7 @@ public class DirectorPolicyCheck {
     static void check(boolean value,String label){checks++;if(!value)throw new AssertionError(label);}
     static DirectorPolicy policy(){return new DirectorPolicy(new DirectorPolicy.Config(true,"fixture:1","observer",Set.of("Alice","Bob"),10_000));}
     static DirectorPolicy.Frame f(boolean auth,boolean spectator,boolean near,String camera){
-        return new DirectorPolicy.Frame("fixture:1","observer",auth,spectator,"uuid-a",near,camera);}
+        return new DirectorPolicy.Frame("fixture:1","observer",auth,spectator,"uuid-a",near,camera,"observer");}
     static DirectorPolicy.Request r(String id,String target,String view,long t){
         return new DirectorPolicy.Request(id,"lease-one",target,view,t,t+5000);}
     public static void main(String[] args){
@@ -22,9 +22,9 @@ public class DirectorPolicyCheck {
         check(!p.offer(r("null-view","Alice",null,t),f(true,true,true,null),t),"missing view is rejected");
         check(!p.offer(r("expired","Alice","first_person",t),f(true,true,true,null),t+6000),"expiry is checked");
         check(!p.offer(r("future","Alice","first_person",t+2000),f(true,true,true,null),t),"future request refused");
-        check(!p.offer(r("profile","Alice","first_person",t),new DirectorPolicy.Frame("other:1","observer",true,true,"uuid-a",true,null),t),"server scope");
-        check(!p.offer(r("identity","Alice","first_person",t),new DirectorPolicy.Frame("fixture:1","other",true,true,"uuid-a",true,null),t),"observer scope");
-        check(!p.offer(r("offline","Alice","first_person",t),new DirectorPolicy.Frame("fixture:1","observer",true,true,null,false,null),t),"offline identity refused");
+        check(!p.offer(r("profile","Alice","first_person",t),new DirectorPolicy.Frame("other:1","observer",true,true,"uuid-a",true,null,"observer"),t),"server scope");
+        check(!p.offer(r("identity","Alice","first_person",t),new DirectorPolicy.Frame("fixture:1","other",true,true,"uuid-a",true,null,"observer"),t),"observer scope");
+        check(!p.offer(r("offline","Alice","first_person",t),new DirectorPolicy.Frame("fixture:1","observer",true,true,null,false,null,"observer"),t),"offline identity refused");
         check(p.offer(r("one","Alice","third_person_back",t),f(true,false,false,"observer"),t),"valid camera request admitted");
         check("minecraft:gamemode spectator".equals(p.step(f(true,false,false,"observer"),t).command()),"only own spectator mode");
         check(p.step(f(true,false,false,"observer"),t+100).command()==null,"mode command not replayed");
@@ -47,10 +47,26 @@ public class DirectorPolicyCheck {
         check(lost.step(f(false,true,false,null),t+100).command()==null,"auth loss sends nothing");
         check("stopped".equals(lost.phase()),"auth loss stops pending");
         var changed=policy();check(changed.offer(r("changed","Alice","first_person",t),f(true,true,false,null),t),"identity fixture");
-        check(changed.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,"new-uuid",false,null),t+100).command()==null,"changed UUID not followed");
+        check(changed.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,"new-uuid",false,null,"observer"),t+100).command()==null,"changed UUID not followed");
         check("target_identity_lost".equals(changed.reason()),"identity loss stays explicit");
         var disabled=new DirectorPolicy(new DirectorPolicy.Config(false,"fixture:1","observer",Set.of("Alice"),10_000));
         check(!disabled.offer(r("disabled","Alice","first_person",t),f(true,true,true,null),t),"disabled default has no effects");
+        var switching=policy();
+        check(switching.offer(r("same-world","Alice","first_person",t),f(true,true,false,"previous-player"),t),"same-world remote switch admitted");
+        check("minecraft:spectate".equals(switching.step(f(true,true,false,"previous-player"),t).command()),"detach old camera before moving observer");
+        check(switching.step(f(true,true,false,"previous-player"),t+100).command()==null,"sent detach is not confirmation and is not replayed");
+        check("minecraft:tp @s Alice".equals(switching.step(f(true,true,false,"observer"),t+200).command()),"native self camera confirms safe teleport stage");
+        check(switching.step(f(true,true,false,"observer"),t+300).command()==null,"teleport waits for actual target tracking");
+        check("minecraft:spectate Alice".equals(switching.step(f(true,true,true,"observer"),t+400).command()),"tracked new target may attach");
+        check("first_person".equals(switching.step(f(true,true,true,"uuid-a"),t+500).view()),"new camera UUID confirms completed switch");
+        check(switching.commands()==3,"remote switch sends detach teleport attach only");
+        var detachTimeout=policy();detachTimeout.offer(r("timeout-detach","Alice","first_person",t),f(true,true,false,"previous-player"),t);
+        detachTimeout.step(f(true,true,false,"previous-player"),t);
+        check(detachTimeout.step(f(true,true,false,"previous-player"),t+8001).command()==null
+                &&"unknown".equals(detachTimeout.phase())&&detachTimeout.commands()==1,"unconfirmed detach never advances or retries");
+        var unknownSelf=policy();unknownSelf.offer(r("unknown-self","Alice","first_person",t),f(true,true,false,"previous-player"),t);
+        unknownSelf.step(f(true,true,false,"previous-player"),t);
+        check(unknownSelf.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",false,"observer",null),t+100).command()==null,"missing native observer UUID cannot confirm detach");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

@@ -24,12 +24,15 @@ An enabled host writes a bounded request to config/mcvisual-director-request.jso
 
 IDs and leases are bounded identifiers. Request validity is at most ten seconds.
 Views are first_person, third_person_back and third_person_front. Commands are
-fixed internally: put only the observer in spectator mode; teleport only that
+fixed internally: put only the observer in spectator mode; detach its previous
+camera before a remote teleport and confirm its own native UUID; teleport only that
 observer to the whitelisted, currently online native player UUID; request native
 spectating. A target/camera UUID readback confirms attachment. Accepted requests,
 sent commands and timeouts never count as successful attachment.
 
-Each request sends at most three commands, with eight-second native state gates.
+Each request sends at most four commands, with eight-second native state gates.
+Same-world teleports retain a previous spectated entity; the explicit detach
+stage prevents its camera tick from pinning the observer to the old location.
 There is no silent retry. Identity/authentication loss stops it; a manual or native
 detach pauses the current control lease, so the selector cannot immediately steal
 the camera back. Resuming requires an explicitly renewed lease. No inventory,

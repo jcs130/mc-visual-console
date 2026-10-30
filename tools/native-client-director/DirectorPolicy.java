@@ -7,7 +7,7 @@ public final class DirectorPolicy {
     public record Config(boolean enabled,String server,String observer,Set<String> targets,long minSwitchMs) {}
     public record Request(String id,String lease,String target,String view,long issuedAt,long expiresAt) {}
     public record Frame(String server,String observer,boolean authenticated,boolean spectator,
-                        String targetUuid,boolean targetNear,String cameraUuid) {}
+                        String targetUuid,boolean targetNear,String cameraUuid,String observerUuid) {}
     public record Action(String command,String view) {
         static Action none(){return new Action(null,null);}
     }
@@ -37,7 +37,8 @@ public final class DirectorPolicy {
     private boolean allowed(String target){return target!=null&&target.matches("[A-Za-z0-9_]{1,16}")
         &&!target.equalsIgnoreCase(config.observer())&&config.targets()!=null
         &&config.targets().stream().anyMatch(n->n.equalsIgnoreCase(target));}
-    private boolean pending(){return Set.of("mode","position","attach","ready").contains(phase);}
+    private boolean pending(){return Set.of("mode","detach","position","attach","ready").contains(phase);}
+    private boolean cameraSelf(Frame f){return f.observerUuid()!=null&&f.observerUuid().equals(f.cameraUuid());}
     private boolean attached(Frame f){return f.spectator()&&expectedUuid!=null&&expectedUuid.equals(f.cameraUuid());}
     private boolean refuse(String why){reason=why;return false;}
     public boolean offer(Request r,Frame f,long now){
@@ -75,8 +76,19 @@ public final class DirectorPolicy {
             return Action.none();
         }
         if("mode".equals(phase)){phase="ready";phaseAt=now;}
+        if("detach".equals(phase)) {
+            // In the same world, a teleport does not detach the previous player.
+            // Its camera tick otherwise pins the observer back to the old subject.
+            if(!cameraSelf(f))return Action.none();
+            phase="ready";phaseAt=now;
+        }
         if(!f.targetNear()){
-            if("ready".equals(phase)){phase="position";phaseAt=now;commands++;return new Action("minecraft:tp @s "+request.target(),null);}
+            if("ready".equals(phase)){
+                if(!cameraSelf(f)){
+                    phase="detach";phaseAt=now;commands++;return new Action("minecraft:spectate",null);
+                }
+                phase="position";phaseAt=now;commands++;return new Action("minecraft:tp @s "+request.target(),null);
+            }
             return Action.none();
         }
         if("ready".equals(phase)||"position".equals(phase)){

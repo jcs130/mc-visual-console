@@ -64,7 +64,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
         var camera=client.method_1560();
         return new DirectorPolicy.Frame(server,observer,authenticated,
             client.field_1724!=null&&client.field_1724.method_7325(),uuid,near,
-            camera==null?null:camera.method_5667().toString());
+            camera==null?null:camera.method_5667().toString(),
+            client.field_1724==null?null:client.field_1724.method_5667().toString());
     }
     private void tick(class_310 client){
         if(policy==null)return;
