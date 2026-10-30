@@ -16,6 +16,8 @@ public class DroneFollowCheck {
         var p30=travel(30);var p120=travel(120);
         check(Math.hypot(p30.x()-p120.x(),p30.z()-p120.z())<0.25,"movement smoothing is independent of frame rate");
         check(p30.pitch()>0&&p30.pitch()<60,"camera looks down toward target");
+        var overhead=new DroneFollow().next("a",0,70,0,0,1_000_000_000L,3.5,9);
+        check(overhead.pitch()>60&&overhead.pitch()<90,"explicit overview looks down without a vertical singularity");
         check(Float.isFinite(p30.yaw())&&Double.isFinite(p30.x()),"finite camera pose");
         boolean rejected=false;try{d.next("x",Double.NaN,0,0,0,2_000_000_000L,7,3);}catch(IllegalArgumentException e){rejected=true;}
         check(rejected,"invalid observation does not invent position");

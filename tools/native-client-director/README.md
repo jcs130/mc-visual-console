@@ -26,8 +26,10 @@ An enabled host writes a bounded request to config/mcvisual-director-request.jso
     id, lease, target, view, issuedAt, expiresAt
 
 IDs and leases are bounded identifiers. Request validity is at most ten seconds.
-Views are first_person, third_person_back, third_person_front and drone_follow.
-The last view additionally requires droneEnabled in the matching observer profile.
+Views are first_person, third_person_back, third_person_front, drone_follow and
+drone_overview. Both drone views additionally require droneEnabled in the matching
+observer profile. Overview uses an elevated, roughly 69-degree downward composition;
+the same native collision clipping applies indoors.
 It follows the actual attached player with frame-rate independent position and
 travel-heading smoothing. Standing head turns do not spin the camera. Native
 vanilla near-plane collision rays shorten the boom; target UUID changes,
@@ -67,3 +69,14 @@ Build with the supplied build.mjs and an existing matching local Fabric cache.
 The build checks actual native method signatures, runs policy checks and compiles
 an independent consumer against the packaged production JAR. Artifacts and live
 configurations stay outside the repository.
+
+scene-policy.mjs is the shared display-selection policy. It can use consecutive,
+fresh, owned native position snapshots while a long task is still running. Chat
+coordinates, failed tasks, stale samples and cross-run teleports are not motion
+evidence. Standing still requires repeated fresh samples; silence is unknown.
+Stationary movement scenes lose priority, and old combat interest expires after
+12 seconds. Recent physical work takes priority over conversation. With the
+explicit cinematicFraming option, battle uses overview, travel uses follow and
+crafting uses first person. Confirmed idle scenes reframe once to overview; they
+do not invent a round-robin activity. Same-subject shot changes preserve dwell.
+The build copies this module and verifies a separate consumer against that copy.
