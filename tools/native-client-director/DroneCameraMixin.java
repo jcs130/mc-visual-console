@@ -1,4 +1,6 @@
-package org.mcvisual.director;
+package org.mcvisual.director.mixin;
+
+import org.mcvisual.director.NativeDirectorClient;
 
 import net.minecraft.*;
 import org.spongepowered.asm.mixin.Mixin;

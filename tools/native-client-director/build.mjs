@@ -34,6 +34,11 @@ run('javac',['@'+argfile]);
 const checks=run('java',['-cp',classes+path.delimiter+cp,'DirectorPolicyCheck']);process.stdout.write(checks);
 const droneChecks=run('java',['-cp',classes+path.delimiter+cp,'DroneFollowCheck']);process.stdout.write(droneChecks);
 const metadata=JSON.parse(fs.readFileSync(path.join(source,'fabric.mod.json'),'utf8'));
+const mixinConfig=JSON.parse(fs.readFileSync(path.join(source,'mcvisual-director.mixins.json'),'utf8'));
+for(const entry of metadata.entrypoints.client)if(entry.startsWith(mixinConfig.package+'.'))
+ throw Error('Entrypoint must not live under a Mixin-only package');
+for(const mixin of mixinConfig.client)if(!fs.existsSync(path.join(classes,...(mixinConfig.package+'.'+mixin).split('.'))+'.class'))
+ throw Error('Packaged Mixin class does not match its namespace');
 fs.copyFileSync(path.join(source,'fabric.mod.json'),path.join(classes,'fabric.mod.json'));
 fs.copyFileSync(path.join(source,'mcvisual-director.mixins.json'),path.join(classes,'mcvisual-director.mixins.json'));
 const jar=path.join(output,metadata.id+'-'+metadata.version+'.jar');
@@ -51,7 +56,7 @@ process.stdout.write(sceneChecks.split('\n').slice(-10).join('\n'));
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const report={schema:'native-director-build/v1',at:new Date().toISOString(),version:metadata.version,
  matchingMinecraft:'1.21.1',artifact:jar,sha256:sha(fs.readFileSync(jar)),sources:sources.map(file=>({file,sha256:sha(fs.readFileSync(path.join(source,file)))})),
- nativeApiChecked:true,policyChecks:checks.trim(),droneChecks:droneChecks.trim(),packagedConsumer:packagedChecks.trim(),packagedDroneConsumer:packagedDroneChecks.trim(),
+ nativeApiChecked:true,mixinNamespaceIsolated:true,policyChecks:checks.trim(),droneChecks:droneChecks.trim(),packagedConsumer:packagedChecks.trim(),packagedDroneConsumer:packagedDroneChecks.trim(),
  scenePolicySha256:sha(fs.readFileSync(path.join(output,'scene-policy.mjs'))),sceneChecks:sceneChecks.split('\n').slice(-10).join('\n').trim(),
  gameConnections:0,modelCalls:0,newPlayers:0,productionLoaded:false};
 fs.writeFileSync(path.join(output,'build-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));

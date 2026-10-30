@@ -126,7 +126,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(tick%20==0)diagnostics(client,true);
     }
     private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneReason=reason;DRONE.reset();}
-    static boolean droneMayRender(class_1297 target){
+    public static boolean droneMayRender(class_1297 target){
         if(!droneEnabled||!droneActive||target==null||!target.method_5667().toString().equals(droneUuid))return false;
         var client=class_310.method_1551();
         if(client.field_1724==null||!client.field_1724.method_7325()) {stopDrone("not_spectator");return false;}
@@ -134,11 +134,11 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(client.field_1755!=null){DRONE.reset();return false;}
         return true;
     }
-    static DroneFollow.Pose dronePose(class_1297 target,class_243 eye){
+    public static DroneFollow.Pose dronePose(class_1297 target,class_243 eye){
         return DRONE.next(droneUuid,eye.field_1352,eye.field_1351,eye.field_1350,target.method_36454(),
             System.nanoTime(),droneOverview?3.5:droneDistance,droneOverview?9:droneHeight);
     }
-    static void droneRendered(float requested,float clipped){
+    public static void droneRendered(float requested,float clipped){
         droneRequestedDistance=requested;droneClippedDistance=clipped;
         droneRenderedAt=System.currentTimeMillis();droneReason="rendered_with_native_collision";
     }
