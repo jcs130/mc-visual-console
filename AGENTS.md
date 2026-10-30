@@ -1,3 +1,7 @@
+## 2026-10-31 still-photo readiness repair
+
+The shared photo page now accepts the existing optional first/third/3dview mode and waits for actual YSM jobs rather than equating all received states with visible actors. Terrain, head textures, skin and failed/unavailable-model gates stay strict. Four focused page tests pass. The matched Qiandengji adapter additionally chooses a complete already-received footprint (default cap 4), surfaces stream failure and passed three real 1536px captures plus native ImageFrame/personal reward delivery on isolated Youer in 16–18 seconds. Production bridge activation is separately pending owner confirmation; no source publication implies live deployment. Private images, credentials and compiled bundles remain outside Git.
+
 ## 2026-10-27 custom YSM arm hierarchy candidate
 
 Optional unsupported first-person arms no longer prevent a valid independent third-person original model from loading. Explicit arm capability/reason replaces whole-body failure; corrupt assets still fail and no replacement rig is invented. Ground Molang query uses observed boolean only. After upstream projectile/shield/bind-pose integration, 58 related tests pass with original Cormy/NEKO/Kirito resources, thirteen other bundled-fixture checks conditional; eight acquired bundles have real WebGL idle/walk/run evidence, with per-action limitations retained. Not deployed to consumers. See renderer-src/docs/native-appearance-gallery.md. Third-party assets/private captures remain outside Git.

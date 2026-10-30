@@ -21,5 +21,13 @@ test('clean photography waits for actual meshed chunks and hides UI without dele
     context.itemHeadDiagnostics=()=>({pending:0,unavailable:1});assert.equal(context.__photoReady(),false);
     context.itemHeadDiagnostics=()=>({pending:0,unavailable:0});assert.equal(context.__photoReady(),true);
     context.cortiViewerContent={stats:()=>({ysm:{pending:1,failed:0,unavailable:0,rendered:0,states:1}})};assert.equal(context.__photoReady(),false);
+    context.cortiViewerContent={stats:()=>({ysm:{pending:0,failed:0,unavailable:0,rendered:0,states:1}})};
+    assert.equal(context.__photoReady(),true,'a deliberately hidden self is not a pending render job');
+    for (const changes of [{pending:1},{failed:1},{unavailable:1}]) {
+      context.cortiViewerContent={stats:()=>({ysm:{pending:0,failed:0,unavailable:0,rendered:0,states:1,...changes}})};
+      assert.equal(context.__photoReady(),false,'actual incomplete models still block capture');
+    }
+    for (const mode of ['first','third','3dview']) assert.match(await viewerPhotoPage(root,mode),new RegExp('data-view-mode="'+mode+'"'));
+    await assert.rejects(viewerPhotoPage(root,'forged'),/PHOTO_VIEW_MODE_INVALID/);
   } finally {await rm(root,{recursive:true,force:true});}
 });
