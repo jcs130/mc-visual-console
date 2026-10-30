@@ -26,6 +26,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private long tick,lastFileTime=-1,frames,frameWindowAt,lastRenderedAt;
     private Double hudFramesPerSecond;
     private String configProblem,requestProblem,connectionEpoch;
+    private Set<String> trackedTargets=Set.of();
     @Override public void onInitializeClient(){
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
@@ -42,7 +43,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         });
     }
     private void join(class_310 client){
-        droneEnabled=false;stopDrone("new_connection");
+        droneEnabled=false;stopDrone("new_connection");trackedTargets=Set.of();
         policy=null;authenticated=false;tick=0;lastFileTime=-1;frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
         hudFramesPerSecond=null;configProblem=null;requestProblem=null;diagnosticsFailed=false;
         try{
@@ -55,6 +56,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 ||client.method_1558()==null||!config.server().equals(client.method_1558().field_3761)
                 ||!config.observer().equalsIgnoreCase(client.method_1548().method_1676()))return;
             policy=new DirectorPolicy(config);
+            trackedTargets=Set.copyOf(config.targets());
             var extra=JsonParser.parseString(source).getAsJsonObject();
             droneEnabled=extra.has("droneEnabled")&&extra.get("droneEnabled").getAsBoolean();
             droneDistance=extra.has("droneDistance")?extra.get("droneDistance").getAsDouble():7;
@@ -151,6 +153,23 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("connectionEpoch",connectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());
             var f=frame(client,policy.target());data.put("targetUuid",f.targetUuid());data.put("cameraUuid",f.cameraUuid());
+            data.put("observerUuid",f.observerUuid());data.put("offer",policy.offerReceipt());
+            // Tab presence is not position. Unloaded/other-world players have no invented coordinates.
+            List<Map<String,Object>> targets=new ArrayList<>();long sampledAt=System.currentTimeMillis();
+            for(String name:trackedTargets){
+                Map<String,Object> target=new LinkedHashMap<>();target.put("name",name);target.put("sampledAt",sampledAt);
+                var entry=client.method_1562()==null?null:client.method_1562().method_2874(name);
+                String uuid=entry==null?null:entry.method_2966().getId().toString();
+                target.put("uuid",uuid);target.put("loaded",false);
+                if(uuid!=null&&client.field_1687!=null)for(var player:client.field_1687.method_18456()){
+                    if(!uuid.equals(player.method_5667().toString()))continue;
+                    target.put("loaded",true);
+                    target.put("position",List.of(player.method_23317(),player.method_23318(),player.method_23321()));
+                    target.put("scope",connectionEpoch+":"+client.field_1687.method_27983().toString());break;
+                }
+                targets.add(target);
+            }
+            data.put("targets",targets);
             data.put("spectator",f.spectator());data.put("commandsSent",policy.commands());
             data.put("perspective",client.field_1690.method_31044().name());
             data.put("drone",Map.of("enabled",droneEnabled,"active",droneActive,
@@ -161,7 +180,9 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("hudFramesPerSecond",System.currentTimeMillis()-lastRenderedAt<3000?hudFramesPerSecond:null);
             data.put("configProblem",configProblem);data.put("requestProblem",requestProblem);
             Path out=FabricLoader.getInstance().getGameDir().resolve("diagnostics/mcvisual-native-director.json");
-            Files.createDirectories(out.getParent());Files.writeString(out,new Gson().toJson(data));
+            Files.createDirectories(out.getParent());Path temporary=out.resolveSibling(out.getFileName()+".tmp");
+            Files.writeString(temporary,new Gson().toJson(data));
+            Files.move(temporary,out,StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
         }catch(Exception failure){
             if(!diagnosticsFailed)System.out.println("[MCVisualDirector] Diagnostics unavailable: "+failure.getClass().getSimpleName());
             diagnosticsFailed=true;

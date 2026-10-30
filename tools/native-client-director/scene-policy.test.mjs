@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyEvent,SceneSelector,belongsToActor} from './scene-policy.mjs';
+import {classifyEvent,SceneSelector,belongsToActor,eventActor} from './scene-policy.mjs';
 const now=100_000,combat=t=>({ts:new Date(t).toISOString(),type:'minecraft.combat',text:'native combat clear'});
 const position=(at,x,run='one')=>({ts:new Date(at).toISOString(),run,type:'minecraft.world.snapshot',
   text:`[Minecraft] 我在fixture，脚下是石头，站在格 (${x}, 70, 0)，世界 fixture:one。我站着没动。`});
@@ -94,4 +94,64 @@ test('recent physical activity beats repeated conversation after minimum dwell',
   assert.equal(p.choose('Alice',now-20_000,now),null);
   assert.equal(p.choose('Alice',now-40_000,now).name,'Bob');
   assert.equal(p.choose('Bob',now-40_000,now),null);
+});
+
+const speech=(name,at)=>({ts:new Date(at).toISOString(),type:'minecraft.chat',text:`[MC] ${name}: ready`});
+const sample=(p,name,at,x=0,scope='observer:world')=>p.observePosition(name,{at,position:[x,70,0],scope},at);
+test('continuous native samples detect idle and yield to the latest public speaker',()=>{
+  const p=new SceneSelector(['Alice','Bob','Carol'],{cinematicFraming:true});
+  sample(p,'Alice',now-13000);sample(p,'Alice',now);
+  p.observe('Bob',speech('Bob',now-1000),now);p.observe('Carol',speech('Carol',now-500),now);
+  const c=p.choose('Alice',now-14000,now,'drone_follow');
+  assert.equal(c.name,'Carol');assert.equal(c.reason,'stationary_current_recent_speaker');
+  assert.equal(c.view,'drone_follow');assert.equal(p.inspect(now)[0].motion,'stationary');
+  p.observe('Alice',speech('Alice',now),now);
+  assert.equal(p.choose('Alice',now-14000,now,'drone_follow'),null,'current latest speaker keeps the camera');
+});
+test('missing motion remains unknown; fresh speech can yield only after normal dwell',()=>{
+  const p=new SceneSelector(['Alice','Bob']);p.observe('Bob',speech('Bob',now),now);
+  assert.equal(p.inspect(now)[0].motion,'unknown');
+  assert.equal(p.choose('Alice',now-20000,now),null);
+  assert.equal(p.choose('Alice',now-40000,now).reason,'recent_speaker_no_fresh_action');
+  assert.equal(p.choose('Alice',now-40000,now+46000),null,'stale speech is not a fresh scene');
+  assert.equal(p.choose('Alice',now+1,now+40000),null,'a past speech is not replayed after a later cut');
+});
+test('real combat and interaction are retained over a newer speaker',()=>{
+  const p=new SceneSelector(['Alice','Bob']);sample(p,'Alice',now-14000);sample(p,'Alice',now);
+  p.observe('Alice',combat(now-1000),now);p.observe('Bob',speech('Bob',now),now);
+  assert.equal(p.choose('Alice',now-40000,now),null);
+  assert.equal(p.choose(null,0,now).name,'Alice');
+});
+test('availability filters disconnected speakers and unknown tab data is explicit',()=>{
+  const p=new SceneSelector(['Alice','Bob']);p.observe('Bob',speech('Bob',now),now);p.setAvailable(['Alice']);
+  assert.equal(p.choose(null,0,now),null);assert.equal(p.inspect(now)[1].available,false);
+  p.setAvailable(null);assert.equal(p.choose(null,0,now).name,'Bob');
+});
+test('slow travel accumulates; head jitter, teleport and world changes do not invent movement',()=>{
+  const p=new SceneSelector(['Alice']);sample(p,'Alice',now-3000,0);sample(p,'Alice',now-2000,0.3);
+  sample(p,'Alice',now-1000,0.6);sample(p,'Alice',now,0.9);
+  assert.equal(p.choose(null,0,now).kind,'movement');
+  const q=new SceneSelector(['Alice']);sample(q,'Alice',now-10000,0);sample(q,'Alice',now,0.05);
+  assert.equal(q.inspect(now)[0].motion,'stationary');assert.equal(q.choose(null,0,now),null);
+  const r=new SceneSelector(['Alice']);sample(r,'Alice',now-1000,0);sample(r,'Alice',now,100);
+  sample(r,'Alice',now+1000,102,'observer:other');assert.equal(r.choose(null,0,now+1000),null);
+});
+test('owned body snapshots cannot overwrite fresh continuous observer positions',()=>{
+  const p=new SceneSelector(['Alice']);sample(p,'Alice',now-12000);sample(p,'Alice',now-1000);
+  p.observe('Alice',position(now,200,'body-run'),now);sample(p,'Alice',now+1000);
+  assert.equal(p.inspect(now+1000)[0].motion,'stationary');assert.equal(p.choose(null,0,now+1000),null);
+});
+test('trusted public speech from a peer feed is attributed to the real allowed speaker only',()=>{
+  assert.equal(eventActor('Alice',speech('Bob',now),['Alice','Bob']),'Bob');
+  assert.equal(eventActor('Alice',speech('Eve',now),['Alice','Bob']),null);
+  assert.equal(eventActor('Alice',{type:'minecraft.chat',text:'[私聊] Bob: ready'},['Alice','Bob']),null);
+  assert.equal(eventActor('Alice',{type:'minecraft.chat',text:'quoted [MC] Bob: ready'},['Alice','Bob']),null);
+  assert.equal(eventActor('Alice',position(now,1),['Alice','Bob']),'Alice');
+});
+test('a late completed movement receipt cannot overrule continuous confirmed idle',()=>{
+  const p=new SceneSelector(['Alice','Bob']);sample(p,'Alice',now-13000);sample(p,'Alice',now);
+  p.observe('Alice',{ts:new Date(now).toISOString(),type:'minecraft.task',execution:{terminal:true,evidence:{steps:[
+    {outcome:'ok',observedEffect:{skill:'goto',changed:{position:true}}}]}}},now);
+  p.observe('Bob',speech('Bob',now),now);
+  assert.equal(p.choose('Alice',now-14000,now).name,'Bob');
 });

@@ -59,6 +59,18 @@ second. This is a typed local companion contract, not a network control server.
 Rig diagnostics separately report activation, last rendered time and requested/
 clipped boom distance. A packaged build passing checks is not live rendering proof.
 
+Version 0.1.5 also exposes a matching `offer` receipt (id, lease, accepted, reason)
+separately from the active attachment. An offline target's rejected offer cannot
+silently inherit the old camera's receipt. Paused, unknown and stopped states keep
+their original cause until an explicit new offer; a later disconnection cannot
+turn a manual pause into an automatic recovery opportunity.
+The once-per-second `targets` list contains only the explicitly configured names,
+native tab UUIDs and actual loaded entity positions/scopes. Tab presence does not
+prove position; unloaded or other-world entities have no invented coordinates.
+`observerUuid` lets consumers distinguish a known target loss returning to the
+observer from an unrecognized/manual camera change. Diagnostics are replaced
+atomically and contain no chat text or additional world subscription.
+
 Use the separate native-client-observer module for actual subject data and the
 matched appearance helper for the camera player's YSM corner avatar. This module
 does not invent missing plugin fields, force a model, or establish voice routing.
@@ -80,3 +92,19 @@ explicit cinematicFraming option, battle uses overview, travel uses follow and
 crafting uses first person. Confirmed idle scenes reframe once to overview; they
 do not invent a round-robin activity. Same-subject shot changes preserve dwell.
 The build copies this module and verifies a separate consumer against that copy.
+
+The explicit `observePosition` contract also accepts continuous native observer
+samples; fresh observer samples take precedence over sparse body snapshots.
+Slow travel accumulates against a position anchor, whereas head turns, jitter,
+teleports and scope changes do not invent travel. Eight seconds of repeated
+stationary samples establishes idle; missing data stays unknown.
+When no real physical action is recent, a stationary subject can yield to the
+latest allowed public speaker after twelve seconds. Unknown motion uses the normal
+minimum dwell. Speech expires after 45 seconds; old speech predating a cut is not
+replayed as a new event. `eventActor` attributes public speech heard by any trusted
+native feed to its real allowed sender, while all state and action receipts stay
+bound to their source owner. Private/server/quoted chat is not public speech.
+Optional `setAvailable` filters known offline players; `inspect` returns bounded
+timestamps and observed motion status without retaining chat or game prompts.
+Consumers must pace both subject changes and same-subject reframes against the
+native gate, preserve manual/unknown outcomes, and confirm actual camera UUIDs.

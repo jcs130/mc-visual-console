@@ -21,7 +21,7 @@ const contract={'net.minecraft.class_634':['method_2874(java.lang.String)','meth
  'net.minecraft.class_638':['method_18456()'],'net.minecraft.class_315':['method_31043(net.minecraft.class_5498)'],
  'net.minecraft.class_5498':['field_26664','field_26665','field_26666'],
  'net.minecraft.class_4184':['method_19321(net.minecraft.class_1922, net.minecraft.class_1297, boolean, boolean, float)','method_19318(float)','method_19324(float, float, float)','field_18719'],
- 'net.minecraft.class_1297':['method_5836(float)','method_36454()']};
+ 'net.minecraft.class_1297':['method_5836(float)','method_36454()','method_23317()','method_23318()','method_23321()']};
 for(const [type,names]of Object.entries(contract)){
  const shape=run('javap',['-p','-classpath',cp,type]);
  for(const name of names)if(!shape.includes(name))throw Error('Native camera API missing: '+type+' '+name);

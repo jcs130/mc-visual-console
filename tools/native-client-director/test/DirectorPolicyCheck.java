@@ -70,6 +70,22 @@ public class DirectorPolicyCheck {
         var unknownSelf=policy();unknownSelf.offer(r("unknown-self","Alice","first_person",t),f(true,true,false,"previous-player"),t);
         unknownSelf.step(f(true,true,false,"previous-player"),t);
         check(unknownSelf.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",false,"observer",null),t+100).command()==null,"missing native observer UUID cannot confirm detach");
+        var receipts=policy();receipts.offer(r("attached-one","Alice","first_person",t),f(true,true,true,"uuid-a"),t);
+        receipts.step(f(true,true,true,"uuid-a"),t);
+        check(!receipts.offer(r("offline-two","Bob","first_person",t+20000),new DirectorPolicy.Frame("fixture:1","observer",true,true,null,false,"uuid-a","observer"),t+20000),"offline offer refused");
+        receipts.step(f(true,true,true,"uuid-a"),t+20001);
+        check("attached-one".equals(receipts.requestId())&&"attached".equals(receipts.phase()),"refused offer does not replace attached request");
+        check("offline-two".equals(receipts.offerReceipt().id())&&!receipts.offerReceipt().accepted()
+            &&"target_offline".equals(receipts.offerReceipt().reason()),"matching refused offer survives following tick");
+        var manual=policy();manual.offer(r("manual","Alice","first_person",t),f(true,true,true,"uuid-a"),t);manual.step(f(true,true,true,"uuid-a"),t);
+        manual.step(f(true,true,true,"observer"),t+100);
+        manual.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,null,false,"observer","observer"),t+200);
+        check("paused".equals(manual.phase()),"later target disconnect cannot turn a manual pause into recoverable identity loss");
+        var missing=policy();missing.offer(r("missing","Alice","first_person",t),f(true,true,true,"uuid-a"),t);missing.step(f(true,true,true,"uuid-a"),t);
+        missing.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,null,false,"observer","observer"),t+20000);
+        check("stopped".equals(missing.phase())&&"target_identity_lost".equals(missing.reason()),"native loss is a known stopped state");
+        check(missing.offer(r("fresh","Bob","drone_follow",t+21000),f(true,true,true,"observer"),t+21000),"new request may select available actor after known loss");
+        check("minecraft:spectate Bob".equals(missing.step(f(true,true,true,"observer"),t+21001).command()),"new request never replays old attachment");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }
