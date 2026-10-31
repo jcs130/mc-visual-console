@@ -1,6 +1,7 @@
 import {createYsmAssetReceiver} from './viewer-ysm-assets.mjs';
 import {createViewerYsmMotion} from './viewer-ysm-motion.mjs';
-/** Observe authoritative Freesia metadata on the existing action connection. */
+import {PAPER_YSM_PROFILES,matchesPaperYsmProfile} from '../src/modern-viewer/ysm-profile.js';
+/** Observe reviewed appearance metadata on the existing action connection. */
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const APPEARANCE_CHANNEL='mcagent:appearance';
 export const PAPER_YSM_JAR_SHA256='ec51cfae84d219a45fac5098a31bfe980bcb7c2d8b413e8fffbd05a411a85680';
@@ -10,16 +11,16 @@ export const supportsViewerAppearanceVersion=version=>version==='1.20.6'||versio
 export function parseAppearancePacket(packet) {
   if(packet?.channel!==APPEARANCE_CHANNEL || !(packet.data instanceof Uint8Array) || packet.data.length>2048)return null;
   let value;try {value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(packet.data));}catch{return null;}
-  if(!value || value.schemaVersion!==1 || value.source!=='freesia_worker' || !UUID.test(value.epoch??'') || !UUID.test(value.playerUuid??''))return null;
+  if(!value || value.schemaVersion!==1 || !Object.hasOwn(PAPER_YSM_PROFILES,value.source??'') || !UUID.test(value.epoch??'') || !UUID.test(value.playerUuid??''))return null;
   const base={schemaVersion:1,source:value.source,epoch:value.epoch,playerUuid:value.playerUuid.toLowerCase(),type:value.type};
   if(value.type==='remove')return base;
-  if(value.type!=='state' || typeof value.available!=='boolean' || value.ysmVersion!=='2.4.1' || value.protocolVersion!=='2.4.0' || value.jarSha256!==PAPER_YSM_JAR_SHA256)return null;
+  if(value.type!=='state' || typeof value.available!=='boolean' || !matchesPaperYsmProfile(value))return null;
   Object.assign(base,{available:value.available,ysmVersion:value.ysmVersion,protocolVersion:value.protocolVersion,jarSha256:value.jarSha256});
   // Older servers omit diagnostics; a connected Worker alone does not confirm a model.
   if(typeof value.workerConnected==='boolean')base.workerConnected=value.workerConnected;
   if(['confirmed','unsupported','awaiting_model_state','worker_offline','awaiting_initial_poll'].includes(value.stateStatus))base.stateStatus=value.stateStatus;
   if(typeof value.message==='string' && value.message.length<=160 && !/[\u0000-\u001f\u007f]/.test(value.message))base.message=value.message;
-  if(!value.available)return {...base,reason:value.reason==='YSM_WORKER_STATE_UNSUPPORTED'?'YSM_WORKER_STATE_UNSUPPORTED':'YSM_WORKER_STATE_UNAVAILABLE'};
+  if(!value.available)return {...base,reason:value.source==='ysm_native_backend'?(value.reason==='YSM_MODEL_DISABLED'?'YSM_MODEL_DISABLED':'YSM_NATIVE_STATE_UNAVAILABLE'):(value.reason==='YSM_WORKER_STATE_UNSUPPORTED'?'YSM_WORKER_STATE_UNSUPPORTED':'YSM_WORKER_STATE_UNAVAILABLE')};
   if(!Number.isSafeInteger(value.entityId) || value.entityId<0 || value.entityId>2147483647 || typeof value.mandatory!=='boolean'
     || !/^[\p{L}\p{N}_./-]{1,96}$/u.test(value.modelId??'') || value.modelId.includes('..') || value.modelId.startsWith('/') || !/^[\p{L}\p{N}_.-]{1,96}$/u.test(value.texture??'')
     || typeof value.animation!=='string' || value.animation.length>96)return null;

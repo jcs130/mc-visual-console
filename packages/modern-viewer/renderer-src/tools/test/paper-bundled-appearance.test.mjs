@@ -44,9 +44,16 @@ test('same-origin config loads byte-verified originals without a server assignme
 test('wrong hashes, absent sources and mismatched versions never become selectable models',async()=>{
   const s=source();s.bytes.set('original/texture.png',Buffer.from('tampered'));
   await assert.rejects(loadPaperBundledAppearances(endpoint,{fetcher:s.fetcher}),/HASH_MISMATCH/);
-  const v=source();v.config.catalog.appearances[0].ysmVersion='2.6.5';
+  const v=source();v.config.catalog.appearances[0].ysmVersion='2.6.6';
   await assert.rejects(loadPaperBundledAppearances(endpoint,{fetcher:v.fetcher}),/VERSION_UNSUPPORTED/);
   assert.equal(await loadPaperBundledAppearances(endpoint,{fetcher:async()=>({status:404})}),null);
+});
+
+test('a reviewed public 2.6.5 bundle remains selectable with unchanged original bytes',async()=>{
+ const s=source();s.config.catalog.appearances[0].ysmVersion='2.6.5';
+ const local=await loadPaperBundledAppearances(endpoint,{fetcher:s.fetcher});
+ assert.equal(local.bundles[0].bundle.ysmVersion,'2.6.5');
+ for(const [path,bytes]of s.bytes)assert.deepEqual(Buffer.from(local.bundles[0].bundle.files[path].base64,'base64'),bytes);
 });
 test('large uploaded geometry uses the explicit Paper budget while native defaults remain bounded',async()=>{
   const s=source(),bytes=Buffer.alloc(2226032,32);s.bytes.set('original/model.json',bytes);

@@ -7,6 +7,7 @@ import { NativeHeldItems } from './native-held-items.js'
 import { bundledYsmFirstPersonArmMatrix } from './native-bundled-ysm-first-person.js'
 import { nativeViewerUrl } from './native-url.js'
 import { createNativeBedrockModel } from './native-entity-model-bedrock.js'
+import { supportedYsmBundleVersion } from '../modern-viewer/ysm-profile.js'
 
 const SHA=/^[a-f0-9]{64}$/
 const bytes64=value=>Uint8Array.from(atob(value),c=>c.charCodeAt(0))
@@ -27,7 +28,7 @@ export async function readPaperAppearance(row,{fetcher=fetch,resolveUrl=nativeVi
   if(size!==row.bytes||await hash(bytes)!==row.bundleSha256)throw Error('PAPER_APPEARANCE_HASH_MISMATCH')
   const bundle=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes))
   if(row.kind==='ysm'){
-    if(bundle.schemaVersion!==1||bundle.format!=='ysm-bedrock-original'||bundle.ysmVersion!=='2.4.1'||bundle.modelId!==row.modelId||bundle.assetSha256!==row.assetSha256||Object.keys(bundle.files??{}).length>32||!bundle.files?.['ysm.json']||!bundle.files?.[bundle.model]||!bundle.files?.[bundle.animation]||!bundle.files?.[bundle.textures?.[row.texture]])throw Error('PAPER_APPEARANCE_MODEL_INVALID')
+    if(bundle.schemaVersion!==1||bundle.format!=='ysm-bedrock-original'||!supportedYsmBundleVersion(bundle.ysmVersion)||bundle.modelId!==row.modelId||bundle.assetSha256!==row.assetSha256||Object.keys(bundle.files??{}).length>32||!bundle.files?.['ysm.json']||!bundle.files?.[bundle.model]||!bundle.files?.[bundle.animation]||!bundle.files?.[bundle.textures?.[row.texture]])throw Error('PAPER_APPEARANCE_MODEL_INVALID')
     let total=0
     for(const [path,file]of Object.entries(bundle.files)){
       if(path.startsWith('/')||/[:\\]/.test(path)||path.split('/').includes('..')||typeof file.base64!=='string'||file.base64.length>12*1024*1024)throw Error('PAPER_APPEARANCE_FILE_INVALID')
@@ -67,7 +68,7 @@ function unavailableFirstPerson(reason){
   return {firstPersonRoot:root,apply:state,frame:state,firstPersonState:state,applyHandAnimation:state,setFirstPersonViewport:state,
     dispose(){root.removeFromParent();root.clear()}}
 }
-// Original server-selected 2.4.1 assets, independent of the strict native 2.6.5
+// Original server-selected assets, independent of the strict built-in native
 // integration. The outer world anchor cannot be reset by a local sleep pose.
 export async function createNativePaperAppearanceActor(reader,{uuid,paperAppearance:row,readBundle=readPaperAppearance,loadTexture=loadOriginalTexture,heldItemOptions={}}={}){
   const bundle=await readBundle(row),inner=await createPaperYsmActor(bundle,row.texture,{loadTexture})

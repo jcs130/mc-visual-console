@@ -9,9 +9,16 @@ function fixture(){const file=Buffer.from('{}');return {schemaVersion:1,ysmVersi
 test('hash-addressed original bundles reject modified files, paths, gzip bombs and version aliases',()=>{
  const bundle=fixture(),zip=gzipSync(JSON.stringify(bundle));assert.equal(decodeYsmBundle(zip,sha(zip)).modelId,'uploaded_actor');
  assert.throws(()=>decodeYsmBundle(zip,'0'.repeat(64)),/HASH/);
- for(const change of [b=>b.files['main.json'].sha256='0'.repeat(64),b=>b.files['../secret']=b.files['main.json'],b=>b.ysmVersion='2.6.5']){
+ for(const change of [b=>b.files['main.json'].sha256='0'.repeat(64),b=>b.files['../secret']=b.files['main.json'],b=>b.ysmVersion='2.6.6',b=>b.ysmVersion='2.6.5-fabric']){
   const bad=fixture();change(bad);const bytes=gzipSync(JSON.stringify(bad));assert.throws(()=>decodeYsmBundle(bytes,sha(bytes)));}
  const bomb=gzipSync(Buffer.alloc(8*1024*1024+1));assert.throws(()=>decodeYsmBundle(bomb,sha(bomb)));
+});
+
+test('reviewed native 2.6.5 public sources keep exact identity and source hashes',()=>{
+ const bundle={...fixture(),ysmVersion:'2.6.5',modelId:'玩家/白猫.zip'};
+ const bytes=gzipSync(JSON.stringify(bundle)),result=decodeYsmBundle(bytes,sha(bytes));
+ assert.equal(result.ysmVersion,'2.6.5');assert.equal(result.modelId,bundle.modelId);
+ assert.deepEqual(result.files,bundle.files);
 });
 test('existing game connection requests only opted-in assets; chunks bind the request, hash and model',()=>{
  const zip=gzipSync(JSON.stringify(fixture())),hash=sha(zip),writes=[],received=[];
