@@ -11,3 +11,16 @@ const recipeMotion:string=library.recipes[0].motion;const runtimeShotIds:string[
 void recipeMotion;void runtimeShotIds;
 // @ts-expect-error A host must provide a numeric bounded dwell, not model text.
 director.take({actionId:'bad',lease,shot:'isometric',holdMs:'ten seconds'});
+
+import {CameraChoiceArbiter,buildCameraDecision,createCameraJudgePanel,type CameraDecisionObservation,type CameraDecisionPort} from 'mc-visual-console/broadcast-decisions';
+import {BoundedCameraMotion,toJavaCameraAngles} from 'mc-visual-console/broadcast-motion';
+const facts:CameraDecisionObservation={scope:'world',generation:'epochA',at:Date.now(),sceneKey:'travel',program:{phase:'idle'},subjects:[],shots:[]};
+const packet=buildCameraDecision(facts);const arbiter=new CameraChoiceArbiter();const advice=arbiter.decide(packet);
+const port:CameraDecisionPort={request:async()=>({answers:{}})};const panel=createCameraJudgePanel(port);
+void panel.judge(packet,{roles:['action','space']});void advice;
+// @ts-expect-error Roles are finite; arbitrary prompt names are not accepted.
+void panel.judge(packet,{roles:['unboundedAgent']});
+const motion=new BoundedCameraMotion({scope:'world',kind:'orbit_arc',position:[0,3,6],focus:[0,1,0],probe:()=>({known:true,clear:true,visible:true})});
+const pose=motion.advance(500).pose;const nativeAngles:{yaw:number;pitch:number}=toJavaCameraAngles(pose);void nativeAngles;
+// @ts-expect-error A pose is an explicit vector, not generated code.
+new BoundedCameraMotion({scope:'world',kind:'orbit_arc',position:'run this script',focus:[0,1,0],probe:()=>({known:true,clear:true,visible:true})});
