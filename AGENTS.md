@@ -81,4 +81,3 @@ Cloud fanout now projects explicit scene scope once per event while sharing the 
 ## 2026-10-31 vanilla maid projection candidate
 
 Explicit server-projected Allay/Vex types now use original 1.21.1 geometry/textures and 48 original-client CPU animation references. Visible Chinese role labels use received metadata; actual equipment Maps and snapshot arrays both work. Shared 1,409 passes/39 conditional skips and real Youer → observer → browser desktop/390px scene checks passed. Original lightmap/dance/item layers remain explicitly partial, not full TLM/Java parity. Viewer optional decoder declarations only occur on a real PLAY connection, never the observation facade. Source publication is not consumer installation; see renderer-src/docs/vanilla-maid-view.md.
-
