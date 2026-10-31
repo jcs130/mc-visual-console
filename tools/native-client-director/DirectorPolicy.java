@@ -11,7 +11,14 @@ public final class DirectorPolicy {
         }
     }
     public record Frame(String server,String observer,boolean authenticated,boolean spectator,
-                        String targetUuid,boolean targetNear,String cameraUuid,String observerUuid) {}
+                        String targetUuid,boolean targetNear,String cameraUuid,String observerUuid,long nativeWorldEpoch) {
+        public Frame(String server,String observer,boolean authenticated,boolean spectator,
+                     String targetUuid,boolean targetNear,String cameraUuid,String observerUuid){
+            this(server,observer,authenticated,spectator,targetUuid,targetNear,cameraUuid,observerUuid,0);
+        }
+    }
+    public record DetachObservation(long at,long nativeWorldEpoch,boolean spectator,
+                                    String targetUuid,String cameraUuid,String observerUuid) {}
     public record OfferReceipt(String id,String lease,String target,long at,boolean accepted,String reason) {}
     public record Action(String command,String view) {
         static Action none(){return new Action(null,null);}
@@ -21,7 +28,10 @@ public final class DirectorPolicy {
     private Request request;
     private OfferReceipt offerReceipt;
     private String expectedUuid,phase="idle",reason="disabled",heldLease;
-    private long phaseAt,lastSwitchAt=Long.MIN_VALUE/2;
+    private long phaseAt,lastSwitchAt=Long.MIN_VALUE/2,nativeWorldEpoch,worldChangedAt=-1;
+    private String attachedObserverUuid;
+    private DetachObservation detachObservation;
+    private static final long WORLD_SETTLE_MS=3000;
     private int commands;
     public DirectorPolicy(Config config){this.config=config;}
     public String target(){return request==null?null:request.target();}
@@ -30,6 +40,7 @@ public final class DirectorPolicy {
     public String reason(){return reason;}
     public int commands(){return commands;}
     public OfferReceipt offerReceipt(){return offerReceipt;}
+    public DetachObservation detachObservation(){return detachObservation;}
     /** Only the actual native system-message callback supplies this input. */
     public static boolean authReceipt(boolean current,String message){
         if(message==null)return current;
@@ -44,9 +55,24 @@ public final class DirectorPolicy {
     private boolean allowed(String target){return target!=null&&target.matches("[A-Za-z0-9_]{1,16}")
         &&!target.equalsIgnoreCase(config.observer())&&config.targets()!=null
         &&config.targets().stream().anyMatch(n->n.equalsIgnoreCase(target));}
-    private boolean pending(){return Set.of("mode","detach","position","attach","ready").contains(phase);}
+    private boolean pending(){return Set.of("mode","detach","position","attach","ready","world_transition").contains(phase);}
     private boolean cameraSelf(Frame f){return f.observerUuid()!=null&&f.observerUuid().equals(f.cameraUuid());}
     private boolean attached(Frame f){return f.spectator()&&expectedUuid!=null&&expectedUuid.equals(f.cameraUuid());}
+    private void noteWorld(Frame f,long now){
+        if(nativeWorldEpoch>0&&f.nativeWorldEpoch()>nativeWorldEpoch)worldChangedAt=now;
+        if(f.nativeWorldEpoch()>nativeWorldEpoch)nativeWorldEpoch=f.nativeWorldEpoch();
+    }
+    private boolean sameObserver(Frame f){return attachedObserverUuid!=null&&attachedObserverUuid.equals(f.observerUuid());}
+    private boolean mayWaitForWorld(Frame f,long now){
+        return f.nativeWorldEpoch()>0&&f.nativeWorldEpoch()==nativeWorldEpoch
+            &&worldChangedAt>=0&&now-worldChangedAt>=0&&now-worldChangedAt<=WORLD_SETTLE_MS
+            &&sameObserver(f)&&f.spectator()&&(f.cameraUuid()==null||cameraSelf(f)||attached(f))
+            &&(f.targetUuid()==null||Objects.equals(expectedUuid,f.targetUuid()));
+    }
+    private void observeDetach(Frame f,long now){
+        detachObservation=new DetachObservation(now,f.nativeWorldEpoch(),f.spectator(),f.targetUuid(),f.cameraUuid(),f.observerUuid());
+    }
+    private void pause(Frame f,long now,String why){heldLease=request.lease();phase="paused";reason=why;observeDetach(f,now);}
     private boolean refuse(String why){reason=why;return false;}
     public boolean offer(Request r,Frame f,long now){
         return offer(r,f,now,null,false);
@@ -81,6 +107,7 @@ public final class DirectorPolicy {
             &&now-lastSwitchAt<Math.max(10_000,config.minSwitchMs()))return refuse("switch_cooldown");
         seen.add(r.id());while(seen.size()>32)seen.remove(seen.iterator().next());
         request=r;expectedUuid=f.targetUuid();commands=0;phase="ready";reason="accepted";phaseAt=now;
+        nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;detachObservation=null;
         return true;
     }
     public Action step(Frame f,long now){
@@ -88,14 +115,46 @@ public final class DirectorPolicy {
         // Preserve manual/unknown terminal state even if the old target later disconnects.
         if(Set.of("paused","stopped","unknown").contains(phase))return Action.none();
         if(!scoped(f)||!f.authenticated()){phase="stopped";reason="scope_or_auth_lost";return Action.none();}
+        if("world_transition".equals(phase)){
+            // Passive readback only: never send a teleport/spectate or restore a view here.
+            // The original deadline cannot be extended by another world replacement.
+            if(f.targetUuid()!=null&&!Objects.equals(expectedUuid,f.targetUuid())){
+                phase="stopped";reason="target_identity_lost";return Action.none();
+            }
+            if(!sameObserver(f)||!f.spectator()||f.cameraUuid()!=null&&!cameraSelf(f)&&!attached(f)){
+                pause(f,now,"manual_or_native_detach");return Action.none();
+            }
+            if(f.nativeWorldEpoch()!=nativeWorldEpoch){
+                pause(f,now,"native_world_transition_unconfirmed");return Action.none();
+            }
+            if(now-worldChangedAt>WORLD_SETTLE_MS||now<worldChangedAt){
+                pause(f,now,"native_world_transition_unconfirmed");return Action.none();
+            }
+            if(attached(f)&&Objects.equals(expectedUuid,f.targetUuid())){
+                nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;phase="attached";reason="native_world_attachment_restored";
+            }
+            return Action.none();
+        }
+        if("attached".equals(phase)){
+            noteWorld(f,now);
+            if(!attached(f)||f.targetUuid()==null){
+                if(mayWaitForWorld(f,now)){
+                    phase="world_transition";reason="native_world_replacement";observeDetach(f,now);return Action.none();
+                }
+            }
+        }
         if(!Objects.equals(expectedUuid,f.targetUuid())){phase="stopped";reason="target_identity_lost";return Action.none();}
         if("attached".equals(phase)){
-            if(!attached(f)){heldLease=request.lease();phase="paused";reason="manual_or_native_detach";}
+            if(!attached(f))pause(f,now,"manual_or_native_detach");
             return Action.none();
         }
         if(!pending())return Action.none();
         if(now-phaseAt>8000){phase="unknown";reason="native_attachment_timeout";return Action.none();}
-        if(attached(f)){phase="attached";reason="native_camera_confirmed";lastSwitchAt=now;return new Action(null,request.view());}
+        if(attached(f)){
+            phase="attached";reason="native_camera_confirmed";lastSwitchAt=now;
+            nativeWorldEpoch=f.nativeWorldEpoch();attachedObserverUuid=f.observerUuid();worldChangedAt=-1;
+            return new Action(null,request.view());
+        }
         if(!f.spectator()){
             if("ready".equals(phase)){phase="mode";phaseAt=now;commands++;return new Action("minecraft:gamemode spectator",null);}
             return Action.none();

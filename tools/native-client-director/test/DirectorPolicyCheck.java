@@ -8,6 +8,11 @@ public class DirectorPolicyCheck {
         return new DirectorPolicy.Frame("fixture:1","observer",auth,spectator,"uuid-a",near,camera,"observer");}
     static DirectorPolicy.Request r(String id,String target,String view,long t){
         return new DirectorPolicy.Request(id,"lease-one",target,view,t,t+5000);}
+    static DirectorPolicy.Frame w(long epoch,String camera){
+        return new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",true,camera,"observer",epoch);}
+    static DirectorPolicy worldPolicy(String id,long t){
+        var p=policy();check(p.offer(r(id,"Alice","drone_follow",t),w(1,"uuid-a"),t),"world fixture admitted");
+        p.step(w(1,"uuid-a"),t);return p;}
     public static void main(String[] args){
         var p=policy();long t=100_000;
         var drone=policy();check(drone.offer(r("drone","Alice","drone_follow",t),f(true,true,true,"uuid-a"),t),"explicit drone request admitted");
@@ -96,6 +101,63 @@ public class DirectorPolicyCheck {
         check(!unbound.offer(r("legacy","Alice","first_person",t),f(true,true,true,"observer"),t,"connection-a",true),"explicit strict profile rejects unbound requests");
         check("connection_epoch_required".equals(unbound.offerReceipt().reason()),"missing epoch is explicit");
         check(policy().offer(r("compatible","Alice","first_person",t),f(true,true,true,"observer"),t),"legacy profiles retain their explicit compatibility path");
+        var world=worldPolicy("world",t);
+        var wait=world.step(w(2,"observer"),t+100);
+        check("world_transition".equals(world.phase())&&wait.command()==null&&wait.view()==null,"native world replacement waits without control effects");
+        check(world.commands()==0&&world.detachObservation().nativeWorldEpoch()==2,"world wait retains exact native evidence and no commands");
+        check(!world.offer(r("world-replace","Bob","first_person",t+100),w(2,"observer"),t+100)
+            &&"previous_request_pending".equals(world.offerReceipt().reason()),"selector cannot replace world settlement with another request");
+        var restored=world.step(w(2,"uuid-a"),t+350);
+        check("attached".equals(world.phase())&&"native_world_attachment_restored".equals(world.reason()),"original target native camera restoration confirms world settlement");
+        check(restored.command()==null&&restored.view()==null&&"world".equals(world.requestId()),"passive restoration retains original request without forcing a perspective");
+        world.step(w(2,"observer"),t+400);
+        check("paused".equals(world.phase()),"a subsequent same-world manual detach cannot reuse a consumed settlement window");
+        var delayed=worldPolicy("late-camera-gap",t);delayed.step(w(2,"uuid-a"),t+100);
+        delayed.step(w(2,"observer"),t+200);
+        check("world_transition".equals(delayed.phase()),"world replacement may precede its camera gap by a native tick");
+        var timeout=worldPolicy("world-timeout",t);timeout.step(w(2,"observer"),t+100);
+        var expired=timeout.step(w(2,"uuid-a"),t+3101);
+        check("paused".equals(timeout.phase())&&"native_world_transition_unconfirmed".equals(timeout.reason())
+            &&expired.command()==null&&expired.view()==null,"late attachment cannot erase a world timeout");
+        check(!timeout.offer(r("timeout-steal","Alice","first_person",t+3200),w(2,"uuid-a"),t+3200),"world timeout holds original lease");
+        var repeated=worldPolicy("repeated-world",t);repeated.step(w(2,"observer"),t+100);
+        repeated.step(w(3,"observer"),t+200);
+        check("paused".equals(repeated.phase()),"further world replacements do not extend the bounded wait");
+        var oldPause=worldPolicy("old-manual",t);oldPause.step(w(1,"observer"),t+100);
+        var originalDetach=oldPause.detachObservation();oldPause.step(w(2,"uuid-a"),t+200);
+        check("paused".equals(oldPause.phase())&&oldPause.detachObservation()==originalDetach,"world replacement cannot erase a pre-existing manual pause or its evidence");
+        var sameWorld=worldPolicy("same-world-manual",t);sameWorld.step(w(1,"observer"),t+100);
+        check("paused".equals(sameWorld.phase()),"same-world detach still pauses immediately");
+        var untagged=worldPolicy("untagged",t);untagged.step(w(0,"observer"),t+100);
+        check("paused".equals(untagged.phase()),"unknown world epochs do not invent a transition");
+        var regression=worldPolicy("regression",t);regression.step(w(2,"uuid-a"),t+100);
+        regression.step(w(1,"observer"),t+200);
+        check("paused".equals(regression.phase()),"regressing world epochs cannot enable passive recovery");
+        var identity=worldPolicy("world-new-identity",t);identity.step(w(2,"observer"),t+100);
+        identity.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,"new-uuid",true,"new-uuid","observer",2),t+200);
+        check("stopped".equals(identity.phase())&&"target_identity_lost".equals(identity.reason()),"world wait cannot accept another target identity");
+        var foreign=worldPolicy("world-other-camera",t);foreign.step(w(2,"observer"),t+100);
+        foreign.step(w(2,"another-camera"),t+200);
+        check("paused".equals(foreign.phase()),"another camera during settlement is protected as a detach");
+        var observerChanged=worldPolicy("world-observer",t);observerChanged.step(w(2,"observer"),t+100);
+        observerChanged.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",true,"uuid-a","other-observer",2),t+200);
+        check("paused".equals(observerChanged.phase()),"observer identity must stay exact");
+        var noAuth=worldPolicy("world-auth",t);noAuth.step(w(2,"observer"),t+100);
+        noAuth.step(new DirectorPolicy.Frame("fixture:1","observer",false,true,"uuid-a",true,"uuid-a","observer",2),t+200);
+        check("stopped".equals(noAuth.phase())&&noAuth.commands()==0,"world transition cannot recover authentication loss");
+        var noSpectator=worldPolicy("world-mode",t);noSpectator.step(w(2,"observer"),t+100);
+        noSpectator.step(new DirectorPolicy.Frame("fixture:1","observer",true,false,"uuid-a",true,"uuid-a","observer",2),t+200);
+        check("paused".equals(noSpectator.phase()),"world settlement cannot force spectator mode back on");
+        var tabGap=worldPolicy("tab-gap",t);
+        tabGap.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,null,false,null,"observer",2),t+100);
+        check("world_transition".equals(tabGap.phase()),"bounded native world settlement can wait for a missing tab/camera sample");
+        tabGap.step(w(2,"uuid-a"),t+200);
+        check("attached".equals(tabGap.phase())&&tabGap.commands()==0,"tab recovery needs exact native target and camera readback");
+        var tabOnly=worldPolicy("tab-only-gap",t);
+        tabOnly.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,null,false,"uuid-a","observer",2),t+100);
+        check("world_transition".equals(tabOnly.phase()),"a native world tab gap may retain the original exact camera");
+        tabOnly.step(w(2,"uuid-a"),t+200);
+        check("attached".equals(tabOnly.phase())&&tabOnly.commands()==0,"tab-only restoration remains passive");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

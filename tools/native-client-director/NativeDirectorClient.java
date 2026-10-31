@@ -15,7 +15,7 @@ import net.minecraft.*;
 /** Explicit opt-in companion for one existing authenticated spectator client. */
 public final class NativeDirectorClient implements ClientModInitializer {
     private static final DroneFollow DRONE=new DroneFollow();
-    private static boolean droneEnabled,droneActive;
+    private static boolean droneEnabled,droneActive,worldTransitionActive;
     private static String droneUuid,droneReason="disabled";
     private static double droneDistance=7,droneHeight=3;
     private static boolean droneOverview;
@@ -26,6 +26,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private long tick,lastFileTime=-1,frames,frameWindowAt,lastRenderedAt;
     private Double hudFramesPerSecond;
     private String configProblem,requestProblem,connectionEpoch;
+    private Object observedWorld;
+    private long nativeWorldEpoch;
     private Set<String> trackedTargets=Set.of();
     @Override public void onInitializeClient(){
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
@@ -46,6 +48,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");trackedTargets=Set.of();
         policy=null;authenticated=false;tick=0;lastFileTime=-1;frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
         hudFramesPerSecond=null;configProblem=null;requestProblem=null;diagnosticsFailed=false;
+        observedWorld=client.field_1687;nativeWorldEpoch=observedWorld==null?0:1;worldTransitionActive=false;
         try{
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-native-director.json");
             if(!Files.isRegularFile(file)||Files.size(file)>16_384)return;
@@ -85,11 +88,16 @@ public final class NativeDirectorClient implements ClientModInitializer {
         return new DirectorPolicy.Frame(server,observer,authenticated,
             client.field_1724!=null&&client.field_1724.method_7325(),uuid,near,
             camera==null?null:camera.method_5667().toString(),
-            client.field_1724==null?null:client.field_1724.method_5667().toString());
+            client.field_1724==null?null:client.field_1724.method_5667().toString(),nativeWorldEpoch);
     }
     private void tick(class_310 client){
         if(policy==null)return;
         long now=System.currentTimeMillis();
+        // A world object replacement is native evidence; coordinates/distance are not.
+        if(client.field_1687!=null&&client.field_1687!=observedWorld){
+            observedWorld=client.field_1687;nativeWorldEpoch++;
+        }
+        if(droneActive&&client.field_1690.method_31044()!=class_5498.field_26665)stopDrone("manual_perspective");
         if(client.field_1755!=null){if(++tick%20==0)diagnostics(client,true);return;}
         if(++tick%10==0){
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-director-request.json");
@@ -108,7 +116,9 @@ public final class NativeDirectorClient implements ClientModInitializer {
             }catch(Exception failure){requestProblem=failure.getClass().getSimpleName();}
         }
         var action=policy.step(frame(client,policy.target()),now);
-        if(!"attached".equals(policy.phase()))stopDrone("native_"+policy.phase());
+        worldTransitionActive="world_transition".equals(policy.phase());
+        if(worldTransitionActive){DRONE.reset();droneReason="native_world_replacement";}
+        else if(!"attached".equals(policy.phase()))stopDrone("native_"+policy.phase());
         if(action.command()!=null&&client.method_1562()!=null){
             client.method_1562().method_45730(action.command());
             System.out.println("[MCVisualDirector] Observer-only camera request: "+policy.requestId());
@@ -130,6 +140,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     }
     private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneReason=reason;DRONE.reset();}
     public static boolean droneMayRender(class_1297 target){
+        if(worldTransitionActive){DRONE.reset();return false;}
         if(!droneEnabled||!droneActive||target==null||!target.method_5667().toString().equals(droneUuid))return false;
         var client=class_310.method_1551();
         if(client.field_1724==null||!client.field_1724.method_7325()) {stopDrone("not_spectator");return false;}
@@ -155,6 +166,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());
             var f=frame(client,policy.target());data.put("targetUuid",f.targetUuid());data.put("cameraUuid",f.cameraUuid());
             data.put("observerUuid",f.observerUuid());data.put("offer",policy.offerReceipt());
+            data.put("nativeWorldEpoch",nativeWorldEpoch);data.put("detachObservation",policy.detachObservation());
             // Tab presence is not position. Unloaded/other-world players have no invented coordinates.
             List<Map<String,Object>> targets=new ArrayList<>();long sampledAt=System.currentTimeMillis();
             for(String name:trackedTargets){

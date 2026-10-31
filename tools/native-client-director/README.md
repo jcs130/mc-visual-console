@@ -116,3 +116,18 @@ refusal before any command is sent. The default retains legacy compatibility.
 allows opted-in consumers to resume after a fresh authenticated connection with
 the same observer UUID and known camera identity. Preserve prior unresolved
 effects as unknown and issue a new lease/request; manual pauses stay stopped.
+
+Version 0.1.7 distinguishes a native client-world replacement from a same-world
+detach. `Frame.nativeWorldEpoch` is incremented only when the actual non-null
+client world object is replaced, independently of coordinates and chat. An already
+attached request may enter `world_transition` for at most three seconds. It sends
+no commands, offers no new lease and changes no perspective while waiting. Only
+the original native target/camera UUID and observer UUID can confirm restoration.
+The drone pauses interpolation during the gap; an original unchanged view may
+resume after native restoration. The selector must wait through this phase.
+Missing/changed identity, an unconfirmed deadline or a different camera stops or
+pauses with a bounded `detachObservation`. Further world changes cannot extend
+the wait. Legacy frames without a world epoch retain immediate detach protection.
+An existing paused/unknown lease cannot be recovered by this mechanism; its
+original cause and manual controls remain intact. This is distinct from network
+reconnection and must not be reported as successful disconnect recovery.
