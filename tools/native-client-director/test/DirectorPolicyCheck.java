@@ -195,6 +195,17 @@ public class DirectorPolicyCheck {
         check(!DirectorPolicy.hideObserverBody(true,true,false),"followed actors remain visible");
         check(!DirectorPolicy.hideObserverBody(true,false,true),"ordinary survival self remains visible");
         check(!DirectorPolicy.hideObserverBody(false,true,true),"disabled profile changes no body rendering");
+        var newLife=lifePolicy("new-world-life",t);newLife.step(life(2,"observer","uuid-a",42,false,false),t+100);
+        newLife.step(life(2,"uuid-a","uuid-a",42,false,false),t+200);
+        newLife.step(life(2,"observer","uuid-a",42,true,false),t+300);
+        check("target_died".equals(newLife.reason()),"newly attached healthy entity after world settlement has its own death binding");
+        var unobservedLife=lifePolicy("unobserved-world-life",t);unobservedLife.step(w(2,"observer"),t+100);
+        unobservedLife.step(w(2,"uuid-a"),t+200);
+        unobservedLife.step(life(2,"observer","uuid-a",31,true,false),t+300);
+        check(!"target_died".equals(unobservedLife.reason()),"world settlement without a healthy entity observation cannot reuse an old entity ID");
+        var replacedLife=lifePolicy("same-world-new-entity",t);replacedLife.step(life(1,"uuid-a","uuid-a",42,false,false),t+100);
+        replacedLife.step(life(1,"observer","uuid-a",42,true,false),t+200);
+        check("target_died".equals(replacedLife.reason()),"actual attached entity replacement updates the exact healthy lifecycle binding");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

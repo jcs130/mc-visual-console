@@ -37,6 +37,7 @@ public final class DirectorPolicy {
     private long phaseAt,lastSwitchAt=Long.MIN_VALUE/2,nativeWorldEpoch,worldChangedAt=-1;
     private String attachedObserverUuid;
     private Integer attachedEntityId;
+    private long attachedEntityWorldEpoch;
     private DetachObservation detachObservation;
     private static final long WORLD_SETTLE_MS=3000;
     private int commands;
@@ -87,8 +88,16 @@ public final class DirectorPolicy {
         var life=f.cameraLife();
         return sameObserver(f)&&f.spectator()&&cameraSelf(f)&&life!=null&&life.dead()
             &&attachedEntityId!=null&&attachedEntityId==life.entityId()
-            &&Objects.equals(expectedUuid,life.uuid())&&nativeWorldEpoch>0
+            &&Objects.equals(expectedUuid,life.uuid())&&nativeWorldEpoch>0&&attachedEntityWorldEpoch==nativeWorldEpoch
             &&nativeWorldEpoch==f.nativeWorldEpoch()&&life.nativeWorldEpoch()==nativeWorldEpoch;
+    }
+    private void rememberAttachedLife(Frame f){
+        var life=f.cameraLife();
+        if(attached(f)&&sameObserver(f)&&life!=null&&!life.dead()&&life.entityId()>=0
+                &&Objects.equals(expectedUuid,life.uuid())&&f.nativeWorldEpoch()>0
+                &&life.nativeWorldEpoch()==f.nativeWorldEpoch()){
+            attachedEntityId=life.entityId();attachedEntityWorldEpoch=f.nativeWorldEpoch();
+        }
     }
     private boolean refuse(String why){reason=why;return false;}
     public boolean offer(Request r,Frame f,long now){
@@ -124,7 +133,7 @@ public final class DirectorPolicy {
             &&now-lastSwitchAt<Math.max(10_000,config.minSwitchMs()))return refuse("switch_cooldown");
         seen.add(r.id());while(seen.size()>32)seen.remove(seen.iterator().next());
         request=r;expectedUuid=f.targetUuid();commands=0;phase="ready";reason="accepted";phaseAt=now;
-        nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;detachObservation=null;
+        nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;attachedEntityWorldEpoch=0;detachObservation=null;
         return true;
     }
     public Action step(Frame f,long now){
@@ -158,6 +167,7 @@ public final class DirectorPolicy {
             }
             if(attached(f)&&Objects.equals(expectedUuid,f.targetUuid())){
                 nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;phase="attached";reason="native_world_attachment_restored";
+                rememberAttachedLife(f);
             }
             return Action.none();
         }
@@ -172,6 +182,7 @@ public final class DirectorPolicy {
         if(!Objects.equals(expectedUuid,f.targetUuid())){phase="stopped";reason="target_identity_lost";return Action.none();}
         if("attached".equals(phase)){
             if(!attached(f))pause(f,now,"manual_or_native_detach");
+            else rememberAttachedLife(f);
             return Action.none();
         }
         if(!pending())return Action.none();
@@ -179,9 +190,7 @@ public final class DirectorPolicy {
         if(attached(f)){
             phase="attached";reason="native_camera_confirmed";lastSwitchAt=now;
             nativeWorldEpoch=f.nativeWorldEpoch();attachedObserverUuid=f.observerUuid();worldChangedAt=-1;
-            var life=f.cameraLife();
-            attachedEntityId=life!=null&&Objects.equals(expectedUuid,life.uuid())&&!life.dead()
-                &&life.nativeWorldEpoch()==nativeWorldEpoch?life.entityId():null;
+            rememberAttachedLife(f);
             return new Action(null,request.view());
         }
         if(!f.spectator()){
