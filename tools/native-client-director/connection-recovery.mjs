@@ -1,5 +1,18 @@
 // Camera-only recovery after a positively observed new native connection.
 // Prior effects remain unknown; callers must create a new lease/request.
+export function directorTargetLoss({native,expectedTarget,expectedUuid}={}) {
+  if(native?.phase!=='stopped'||native.connected!==true||native.authenticated!==true||native.spectator!==true
+      ||!native.observerUuid||native.cameraUuid!==native.observerUuid
+      ||native.target!==expectedTarget||!expectedUuid||native.manualDetachRequested===true)return null;
+  if(native.reason==='target_identity_lost')return{reason:native.reason,cooldownMs:15000};
+  const life=native.cameraLife;
+  if(native.reason==='target_died'&&life?.dead===true&&life.uuid===expectedUuid
+      &&Number.isSafeInteger(life.entityId)&&life.entityId>=0
+      &&Number.isSafeInteger(native.nativeWorldEpoch)&&native.nativeWorldEpoch>0
+      &&life.nativeWorldEpoch===native.nativeWorldEpoch)
+    return{reason:native.reason,cooldownMs:15000};
+  return null;
+}
 export function directorConnectionRecovery({enabled,previousEpoch,expectedObserverUuid,targets=[],native}={}) {
   const epoch=native?.connectionEpoch;
   if(!previousEpoch||epoch===previousEpoch)return{action:'unchanged'};

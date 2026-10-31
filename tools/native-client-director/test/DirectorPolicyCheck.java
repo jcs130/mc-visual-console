@@ -13,6 +13,14 @@ public class DirectorPolicyCheck {
     static DirectorPolicy worldPolicy(String id,long t){
         var p=policy();check(p.offer(r(id,"Alice","drone_follow",t),w(1,"uuid-a"),t),"world fixture admitted");
         p.step(w(1,"uuid-a"),t);return p;}
+    static DirectorPolicy.Frame life(long epoch,String camera,String uuid,int id,boolean dead,boolean manual){
+        return new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",true,camera,"observer",epoch,
+            new DirectorPolicy.CameraLife(uuid,id,epoch,dead),manual);
+    }
+    static DirectorPolicy lifePolicy(String id,long t){
+        var p=policy();check(p.offer(r(id,"Alice","drone_follow",t),life(1,"uuid-a","uuid-a",31,false,false),t),"life fixture admitted");
+        p.step(life(1,"uuid-a","uuid-a",31,false,false),t);return p;
+    }
     public static void main(String[] args){
         var p=policy();long t=100_000;
         var drone=policy();check(drone.offer(r("drone","Alice","drone_follow",t),f(true,true,true,"uuid-a"),t),"explicit drone request admitted");
@@ -158,6 +166,35 @@ public class DirectorPolicyCheck {
         check("world_transition".equals(tabOnly.phase()),"a native world tab gap may retain the original exact camera");
         tabOnly.step(w(2,"uuid-a"),t+200);
         check("attached".equals(tabOnly.phase())&&tabOnly.commands()==0,"tab-only restoration remains passive");
+        var death=lifePolicy("actual-death",t);
+        var deathAction=death.step(life(1,"observer","uuid-a",31,true,false),t+100);
+        check("stopped".equals(death.phase())&&"target_died".equals(death.reason()),"exact attached native entity death is a known loss");
+        check(deathAction.command()==null&&deathAction.view()==null&&death.commands()==0,"death classification does not replay commands or change view");
+        check(death.offer(r("after-death","Bob","drone_follow",t+20000),life(1,"observer","uuid-b",32,false,false),t+20000),"fresh request can select another target after native death");
+        var during=lifePolicy("manual-and-death",t);
+        during.step(life(1,"observer","uuid-a",31,true,true),t+100);
+        check("paused".equals(during.phase())&&"manual_detach_input".equals(during.reason()),"native manual input wins simultaneous death");
+        check(!during.offer(r("manual-death-steal","Alice","first_person",t+1000),life(1,"observer","uuid-a",31,true,false),t+1000),"manual input holds the original lease");
+        for(var fixture:List.of(
+                life(1,"observer","uuid-a",31,false,false),
+                life(1,"observer","uuid-a",99,true,false),
+                life(1,"observer","wrong-uuid",31,true,false),
+                life(0,"observer","uuid-a",31,true,false),
+                life(1,"foreign-camera","uuid-a",31,true,false))){
+            var guard=lifePolicy("guard-"+checks,t);guard.step(fixture,t+100);
+            check(!"target_died".equals(guard.reason())&&guard.commands()==0,"healthy/unbound/unknown-camera observation never becomes recoverable death");
+        }
+        var deathWorld=lifePolicy("death-world",t);deathWorld.step(life(2,"observer","uuid-a",31,true,false),t+100);
+        check(!"target_died".equals(deathWorld.reason()),"different native world cannot reuse an old corpse");
+        var corpse=lifePolicy("corpse-camera",t);corpse.step(life(1,"uuid-a","uuid-a",31,true,false),t+100);
+        check("attached".equals(corpse.phase()),"a still-attached death animation is not a detached camera");
+        var manualFirst=lifePolicy("manual-first",t);manualFirst.step(life(1,"observer","uuid-a",31,false,true),t+100);
+        manualFirst.step(life(1,"observer","uuid-a",31,true,false),t+200);
+        check("paused".equals(manualFirst.phase())&&"manual_detach_input".equals(manualFirst.reason()),"later death cannot erase manual intent");
+        check(DirectorPolicy.hideObserverBody(true,true,true),"explicit spectator self body is hidden");
+        check(!DirectorPolicy.hideObserverBody(true,true,false),"followed actors remain visible");
+        check(!DirectorPolicy.hideObserverBody(true,false,true),"ordinary survival self remains visible");
+        check(!DirectorPolicy.hideObserverBody(false,true,true),"disabled profile changes no body rendering");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

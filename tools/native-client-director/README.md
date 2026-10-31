@@ -128,6 +128,27 @@ resume after native restoration. The selector must wait through this phase.
 Missing/changed identity, an unconfirmed deadline or a different camera stops or
 pauses with a bounded `detachObservation`. Further world changes cannot extend
 the wait. Legacy frames without a world epoch retain immediate detach protection.
+
+Version 0.1.8 records the actual previously attached camera entity and its native
+world epoch. A same-world return to the observer is a known `target_died` loss
+only when that exact entity ID/UUID has native death or KILLED removal evidence.
+Missing entities, tab entries, chat, world replacement and another camera do not
+prove death. The configured detach key is observed through native keyboard/mouse
+callbacks without recording unrelated keys or text; manual input takes priority
+even in the same frame as death. Existing paused/unknown outcomes remain terminal.
+`cameraLife` and `manualDetachRequested` make this distinction available to an
+independent consumer. `directorTargetLoss` validates that readback and recommends
+a 15-second subject cooldown; retain the known loss while the native switch gate
+or a fresh request is pending. Select a different active subject with a fresh
+request and confirm its native UUID. Do not replay the old request.
+
+For an explicitly enabled spectator profile, the local observer body is masked
+at the original entity renderer. Followed actors and survival players remain
+unchanged. This is a local display policy; it creates, removes or substitutes no
+server entity. The separate observer HUD 0.1.3 also hides the observer's own RPG
+sidebar during an attachment gap and displays an explicit no-target notice.
+Native method signatures, isolated state checks and packaged consumers do not
+replace live render/manual-input/natural-death acceptance after installation.
 An existing paused/unknown lease cannot be recovered by this mechanism; its
 original cause and manual controls remain intact. This is distinct from network
 reconnection and must not be reported as successful disconnect recovery.

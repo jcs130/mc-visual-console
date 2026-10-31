@@ -21,12 +21,19 @@ const contract={'net.minecraft.class_634':['method_2874(java.lang.String)','meth
  'net.minecraft.class_638':['method_18456()'],'net.minecraft.class_315':['method_31043(net.minecraft.class_5498)'],
  'net.minecraft.class_5498':['field_26664','field_26665','field_26666'],
  'net.minecraft.class_4184':['method_19321(net.minecraft.class_1922, net.minecraft.class_1297, boolean, boolean, float)','method_19318(float)','method_19324(float, float, float)','field_18719'],
- 'net.minecraft.class_1297':['method_5836(float)','method_36454()','method_23317()','method_23318()','method_23321()']};
+ 'net.minecraft.class_1297':['method_5836(float)','method_36454()','method_23317()','method_23318()','method_23321()','method_35049()','method_5805()'],
+ 'net.minecraft.class_1297$class_5529':['field_26998'],
+ 'net.minecraft.class_1309':['method_29504()'],
+ 'net.minecraft.class_309':['method_1466(long, int, int, int, int)'],
+ 'net.minecraft.class_312':['method_1601(long, int, int, int)'],
+ 'net.minecraft.class_304':['method_1417(int, int)','method_1433(int)'],
+ 'net.minecraft.class_898':['method_3954(E, double, double, double, float, float, net.minecraft.class_4587, net.minecraft.class_4597, int)',
+   'descriptor: (Lnet/minecraft/class_1297;DDDFFLnet/minecraft/class_4587;Lnet/minecraft/class_4597;I)V']};
 for(const [type,names]of Object.entries(contract)){
- const shape=run('javap',['-p','-classpath',cp,type]);
+ const shape=run('javap',['-p','-s','-classpath',cp,type]);
  for(const name of names)if(!shape.includes(name))throw Error('Native camera API missing: '+type+' '+name);
 }
-const sources=['DirectorPolicy.java','DroneFollow.java','DroneCameraMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/DroneFollowCheck.java'];
+const sources=['DirectorPolicy.java','DroneFollow.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/DroneFollowCheck.java'];
 const argfile=path.join(scratch,'javac.args');
 const quote=x=>'"'+x.replaceAll('\\','/').replaceAll('"','\\"')+'"';
 fs.writeFileSync(argfile,['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources.map(p=>path.join(source,p))].map(quote).join('\n'));

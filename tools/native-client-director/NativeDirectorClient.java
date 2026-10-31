@@ -14,6 +14,7 @@ import net.minecraft.*;
 
 /** Explicit opt-in companion for one existing authenticated spectator client. */
 public final class NativeDirectorClient implements ClientModInitializer {
+    private static NativeDirectorClient instance;
     private static final DroneFollow DRONE=new DroneFollow();
     private static boolean droneEnabled,droneActive,worldTransitionActive;
     private static String droneUuid,droneReason="disabled";
@@ -27,9 +28,14 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private Double hudFramesPerSecond;
     private String configProblem,requestProblem,connectionEpoch;
     private Object observedWorld;
+    private class_1297 attachedCameraEntity;
+    private Object attachedCameraWorld;
+    private long attachedCameraEpoch;
+    private boolean manualDetachRequested;
     private long nativeWorldEpoch;
     private Set<String> trackedTargets=Set.of();
     @Override public void onInitializeClient(){
+        instance=this;
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
             authenticated=false;stopDrone("disconnected");diagnostics(client,false);policy=null;});
@@ -45,6 +51,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         });
     }
     private void join(class_310 client){
+        attachedCameraEntity=null;attachedCameraWorld=null;attachedCameraEpoch=0;manualDetachRequested=false;
         droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");trackedTargets=Set.of();
         policy=null;authenticated=false;tick=0;lastFileTime=-1;frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
         hudFramesPerSecond=null;configProblem=null;requestProblem=null;diagnosticsFailed=false;
@@ -85,10 +92,43 @@ public final class NativeDirectorClient implements ClientModInitializer {
                     if(uuid.equals(player.method_5667().toString()))near=client.field_1724.method_5858(player)<=64;
         }
         var camera=client.method_1560();
+        if(camera!=null&&uuid!=null&&uuid.equals(camera.method_5667().toString())
+                &&camera!=client.field_1724){
+            attachedCameraEntity=camera;attachedCameraWorld=client.field_1687;attachedCameraEpoch=nativeWorldEpoch;
+        }
+        DirectorPolicy.CameraLife life=null;
+        if(attachedCameraEntity!=null&&attachedCameraWorld==client.field_1687&&attachedCameraEpoch==nativeWorldEpoch
+                &&Objects.equals(uuid,attachedCameraEntity.method_5667().toString())){
+            boolean dead=attachedCameraEntity instanceof class_1309 living&&living.method_29504();
+            var removal=attachedCameraEntity.method_35049();
+            dead|=removal==class_1297.class_5529.field_26998;
+            life=new DirectorPolicy.CameraLife(attachedCameraEntity.method_5667().toString(),
+                attachedCameraEntity.method_5628(),attachedCameraEpoch,dead);
+        }
         return new DirectorPolicy.Frame(server,observer,authenticated,
             client.field_1724!=null&&client.field_1724.method_7325(),uuid,near,
             camera==null?null:camera.method_5667().toString(),
-            client.field_1724==null?null:client.field_1724.method_5667().toString(),nativeWorldEpoch);
+            client.field_1724==null?null:client.field_1724.method_5667().toString(),nativeWorldEpoch,life,manualDetachRequested);
+    }
+    private static boolean inputScope(long window){
+        var self=instance;var client=class_310.method_1551();
+        return self!=null&&self.policy!=null&&self.authenticated&&client.field_1755==null
+            &&client.field_1724!=null&&client.field_1724.method_7325()
+            &&client.method_22683().method_4490()==window
+            &&Set.of("attached","world_transition").contains(self.policy.phase());
+    }
+    public static void keyboardDetach(long window,int key,int scan){
+        if(inputScope(window)&&class_310.method_1551().field_1690.field_1832.method_1417(key,scan))
+            instance.manualDetachRequested=true;
+    }
+    public static void mouseDetach(long window,int button){
+        if(inputScope(window)&&class_310.method_1551().field_1690.field_1832.method_1433(button))
+            instance.manualDetachRequested=true;
+    }
+    public static boolean hideObserverBody(class_1297 entity){
+        var client=class_310.method_1551();
+        return DirectorPolicy.hideObserverBody(instance!=null&&instance.policy!=null,
+            client.field_1724!=null&&client.field_1724.method_7325(),entity!=null&&entity==client.field_1724);
     }
     private void tick(class_310 client){
         if(policy==null)return;
@@ -109,7 +149,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
                         var request=new Gson().fromJson(Files.readString(file),DirectorPolicy.Request.class);
                         if(request!=null&&request.view()!=null&&request.view().startsWith("drone_")&&!droneEnabled)
                             throw new IllegalArgumentException("drone_rig_not_explicitly_enabled");
-                        policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch);
+                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch))
+                            manualDetachRequested=false;
                         requestProblem=null;
                     }
                 }
@@ -161,12 +202,15 @@ public final class NativeDirectorClient implements ClientModInitializer {
         try{
             Map<String,Object> data=new LinkedHashMap<>();
             data.put("schema","mcvisual-native-director/v1");data.put("recordedAt",Instant.now().toString());
+            data.put("nativeVersion","0.1.8");
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());
             data.put("connectionEpoch",connectionEpoch);data.put("connectionBoundRequests",requireConnectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());
             var f=frame(client,policy.target());data.put("targetUuid",f.targetUuid());data.put("cameraUuid",f.cameraUuid());
             data.put("observerUuid",f.observerUuid());data.put("offer",policy.offerReceipt());
             data.put("nativeWorldEpoch",nativeWorldEpoch);data.put("detachObservation",policy.detachObservation());
+            data.put("cameraLife",f.cameraLife());data.put("manualDetachRequested",f.manualDetachRequested());
+            data.put("observerBodyHidden",hideObserverBody(client.field_1724));
             // Tab presence is not position. Unloaded/other-world players have no invented coordinates.
             List<Map<String,Object>> targets=new ArrayList<>();long sampledAt=System.currentTimeMillis();
             for(String name:trackedTargets){
@@ -177,6 +221,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 if(uuid!=null&&client.field_1687!=null)for(var player:client.field_1687.method_18456()){
                     if(!uuid.equals(player.method_5667().toString()))continue;
                     target.put("loaded",true);
+                    target.put("alive",player.method_5805());
                     target.put("position",List.of(player.method_23317(),player.method_23318(),player.method_23321()));
                     target.put("scope",connectionEpoch+":"+client.field_1687.method_27983().toString());break;
                 }

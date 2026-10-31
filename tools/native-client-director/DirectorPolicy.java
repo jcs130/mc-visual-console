@@ -10,8 +10,14 @@ public final class DirectorPolicy {
             this(id,lease,target,view,issuedAt,expiresAt,null);
         }
     }
+    public record CameraLife(String uuid,int entityId,long nativeWorldEpoch,boolean dead) {}
     public record Frame(String server,String observer,boolean authenticated,boolean spectator,
-                        String targetUuid,boolean targetNear,String cameraUuid,String observerUuid,long nativeWorldEpoch) {
+                        String targetUuid,boolean targetNear,String cameraUuid,String observerUuid,long nativeWorldEpoch,
+                        CameraLife cameraLife,boolean manualDetachRequested) {
+        public Frame(String server,String observer,boolean authenticated,boolean spectator,
+                     String targetUuid,boolean targetNear,String cameraUuid,String observerUuid,long nativeWorldEpoch){
+            this(server,observer,authenticated,spectator,targetUuid,targetNear,cameraUuid,observerUuid,nativeWorldEpoch,null,false);
+        }
         public Frame(String server,String observer,boolean authenticated,boolean spectator,
                      String targetUuid,boolean targetNear,String cameraUuid,String observerUuid){
             this(server,observer,authenticated,spectator,targetUuid,targetNear,cameraUuid,observerUuid,0);
@@ -30,6 +36,7 @@ public final class DirectorPolicy {
     private String expectedUuid,phase="idle",reason="disabled",heldLease;
     private long phaseAt,lastSwitchAt=Long.MIN_VALUE/2,nativeWorldEpoch,worldChangedAt=-1;
     private String attachedObserverUuid;
+    private Integer attachedEntityId;
     private DetachObservation detachObservation;
     private static final long WORLD_SETTLE_MS=3000;
     private int commands;
@@ -41,6 +48,9 @@ public final class DirectorPolicy {
     public int commands(){return commands;}
     public OfferReceipt offerReceipt(){return offerReceipt;}
     public DetachObservation detachObservation(){return detachObservation;}
+    public static boolean hideObserverBody(boolean scoped,boolean spectator,boolean self){
+        return scoped&&spectator&&self;
+    }
     /** Only the actual native system-message callback supplies this input. */
     public static boolean authReceipt(boolean current,String message){
         if(message==null)return current;
@@ -73,6 +83,13 @@ public final class DirectorPolicy {
         detachObservation=new DetachObservation(now,f.nativeWorldEpoch(),f.spectator(),f.targetUuid(),f.cameraUuid(),f.observerUuid());
     }
     private void pause(Frame f,long now,String why){heldLease=request.lease();phase="paused";reason=why;observeDetach(f,now);}
+    private boolean nativeDeath(Frame f){
+        var life=f.cameraLife();
+        return sameObserver(f)&&f.spectator()&&cameraSelf(f)&&life!=null&&life.dead()
+            &&attachedEntityId!=null&&attachedEntityId==life.entityId()
+            &&Objects.equals(expectedUuid,life.uuid())&&nativeWorldEpoch>0
+            &&nativeWorldEpoch==f.nativeWorldEpoch()&&life.nativeWorldEpoch()==nativeWorldEpoch;
+    }
     private boolean refuse(String why){reason=why;return false;}
     public boolean offer(Request r,Frame f,long now){
         return offer(r,f,now,null,false);
@@ -107,7 +124,7 @@ public final class DirectorPolicy {
             &&now-lastSwitchAt<Math.max(10_000,config.minSwitchMs()))return refuse("switch_cooldown");
         seen.add(r.id());while(seen.size()>32)seen.remove(seen.iterator().next());
         request=r;expectedUuid=f.targetUuid();commands=0;phase="ready";reason="accepted";phaseAt=now;
-        nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;detachObservation=null;
+        nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;detachObservation=null;
         return true;
     }
     public Action step(Frame f,long now){
@@ -115,6 +132,15 @@ public final class DirectorPolicy {
         // Preserve manual/unknown terminal state even if the old target later disconnects.
         if(Set.of("paused","stopped","unknown").contains(phase))return Action.none();
         if(!scoped(f)||!f.authenticated()){phase="stopped";reason="scope_or_auth_lost";return Action.none();}
+        // A configured native detach key wins even when the target dies in the same frame.
+        if(f.manualDetachRequested()&&Set.of("attached","world_transition").contains(phase)){
+            pause(f,now,"manual_detach_input");return Action.none();
+        }
+        // Only the exact previously attached native entity can prove death. Tab presence,
+        // a missing player, a changed dimension or a chat message never supplies this proof.
+        if("attached".equals(phase)&&nativeDeath(f)){
+            phase="stopped";reason="target_died";observeDetach(f,now);return Action.none();
+        }
         if("world_transition".equals(phase)){
             // Passive readback only: never send a teleport/spectate or restore a view here.
             // The original deadline cannot be extended by another world replacement.
@@ -153,6 +179,9 @@ public final class DirectorPolicy {
         if(attached(f)){
             phase="attached";reason="native_camera_confirmed";lastSwitchAt=now;
             nativeWorldEpoch=f.nativeWorldEpoch();attachedObserverUuid=f.observerUuid();worldChangedAt=-1;
+            var life=f.cameraLife();
+            attachedEntityId=life!=null&&Objects.equals(expectedUuid,life.uuid())&&!life.dead()
+                &&life.nativeWorldEpoch()==nativeWorldEpoch?life.entityId():null;
             return new Action(null,request.view());
         }
         if(!f.spectator()){

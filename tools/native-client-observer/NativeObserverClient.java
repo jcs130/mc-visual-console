@@ -121,7 +121,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     public static boolean hideSidebar() {
         var self=instance;if(self==null||self.config==null||!self.config.hideObserverSidebar)return false;
         var client=class_310.method_1551();self.reconcile(client);var camera=self.readCamera(client);
-        return camera!=null&&camera.observer();
+        return camera!=null&&client.field_1724!=null&&client.field_1724.method_7325();
     }
     private boolean zh(){return config!=null&&"zh_cn".equalsIgnoreCase(config.language);}
     public static boolean scoped(){return instance!=null&&instance.config!=null;}
@@ -171,10 +171,14 @@ public final class NativeObserverClient implements ClientModInitializer {
     }
     private void render(class_332 draw) {
         if(config==null)return;var client=class_310.method_1551();reconcile(client);
-        var camera=readCamera(client);if(camera==null||!camera.observer()||mode==4||client.field_1755!=null)return;
+        var camera=readCamera(client);if(camera==null||mode==4||client.field_1755!=null)return;
+        if(!camera.observer()&&(client.field_1724==null||!client.field_1724.method_7325()))return;
         var snapshot=state.current(System.nanoTime());
         // Validate at draw time too: a same-frame camera change cannot show cached old rows.
-        List<String> visible=snapshot==null?List.of(problem!=null?problem:(zh()?"观战目标信息待同步":"Waiting for target state")):rows;
+        List<String> visible=!camera.observer()?List.of(zh()?"观战机位 · 未附身目标":"Observer camera · No attached target",
+                zh()?"等待自动选镜或手动恢复跟拍":"Waiting for camera selection or explicit resume",
+                zh()?"当前没有目标职业／背包读数":"No target profession or inventory readings")
+            :snapshot==null?List.of(problem!=null?problem:(zh()?"观战目标信息待同步":"Waiting for target state")):rows;
         int width=Math.min(mode==0?260:400,draw.method_51421()-16), x=draw.method_51421()-width-8,y=14;
         int count=Math.max(3,(draw.method_51443()-44)/11);
         int pages=Math.max(1,(visible.size()+count-1)/count),start=(page%pages)*count;
