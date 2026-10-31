@@ -1,6 +1,7 @@
 import { BundledAppearanceReader } from '../native-viewer/native-bundled-appearance.js';
 import { BUNDLED_LIMITS } from '../native-viewer/native-bundled-contract.js';
 import {BrowserSkinStore,readWebSkin,paperSkinBundle,validateWebSkinImage} from './web-skin.js';
+import {supportedYsmBundleVersion} from './ysm-profile.js';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const PAPER_BUNDLED_SCHEMA='mc-paper-appearances/v1';
@@ -31,7 +32,7 @@ export async function loadPaperBundledAppearances(endpoint,{fetcher=globalThis.f
   const bundles=[];
   for(const row of reader.catalog.appearances) {
     if(row.kind!=='ysm')continue;
-    if(row.ysmVersion!=='2.4.1')throw Error('PAPER_BUNDLED_YSM_VERSION_UNSUPPORTED');
+    if(!supportedYsmBundleVersion(row.ysmVersion))throw Error('PAPER_BUNDLED_YSM_VERSION_UNSUPPORTED');
     const files={};
     for(const path of new Set(Object.values(row.files))) {
       const bytes=await reader.bytes(path);files[path]={...reader.catalog.assets[path],base64:base64(bytes)};

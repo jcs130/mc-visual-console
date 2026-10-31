@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {APPEARANCE_CHANNEL,PAPER_YSM_JAR_SHA256,parseAppearancePacket,createViewerAppearanceBridge} from '../host/viewer-appearance.mjs';
+import {PAPER_YSM_PROFILES} from '../src/modern-viewer/ysm-profile.js';
 const uuid='5b3b3c00-781f-3ddb-8770-13749bdf4737',epoch='00000000-0000-4000-8000-000000000001';
 const row={schemaVersion:1,type:'state',source:'freesia_worker',epoch,playerUuid:uuid,available:true,ysmVersion:'2.4.1',protocolVersion:'2.4.0',jarSha256:PAPER_YSM_JAR_SHA256,entityId:7,modelId:'alex',texture:'gsl',mandatory:true,animation:'idle'};
 const packet=value=>({channel:APPEARANCE_CHANNEL,data:Buffer.from(JSON.stringify(value))});
@@ -23,6 +24,17 @@ test('only pinned server metadata is accepted, without native 2.6.5 ID aliases',
   assert.equal(parseAppearancePacket(packet({...row,modelId:'玩家/白猫',texture:'白色'})).modelId,'玩家/白猫');
   for(const patch of [{ysmVersion:'2.6.5'},{jarSha256:'0'.repeat(64)},{source:'client'},{entityId:-1},{mandatory:1},{epoch:'old'},{modelId:'../bad\\path'}])assert.equal(parseAppearancePacket(packet({...row,...patch})),null);
   assert.equal(parseAppearancePacket({...packet(row),data:Buffer.alloc(2049)}),null);
+});
+
+test('native 2.6.5 requires the complete reviewed producer tuple and preserves encrypted-source status',()=>{
+ const profile=PAPER_YSM_PROFILES.ysm_native_backend;
+ const native={...row,source:'ysm_native_backend',ysmVersion:profile.version,protocolVersion:profile.protocol,jarSha256:profile.jar,modelId:'大肥鱼_1.1.ysm',texture:'white',webAvailable:false,webReason:'YSM_ENCRYPTED_SOURCE_REQUIRED'};
+ const parsed=parseAppearancePacket(packet(native));
+ assert.equal(parsed.modelId,native.modelId);assert.equal(parsed.webAvailable,false);assert.equal(parsed.webReason,native.webReason);
+ for(const change of [{source:'freesia_worker'},{jarSha256:PAPER_YSM_JAR_SHA256},{protocolVersion:'2.4.0'},{ysmVersion:'2.4.1'},{jarSha256:'0'.repeat(64)}])assert.equal(parseAppearancePacket(packet({...native,...change})),null);
+ assert.equal(parseAppearancePacket(packet({...native,available:false,reason:'YSM_MODEL_DISABLED'})).reason,'YSM_MODEL_DISABLED');
+ const bot=Object.assign(new EventEmitter(),{_client:new EventEmitter(),player:{uuid},entity:{id:7},entities:{}}),bridge=createViewerAppearanceBridge(bot);
+ try{bot._client.emit('custom_payload',packet(native));assert.equal(bridge.snapshot()[0].renderReason,'YSM_ENCRYPTED_SOURCE_REQUIRED');assert.equal(bridge.snapshot()[0].renderAvailable,false);}finally{bridge.dispose();}
 });
 test('read-only observer binds actual UUID and entity ID; stale entity reuse never applies',()=>{
   const bot=Object.assign(new EventEmitter(),{_client:Object.assign(new EventEmitter(),{write(){throw Error('must stay read-only');}}),player:{uuid:'00000000-0000-3000-8000-000000000002'},entities:{7:{id:7,uuid}}});
