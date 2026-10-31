@@ -1,3 +1,7 @@
+## 2026-10-31 native YSM profile candidate, consumers not deployed
+
+The appearance host/browser distinguish exact Freesia2.4.1 and native Youer/NeoForge2.6.5 source/protocol/artifact tuples. Native is not a Worker alias; model resources bind to the corresponding bundle version as well as model/hash. Original encrypted models remain explicitly native-only without public source. 12 host/asset and 36 browser selection/action checks pass; no consumer assets, camera client, production model chain or complete rendering parity changed. Preserve legacy support and explicit Web overrides. See packages/modern-viewer/renderer-src/docs/server-ysm-profiles.md.
+
 ## 2026-10-31 native request lifecycle provenance candidate
 
 0.1.9 acceptance preserved another real death/offer overlap instead of hiding the stopped selector. Native0.1.10 now records actual camera binding separately from pure frame/offer/diagnostic reads, bound to active request, UUID, world and observed time; it no longer requires a coincident healthy frame. Explicit manual/unknown protections remain; refusal metadata cannot overwrite the original terminal reason. Native154 + drone11 + shared26 and independent packaged consumers pass, plus four focused host-process fixtures. Earlier partial live successes and failures stay in private audit; final loading and live outcome are recorded separately.

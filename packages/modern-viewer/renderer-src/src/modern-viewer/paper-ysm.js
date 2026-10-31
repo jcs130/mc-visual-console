@@ -6,17 +6,21 @@ import {PaperYsmAnimation} from './paper-ysm-animation.js';
 import {PaperYsmHeldItems} from './paper-ysm-items.js';
 import {applyRescuePose,relaxRestTail,supportsRescuePose} from './paper-ysm-rest-pose.js';
 import {createPaperSkinActor} from './paper-skin.js';
+import {matchesServerYsmProfile} from './server-ysm-profile.js';
 export {applyPaperYsmAnimation} from './paper-ysm-animation.js';
 
 /** Describe the received state; missing assignment is not a failed asset download. */
 export function paperYsmAvailabilityText(row) {
   if(row?.available===false){
+    if(row.reason==='YSM_MODEL_DISABLED')return '当前角色已停用 YSM，使用普通皮肤';
+    if(row.source==='ysm_native_backend')return '等待服务器确认当前角色的原生 YSM 状态';
     if(row.stateStatus==='awaiting_model_state'||row.stateStatus==='awaiting_initial_poll')return row.workerConnected===true?'模型服务已连接，等待当前角色的 YSM 模型状态':'等待模型服务返回当前角色的 YSM 模型状态';
     if(row.stateStatus==='worker_offline'||row.workerConnected===false)return 'YSM 模型服务暂未连接';
     if(row.stateStatus==='unsupported')return '当前角色的 YSM 模型状态暂未支持';
     return '服务器尚未提供当前角色的可用 YSM 外观';
   }
   if(row?.available&&!row.renderAvailable){
+    if(row.renderReason==='YSM_ENCRYPTED_SOURCE_REQUIRED'||row.webReason==='YSM_ENCRYPTED_SOURCE_REQUIRED')return '加密原包仅原生客户端可显示；网页需作者提供可公开的原始模型资源';
     return row.renderReason==='YSM_ASSET_PENDING'?'等待原始 YSM 模型资源':'当前角色的原始 YSM 模型资源暂不可用';
   }
   return '';
@@ -141,7 +145,7 @@ export class PaperYsmPlayers {
     while(this.assets.size>=32 || this.assetBytes+size>32*1024*1024){const key=this.assets.keys().next().value;this.assetBytes-=this.assetSizes.get(key);this.assetSizes.delete(key);this.assets.delete(key);
       for(const [uuid,choice]of this.overrides)if(choice.assetSha256===key){this.overrides.delete(uuid);this.unmount(uuid);this.selectionNotices.set(uuid,'所选资源已过期；已恢复服务器外观');}}
     this.assets.set(bundle.assetSha256,bundle);this.assetSizes.set(bundle.assetSha256,size);this.assetBytes+=size;}
-  state(row){if(row?.schemaVersion!==1||row.source!=='freesia_worker'||typeof row.playerUuid!=='string')return;
+  state(row){if(row?.schemaVersion!==1||row.source!=='freesia_worker'&&!(row.source==='ysm_native_backend'&&matchesServerYsmProfile(row))||typeof row.playerUuid!=='string')return;
     const previous=this.states.get(row.playerUuid);
     if(previous && (previous.epoch!==row.epoch||previous.entityId!==row.entityId))this.remove(row.playerUuid);
     else if(previous && !this.overrides.has(row.playerUuid) && (previous.assetSha256!==row.assetSha256||previous.texture!==row.texture||!row.available))this.unmount(row.playerUuid);
@@ -303,7 +307,7 @@ export class PaperYsmPlayers {
         this.hideVanilla(rendered,current.actor.root,current.hidden,current.anchor?rendered.localToWorld(current.anchor.clone()):null);continue;
       }
       if(!row.renderAvailable || this.pending.has(uuid) || this.failures.has(uuid))continue;
-      const bundle=this.assets.get(row.assetSha256);if(!bundle || bundle.modelId!==row.modelId)continue;
+      const bundle=this.assets.get(row.assetSha256);if(!bundle || bundle.modelId!==row.modelId || row.selectionSource!=='web_viewer_override'&&row.ysmVersion!==undefined&&bundle.ysmVersion!==row.ysmVersion)continue;
       const marker=++this.sequence;this.pending.set(uuid,marker);
       void this.createActor(bundle,row.texture,{itemModels:this.itemModels}).then(actor=>{
         const current=this.effective(this.states.get(uuid));

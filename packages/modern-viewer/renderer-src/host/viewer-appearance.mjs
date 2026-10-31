@@ -1,25 +1,30 @@
 import {createYsmAssetReceiver} from './viewer-ysm-assets.mjs';
 import {createViewerYsmMotion} from './viewer-ysm-motion.mjs';
-/** Observe authoritative Freesia metadata on the existing action connection. */
+import {SERVER_YSM_PROFILES,matchesServerYsmProfile} from '../src/modern-viewer/server-ysm-profile.js';
+/** Observe authoritative model metadata on the existing action connection. */
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const APPEARANCE_CHANNEL='mcagent:appearance';
-export const PAPER_YSM_JAR_SHA256='ec51cfae84d219a45fac5098a31bfe980bcb7c2d8b413e8fffbd05a411a85680';
+export const PAPER_YSM_JAR_SHA256=SERVER_YSM_PROFILES.freesia_worker.jarSha256;
 // Compatibility export for older hosts. New hosts instantiate the read-only
 // bridge and accept its attested payload format, without a Java-version gate.
 export const supportsViewerAppearanceVersion=version=>version==='1.20.6'||version==='1.21.1';
 export function parseAppearancePacket(packet) {
   if(packet?.channel!==APPEARANCE_CHANNEL || !(packet.data instanceof Uint8Array) || packet.data.length>2048)return null;
   let value;try {value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(packet.data));}catch{return null;}
-  if(!value || value.schemaVersion!==1 || value.source!=='freesia_worker' || !UUID.test(value.epoch??'') || !UUID.test(value.playerUuid??''))return null;
+  if(!value || value.schemaVersion!==1 || !Object.hasOwn(SERVER_YSM_PROFILES,value.source) || !UUID.test(value.epoch??'') || !UUID.test(value.playerUuid??''))return null;
   const base={schemaVersion:1,source:value.source,epoch:value.epoch,playerUuid:value.playerUuid.toLowerCase(),type:value.type};
   if(value.type==='remove')return base;
-  if(value.type!=='state' || typeof value.available!=='boolean' || value.ysmVersion!=='2.4.1' || value.protocolVersion!=='2.4.0' || value.jarSha256!==PAPER_YSM_JAR_SHA256)return null;
+  if(value.type!=='state' || typeof value.available!=='boolean' || !matchesServerYsmProfile(value))return null;
   Object.assign(base,{available:value.available,ysmVersion:value.ysmVersion,protocolVersion:value.protocolVersion,jarSha256:value.jarSha256});
   // Older servers omit diagnostics; a connected Worker alone does not confirm a model.
   if(typeof value.workerConnected==='boolean')base.workerConnected=value.workerConnected;
   if(['confirmed','unsupported','awaiting_model_state','worker_offline','awaiting_initial_poll'].includes(value.stateStatus))base.stateStatus=value.stateStatus;
   if(typeof value.message==='string' && value.message.length<=160 && !/[\u0000-\u001f\u007f]/.test(value.message))base.message=value.message;
-  if(!value.available)return {...base,reason:value.reason==='YSM_WORKER_STATE_UNSUPPORTED'?'YSM_WORKER_STATE_UNSUPPORTED':'YSM_WORKER_STATE_UNAVAILABLE'};
+  if(!value.available){
+    const nativeReasons=['YSM_NATIVE_NOT_OBSERVED','YSM_NATIVE_VERIFICATION_FAILED','YSM_NATIVE_ATTACHMENT_UNINITIALIZED','YSM_NATIVE_STATE_UNSUPPORTED','YSM_NATIVE_STATE_UNAVAILABLE','YSM_MODEL_DISABLED'];
+    return {...base,reason:value.source==='ysm_native_backend'?(nativeReasons.includes(value.reason)?value.reason:'YSM_NATIVE_STATE_UNAVAILABLE'):
+      value.reason==='YSM_WORKER_STATE_UNSUPPORTED'?'YSM_WORKER_STATE_UNSUPPORTED':'YSM_WORKER_STATE_UNAVAILABLE'};
+  }
   if(!Number.isSafeInteger(value.entityId) || value.entityId<0 || value.entityId>2147483647 || typeof value.mandatory!=='boolean'
     || !/^[\p{L}\p{N}_./-]{1,96}$/u.test(value.modelId??'') || value.modelId.includes('..') || value.modelId.startsWith('/') || !/^[\p{L}\p{N}_.-]{1,96}$/u.test(value.texture??'')
     || typeof value.animation!=='string' || value.animation.length>96)return null;
@@ -41,7 +46,7 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
     const actualUuid=own?ownUuid:entity?.uuid;
     if(!entity || typeof actualUuid!=='string' || actualUuid.toLowerCase()!==row.playerUuid || row.available && entity.id!==row.entityId)return null;
     const {receivedAt,...publicRow}=row;
-    const asset=assets.get(row.assetSha256), renderAvailable=row.available===true && asset?.modelId===row.modelId && Object.hasOwn(asset.textures,row.texture);
+    const asset=assets.get(row.assetSha256), renderAvailable=row.available===true && asset?.modelId===row.modelId && asset.ysmVersion===row.ysmVersion && Object.hasOwn(asset.textures,row.texture);
     return {...publicRow,entityId:entity.id,renderAvailable,renderReason:renderAvailable?null:errors.get(row.assetSha256)??row.webReason??row.reason??'YSM_ASSET_PENDING',completeEntityParityVerified:false};
   }
   function payload(packet) {
