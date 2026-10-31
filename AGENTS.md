@@ -1,3 +1,7 @@
+## 2026-11-01 Paper native YSM2.6.5 consumer candidate
+
+Shared same-connection receiver/browser now accept the separately pinned native NeoForge2.6.5/source/protocol tuple alongside unchanged Freesia2.4.1. Original resources keep SHA/path/byte/identity gates; encrypted originals remain explicitly unavailable on Web without public source, with no cached replacement. Shared 1,411 pass/39 conditional skips; receiver12 and Paper21/2 external-source skips pass. Matched consumer verified real Youer/Velocity original public transfer/export and native original encrypted-model pixels, not full Java/mobile parity. Freeze the new ysm-profile.js with matching receiver/browser/exporter before consumer activation. Details: renderer-src/docs/paper-native-ysm-265.md. Third-party files and private captures stay outside Git.
+
 ## 2026-10-31 native request lifecycle provenance candidate
 
 0.1.9 acceptance preserved another real death/offer overlap instead of hiding the stopped selector. Native0.1.10 now records actual camera binding separately from pure frame/offer/diagnostic reads, bound to active request, UUID, world and observed time; it no longer requires a coincident healthy frame. Explicit manual/unknown protections remain; refusal metadata cannot overwrite the original terminal reason. Native154 + drone11 + shared26 and independent packaged consumers pass, plus four focused host-process fixtures. Earlier partial live successes and failures stay in private audit; final loading and live outcome are recorded separately.

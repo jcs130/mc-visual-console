@@ -1,5 +1,6 @@
 import {createHash, randomBytes} from 'node:crypto';
 import {gunzipSync} from 'node:zlib';
+import {supportedYsmBundleVersion} from '../src/modern-viewer/ysm-profile.js';
 export const YSM_ASSET_CHANNEL='mcagent:ysm_asset';
 const MAX_BYTES=2*1024*1024, MAX_RAW=8*1024*1024;
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -7,7 +8,7 @@ export function decodeYsmBundle(compressed,hash) {
   if(compressed.length>MAX_BYTES || sha(compressed)!==hash)throw Error('YSM_ASSET_HASH_MISMATCH');
   const raw=gunzipSync(compressed,{maxOutputLength:MAX_RAW});
   const bundle=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
-  if(bundle.schemaVersion!==1 || bundle.ysmVersion!=='2.4.1' || bundle.format!=='ysm-bedrock-original'
+  if(bundle.schemaVersion!==1 || !supportedYsmBundleVersion(bundle.ysmVersion) || bundle.format!=='ysm-bedrock-original'
     || typeof bundle.modelId!=='string' || bundle.modelId.length>96 || !bundle.files || Object.keys(bundle.files).length>32)throw Error('YSM_ASSET_FORMAT_UNSUPPORTED');
   let total=0;
   for(const [path,file] of Object.entries(bundle.files)) {

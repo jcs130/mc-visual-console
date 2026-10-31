@@ -17,6 +17,16 @@ test('server appearance binding requires the actual observed UUID, body ID and b
   for(const patch of [{playerUuid:other},{entityId:13},{bytes:9*1024*1024},{bundleSha256:'../secret'},{available:false}])assert.throws(()=>nativePaperAppearanceBinding({...self,paperAppearance:{...row,...patch}},uuid))
 })
 
+test('native 2.6.5 public bundle download keeps source hashes and rejects a version mismatch',async()=>{
+ const file=Buffer.from('{}'),entry={bytes:file.length,sha256:sha(file),base64:file.toString('base64')};
+ const bundle={schemaVersion:1,format:'ysm-bedrock-original',ysmVersion:'2.6.5',modelId:'作者/白猫.zip',assetSha256:'b'.repeat(64),model:'m.json',animation:'a.json',textures:{white:'t.png'},files:{'ysm.json':entry,'m.json':entry,'a.json':entry,'t.png':entry}};
+ const bytes=Buffer.from(JSON.stringify(bundle)),binding={kind:'ysm',modelId:bundle.modelId,assetSha256:bundle.assetSha256,bundleSha256:sha(bytes),bytes:bytes.length,texture:'white'};
+ const read=()=>readPaperAppearance(binding,{resolveUrl:p=>'http://127.0.0.1/'+p,fetcher:async()=>new Response(bytes)});
+ assert.deepEqual((await read()).files,bundle.files);
+ const bad=Buffer.from(JSON.stringify({...bundle,ysmVersion:'2.6.6'}));
+ await assert.rejects(readPaperAppearance({...binding,bytes:bad.length,bundleSha256:sha(bad)},{resolveUrl:p=>'http://127.0.0.1/'+p,fetcher:async()=>new Response(bad)}),/MODEL_INVALID/);
+})
+
 test('an unsupported optional first-person arm hierarchy retains the original third-person model and animation',async()=>{
   const encode=value=>({base64:Buffer.from(JSON.stringify(value)).toString('base64')})
   const geometry={format_version:'1.12.0','minecraft:geometry':[{description:{texture_width:16,texture_height:16},bones:[{name:'Root',pivot:[0,0,0],cubes:[{origin:[0,0,0],size:[1,1,1],uv:[0,0]}]}]}]}

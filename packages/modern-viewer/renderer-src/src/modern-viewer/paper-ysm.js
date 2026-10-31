@@ -6,6 +6,7 @@ import {PaperYsmAnimation} from './paper-ysm-animation.js';
 import {PaperYsmHeldItems} from './paper-ysm-items.js';
 import {applyRescuePose,relaxRestTail,supportsRescuePose} from './paper-ysm-rest-pose.js';
 import {createPaperSkinActor} from './paper-skin.js';
+import {matchesPaperYsmProfile} from './ysm-profile.js';
 export {applyPaperYsmAnimation} from './paper-ysm-animation.js';
 
 /** Describe the received state; missing assignment is not a failed asset download. */
@@ -17,6 +18,7 @@ export function paperYsmAvailabilityText(row) {
     return '服务器尚未提供当前角色的可用 YSM 外观';
   }
   if(row?.available&&!row.renderAvailable){
+    if(row.renderReason==='YSM_ENCRYPTED_SOURCE_REQUIRED'||row.webReason==='YSM_ENCRYPTED_SOURCE_REQUIRED')return '原生 YSM 模型已确认；网页需作者提供可公开的模型资源';
     return row.renderReason==='YSM_ASSET_PENDING'?'等待原始 YSM 模型资源':'当前角色的原始 YSM 模型资源暂不可用';
   }
   return '';
@@ -141,7 +143,7 @@ export class PaperYsmPlayers {
     while(this.assets.size>=32 || this.assetBytes+size>32*1024*1024){const key=this.assets.keys().next().value;this.assetBytes-=this.assetSizes.get(key);this.assetSizes.delete(key);this.assets.delete(key);
       for(const [uuid,choice]of this.overrides)if(choice.assetSha256===key){this.overrides.delete(uuid);this.unmount(uuid);this.selectionNotices.set(uuid,'所选资源已过期；已恢复服务器外观');}}
     this.assets.set(bundle.assetSha256,bundle);this.assetSizes.set(bundle.assetSha256,size);this.assetBytes+=size;}
-  state(row){if(row?.schemaVersion!==1||row.source!=='freesia_worker'||typeof row.playerUuid!=='string')return;
+  state(row){if(row?.schemaVersion!==1||!['freesia_worker','ysm_native_backend'].includes(row.source)||row.source==='ysm_native_backend'&&!matchesPaperYsmProfile(row)||typeof row.playerUuid!=='string')return;
     const previous=this.states.get(row.playerUuid);
     if(previous && (previous.epoch!==row.epoch||previous.entityId!==row.entityId))this.remove(row.playerUuid);
     else if(previous && !this.overrides.has(row.playerUuid) && (previous.assetSha256!==row.assetSha256||previous.texture!==row.texture||!row.available))this.unmount(row.playerUuid);
