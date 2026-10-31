@@ -38,6 +38,7 @@ public final class DirectorPolicy {
     private String attachedObserverUuid;
     private Integer attachedEntityId;
     private long attachedEntityWorldEpoch;
+    private CameraLife deadAttachment;
     private DetachObservation detachObservation;
     private static final long WORLD_SETTLE_MS=3000;
     private int commands;
@@ -66,7 +67,7 @@ public final class DirectorPolicy {
     private boolean allowed(String target){return target!=null&&target.matches("[A-Za-z0-9_]{1,16}")
         &&!target.equalsIgnoreCase(config.observer())&&config.targets()!=null
         &&config.targets().stream().anyMatch(n->n.equalsIgnoreCase(target));}
-    private boolean pending(){return Set.of("mode","detach","position","attach","ready","world_transition").contains(phase);}
+    private boolean pending(){return Set.of("mode","detach","position","attach","ready","world_transition","target_death_transition").contains(phase);}
     private boolean cameraSelf(Frame f){return f.observerUuid()!=null&&f.observerUuid().equals(f.cameraUuid());}
     private boolean attached(Frame f){return f.spectator()&&expectedUuid!=null&&expectedUuid.equals(f.cameraUuid());}
     private void noteWorld(Frame f,long now){
@@ -119,6 +120,10 @@ public final class DirectorPolicy {
     private boolean offerChecked(Request r,Frame f,long now){
         if(!scoped(f))return refuse("wrong_profile");
         if(!f.authenticated())return refuse("await_authentication");
+        if(request!=null&&f.manualDetachRequested()
+                &&Set.of("attached","world_transition","target_death_transition").contains(phase)){
+            pause(f,now,"manual_detach_input");return false;
+        }
         if(r==null||r.id()==null||r.lease()==null||!r.id().matches("[A-Za-z0-9:_-]{1,80}")
             ||!r.lease().matches("[A-Za-z0-9_-]{1,80}")||!allowed(r.target())
             ||r.view()==null||!Set.of("first_person","third_person_back","third_person_front","drone_follow","drone_overview").contains(r.view()))
@@ -133,7 +138,7 @@ public final class DirectorPolicy {
             &&now-lastSwitchAt<Math.max(10_000,config.minSwitchMs()))return refuse("switch_cooldown");
         seen.add(r.id());while(seen.size()>32)seen.remove(seen.iterator().next());
         request=r;expectedUuid=f.targetUuid();commands=0;phase="ready";reason="accepted";phaseAt=now;
-        nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;attachedEntityWorldEpoch=0;detachObservation=null;
+        nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;attachedEntityWorldEpoch=0;deadAttachment=null;detachObservation=null;
         return true;
     }
     public Action step(Frame f,long now){
@@ -142,8 +147,20 @@ public final class DirectorPolicy {
         if(Set.of("paused","stopped","unknown").contains(phase))return Action.none();
         if(!scoped(f)||!f.authenticated()){phase="stopped";reason="scope_or_auth_lost";return Action.none();}
         // A configured native detach key wins even when the target dies in the same frame.
-        if(f.manualDetachRequested()&&Set.of("attached","world_transition").contains(phase)){
+        if(f.manualDetachRequested()&&Set.of("attached","world_transition","target_death_transition").contains(phase)){
             pause(f,now,"manual_detach_input");return Action.none();
+        }
+        if("target_death_transition".equals(phase)){
+            if(now-phaseAt>8000||now<phaseAt){phase="unknown";reason="native_death_detach_timeout";return Action.none();}
+            if(!sameObserver(f)||!f.spectator()||deadAttachment==null
+                    ||f.nativeWorldEpoch()!=deadAttachment.nativeWorldEpoch()
+                    ||f.cameraUuid()!=null&&!cameraSelf(f)&&!attached(f)){
+                pause(f,now,"native_death_detach_scope_changed");return Action.none();
+            }
+            if(cameraSelf(f)){
+                phase="stopped";reason="target_died";observeDetach(f,now);
+            }
+            return Action.none();
         }
         // Only the exact previously attached native entity can prove death. Tab presence,
         // a missing player, a changed dimension or a chat message never supplies this proof.
@@ -188,6 +205,15 @@ public final class DirectorPolicy {
         if(!pending())return Action.none();
         if(now-phaseAt>8000){phase="unknown";reason="native_attachment_timeout";return Action.none();}
         if(attached(f)){
+            var life=f.cameraLife();
+            if(life!=null&&life.dead()&&Objects.equals(expectedUuid,life.uuid())&&life.entityId()>=0
+                    &&life.nativeWorldEpoch()>0&&life.nativeWorldEpoch()==f.nativeWorldEpoch()){
+                // A reframe/attachment can race native death before any healthy bind.
+                // Release only this known dead camera once, then wait for native self ACK.
+                deadAttachment=life;attachedObserverUuid=f.observerUuid();nativeWorldEpoch=f.nativeWorldEpoch();
+                phase="target_death_transition";reason="target_dead_at_attachment";phaseAt=now;commands++;
+                return new Action("minecraft:spectate",null);
+            }
             phase="attached";reason="native_camera_confirmed";lastSwitchAt=now;
             nativeWorldEpoch=f.nativeWorldEpoch();attachedObserverUuid=f.observerUuid();worldChangedAt=-1;
             rememberAttachedLife(f);

@@ -115,7 +115,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         return self!=null&&self.policy!=null&&self.authenticated&&client.field_1755==null
             &&client.field_1724!=null&&client.field_1724.method_7325()
             &&client.method_22683().method_4490()==window
-            &&Set.of("attached","world_transition").contains(self.policy.phase());
+            &&Set.of("attached","world_transition","target_death_transition").contains(self.policy.phase());
     }
     public static void keyboardDetach(long window,int key,int scan){
         if(inputScope(window)&&class_310.method_1551().field_1690.field_1832.method_1417(key,scan))
@@ -202,7 +202,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         try{
             Map<String,Object> data=new LinkedHashMap<>();
             data.put("schema","mcvisual-native-director/v1");data.put("recordedAt",Instant.now().toString());
-            data.put("nativeVersion","0.1.8");
+            data.put("nativeVersion","0.1.9");
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());
             data.put("connectionEpoch",connectionEpoch);data.put("connectionBoundRequests",requireConnectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());
@@ -221,7 +221,9 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 if(uuid!=null&&client.field_1687!=null)for(var player:client.field_1687.method_18456()){
                     if(!uuid.equals(player.method_5667().toString()))continue;
                     target.put("loaded",true);
-                    target.put("alive",player.method_5805());
+                    target.put("entityId",player.method_5628());
+                    target.put("alive",player.method_5805()&&!player.method_29504()
+                        &&player.method_35049()!=class_1297.class_5529.field_26998);
                     target.put("position",List.of(player.method_23317(),player.method_23318(),player.method_23321()));
                     target.put("scope",connectionEpoch+":"+client.field_1687.method_27983().toString());break;
                 }

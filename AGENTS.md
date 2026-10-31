@@ -1,3 +1,7 @@
+## 2026-10-31 death at reframe acknowledgement candidate
+
+Production 0.1.8 positively recovered one natural Yui death to DeepFish, then exposed death racing a new reframe before a healthy entity bind. 0.1.9 now releases that exact dead camera once and requires the original observer self ACK; its bounded pending phase preserves manual/unknown outcomes and incoming offers cannot clear same-tick manual intent. Native144, drone11, sharedJS26, packaged consumers and four focused real host-process fixtures pass. 0.1.8's failed second case is retained, not called a full acceptance. Runtime install/result remain separately recorded.
+
 ## 2026-10-31 spectator death / self-body candidate
 
 Native director 0.1.8 distinguishes exact attached native-entity death from manual detach input; configured keyboard/mouse detach wins and prior unknown/manual states stay terminal. The explicitly scoped spectator body is masked locally without creating or deleting server entities. Observer HUD 0.1.3 shows a no-target notice rather than the observer's own RPG sidebar during a gap. Original native signatures, 136 policy + 11 drone checks, 26 shared JS checks and packaged consumers pass; observer protocol/display has 74 packaged checks. Exact healthy entity/world bindings refresh after observed world restoration; an old world ID cannot supply death evidence. Source/build checks are not live render or natural-death acceptance. Production installation remains separately gated; original actors/models unchanged.

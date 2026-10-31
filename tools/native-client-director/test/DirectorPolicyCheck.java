@@ -206,6 +206,25 @@ public class DirectorPolicyCheck {
         var replacedLife=lifePolicy("same-world-new-entity",t);replacedLife.step(life(1,"uuid-a","uuid-a",42,false,false),t+100);
         replacedLife.step(life(1,"observer","uuid-a",42,true,false),t+200);
         check("target_died".equals(replacedLife.reason()),"actual attached entity replacement updates the exact healthy lifecycle binding");
+        var raced=policy();raced.offer(r("dead-during-offer","Alice","drone_overview",t),life(1,"uuid-a","uuid-a",31,true,false),t);
+        var detachDead=raced.step(life(1,"uuid-a","uuid-a",31,true,false),t);
+        check("target_death_transition".equals(raced.phase())&&"minecraft:spectate".equals(detachDead.command())
+            &&detachDead.view()==null,"death during reframe releases only the known dead camera once");
+        check(raced.step(life(1,"uuid-a","uuid-a",31,true,false),t+100).command()==null&&raced.commands()==1,"dead-camera detach is never replayed while awaiting ACK");
+        check(!raced.offer(r("replace-death-pending","Bob","first_person",t+100),w(1,"observer"),t+100),"dead-camera release remains a native pending operation");
+        raced.step(life(1,"observer","uuid-a",31,true,false),t+200);
+        check("stopped".equals(raced.phase())&&"target_died".equals(raced.reason())&&raced.commands()==1,"self readback makes raced death a known loss even without healthy attachment");
+        var racedManual=policy();racedManual.offer(r("dead-manual","Alice","drone_overview",t),life(1,"uuid-a","uuid-a",31,true,false),t);
+        racedManual.step(life(1,"uuid-a","uuid-a",31,true,false),t);
+        racedManual.step(life(1,"observer","uuid-a",31,true,true),t+100);
+        check("paused".equals(racedManual.phase())&&"manual_detach_input".equals(racedManual.reason()),"manual input wins a dead-camera pending release");
+        var racedTimeout=policy();racedTimeout.offer(r("dead-timeout","Alice","drone_overview",t),life(1,"uuid-a","uuid-a",31,true,false),t);
+        racedTimeout.step(life(1,"uuid-a","uuid-a",31,true,false),t);
+        racedTimeout.step(life(1,"observer","uuid-a",31,true,false),t+8001);
+        check("unknown".equals(racedTimeout.phase())&&racedTimeout.commands()==1,"late self ACK cannot erase an unknown dead-camera release");
+        var inputRace=lifePolicy("input-before-offer",t);
+        check(!inputRace.offer(r("input-racing-offer","Alice","drone_overview",t+100),life(1,"uuid-a","uuid-a",31,false,true),t+100)
+            &&"paused".equals(inputRace.phase())&&"manual_detach_input".equals(inputRace.reason()),"a reframe offer cannot clear native manual input before the policy tick");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

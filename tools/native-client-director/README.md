@@ -149,6 +149,17 @@ server entity. The separate observer HUD 0.1.3 also hides the observer's own RPG
 sidebar during an attachment gap and displays an explicit no-target notice.
 Native method signatures, isolated state checks and packaged consumers do not
 replace live render/manual-input/natural-death acceptance after installation.
+
+Version 0.1.9 also handles a target that is already natively dead at the exact
+attachment/reframe acknowledgement. It does not mark that corpse as a healthy
+attachment. One observer-only detach is sent, then `target_death_transition`
+waits up to eight seconds for the original observer self-camera acknowledgement.
+Only that readback becomes a known target loss. The command is never replayed;
+manual input, changed scope and an unconfirmed deadline stay paused/unknown.
+Consumers wait through this phase without replacing the pending request.
+Configured detach input also takes priority over a same-tick incoming reframe.
+Native target samples expose entity IDs and exclude dead/removed bodies from
+their live-entity flag, independently of tab presence or chat.
 An existing paused/unknown lease cannot be recovered by this mechanism; its
 original cause and manual controls remain intact. This is distinct from network
 reconnection and must not be reported as successful disconnect recovery.
