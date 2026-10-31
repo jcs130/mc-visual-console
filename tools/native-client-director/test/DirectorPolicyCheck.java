@@ -86,6 +86,16 @@ public class DirectorPolicyCheck {
         check("stopped".equals(missing.phase())&&"target_identity_lost".equals(missing.reason()),"native loss is a known stopped state");
         check(missing.offer(r("fresh","Bob","drone_follow",t+21000),f(true,true,true,"observer"),t+21000),"new request may select available actor after known loss");
         check("minecraft:spectate Bob".equals(missing.step(f(true,true,true,"observer"),t+21001).command()),"new request never replays old attachment");
+        var scopedRequest=new DirectorPolicy.Request("scoped","lease-scoped","Alice","first_person",t,t+5000,"connection-a");
+        var bound=policy();
+        check(bound.offer(scopedRequest,f(true,true,true,"observer"),t,"connection-a",true),"matching native connection admits a fresh request");
+        var replaced=policy();
+        check(!replaced.offer(scopedRequest,f(true,true,true,"observer"),t,"connection-b",true),"old request cannot execute on a reconnected client");
+        check("connection_epoch_mismatch".equals(replaced.offerReceipt().reason())&&replaced.commands()==0,"mismatched epoch has a refusal receipt and zero commands");
+        var unbound=policy();
+        check(!unbound.offer(r("legacy","Alice","first_person",t),f(true,true,true,"observer"),t,"connection-a",true),"explicit strict profile rejects unbound requests");
+        check("connection_epoch_required".equals(unbound.offerReceipt().reason()),"missing epoch is explicit");
+        check(policy().offer(r("compatible","Alice","first_person",t),f(true,true,true,"observer"),t),"legacy profiles retain their explicit compatibility path");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

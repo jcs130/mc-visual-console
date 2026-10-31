@@ -108,3 +108,11 @@ Optional `setAvailable` filters known offline players; `inspect` returns bounded
 timestamps and observed motion status without retaining chat or game prompts.
 Consumers must pace both subject changes and same-subject reframes against the
 native gate, preserve manual/unknown outcomes, and confirm actual camera UUIDs.
+
+An explicit `requireConnectionEpoch:true` profile requires requests to carry the
+current native `connectionEpoch`. Old or unbound requests receive a correlated
+refusal before any command is sent. The default retains legacy compatibility.
+`connectionBoundRequests` reports the active rule. `connection-recovery.mjs`
+allows opted-in consumers to resume after a fresh authenticated connection with
+the same observer UUID and known camera identity. Preserve prior unresolved
+effects as unknown and issue a new lease/request; manual pauses stay stopped.

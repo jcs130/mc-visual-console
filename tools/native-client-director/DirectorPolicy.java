@@ -5,7 +5,11 @@ import java.util.*;
 /** Observer-only camera requests. No arbitrary command surface or invented ACK. */
 public final class DirectorPolicy {
     public record Config(boolean enabled,String server,String observer,Set<String> targets,long minSwitchMs) {}
-    public record Request(String id,String lease,String target,String view,long issuedAt,long expiresAt) {}
+    public record Request(String id,String lease,String target,String view,long issuedAt,long expiresAt,String connectionEpoch) {
+        public Request(String id,String lease,String target,String view,long issuedAt,long expiresAt){
+            this(id,lease,target,view,issuedAt,expiresAt,null);
+        }
+    }
     public record Frame(String server,String observer,boolean authenticated,boolean spectator,
                         String targetUuid,boolean targetNear,String cameraUuid,String observerUuid) {}
     public record OfferReceipt(String id,String lease,String target,long at,boolean accepted,String reason) {}
@@ -45,7 +49,15 @@ public final class DirectorPolicy {
     private boolean attached(Frame f){return f.spectator()&&expectedUuid!=null&&expectedUuid.equals(f.cameraUuid());}
     private boolean refuse(String why){reason=why;return false;}
     public boolean offer(Request r,Frame f,long now){
-        boolean accepted=offerChecked(r,f,now);
+        return offer(r,f,now,null,false);
+    }
+    public boolean offer(Request r,Frame f,long now,String connectionEpoch,boolean requireConnectionEpoch){
+        boolean accepted;
+        if(requireConnectionEpoch&&(r==null||r.connectionEpoch()==null||r.connectionEpoch().isBlank()))
+            accepted=refuse("connection_epoch_required");
+        else if(r!=null&&r.connectionEpoch()!=null&&!Objects.equals(r.connectionEpoch(),connectionEpoch))
+            accepted=refuse("connection_epoch_mismatch");
+        else accepted=offerChecked(r,f,now);
         // A refused new offer must not be mistaken for the previous camera request's result.
         offerReceipt=new OfferReceipt(r==null?null:bounded(r.id()),r==null?null:bounded(r.lease()),
             r!=null&&allowed(r.target())?r.target():null,now,accepted,reason);

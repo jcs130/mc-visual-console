@@ -22,7 +22,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private static long droneRenderedAt;
     private static float droneRequestedDistance,droneClippedDistance;
     private DirectorPolicy policy;
-    private boolean authenticated,diagnosticsFailed;
+    private boolean authenticated,diagnosticsFailed,requireConnectionEpoch;
     private long tick,lastFileTime=-1,frames,frameWindowAt,lastRenderedAt;
     private Double hudFramesPerSecond;
     private String configProblem,requestProblem,connectionEpoch;
@@ -43,7 +43,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         });
     }
     private void join(class_310 client){
-        droneEnabled=false;stopDrone("new_connection");trackedTargets=Set.of();
+        droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");trackedTargets=Set.of();
         policy=null;authenticated=false;tick=0;lastFileTime=-1;frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
         hudFramesPerSecond=null;configProblem=null;requestProblem=null;diagnosticsFailed=false;
         try{
@@ -58,6 +58,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             policy=new DirectorPolicy(config);
             trackedTargets=Set.copyOf(config.targets());
             var extra=JsonParser.parseString(source).getAsJsonObject();
+            requireConnectionEpoch=extra.has("requireConnectionEpoch")&&extra.get("requireConnectionEpoch").getAsBoolean();
             droneEnabled=extra.has("droneEnabled")&&extra.get("droneEnabled").getAsBoolean();
             droneDistance=extra.has("droneDistance")?extra.get("droneDistance").getAsDouble():7;
             droneHeight=extra.has("droneHeight")?extra.get("droneHeight").getAsDouble():3;
@@ -100,7 +101,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                         var request=new Gson().fromJson(Files.readString(file),DirectorPolicy.Request.class);
                         if(request!=null&&request.view()!=null&&request.view().startsWith("drone_")&&!droneEnabled)
                             throw new IllegalArgumentException("drone_rig_not_explicitly_enabled");
-                        policy.offer(request,frame(client,request==null?null:request.target()),now);
+                        policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch);
                         requestProblem=null;
                     }
                 }
@@ -150,7 +151,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             Map<String,Object> data=new LinkedHashMap<>();
             data.put("schema","mcvisual-native-director/v1");data.put("recordedAt",Instant.now().toString());
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());
-            data.put("connectionEpoch",connectionEpoch);
+            data.put("connectionEpoch",connectionEpoch);data.put("connectionBoundRequests",requireConnectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());
             var f=frame(client,policy.target());data.put("targetUuid",f.targetUuid());data.put("cameraUuid",f.cameraUuid());
             data.put("observerUuid",f.observerUuid());data.put("offer",policy.offerReceipt());
