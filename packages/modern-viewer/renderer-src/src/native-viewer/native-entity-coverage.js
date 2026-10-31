@@ -155,8 +155,9 @@ export function nativeEntityCoverage(name) {
   if(name==='twilightforest:naga')return {name,geometry:'original_Twilight_baked_layers_integrated',state:'same_connection_metadata_and_12_part_packets',animation:'received_motion_and_original_client_counters',material:'partial',scene:'unverified',reasons:['OTHER_TWILIGHT_BOSSES_NOT_INTEGRATED','COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}
   const row=NATIVE_ENTITY_CENSUS.find(row=>row.name===name)
   if(!row)return {name,geometry:'unavailable',state:'unavailable',animation:'unavailable',material:'unavailable',scene:'unverified',reasons:['ORIGINAL_ENTITY_REGISTRATION_UNAVAILABLE']}
-  const noop=row.path==='I',pending=row.path==='U',self=row.path==='S',aquatic=row.path==='A',family=pending?pendingFamily(name):null
-  return {name:row.name,id:row.id,path:row.path,nextTask:family,geometry:noop?'intentional_no_mesh':pending?'original_resources_pending_actor':aquatic?'original_baked_layers_integrated':'partial',
+  const flying=['minecraft:allay','minecraft:vex'].includes(name)
+  const noop=row.path==='I',pending=row.path==='U'&&!flying,self=row.path==='S',aquatic=row.path==='A',family=pending?pendingFamily(name):null
+  return {name:row.name,id:row.id,path:row.path,nextTask:family,geometry:noop?'intentional_no_mesh':pending?'original_resources_pending_actor':aquatic||flying?'original_baked_layers_integrated':'partial',
     state:noop?'no_mesh_required':pending?'original_typed_inputs_pending_integration':self?'self_only':aquatic?'typed_metadata_environment_and_cues':'partial',
     animation:noop?'no_mesh_required':pending?'original_class_rules_pending_port':aquatic?'original_class_rules_with_input_boundaries':'partial',material:noop?'no_mesh_required':pending?'original_passes_pending_port':'partial',
     scene:'unverified',reasons:noop?(name==='minecraft:area_effect_cloud'?['CLOUD_PARTICLES_ARE_SEPARATE']:[]):pending?pendingInputs[family]:['COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}

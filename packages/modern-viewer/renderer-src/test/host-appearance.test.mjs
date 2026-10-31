@@ -5,6 +5,19 @@ import {APPEARANCE_CHANNEL,PAPER_YSM_JAR_SHA256,parseAppearancePacket,createView
 const uuid='5b3b3c00-781f-3ddb-8770-13749bdf4737',epoch='00000000-0000-4000-8000-000000000001';
 const row={schemaVersion:1,type:'state',source:'freesia_worker',epoch,playerUuid:uuid,available:true,ysmVersion:'2.4.1',protocolVersion:'2.4.0',jarSha256:PAPER_YSM_JAR_SHA256,entityId:7,modelId:'alex',texture:'gsl',mandatory:true,animation:'idle'};
 const packet=value=>({channel:APPEARANCE_CHANNEL,data:Buffer.from(JSON.stringify(value))});
+
+test('real play connection explicitly declares installed decoders and observation facade never writes',()=>{
+  const writes=[];
+  const bot=Object.assign(new EventEmitter(),{_client:Object.assign(new EventEmitter(),{state:'configuration',write:(...args)=>writes.push(args)})});
+  const bridge=createViewerAppearanceBridge(bot);
+  assert.equal(writes.length,0);
+  bot._client.state='play';bot.emit('spawn');
+  assert.equal(writes.length,1);assert.equal(writes[0][0],'custom_payload');
+  assert.equal(writes[0][1].channel,'minecraft:register');
+  assert.deepEqual(writes[0][1].data.toString().split('\0'),['mcagent:appearance','mcagent:ysm_asset']);
+  bot._client.state='observation';bot.emit('login');bot.emit('spawn');assert.equal(writes.length,1);
+  bridge.dispose();assert.equal(bot.listenerCount('spawn'),0);
+});
 test('only pinned server metadata is accepted, without native 2.6.5 ID aliases',()=>{
   assert.equal(parseAppearancePacket(packet(row)).modelId,'alex');
   assert.equal(parseAppearancePacket(packet({...row,modelId:'玩家/白猫',texture:'白色'})).modelId,'玩家/白猫');

@@ -1,4 +1,6 @@
 import {NATIVE_AQUATIC_TYPES,nativeAquaticType,nativeAquaticState} from './native-aquatic-state.js'
+import {NATIVE_FLYING_TYPES,nativeFlyingType,nativeFlyingState} from './native-flying-state.js'
+import {createNativeFlyingActor} from './native-flying.js'
 import {createNativeAquaticActor} from './native-aquatic-actors.js'
 import {NATIVE_NO_MESH_TYPES,nativeEntityCoverage} from './native-entity-coverage.js'
 import {nativeLivingOverlay} from './native-hostile-actors.js'
@@ -24,7 +26,7 @@ import {nativeTwilightType,createNativeTwilightActor,nativeTwilightState} from '
 // Locked vanilla classes: fwm/fvd/fuz/fxa/fwz/fxi/fxv, fwu/fuf, glk,
 // gly/gjw/gju/gmh/gmm/gne and original saddle/fur/profession layers.
 // Original assets/geometry only; this is not a generic mob proxy renderer.
-export const NATIVE_ENTITY_RENDER_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','create:contraption','create:stationary_contraption',WANDSCAPE_NPC,'twilightforest:naga',...NATIVE_HOSTILE_TYPES,...NATIVE_AQUATIC_TYPES,...NATIVE_NO_MESH_TYPES])
+export const NATIVE_ENTITY_RENDER_TYPES=Object.freeze(['minecraft:pig','minecraft:cow','minecraft:chicken','minecraft:sheep','minecraft:slime','minecraft:villager','touhou_little_maid:maid','create:contraption','create:stationary_contraption',WANDSCAPE_NPC,'twilightforest:naga',...NATIVE_HOSTILE_TYPES,...NATIVE_AQUATIC_TYPES,...NATIVE_FLYING_TYPES,...NATIVE_NO_MESH_TYPES])
 const SUPPORTED=new Set(NATIVE_ENTITY_RENDER_TYPES),F=Math.fround,PI=F(Math.PI),RAD=F(Math.PI/180)
 const wrap=v=>((v+180)%360+360)%360-180,lerp=(a,b,t)=>a+(b-a)*t,angle=(a,b,t)=>a+wrap(b-a)*t
 const cube=(uv,origin,size,dilation=0,mirror=false)=>({uv,origin,size,dilation,mirror})
@@ -44,6 +46,7 @@ function meta(entity,key,type,defaultValue){
 }
 
 export function nativeEntityRenderState(entity,{registries}={}){
+  if(nativeFlyingType(entity?.name))return nativeFlyingState(entity)
   if(nativeTwilightType(entity?.name))return nativeTwilightState(entity)
   if(nativeAquaticType(entity?.name))return nativeAquaticState(entity)
   if(NATIVE_NO_MESH_TYPES.includes(entity?.name))return {name:entity.name,intentionalNoMesh:true}
@@ -108,6 +111,7 @@ async function texture(bytes){const url=URL.createObjectURL(new Blob([bytes],{ty
 export async function createNativeEntityActor(reader,entity,{registries,loadTexture=texture}={}){
   if(!(reader instanceof NativeAssetReader)||reader.manifest.clientJarSha256!==ENTITY_MODEL_CLIENT_SHA256)throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(!nativeClientSourceVerified(reader.manifest,ENTITY_MODEL_CLIENT_SHA256))throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
+  if(nativeFlyingType(entity?.name))return createNativeFlyingActor(reader,entity,{loadTexture})
   if(nativeTwilightType(entity?.name))return createNativeTwilightActor(reader,entity,{loadTexture})
   if(NATIVE_NO_MESH_TYPES.includes(entity?.name)){
     const root=new THREE.Group();root.visible=false;let disposed=false

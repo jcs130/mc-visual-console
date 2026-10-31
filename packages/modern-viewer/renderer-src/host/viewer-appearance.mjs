@@ -29,6 +29,14 @@ export function parseAppearancePacket(packet) {
 }
 export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
   const records=new Map(),listeners=new Set();let epoch=null,disposed=false;
+  // Declare only the two decoders installed below. Observation facades have
+  // no Minecraft transport and must remain read-only.
+  const register=()=>{
+    if(disposed||bot._client?.state!=='play'||typeof bot._client.write!=='function')return;
+    try{bot._client.write('custom_payload',{channel:'minecraft:register',data:Buffer.from(APPEARANCE_CHANNEL+'\0mcagent:ysm_asset')});}
+    catch{/* Optional display negotiation must not interrupt game entry. */}
+  };
+  bot.on('login',register);bot.on('spawn',register);register();
   const errors=new Map();
   const assets=createYsmAssetReceiver(bot,{onAsset:bundle=>{emit('appearanceAsset',bundle);for(const row of records.values())if(row.assetSha256===bundle.assetSha256){const bound=binding(row);if(bound)emit('appearanceState',bound);}},onError:(row,reason)=>{errors.set(row.assetSha256,reason);const bound=binding(row);if(bound)emit('appearanceState',bound);}});
   const emit=(name,row)=>{for(const fn of listeners)try{fn(name,row);}catch{listeners.delete(fn);}};
@@ -68,5 +76,5 @@ export function createViewerAppearanceBridge(bot, {now=Date.now}={}) {
     const fn=(name,row)=>socket.emit(name,row);listeners.add(fn);
     socket.emit('appearanceReset',{schemaVersion:1});for(const row of snapshot()){const bundle=assets.get(row.assetSha256);if(bundle)socket.emit('appearanceAsset',bundle);socket.emit('appearanceState',row);motion.send(row);assets.request(row);}
     return()=>listeners.delete(fn);
-  },dispose(){if(disposed)return;disposed=true;assets.dispose();motion.dispose();clearInterval(timer);bot._client.off('custom_payload',payload);bot.off('entitySpawn',tracked);bot.off('entityGone',gone);bot.off('login',reset);bot.off('respawn',reset);bot.off('end',reset);records.clear();listeners.clear();}};
+  },dispose(){if(disposed)return;disposed=true;assets.dispose();motion.dispose();clearInterval(timer);bot._client.off('custom_payload',payload);bot.off('entitySpawn',tracked);bot.off('entityGone',gone);bot.off('login',reset);bot.off('login',register);bot.off('spawn',register);bot.off('respawn',reset);bot.off('end',reset);records.clear();listeners.clear();}};
 }
