@@ -31,6 +31,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private class_1297 attachedCameraEntity;
     private Object attachedCameraWorld;
     private long attachedCameraEpoch;
+    private String attachedCameraRequest;
+    private long attachedCameraObservedAt;
     private boolean manualDetachRequested;
     private long nativeWorldEpoch;
     private Set<String> trackedTargets=Set.of();
@@ -51,7 +53,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         });
     }
     private void join(class_310 client){
-        attachedCameraEntity=null;attachedCameraWorld=null;attachedCameraEpoch=0;manualDetachRequested=false;
+        attachedCameraEntity=null;attachedCameraWorld=null;attachedCameraEpoch=0;attachedCameraRequest=null;attachedCameraObservedAt=0;manualDetachRequested=false;
         droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");trackedTargets=Set.of();
         policy=null;authenticated=false;tick=0;lastFileTime=-1;frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
         hudFramesPerSecond=null;configProblem=null;requestProblem=null;diagnosticsFailed=false;
@@ -92,23 +94,31 @@ public final class NativeDirectorClient implements ClientModInitializer {
                     if(uuid.equals(player.method_5667().toString()))near=client.field_1724.method_5858(player)<=64;
         }
         var camera=client.method_1560();
-        if(camera!=null&&uuid!=null&&uuid.equals(camera.method_5667().toString())
-                &&camera!=client.field_1724){
-            attachedCameraEntity=camera;attachedCameraWorld=client.field_1687;attachedCameraEpoch=nativeWorldEpoch;
-        }
         DirectorPolicy.CameraLife life=null;
         if(attachedCameraEntity!=null&&attachedCameraWorld==client.field_1687&&attachedCameraEpoch==nativeWorldEpoch
+                &&Objects.equals(attachedCameraRequest,policy.requestId())
                 &&Objects.equals(uuid,attachedCameraEntity.method_5667().toString())){
             boolean dead=attachedCameraEntity instanceof class_1309 living&&living.method_29504();
             var removal=attachedCameraEntity.method_35049();
             dead|=removal==class_1297.class_5529.field_26998;
             life=new DirectorPolicy.CameraLife(attachedCameraEntity.method_5667().toString(),
-                attachedCameraEntity.method_5628(),attachedCameraEpoch,dead);
+                attachedCameraEntity.method_5628(),attachedCameraEpoch,dead,attachedCameraRequest,attachedCameraObservedAt);
         }
         return new DirectorPolicy.Frame(server,observer,authenticated,
             client.field_1724!=null&&client.field_1724.method_7325(),uuid,near,
             camera==null?null:camera.method_5667().toString(),
             client.field_1724==null?null:client.field_1724.method_5667().toString(),nativeWorldEpoch,life,manualDetachRequested);
+    }
+    private void observeRequestCamera(class_310 client,long now){
+        if(policy.requestId()==null||Set.of("paused","unknown","stopped").contains(policy.phase()))return;
+        var camera=client.method_1560();var network=client.method_1562();
+        var entry=network==null||policy.target()==null?null:network.method_2874(policy.target());
+        if(camera==null||camera==client.field_1724||entry==null||client.field_1687==null
+                ||!entry.method_2966().getId().equals(camera.method_5667()))return;
+        // Only the active request's actual camera is observed here. Offer/diagnostic
+        // frame reads are pure and can never retag a past request's corpse.
+        attachedCameraEntity=camera;attachedCameraWorld=client.field_1687;attachedCameraEpoch=nativeWorldEpoch;
+        attachedCameraRequest=policy.requestId();attachedCameraObservedAt=now;
     }
     private static boolean inputScope(long window){
         var self=instance;var client=class_310.method_1551();
@@ -156,6 +166,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 }
             }catch(Exception failure){requestProblem=failure.getClass().getSimpleName();}
         }
+        observeRequestCamera(client,now);
         var action=policy.step(frame(client,policy.target()),now);
         worldTransitionActive="world_transition".equals(policy.phase());
         if(worldTransitionActive){DRONE.reset();droneReason="native_world_replacement";}
@@ -202,7 +213,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         try{
             Map<String,Object> data=new LinkedHashMap<>();
             data.put("schema","mcvisual-native-director/v1");data.put("recordedAt",Instant.now().toString());
-            data.put("nativeVersion","0.1.9");
+            data.put("nativeVersion","0.1.10");
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());
             data.put("connectionEpoch",connectionEpoch);data.put("connectionBoundRequests",requireConnectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());

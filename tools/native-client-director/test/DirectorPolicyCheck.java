@@ -225,6 +225,23 @@ public class DirectorPolicyCheck {
         var inputRace=lifePolicy("input-before-offer",t);
         check(!inputRace.offer(r("input-racing-offer","Alice","drone_overview",t+100),life(1,"uuid-a","uuid-a",31,false,true),t+100)
             &&"paused".equals(inputRace.phase())&&"manual_detach_input".equals(inputRace.reason()),"a reframe offer cannot clear native manual input before the policy tick");
+        var proven=lifePolicy("proven-current-camera",t);
+        var proof=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",true,"observer","observer",1,
+            new DirectorPolicy.CameraLife("uuid-a",42,1,true,"proven-current-camera",t+50),false);
+        proven.step(proof,t+100);
+        check("target_died".equals(proven.reason())&&proven.commands()==0,"current-request actual camera observation proves death even without an earlier healthy frame for that entity");
+        for(var sample:List.of(new DirectorPolicy.CameraLife("uuid-a",42,1,true,"another-request",t+50),
+                new DirectorPolicy.CameraLife("uuid-a",42,1,true,"proof-guard",t-5000),
+                new DirectorPolicy.CameraLife("uuid-a",42,2,true,"proof-guard",t+50))){
+            var guarded=lifePolicy("proof-guard",t);
+            guarded.step(new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",true,"observer","observer",1,sample,false),t+100);
+            check(!"target_died".equals(guarded.reason()),"foreign/stale/wrong-world camera provenance does not recover");
+        }
+        var preserveReason=lifePolicy("refused-preserves-reason",t);
+        preserveReason.step(life(1,"observer","uuid-a",31,false,true),t+100);
+        String manualReason=preserveReason.reason();
+        preserveReason.offer(r("after-pause-refused","Alice","first_person",t+200),life(1,"observer","uuid-a",31,true,false),t+200);
+        check(manualReason.equals(preserveReason.reason())&&"manual_override".equals(preserveReason.offerReceipt().reason()),"refused offers retain both original terminal reason and separate refusal evidence");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

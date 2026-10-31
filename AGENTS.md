@@ -1,3 +1,7 @@
+## 2026-10-31 native request lifecycle provenance candidate
+
+0.1.9 acceptance preserved another real death/offer overlap instead of hiding the stopped selector. Native0.1.10 now records actual camera binding separately from pure frame/offer/diagnostic reads, bound to active request, UUID, world and observed time; it no longer requires a coincident healthy frame. Explicit manual/unknown protections remain; refusal metadata cannot overwrite the original terminal reason. Native154 + drone11 + shared26 and independent packaged consumers pass, plus four focused host-process fixtures. Earlier partial live successes and failures stay in private audit; final loading and live outcome are recorded separately.
+
 ## 2026-10-31 death at reframe acknowledgement candidate
 
 Production 0.1.8 positively recovered one natural Yui death to DeepFish, then exposed death racing a new reframe before a healthy entity bind. 0.1.9 now releases that exact dead camera once and requires the original observer self ACK; its bounded pending phase preserves manual/unknown outcomes and incoming offers cannot clear same-tick manual intent. Native144, drone11, sharedJS26, packaged consumers and four focused real host-process fixtures pass. 0.1.8's failed second case is retained, not called a full acceptance. Runtime install/result remain separately recorded.

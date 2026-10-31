@@ -10,7 +10,9 @@ public final class DirectorPolicy {
             this(id,lease,target,view,issuedAt,expiresAt,null);
         }
     }
-    public record CameraLife(String uuid,int entityId,long nativeWorldEpoch,boolean dead) {}
+    public record CameraLife(String uuid,int entityId,long nativeWorldEpoch,boolean dead,String requestId,long observedAttachedAt) {
+        public CameraLife(String uuid,int entityId,long nativeWorldEpoch,boolean dead){this(uuid,entityId,nativeWorldEpoch,dead,null,0);}
+    }
     public record Frame(String server,String observer,boolean authenticated,boolean spectator,
                         String targetUuid,boolean targetNear,String cameraUuid,String observerUuid,long nativeWorldEpoch,
                         CameraLife cameraLife,boolean manualDetachRequested) {
@@ -85,11 +87,16 @@ public final class DirectorPolicy {
         detachObservation=new DetachObservation(now,f.nativeWorldEpoch(),f.spectator(),f.targetUuid(),f.cameraUuid(),f.observerUuid());
     }
     private void pause(Frame f,long now,String why){heldLease=request.lease();phase="paused";reason=why;observeDetach(f,now);}
-    private boolean nativeDeath(Frame f){
+    private boolean nativeDeath(Frame f,long now){
         var life=f.cameraLife();
+        boolean healthyBinding=life!=null&&attachedEntityId!=null&&attachedEntityId==life.entityId()
+            &&attachedEntityWorldEpoch==nativeWorldEpoch;
+        boolean nativeRequestBinding=life!=null&&request!=null&&Objects.equals(request.id(),life.requestId())
+            &&life.observedAttachedAt()>=request.issuedAt()-1000&&life.observedAttachedAt()<=now+1000
+            &&now-life.observedAttachedAt()<=3000&&life.entityId()>=0;
         return sameObserver(f)&&f.spectator()&&cameraSelf(f)&&life!=null&&life.dead()
-            &&attachedEntityId!=null&&attachedEntityId==life.entityId()
-            &&Objects.equals(expectedUuid,life.uuid())&&nativeWorldEpoch>0&&attachedEntityWorldEpoch==nativeWorldEpoch
+            &&(life.requestId()==null?healthyBinding:nativeRequestBinding)
+            &&Objects.equals(expectedUuid,life.uuid())&&nativeWorldEpoch>0
             &&nativeWorldEpoch==f.nativeWorldEpoch()&&life.nativeWorldEpoch()==nativeWorldEpoch;
     }
     private void rememberAttachedLife(Frame f){
@@ -105,6 +112,7 @@ public final class DirectorPolicy {
         return offer(r,f,now,null,false);
     }
     public boolean offer(Request r,Frame f,long now,String connectionEpoch,boolean requireConnectionEpoch){
+        String previousPhase=phase,previousReason=reason;
         boolean accepted;
         if(requireConnectionEpoch&&(r==null||r.connectionEpoch()==null||r.connectionEpoch().isBlank()))
             accepted=refuse("connection_epoch_required");
@@ -114,6 +122,7 @@ public final class DirectorPolicy {
         // A refused new offer must not be mistaken for the previous camera request's result.
         offerReceipt=new OfferReceipt(r==null?null:bounded(r.id()),r==null?null:bounded(r.lease()),
             r!=null&&allowed(r.target())?r.target():null,now,accepted,reason);
+        if(!accepted&&request!=null&&Objects.equals(previousPhase,phase))reason=previousReason;
         return accepted;
     }
     private static String bounded(String value){return value!=null&&value.matches("[A-Za-z0-9:_-]{1,80}")?value:null;}
@@ -164,7 +173,7 @@ public final class DirectorPolicy {
         }
         // Only the exact previously attached native entity can prove death. Tab presence,
         // a missing player, a changed dimension or a chat message never supplies this proof.
-        if("attached".equals(phase)&&nativeDeath(f)){
+        if("attached".equals(phase)&&nativeDeath(f,now)){
             phase="stopped";reason="target_died";observeDetach(f,now);return Action.none();
         }
         if("world_transition".equals(phase)){

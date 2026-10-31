@@ -160,6 +160,15 @@ Consumers wait through this phase without replacing the pending request.
 Configured detach input also takes priority over a same-tick incoming reframe.
 Native target samples expose entity IDs and exclude dead/removed bodies from
 their live-entity flag, independently of tab presence or chat.
+
+Version 0.1.10 makes lifecycle frame reads pure. The native tick separately
+records the actual camera entity for the active request, including its request ID,
+world epoch and last attached-observation time. This supplies direct, fresh
+current-request death evidence even when no healthy frame was available. Foreign
+requests, old observations, changed worlds and explicit manual input still cannot
+recover. Offer-refusal receipts retain their own reason without overwriting the
+earlier terminal camera reason. Neither diagnostic reads nor a new offer can
+retag a past corpse as the current request's camera.
 An existing paused/unknown lease cannot be recovered by this mechanism; its
 original cause and manual controls remain intact. This is distinct from network
 reconnection and must not be reported as successful disconnect recovery.
