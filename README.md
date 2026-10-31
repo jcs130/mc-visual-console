@@ -1,5 +1,14 @@
 # mc-visual-console
 
+静态摄影的 [viewerPhotoPage](packages/modern-viewer/renderer-src/host/viewer-photo-page.mjs) 支持显式第一／第三人称模式。
+就绪判断要求实际地形网格、皮肤、头部材质和 YSM 加载任务完成；隐藏的第一人称本人及视野外人物不会被误算成模型加载失败。
+宿主应先选择当前连接已完整接收的区块范围，并处理传输背压错误；不能用放行缺失区块或延长超时来假装成片成功。
+
+原生 Fabric 1.21.1 观战可选用 [Native Director](tools/native-client-director/README.md)：
+只控制一个已认证、显式配置的现有观察者，接受有时限的选人／视角请求，以实际
+相机 UUID 确认切换，手动脱离即暂停。目标数据仍由原生 observer HUD 提供，
+模型使用匹配版本的 YSM；不将已发送镜头命令当成显示成功或完整插件兼容。
+
 2026-10-26 公网观战候选：地形重叠增量、多人材质请求合并、缓存限额与可测计数，另修正YSM转向倾斜及怪物持械方向。消费者须同时更新匹配页面和观战源；[改动、实测及未支持范围](packages/modern-viewer/renderer-src/docs/native-public-cache-and-direction.md)。
 
 2026-10-25 Paper 观战动作候选：连续服务器位置驱动原模型行走，保留原受力速度；重复 tick 去重并补齐高频姿态/使用物品字段。原可米模型回放已验，正式消费端须独立更新，见[动作来源与验收边界](packages/modern-viewer/renderer-src/docs/paper-observed-animation.md)。

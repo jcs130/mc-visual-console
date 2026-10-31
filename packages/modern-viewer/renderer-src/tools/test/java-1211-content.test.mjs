@@ -30,6 +30,15 @@ test('browser content loading accepts the matching 1.21.1 manifest and refuses c
   await assert.rejects(loadViewerContentAssets(fetcher,{minecraftVersion:'1.20.6'}),/mismatch/);
 });
 
+test('schema-compatible current versions load their exact content without a historical version whitelist',async()=>{
+  for(const version of ['1.21.5','1.21.11']){
+    const assets={schemaVersion:1,minecraftVersion:version,clientJarSha256:'a'.repeat(64),mapColors:Array(62).fill(0),particleSprites:{}};
+    const fetcher=async p=>({ok:true,json:async()=>p==='/viewer-content.json'?assets:{minecraftVersion:version,clientJarSha256:'a'.repeat(64)}});
+    assert.equal((await loadViewerContentAssets(fetcher,{minecraftVersion:version,loadTexture:async()=>({})})).assets.minecraftVersion,version);
+    await assert.rejects(loadViewerContentAssets(fetcher,{minecraftVersion:'1.21.1'}),/mismatch/);
+  }
+});
+
 test('1.21.1 browser fonts keep strict matching-version bitmap and unihex paths',async()=>{
   const spec={schemaVersion:1,minecraftVersion:'1.21.1',uniform:false,jp:false,providers:[{type:'space',advances:{' ':4}}]};
   const fetcher=async()=>({ok:true,json:async()=>spec});

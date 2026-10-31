@@ -46,6 +46,7 @@
     "tools/prepare-vanilla-viewer.mjs",
     "tools/model-status-overlay",
     "tools/client-console",
+    "tools/native-client-observer",
     "README.md",
     "LICENSE",
     "packages/modern-viewer/asset-packs/vanilla-1.21.1"

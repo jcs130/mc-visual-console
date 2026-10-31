@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "mcvisual_camera_trials",
+  "version": "0.1.0",
+  "name": "MCVisual optional camera trials",
+  "environment": "client",
+  "entrypoints": {"client": ["org.mcvisual.camera.CameraTrialsClient"]},
+  "depends": {"fabricloader": ">=0.19.0", "minecraft": "1.21.1", "java": ">=21", "fabric-api": "*", "freecamera": "2.2.0", "vcam": ">=1.0.0", "fpvcore": "0.1.0", "mcvisual-native-director": ">=0.1.7"},
+  "license": "MIT"
+}

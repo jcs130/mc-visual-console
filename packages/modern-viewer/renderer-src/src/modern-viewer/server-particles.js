@@ -98,7 +98,7 @@ export async function loadViewerContentAssets(fetcher=fetch,{minecraftVersion='1
   const [response,source]=await Promise.all([fetcher('/viewer-content.json'),fetcher('/asset-source.json')]);
   if(!response.ok || !source.ok) throw Error('viewer_content_assets_missing');
   const [assets,manifest]=await Promise.all([response.json(),source.json()]);
-  if(!['1.20.6','1.21.1'].includes(minecraftVersion)||assets.schemaVersion!==1 || assets.minecraftVersion!==minecraftVersion
+  if(!/^\d+\.\d+(?:\.\d+)?$/.test(minecraftVersion)||assets.schemaVersion!==1 || assets.minecraftVersion!==minecraftVersion
       ||manifest.minecraftVersion!==minecraftVersion||assets.clientJarSha256!==manifest.clientJarSha256
       || !Array.isArray(assets.mapColors) || assets.mapColors.length!==62 || !assets.particleSprites) throw Error('viewer_content_assets_mismatch');
   const texture=await loadTexture('/particle-content.png');

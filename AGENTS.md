@@ -2,6 +2,26 @@
 
 The appearance host/browser distinguish exact Freesia2.4.1 and native Youer/NeoForge2.6.5 source/protocol/artifact tuples. Native is not a Worker alias; model resources bind to the corresponding bundle version as well as model/hash. Original encrypted models remain explicitly native-only without public source. 12 host/asset and 36 browser selection/action checks pass; no consumer assets, camera client, production model chain or complete rendering parity changed. Preserve legacy support and explicit Web overrides. See packages/modern-viewer/renderer-src/docs/server-ysm-profiles.md.
 
+## 2026-10-31 native request lifecycle provenance candidate
+
+0.1.9 acceptance preserved another real death/offer overlap instead of hiding the stopped selector. Native0.1.10 now records actual camera binding separately from pure frame/offer/diagnostic reads, bound to active request, UUID, world and observed time; it no longer requires a coincident healthy frame. Explicit manual/unknown protections remain; refusal metadata cannot overwrite the original terminal reason. Native154 + drone11 + shared26 and independent packaged consumers pass, plus four focused host-process fixtures. Earlier partial live successes and failures stay in private audit; final loading and live outcome are recorded separately.
+
+## 2026-10-31 death at reframe acknowledgement candidate
+
+Production 0.1.8 positively recovered one natural Yui death to DeepFish, then exposed death racing a new reframe before a healthy entity bind. 0.1.9 now releases that exact dead camera once and requires the original observer self ACK; its bounded pending phase preserves manual/unknown outcomes and incoming offers cannot clear same-tick manual intent. Native144, drone11, sharedJS26, packaged consumers and four focused real host-process fixtures pass. 0.1.8's failed second case is retained, not called a full acceptance. Runtime install/result remain separately recorded.
+
+## 2026-10-31 spectator death / self-body candidate
+
+Native director 0.1.8 distinguishes exact attached native-entity death from manual detach input; configured keyboard/mouse detach wins and prior unknown/manual states stay terminal. The explicitly scoped spectator body is masked locally without creating or deleting server entities. Observer HUD 0.1.3 shows a no-target notice rather than the observer's own RPG sidebar during a gap. Original native signatures, 136 policy + 11 drone checks, 26 shared JS checks and packaged consumers pass; observer protocol/display has 74 packaged checks. Exact healthy entity/world bindings refresh after observed world restoration; an old world ID cannot supply death evidence. Source/build checks are not live render or natural-death acceptance. Production installation remains separately gated; original actors/models unchanged.
+
+## 2026-10-31 Qiandengji photo consumer activated
+
+The consumer now freezes matching host modules and the 1.20.6 browser from 35227aa5. Production captured the unchanged original qd_dafeiyu/pearl actor in 23.534 seconds, then verified the 1536px PNG hash, native ImageFrame import and personal reward delivery. Its former Oct17 browser failed that actual model with NATIVE_BEDROCK_BONE_INVALID; 81-column transmission also hit bounded backpressure, so the live consumer uses a complete 49-column budget. Initial exact camera/entity acquisition is bounded in the consumer, with subsequent identity/world/anchor checks retained. Only its camera bridge reconnected. Full Java scene parity remains false: actual pixels still reveal a local missing block texture, and native shaders/DH are not active. Failed deployment/test evidence and private captures stay outside Git.
+
+## 2026-10-31 still-photo readiness repair
+
+The shared photo page now accepts the existing optional first/third/3dview mode and waits for actual YSM jobs rather than equating all received states with visible actors. Terrain, head textures, skin and failed/unavailable-model gates stay strict. Focused page checks pass. The matched Qiandengji adapter additionally chooses a complete already-received footprint (default cap 4), surfaces stream failure and passed three real 1536px captures plus native ImageFrame/personal reward delivery on isolated Youer in 16–18 seconds. At this historical point activation was still pending; the later production outcome is recorded above. Private images, credentials and compiled bundles remain outside Git.
+
 ## 2026-10-27 custom YSM arm hierarchy candidate
 
 Optional unsupported first-person arms no longer prevent a valid independent third-person original model from loading. Explicit arm capability/reason replaces whole-body failure; corrupt assets still fail and no replacement rig is invented. Ground Molang query uses observed boolean only. After upstream projectile/shield/bind-pose integration, 58 related tests pass with original Cormy/NEKO/Kirito resources, thirteen other bundled-fixture checks conditional; eight acquired bundles have real WebGL idle/walk/run evidence, with per-action limitations retained. Not deployed to consumers. See renderer-src/docs/native-appearance-gallery.md. Third-party assets/private captures remain outside Git.

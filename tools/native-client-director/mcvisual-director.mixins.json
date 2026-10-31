@@ -1,0 +1,1 @@
+{"required":true,"package":"org.mcvisual.director.mixin","compatibilityLevel":"JAVA_21","client":["DroneCameraMixin","DirectorInputMixin","DirectorMouseMixin","ObserverBodyMixin"],"injectors":{"defaultRequire":1}}

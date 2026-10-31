@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { createCanvas } from 'canvas';
 import * as THREE from 'three';
 import { PlayerObject } from 'skinview3d/libs/model.js';
 import { createNativeTransitionTiming } from '../../src/native-viewer/native-transition-timing.js';
@@ -76,6 +79,21 @@ test('mirrors real skinview3d BodyParts without constructors, circular userData 
   assert.ok(mirror.root.getObjectByName('custom_item_left'));
   assert.ok(mirror.root.getObjectByName('custom_item_right'));
   assert.equal(inventoryMirrorMatches(mirror, source), true);
+});
+
+test('matrix-authored world anchors and skin pivots do not override the private inventory pose',()=>{
+  const source=avatar();
+  for(const node of [source,source.playerObject,...Object.values(source.playerObject.skin).filter(value=>value?.isObject3D)]){
+    node.updateMatrix();node.matrixAutoUpdate=false;
+  }
+  const oldMatrix=source.matrix.clone(),oldPlayerMatrix=source.playerObject.matrix.clone();
+  const mirror=mirrorInventoryPlayer(THREE,source);poseInventoryPlayer(mirror,.2,.1);mirror.root.updateMatrixWorld(true);
+  assert.deepEqual(mirror.root.getWorldPosition(new THREE.Vector3()).toArray(),[0,0,0]);
+  assert.equal(mirror.root.matrixAutoUpdate,true);assert.equal(mirror.nodes.get(source.playerObject).matrixAutoUpdate,true);
+  const facing=new THREE.Vector3(0,0,1).transformDirection(mirror.nodes.get(source.playerObject).matrixWorld);
+  assert.ok(facing.z>.9,'server/world yaw cannot turn the preview away from its camera');
+  assert.equal(source.matrixAutoUpdate,false);assert.ok(source.matrix.equals(oldMatrix));assert.ok(source.playerObject.matrix.equals(oldPlayerMatrix));
+  releaseInventoryMirror(mirror);
 });
 
 test('armor skeleton uses only copied bones, sharing texture/material/geometry without touching the world', () => {
@@ -160,6 +178,59 @@ test('YSM inventory preview retains its facing and never revives the hidden clas
   const forward=new THREE.Vector3(0,0,-1).applyEuler(mirror.root.rotation);
   assert.ok(forward.z>0,'original YSM -Z front faces the +Z inventory camera');
   assert.equal(source.rotation.y,2.1);
+});
+
+test('a selected full custom actor keeps its authored pose without classic-body normalization', () => {
+  const source=avatar(), custom=new THREE.Group();
+  custom.name='selected-original-actor';custom.userData.lanternFullPlayerModel=true;
+  custom.add(new THREE.Mesh(new THREE.BoxGeometry(.6,1.8,.3),new THREE.MeshBasicMaterial()));
+  source.add(custom);
+  source.playerObject.skin.head.visible=false;
+  source.playerObject.rotation.set(.4,.9,.2);
+  source.getObjectByName('geometry_armor_head').visible=false;
+  const original=source.playerObject.quaternion.clone();
+  const mirror=mirrorInventoryPlayer(THREE,source);poseInventoryPlayer(mirror,.25,.1);
+  assert.ok(mirror.nodes.get(source.playerObject).quaternion.equals(original),'hidden native rig is not re-posed through a selected actor');
+  assert.equal(mirror.nodes.get(custom).visible,true);
+  assert.equal(mirror.root.getObjectByName('geometry_armor_head').visible,false);
+  assert.equal(mirror.nodes.get(source.playerObject.skin.head).visible,false);
+  releaseInventoryMirror(mirror);
+});
+
+test('switching to a full custom actor hides sibling classic armor, keeps held items and restores every original visibility flag', () => {
+  const code=readFileSync(new URL('../../src/modern-viewer/client.js',import.meta.url),'utf8');
+  const start=code.indexOf('function hideNativePlayerBody('),end=code.indexOf('function disposePlayerModelInstance(',start);
+  assert.ok(start>0&&end>start);
+  const {hide,restore}=runInNewContext(code.slice(start,end)+'\n({hide:hideNativePlayerBody,restore:restoreNativePlayerBody})');
+  const source=avatar(),custom=new THREE.Group();source.add(custom);
+  const instance={sceneEntity:source,nativeRoot:source.playerObject.parent,nativeBodyVisibility:new Map()};
+  const hidden=source.playerObject.skin.head.children[1];hidden.visible=false;
+  hide(instance);
+  assert.equal(source.getObjectByName('geometry_armor_head').visible,false,'armor is not a descendant of the skin wrapper');
+  assert.equal(source.getObjectByName('custom_item_left').visible,true);
+  assert.equal(source.getObjectByName('custom_item_right').visible,true);
+  assert.equal(custom.visible,true);
+  hide(instance);restore(instance);
+  assert.equal(source.getObjectByName('geometry_armor_head').visible,true);
+  assert.equal(hidden.visible,false,'intentionally hidden outer layers stay hidden');
+  assert.equal(instance.nativeBodyVisibility.size,0);
+});
+
+test('legacy 64x32 server skins use modern inventory UVs, retain original face pixels and release only private textures', () => {
+  const image=createCanvas(64,32),ctx=image.getContext('2d');
+  ctx.fillStyle='#a04020';ctx.fillRect(0,0,64,32);ctx.fillStyle='#2040e0';ctx.fillRect(16,16,40,16);
+  const original=image.toBuffer('image/png'),loaded=new THREE.Texture(image);let rawDisposals=0;
+  loaded.addEventListener('dispose',()=>rawDisposals++);
+  const fallback=createInventoryPreviewFallback(THREE,{getAvatar:()=>null,getSkin:()=>({texture:'/fixture-legacy.png'}),getEntities:()=>null,
+    createSkinCanvas:()=>createCanvas(1,1),loadTexture:(_url,ready)=>ready(loaded)});
+  fallback.update();assert.equal(fallback.ready,true);
+  const normalized=fallback.root.playerObject.skin.map;
+  assert.notEqual(normalized,loaded);assert.equal(normalized.image.width,64);assert.equal(normalized.image.height,64);
+  assert.deepEqual([...normalized.image.getContext('2d').getImageData(8,8,1,1).data],[160,64,32,255]);
+  assert.deepEqual([...normalized.image.getContext('2d').getImageData(24,24,1,1).data],[32,64,224,255]);
+  assert.equal(rawDisposals,1);assert.deepEqual(image.toBuffer('image/png'),original);
+  let normalizedDisposals=0;normalized.addEventListener('dispose',()=>normalizedDisposals++);
+  fallback.dispose();assert.equal(normalizedDisposals,1);assert.equal(rawDisposals,1);
 });
 
 test('native held-item matrices stay at the hand in the inventory mirror, including live matrix-only updates', () => {
