@@ -1,3 +1,7 @@
+## 2026-10-31 native YSM profile candidate, consumers not deployed
+
+The appearance host/browser distinguish exact Freesia2.4.1 and native Youer/NeoForge2.6.5 source/protocol/artifact tuples. Native is not a Worker alias; model resources bind to the corresponding bundle version as well as model/hash. Original encrypted models remain explicitly native-only without public source. 12 host/asset and 36 browser selection/action checks pass; no consumer assets, camera client, production model chain or complete rendering parity changed. Preserve legacy support and explicit Web overrides. See packages/modern-viewer/renderer-src/docs/server-ysm-profiles.md.
+
 ## 2026-10-27 custom YSM arm hierarchy candidate
 
 Optional unsupported first-person arms no longer prevent a valid independent third-person original model from loading. Explicit arm capability/reason replaces whole-body failure; corrupt assets still fail and no replacement rig is invented. Ground Molang query uses observed boolean only. After upstream projectile/shield/bind-pose integration, 58 related tests pass with original Cormy/NEKO/Kirito resources, thirteen other bundled-fixture checks conditional; eight acquired bundles have real WebGL idle/walk/run evidence, with per-action limitations retained. Not deployed to consumers. See renderer-src/docs/native-appearance-gallery.md. Third-party assets/private captures remain outside Git.

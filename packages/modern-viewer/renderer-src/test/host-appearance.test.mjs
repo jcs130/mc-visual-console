@@ -2,9 +2,29 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {APPEARANCE_CHANNEL,PAPER_YSM_JAR_SHA256,parseAppearancePacket,createViewerAppearanceBridge} from '../host/viewer-appearance.mjs';
+import {SERVER_YSM_PROFILES} from '../src/modern-viewer/server-ysm-profile.js';
 const uuid='5b3b3c00-781f-3ddb-8770-13749bdf4737',epoch='00000000-0000-4000-8000-000000000001';
 const row={schemaVersion:1,type:'state',source:'freesia_worker',epoch,playerUuid:uuid,available:true,ysmVersion:'2.4.1',protocolVersion:'2.4.0',jarSha256:PAPER_YSM_JAR_SHA256,entityId:7,modelId:'alex',texture:'gsl',mandatory:true,animation:'idle'};
 const packet=value=>({channel:APPEARANCE_CHANNEL,data:Buffer.from(JSON.stringify(value))});
+
+test('native backend requires its exact independent source, protocol and artifact tuple',()=>{
+  const native={...row,source:'ysm_native_backend',...SERVER_YSM_PROFILES.ysm_native_backend,modelId:'大肥鱼_1.1.ysm',texture:'white',mandatory:false};
+  assert.equal(parseAppearancePacket(packet(native)).modelId,'大肥鱼_1.1.ysm');
+  for(const patch of [{source:'freesia_worker'},{ysmVersion:'2.4.1'},{protocolVersion:'2.4.0'},{jarSha256:PAPER_YSM_JAR_SHA256},{jarSha256:'0'.repeat(64)}])assert.equal(parseAppearancePacket(packet({...native,...patch})),null);
+  assert.equal(parseAppearancePacket(packet({...row,source:'ysm_native_backend'})),null);
+});
+
+test('native unavailable and encrypted states remain distinct from a rendered model',()=>{
+  const native={...row,source:'ysm_native_backend',...SERVER_YSM_PROFILES.ysm_native_backend,available:false,reason:'YSM_NATIVE_ATTACHMENT_UNINITIALIZED'};
+  assert.equal(parseAppearancePacket(packet(native)).reason,native.reason);
+  assert.equal(parseAppearancePacket(packet({...native,reason:'invented'})).reason,'YSM_NATIVE_STATE_UNAVAILABLE');
+  const bot=Object.assign(new EventEmitter(),{_client:new EventEmitter(),player:{uuid},entity:{id:7},entities:{}}),bridge=createViewerAppearanceBridge(bot);
+  try{
+    bot._client.emit('custom_payload',packet({...native,available:true,webAvailable:false,webReason:'YSM_ENCRYPTED_SOURCE_REQUIRED'}));
+    const state=bridge.snapshot()[0];assert.equal(state.source,'ysm_native_backend');assert.equal(state.renderAvailable,false);assert.equal(state.renderReason,'YSM_ENCRYPTED_SOURCE_REQUIRED');
+    bot.entity.id=8;assert.equal(bridge.snapshot().length,0);
+  }finally{bridge.dispose();}
+});
 test('only pinned server metadata is accepted, without native 2.6.5 ID aliases',()=>{
   assert.equal(parseAppearancePacket(packet(row)).modelId,'alex');
   assert.equal(parseAppearancePacket(packet({...row,modelId:'玩家/白猫',texture:'白色'})).modelId,'玩家/白猫');

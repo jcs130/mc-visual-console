@@ -9,7 +9,7 @@ function fixture(){const file=Buffer.from('{}');return {schemaVersion:1,ysmVersi
 test('hash-addressed original bundles reject modified files, paths, gzip bombs and version aliases',()=>{
  const bundle=fixture(),zip=gzipSync(JSON.stringify(bundle));assert.equal(decodeYsmBundle(zip,sha(zip)).modelId,'uploaded_actor');
  assert.throws(()=>decodeYsmBundle(zip,'0'.repeat(64)),/HASH/);
- for(const change of [b=>b.files['main.json'].sha256='0'.repeat(64),b=>b.files['../secret']=b.files['main.json'],b=>b.ysmVersion='2.6.5']){
+ for(const change of [b=>b.files['main.json'].sha256='0'.repeat(64),b=>b.files['../secret']=b.files['main.json'],b=>b.ysmVersion='2.6.6']){
   const bad=fixture();change(bad);const bytes=gzipSync(JSON.stringify(bad));assert.throws(()=>decodeYsmBundle(bytes,sha(bytes)));}
  const bomb=gzipSync(Buffer.alloc(8*1024*1024+1));assert.throws(()=>decodeYsmBundle(bomb,sha(bomb)));
 });
@@ -24,4 +24,21 @@ test('existing game connection requests only opted-in assets; chunks bind the re
  const emit=p=>client.emit('custom_payload',{channel:YSM_ASSET_CHANNEL,data:Buffer.from(JSON.stringify(p))});
  emit({...payload,requestId:'0'.repeat(32)});assert.equal(received.length,0);emit(payload);assert.equal(received.length,1);
  receiver.request(row);assert.equal(writes.length,1);receiver.dispose();assert.equal(client.listenerCount('custom_payload'),0);
+});
+
+test('native public assets retain their exact version and cannot satisfy a legacy request',()=>{
+ const bundle={...fixture(),ysmVersion:'2.6.5'},zip=gzipSync(JSON.stringify(bundle)),hash=sha(zip);
+ assert.equal(decodeYsmBundle(zip,hash).ysmVersion,'2.6.5');
+ for(const expected of ['2.4.1','2.6.5']){
+  const writes=[],received=[],errors=[];
+  const client=Object.assign(new EventEmitter(),{state:'play',write:(name,packet)=>writes.push(packet)});
+  const receiver=createYsmAssetReceiver({_client:client},{onAsset:value=>received.push(value),onError:(row,reason)=>errors.push(reason)});
+  try{
+   receiver.request({webAvailable:true,modelId:bundle.modelId,ysmVersion:expected,assetSha256:hash});
+   const request=JSON.parse(writes[0].data);
+   client.emit('custom_payload',{channel:YSM_ASSET_CHANNEL,data:Buffer.from(JSON.stringify({schemaVersion:1,type:'chunk',requestId:request.requestId,sha256:hash,index:0,count:1,bytes:zip.length,data:zip.toString('base64')}))});
+   assert.equal(received.length,expected==='2.6.5'?1:0);
+   assert.deepEqual(errors,expected==='2.6.5'?[]:['YSM_PROFILE_BINDING_MISMATCH']);
+  }finally{receiver.dispose();}
+ }
 });

@@ -7,7 +7,7 @@ export function decodeYsmBundle(compressed,hash) {
   if(compressed.length>MAX_BYTES || sha(compressed)!==hash)throw Error('YSM_ASSET_HASH_MISMATCH');
   const raw=gunzipSync(compressed,{maxOutputLength:MAX_RAW});
   const bundle=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
-  if(bundle.schemaVersion!==1 || bundle.ysmVersion!=='2.4.1' || bundle.format!=='ysm-bedrock-original'
+  if(bundle.schemaVersion!==1 || !['2.4.1','2.6.5'].includes(bundle.ysmVersion) || bundle.format!=='ysm-bedrock-original'
     || typeof bundle.modelId!=='string' || bundle.modelId.length>96 || !bundle.files || Object.keys(bundle.files).length>32)throw Error('YSM_ASSET_FORMAT_UNSUPPORTED');
   let total=0;
   for(const [path,file] of Object.entries(bundle.files)) {
@@ -49,6 +49,7 @@ export function createYsmAssetReceiver(bot,{onAsset=()=>{},onError=()=>{}}={}) {
         if(active.size!==p.bytes)throw Error('YSM_TRANSFER_SIZE_INVALID');
         const bundle=decodeYsmBundle(Buffer.concat(active.parts),active.hash);
         if(bundle.modelId!==active.row.modelId)throw Error('YSM_MODEL_BINDING_MISMATCH');
+        if(bundle.ysmVersion!==(active.row.ysmVersion??'2.4.1'))throw Error('YSM_PROFILE_BINDING_MISMATCH');
         const size=Buffer.byteLength(JSON.stringify(bundle));
         while(cache.size>=32 || bytes+size>32*1024*1024){const key=cache.keys().next().value;bytes-=cache.get(key).size;cache.delete(key);}
         const hash=active.hash;cache.set(hash,{bundle,size});bytes+=size;active=null;onAsset(bundle);setTimeout(start,600).unref?.();
