@@ -242,6 +242,20 @@ public class DirectorPolicyCheck {
         String manualReason=preserveReason.reason();
         preserveReason.offer(r("after-pause-refused","Alice","first_person",t+200),life(1,"observer","uuid-a",31,true,false),t+200);
         check(manualReason.equals(preserveReason.reason())&&"manual_override".equals(preserveReason.offerReceipt().reason()),"refused offers retain both original terminal reason and separate refusal evidence");
+        var positionFail=policy();
+        var remote=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",false,"observer","observer",1);
+        check(positionFail.offer(r("position-failure","Alice","first_person",t),remote,t),"positioning request admitted");
+        check("minecraft:tp @s Alice".equals(positionFail.step(remote,t).command()),"only observer teleport before attachment");
+        check(positionFail.step(remote,t+8001).command()==null&&"stopped".equals(positionFail.phase())
+            &&"target_position_unconfirmed".equals(positionFail.reason()),"confirmed self-camera position timeout becomes a known display failure");
+        check(positionFail.positionFailure()!=null&&positionFail.positionFailure().commands()==1
+            &&"position-failure".equals(positionFail.positionFailure().requestId()),"position failure is request-bound evidence");
+        check(positionFail.step(w(1,"observer"),t+9000).command()==null,"late target presence never replays old request");
+        for(String camera:Arrays.asList(null,"another-player")){
+            var unproven=policy();unproven.offer(r("position-unknown-"+(camera==null?"null":"other"),"Alice","first_person",t),remote,t);unproven.step(remote,t);
+            var changedCamera=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",false,camera,"observer",1);
+            unproven.step(changedCamera,t+8001);check("unknown".equals(unproven.phase())&&unproven.positionFailure()==null,"unknown/nonself camera cannot be auto-recovered");
+        }
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

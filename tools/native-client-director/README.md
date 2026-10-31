@@ -4,6 +4,26 @@ This optional Fabric 1.21.1 module controls one existing, explicitly configured
 observer. It does not create a player, connect a Minecraft client, run a model,
 choose an agent's game goal, or expose arbitrary command execution.
 
+Version 0.1.11 adds a request-bound `target_position_unconfirmed` failure when
+positioning times out before any target attachment command and the native camera
+is positively still the original observer. The preceding teleport remains
+unconfirmed. Matching hosts may quarantine this target for 30 seconds and choose
+another subject with a fresh ID; unknown attachment, manual takeover and foreign
+camera outcomes remain stopped. `positionFailure` binds request, lease, target,
+observer, current camera, world epoch and command count.
+
+Explicit `transitionsEnabled: true` enables a GPU-only old-frame overlay; optional
+`transitionMs` is 100–1500 ms (default 350). A remote switch holds the labelled old
+frame until two rendered frames confirm the new camera, then dissolves it away.
+The hold is bounded at ten seconds. Manual detach, GUI/auth loss and terminal
+failure abort it. One RGBA texture is capped at 16 MiB, with no CPU pixel readback
+or second scene renderer. The effect runs on the active native HUD path. Same
+subject drone reframes retain the existing rig interpolation instead of resetting
+it. These transitions do not fade separate desktop avatar windows or audio.
+Diagnostics report allocation, request, phase and capture failure. Disabling the
+feature performs no GPU capture. Pure timing/package checks and an isolated
+1.21.1/Sodium/iGPU pixel test passed; production activation is a separate step.
+
 Nothing activates without config/mcvisual-native-director.json. The configuration
 must explicitly enable the module and match the current server and observer name;
 targets are an explicit list of existing player names. A native MC_AUTH_SUCCESS

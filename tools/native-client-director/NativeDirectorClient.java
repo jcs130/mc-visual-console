@@ -7,6 +7,7 @@ import java.util.*;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
@@ -40,12 +41,16 @@ public final class NativeDirectorClient implements ClientModInitializer {
         instance=this;
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
-            authenticated=false;stopDrone("disconnected");diagnostics(client,false);policy=null;});
+            authenticated=false;stopDrone("disconnected");FrameBlend.abort();diagnostics(client,false);policy=null;});
         ClientReceiveMessageEvents.GAME.register((message,overlay)->{
             if(policy==null)return;
             authenticated=DirectorPolicy.authReceipt(authenticated,message.getString());
         });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+        // Register after normal mod initialization so the frozen frame also
+        // covers the native observer HUD while a remote camera is loading.
+        ClientLifecycleEvents.CLIENT_STARTED.register(client->HudRenderCallback.EVENT.register((draw,delta)->renderTransition(client,draw)));
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client->FrameBlend.close());
         HudRenderCallback.EVENT.register((draw,delta)->{
             if(policy==null)return;long now=System.currentTimeMillis();lastRenderedAt=now;
             if(frameWindowAt==0)frameWindowAt=now;
@@ -70,6 +75,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             policy=new DirectorPolicy(config);
             trackedTargets=Set.copyOf(config.targets());
             var extra=JsonParser.parseString(source).getAsJsonObject();
+            FrameBlend.configure(extra.has("transitionsEnabled")&&extra.get("transitionsEnabled").getAsBoolean(),extra.has("transitionMs")?extra.get("transitionMs").getAsInt():350);
             requireConnectionEpoch=extra.has("requireConnectionEpoch")&&extra.get("requireConnectionEpoch").getAsBoolean();
             droneEnabled=extra.has("droneEnabled")&&extra.get("droneEnabled").getAsBoolean();
             droneDistance=extra.has("droneDistance")?extra.get("droneDistance").getAsDouble():7;
@@ -159,8 +165,12 @@ public final class NativeDirectorClient implements ClientModInitializer {
                         var request=new Gson().fromJson(Files.readString(file),DirectorPolicy.Request.class);
                         if(request!=null&&request.view()!=null&&request.view().startsWith("drone_")&&!droneEnabled)
                             throw new IllegalArgumentException("drone_rig_not_explicitly_enabled");
-                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch))
+                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch)){
                             manualDetachRequested=false;
+                            boolean sameRig=droneActive&&request.view().startsWith("drone_")
+                                &&Objects.equals(droneUuid,frame(client,request.target()).targetUuid());
+                            if(!sameRig)FrameBlend.begin(client,request.id());
+                        }
                         requestProblem=null;
                     }
                 }
@@ -176,7 +186,9 @@ public final class NativeDirectorClient implements ClientModInitializer {
             System.out.println("[MCVisualDirector] Observer-only camera request: "+policy.requestId());
         }
         if(action.view()!=null){
-            stopDrone("normal_perspective");
+            boolean preserveRig=droneActive&&action.view().startsWith("drone_")
+                &&Objects.equals(droneUuid,frame(client,policy.target()).cameraUuid());
+            if(!preserveRig)stopDrone("normal_perspective");
             class_5498 view=switch(action.view()){
                 case "third_person_back","drone_follow","drone_overview"->class_5498.field_26665;
                 case "third_person_front"->class_5498.field_26666;
@@ -191,6 +203,13 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(tick%20==0)diagnostics(client,true);
     }
     private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneReason=reason;DRONE.reset();}
+    private void renderTransition(class_310 client,class_332 draw){
+        if(policy==null||!authenticated){FrameBlend.abort();return;}
+        var f=frame(client,policy.target());
+        boolean ready="attached".equals(policy.phase())&&f.targetUuid()!=null&&f.targetUuid().equals(f.cameraUuid());
+        boolean terminal=manualDetachRequested||Set.of("paused","unknown","stopped").contains(policy.phase());
+        FrameBlend.draw(client,draw,policy.requestId(),ready,terminal);
+    }
     public static boolean droneMayRender(class_1297 target){
         if(worldTransitionActive){DRONE.reset();return false;}
         if(!droneEnabled||!droneActive||target==null||!target.method_5667().toString().equals(droneUuid))return false;
@@ -213,7 +232,9 @@ public final class NativeDirectorClient implements ClientModInitializer {
         try{
             Map<String,Object> data=new LinkedHashMap<>();
             data.put("schema","mcvisual-native-director/v1");data.put("recordedAt",Instant.now().toString());
-            data.put("nativeVersion","0.1.10");
+            data.put("nativeVersion","0.1.11");
+            data.put("transition",FrameBlend.status());
+            data.put("positionFailure",policy.positionFailure());
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());
             data.put("connectionEpoch",connectionEpoch);data.put("connectionBoundRequests",requireConnectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());

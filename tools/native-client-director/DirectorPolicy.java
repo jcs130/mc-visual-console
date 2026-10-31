@@ -28,6 +28,8 @@ public final class DirectorPolicy {
     public record DetachObservation(long at,long nativeWorldEpoch,boolean spectator,
                                     String targetUuid,String cameraUuid,String observerUuid) {}
     public record OfferReceipt(String id,String lease,String target,long at,boolean accepted,String reason) {}
+    public record PositionFailure(String requestId,String lease,String targetUuid,String observerUuid,
+                                  String cameraUuid,long nativeWorldEpoch,long observedAt,int commands) {}
     public record Action(String command,String view) {
         static Action none(){return new Action(null,null);}
     }
@@ -42,6 +44,8 @@ public final class DirectorPolicy {
     private long attachedEntityWorldEpoch;
     private CameraLife deadAttachment;
     private DetachObservation detachObservation;
+    private PositionFailure positionFailure;
+    private String requestObserverUuid;
     private static final long WORLD_SETTLE_MS=3000;
     private int commands;
     public DirectorPolicy(Config config){this.config=config;}
@@ -52,6 +56,7 @@ public final class DirectorPolicy {
     public int commands(){return commands;}
     public OfferReceipt offerReceipt(){return offerReceipt;}
     public DetachObservation detachObservation(){return detachObservation;}
+    public PositionFailure positionFailure(){return positionFailure;}
     public static boolean hideObserverBody(boolean scoped,boolean spectator,boolean self){
         return scoped&&spectator&&self;
     }
@@ -146,7 +151,7 @@ public final class DirectorPolicy {
         if(request!=null&&!request.target().equalsIgnoreCase(r.target())
             &&now-lastSwitchAt<Math.max(10_000,config.minSwitchMs()))return refuse("switch_cooldown");
         seen.add(r.id());while(seen.size()>32)seen.remove(seen.iterator().next());
-        request=r;expectedUuid=f.targetUuid();commands=0;phase="ready";reason="accepted";phaseAt=now;
+        request=r;expectedUuid=f.targetUuid();requestObserverUuid=f.observerUuid();positionFailure=null;commands=0;phase="ready";reason="accepted";phaseAt=now;
         nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;attachedEntityWorldEpoch=0;deadAttachment=null;detachObservation=null;
         return true;
     }
@@ -212,7 +217,20 @@ public final class DirectorPolicy {
             return Action.none();
         }
         if(!pending())return Action.none();
-        if(now-phaseAt>8000){phase="unknown";reason="native_attachment_timeout";return Action.none();}
+        if(now-phaseAt>8000){
+            // Positioning never sent a target attachment command. Once this
+            // request stops, its state machine cannot attach a late respawn.
+            // Preserve the unconfirmed teleport, but publish the known self
+            // camera so the host may choose another subject under a NEW id.
+            if("position".equals(phase)&&f.spectator()&&!f.manualDetachRequested()
+                    &&requestObserverUuid!=null&&requestObserverUuid.equals(f.observerUuid())
+                    &&cameraSelf(f)&&f.nativeWorldEpoch()>0){
+                positionFailure=new PositionFailure(request.id(),request.lease(),expectedUuid,
+                    f.observerUuid(),f.cameraUuid(),f.nativeWorldEpoch(),now,commands);
+                phase="stopped";reason="target_position_unconfirmed";observeDetach(f,now);
+            }else{phase="unknown";reason="native_attachment_timeout";}
+            return Action.none();
+        }
         if(attached(f)){
             var life=f.cameraLife();
             if(life!=null&&life.dead()&&Objects.equals(expectedUuid,life.uuid())&&life.entityId()>=0
