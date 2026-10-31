@@ -90,3 +90,11 @@ packages/modern-viewer/renderer-src/docs/web-controls-camera-quality.md
 packages/modern-viewer/renderer-src/host/broadcast-camera.mjs
 packages/modern-viewer/renderer-src/tools/test/broadcast-camera.test.mjs
 tools/orthographic-camera/OrthoPreviewClient.java
+
+十、2026-11-01 运镜研究补充
+已核对社区 Cinematic Director Skill、StudioBinder、Adobe 轴线连续性，以及 Unity Cinemachine 的 ClearShot、Deoccluder、Orbital Follow、Position Composer 和 Epic Camera Cut Track、NBCU 导播及 OBS 预览/节目资料。
+新增可复用技能 docs/skills/live-game-director/SKILL.md，按需读取二十种镜头配方、直播节奏、后端审计及来源。配方ID是知识标签，只有适配器在实时查询中明确绑定的 shotId 才能执行；知识文件不能自动授予缺失能力。
+现成网页运镜源码已有稳定跟随、过肩、正面、环绕、高位俯视及一周环绕/拉远展示；需复用并正确接入，不在宿主另造一套。它们不能自动当成 Java 或原生SSE后端已经支持的能力。
+普通直播中采用有起止的弧线、动作方向留白、真实关注点和稳定地平线。正交缩放、透视移动、改FOV与两个画面叠化分别处理。主体驻留、构图驻留、机械避挡分层；已有十秒门不能被短反应模板绕过。
+SDK与镜头知识映射共十六项离线检查、公开导出和类型检查通过。技能格式检查不等于 LLM 导播已在现役自主采用。
+另发现并处理一次现役 native_attachment_timeout：已以新操作恢复可米跟拍，保留旧未知结果，不重放旧请求。持久补丁0.1.11包含定位失败的明确回执、同主体无人机插值保留、跨主体GPU旧帧叠化，独立单机真实像素已验；生产安装需单独记录，不能用此段代替运行时回读。

@@ -2,6 +2,15 @@ import { randomUUID } from 'node:crypto';
 
 /** Display-only host API. The host supplies decisions; this module never calls a model. */
 export const CAMERA_PROTOCOL = 'mcvisual.camera/v1';
+/** Explicit knowledge read; these recipes do not grant native backend capabilities. */
+export async function loadCameraShotLibrary() {
+  const {readFile}=await import('node:fs/promises');
+  return JSON.parse(await readFile(new URL('../../../../docs/skills/live-game-director/references/shot-library.json',import.meta.url),'utf8'));
+}
+export function mapCameraRecipes(observed,library) {
+  return library.recipes.map(recipe=>({recipeId:recipe.id,
+    shotIds:observed.shots.filter(shot=>shot.available===true&&shot.recipeId===recipe.id).map(shot=>shot.id)}));
+}
 export const CAMERA_TOOLS = Object.freeze([
   {name:'broadcast_camera_query',description:'Read fresh camera capabilities, observed subject, ownership and native operation state.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
   {name:'broadcast_camera_take',description:'Submit a bounded shot with a stable actionId and the current lease. Acceptance is not completion; query the original result.',inputSchema:{type:'object',properties:{actionId:{type:'string'},lease:{type:'string'},shot:{type:'string'},holdMs:{type:'integer',minimum:10000,maximum:120000},reason:{type:'string',maxLength:240}},required:['actionId','lease','shot','holdMs'],additionalProperties:false}},

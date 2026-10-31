@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CameraDirector,CAMERA_PROTOCOL,CAMERA_TOOLS,callCameraTool,suggestFallbackShot} from '../../host/broadcast-camera.mjs';
+import {CameraDirector,CAMERA_PROTOCOL,CAMERA_TOOLS,callCameraTool,suggestFallbackShot,loadCameraShotLibrary,mapCameraRecipes} from '../../host/broadcast-camera.mjs';
 
 function fixture({cancel=true}={}) {
   let now=100000;let writes=0;
@@ -81,4 +81,17 @@ test('model tool handler and SDK share exact operation state',async()=>{
 test('fallback only selects an available shot from structured activity',()=>{
   const f=fixture();assert.equal(suggestFallbackShot({...f.native,activity:'combat'}),'perspective');
   assert.equal(suggestFallbackShot({...f.native,activity:'building'}),'overview');assert.equal(suggestFallbackShot({...f.native,shots:[]} ),null);
+});
+test('packaged camera knowledge has unique recipes and resolvable fallback references',async()=>{
+  const library=await loadCameraShotLibrary();assert.equal(library.schema,'mcvisual.shot-recipes/v1');
+  const ids=new Set(library.recipes.map(x=>x.id));assert.equal(ids.size,library.recipes.length);
+  for(const recipe of library.recipes){assert.ok(recipe.purpose&&recipe.finish&&recipe.requires.length);for(const fallback of recipe.fallback)assert.ok(ids.has(fallback));}
+});
+test('a named recipe never invents an executable shot or grants an unavailable backend feature',async()=>{
+  const library=await loadCameraShotLibrary();
+  const observed={shots:[{id:'native-first',recipeId:'pov_action',available:true},{id:'orbit_arc',available:true},{id:'low-native',recipeId:'low_hero',available:false}]};
+  const mapped=mapCameraRecipes(observed,library);
+  assert.deepEqual(mapped.find(x=>x.recipeId==='pov_action').shotIds,['native-first']);
+  assert.deepEqual(mapped.find(x=>x.recipeId==='orbit_arc').shotIds,[]);
+  assert.deepEqual(mapped.find(x=>x.recipeId==='low_hero').shotIds,[]);
 });
