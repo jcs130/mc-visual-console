@@ -199,6 +199,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     private void diagnostics(boolean connected) {
         try {
             Map<String,Object> data=new LinkedHashMap<>(state.diagnostics(System.nanoTime()));
+            data.put("nativeVersion","0.1.3");data.put("observerSelfSidebarHidden",hideSidebar());
             data.put("recordedAt",Instant.now().toString());data.put("connected",connected);
             var view=inventory.view(state.current(System.nanoTime()),System.nanoTime());
             data.put("nativeInventoryReceived",view!=null);data.put("nativeInventorySlots",view==null?0:view.slots().size());
