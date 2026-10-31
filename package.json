@@ -26,7 +26,11 @@
     "./agent-visuals": "./packages/modern-viewer/renderer-src/host/viewer-agent.mjs",
     "./performance-relay": "./packages/modern-viewer/renderer-src/host/viewer-performance-relay.mjs",
     "./java-data-viewer": "./packages/modern-viewer/renderer-src/host/java-data-viewer.mjs",
-    "./native-mineflayer": "./packages/modern-viewer/renderer-src/host/native-mineflayer.mjs"
+    "./native-mineflayer": "./packages/modern-viewer/renderer-src/host/native-mineflayer.mjs",
+    "./broadcast-camera": {
+      "types": "./packages/modern-viewer/renderer-src/host/broadcast-camera.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/broadcast-camera.mjs"
+    }
   },
   "files": [
     "src",
