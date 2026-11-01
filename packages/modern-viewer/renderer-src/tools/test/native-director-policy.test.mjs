@@ -42,6 +42,12 @@ test('pacing counts actual render changes, imposes dwell, return/cut budgets and
  assert.equal(f.pacing.check(choice,f.n,{activity:[{name:'A',lastCombatAt:f.now()}]}).reason,'protect_live_combat');
  assert.equal(f.pacing.check(choice,f.n).allow,true);f.n.phase='ready';f.n.requestId='offered';f.pacing.observe(f.n);assert.equal(f.pacing.current.uuid,'a');
  f.n.phase='attached';f.ack('b','B','drone_follow');f.tick(31000);assert.equal(f.pacing.check({name:'A',view:'drone_follow'},f.n).reason,'subject_return_cooldown_60s');
+ f.tick(30000);assert.equal(f.pacing.check({name:'A',view:'drone_follow'},f.n).allow,true,'return cooldown expires during an unchanged holding shot');
  f.pacing.stop();f.tick(90000);assert.equal(f.pacing.check(choice,f.n).reason,'stopped');
  const g=fixture();g.tick(31000);for(let i=0;i<4;i++){g.ack('r'+i);g.tick(13000);}assert.equal(g.pacing.check({name:'A',view:'drone_follow'},g.n).reason,'cut_budget_4_per_minute');
+});
+test('manual menus and invalid render times cannot advance pacing or authorize a camera',()=>{
+ const f=fixture();f.n.manualDetachRequested=true;assert.equal(f.pacing.check({name:'B',view:'drone_follow'},f.n).reason,'manual_or_unresolved');
+ f.n.manualDetachRequested=false;f.n.screenOpen=true;assert.equal(f.pacing.check({name:'B',view:'drone_follow'},f.n).allow,false);
+ const g=fixture();g.n.requestId='future';g.n.renderedAt=g.now()+60000;g.pacing.observe(g.n);assert.notEqual(g.pacing.current.signature.split(':')[0],'future');
 });

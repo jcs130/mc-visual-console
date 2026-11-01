@@ -58,7 +58,8 @@ export function selectCameraBallot(options,votes,previous){
 export class NativeCameraPacing{
  constructor({now=Date.now,currentView}={}){if(typeof currentView!=='function')throw Error('EXPLICIT_NATIVE_VIEW_REQUIRED');this.view=currentView;this.now=now;this.binding=null;this.current=null;this.history=[];this.left=new Map();this.stopped=false;}
  observe(n){
-  if(this.stopped||n?.phase!=='attached'||n.cameraUuid!==n.targetUuid||n.transition?.active||!n.renderedAt||this.now()-n.renderedAt>3000)return;
+  if(this.stopped||n?.phase!=='attached'||!n.targetUuid||n.cameraUuid!==n.targetUuid||n.transition?.active||n.manualDetachRequested
+    ||!Number.isFinite(n.renderedAt)||n.renderedAt>this.now()+1000||this.now()-n.renderedAt>3000)return;
   const binding=n.connectionEpoch+':'+n.nativeWorldEpoch;
   if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();}
   const signature=[n.requestId,n.targetUuid,this.view(n)].join(':'),at=this.now();
@@ -74,7 +75,10 @@ export class NativeCameraPacing{
  }
  check(choice,n,{activity=[],recovery=false}={}){
   if(this.stopped)return{allow:false,reason:'stopped'};
+  if(n?.manualDetachRequested||n?.screenOpen||['paused','unknown','cancelled'].includes(n?.phase))return{allow:false,reason:'manual_or_unresolved'};
   this.observe(n);const now=this.now(),c=this.current,subject=n.targets?.find(t=>t.name===choice.name)?.uuid;
+  // Time-based expiry must progress while KEEP is held; no new shot may be needed to release it.
+  for(const[k,t]of this.left)if(now-t>=60000)this.left.delete(k);
   if(!c&&n.phase==='idle'&&!n.manualDetachRequested)return{allow:true,reason:'initial_attachment'};
   // recovery is supplied only after the host's canonical death/position-loss verifier succeeds.
   if(recovery===true&&n.phase==='stopped'&&['target_identity_lost','target_died','target_position_unconfirmed'].includes(n.reason)
