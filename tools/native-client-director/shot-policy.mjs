@@ -32,13 +32,13 @@ export function nativeCurrentView(native){
 }
 
 /** A safety fallback is recoverable; intentional POV interaction retains its close view. */
-export function mayPreferOrthographic(view,{screenOpen=false,lastInteractionAt=null,now=Date.now()}={}){
+export function mayPreferOrthographic(view,{screenOpen=false,lastInteractionAt=null,preferOrthographic=false,now=Date.now()}={}){
   if(screenOpen)return false;
   if(['drone_overview','drone_eye','drone_follow','drone_front_left'].includes(view))return true;
-  return view==='first_person'&&(lastInteractionAt===null||Number.isFinite(lastInteractionAt)&&now-lastInteractionAt>15000);
+  return view==='first_person'&&(preferOrthographic||lastInteractionAt===null||Number.isFinite(lastInteractionAt)&&now-lastInteractionAt>15000);
 }
 
-export function selectNativeShot(choice,native,{enabled=false,orthographic=false,now=Date.now(),lastProjectionChangeAt=0}={}){
+export function selectNativeShot(choice,native,{enabled=false,orthographic=false,preferOrthographic=false,now=Date.now(),lastProjectionChangeAt=0}={}){
   if(!choice||!enabled&&!orthographic||!Array.isArray(native?.availableViews))return choice;
   const ready=new Set(native.availableViews);
   const preferences=choice.kind==='combat'?['drone_eye','drone_follow','third_person_back']:
@@ -53,11 +53,12 @@ export function selectNativeShot(choice,native,{enabled=false,orthographic=false
     &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&['open','room'].includes(context.layout)&&context.floorSafe===true
     &&context.orthographicVisibility>=.8&&Number.isFinite(context.at)&&context.at<=now&&now-context.at<2000
     &&(native.projection==='orthographic'||now-lastProjectionChangeAt>=45000);
+  const interactionOrtho=preferOrthographic&&native.screenOpen!==true&&choice.kind==='interaction';
   if(canOrtho&&native.projection==='orthographic'&&ready.has(native.projectionProfile)
-    &&choice.kind!=='interaction'&&now-lastProjectionChangeAt<45000)
+    &&(choice.kind!=='interaction'||interactionOrtho)&&now-lastProjectionChangeAt<45000)
     preferences.unshift(native.projectionProfile);
-  else if(canOrtho&&(['overview','conversation','movement'].includes(choice.kind)||native.projection==='orthographic'&&choice.kind==='combat'))
-    preferences.unshift(choice.kind==='overview'?'ortho_overview':choice.kind==='conversation'?'ortho_close':'ortho_isometric');
+  else if(canOrtho&&(['overview','conversation','movement'].includes(choice.kind)||interactionOrtho||native.projection==='orthographic'&&choice.kind==='combat'))
+    preferences.unshift(choice.kind==='overview'?'ortho_overview':choice.kind==='conversation'||interactionOrtho?'ortho_close':'ortho_isometric');
   const view=preferences.find(v=>ready.has(v))??(ready.has(choice.view)?choice.view:null);
   return view?{...choice,view,framingReason:'native_capability_and_activity'}:null;
 }

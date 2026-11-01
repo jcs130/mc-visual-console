@@ -12,6 +12,8 @@ test('startup adopts actual first-person fallback instead of the stale requested
 test('a first-person safety fallback can recover without overriding fresh GUI interaction',()=>{
  assert.equal(mayPreferOrthographic('first_person',{now:100000}),true);
  assert.equal(mayPreferOrthographic('first_person',{now:100000,lastInteractionAt:90000}),false);
+ assert.equal(mayPreferOrthographic('first_person',{now:100000,lastInteractionAt:90000,preferOrthographic:true}),true);
+ assert.equal(mayPreferOrthographic('first_person',{screenOpen:true,preferOrthographic:true}),false);
  assert.equal(mayPreferOrthographic('first_person',{now:100000,lastInteractionAt:84000}),true);
  assert.equal(mayPreferOrthographic('first_person',{now:100000,lastInteractionAt:100001}),false);
  assert.equal(mayPreferOrthographic('drone_eye',{screenOpen:true}),false);
@@ -68,6 +70,8 @@ test('prefer original OrthoCamera only for current proven open geometry, with a 
   const other={...n,spatial:{...n.spatial,...patch}};assert.equal(selectNativeShot(choice,other,opts).view,'drone_overview');}
  assert.equal(selectNativeShot({...choice,kind:'combat'},n,opts).view,'drone_eye');
  assert.equal(selectNativeShot({...choice,kind:'interaction'},n,opts).view,'first_person');
+ assert.equal(selectNativeShot({...choice,kind:'interaction'},n,{...opts,preferOrthographic:true}).view,'ortho_close');
+ assert.equal(selectNativeShot({...choice,kind:'interaction'},{...n,screenOpen:true},{...opts,preferOrthographic:true}).view,'first_person');
  const active={...n,projection:'orthographic',projectionProfile:'ortho_overview'};
  const recent={...opts,lastProjectionChangeAt:now-1000};
  assert.equal(selectNativeShot({...choice,kind:'combat'},active,recent).view,'ortho_overview','fresh battle labels do not force a projection change');

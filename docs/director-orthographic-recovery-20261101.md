@@ -39,6 +39,13 @@ rejects a wrong actual profile, confirms the matching profile, and checks that
 new movement does not reissue an unchanged composition. The later safety fallback
 still has its return cooldown.
 
+An explicit host `preferOrthographic` option can prioritize native orthographic
+close framing for ordinary work after a GUI has closed, rather than allowing
+repeated crafting/mining task labels to permanently retain first person. This
+option defaults off in the reusable policy; a host enables it as a program
+preference. Open GUI protection, actor/world bindings, actual geometry and return
+cooldowns continue to apply. It never forces orthographic into an unsafe tunnel.
+
 Do not merge build success, source commit, installation and current visual
 acceptance into one status. Keep fresh before/after native snapshots around the
 actual window screenshot, including target/camera UUID, world epoch, request,
