@@ -43,7 +43,10 @@ An explicit host `preferOrthographic` option can prioritize native orthographic
 close framing for ordinary work after a GUI has closed, rather than allowing
 repeated crafting/mining task labels to permanently retain first person. This
 option defaults off in the reusable policy; a host enables it as a program
-preference. Open GUI protection, actor/world bindings, actual geometry and return
+preference. Its initial 45-second hold also keeps the current visible subject;
+otherwise ordinary activity on another actor could cut away immediately after
+an orthographic view became visible. Unknown or unsafe geometry cannot qualify
+for this hold. Open GUI protection, actor/world bindings, actual geometry and return
 cooldowns continue to apply. It never forces orthographic into an unsafe tunnel.
 
 Do not merge build success, source commit, installation and current visual

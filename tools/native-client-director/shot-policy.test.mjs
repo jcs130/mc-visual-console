@@ -79,6 +79,11 @@ test('prefer original OrthoCamera only for current proven open geometry, with a 
  assert.equal(selectNativeShot({...choice,kind:'combat'},active,opts).view,'ortho_isometric','readable battle keeps a safe orthographic view');
  assert.equal(selectNativeShot({...choice,kind:'interaction'},active,recent).view,'first_person','precise interaction can request POV');
  assert.equal(selectNativeShot({...choice,kind:'combat'},{...active,spatial:{...n.spatial,layout:'tunnel'}},recent).view,'drone_eye','dwell does not pretend an unsafe view is available');
+ const held={...active,phase:'attached',target:'Alice',targetUuid:'actor',orthographic:{ready:true,active:true},targets:[...n.targets,{name:'Bob',uuid:'bob'}]};
+ const other={name:'Bob',kind:'movement',view:'drone_follow'};
+ assert.equal(selectNativeShot(other,held,{...recent,preferOrthographic:true}),null,'orthographic preference also holds the visible subject, rather than cutting away after twelve seconds');
+ assert.notEqual(selectNativeShot(other,held,{...opts,preferOrthographic:true}),null,'subject hold expires');
+ assert.notEqual(selectNativeShot(other,{...held,spatial:{...held.spatial,known:false}},{...recent,preferOrthographic:true}),null,'unknown geometry cannot pretend the current frame is safe');
 });
 
 test('orthographic receipt requires actual projection/profile and bound native frame, including SDK fallback refusal',()=>{
