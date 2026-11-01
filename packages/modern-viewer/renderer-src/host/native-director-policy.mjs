@@ -64,11 +64,16 @@ export class NativeCameraPacing{
   if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();}
   const signature=[n.requestId,n.targetUuid,this.view(n)].join(':'),at=this.now();
   if(this.current?.signature===signature)return;
+  if(this.current?.requestId===n.requestId&&this.current.uuid===n.targetUuid){
+   // Collision/close-view recovery is the same camera operation, not another editorial cut.
+   const projection=n.projection??'perspective';if(this.current.projection!==projection)this.current.projectionAt=at;
+   this.current.signature=signature;this.current.view=this.view(n);this.current.projection=projection;return;
+  }
   const old=this.current,subjectChanged=old&&old.uuid!==n.targetUuid,projection=n.projection??'perspective';
   const applied=Number.isFinite(n.offer?.at)&&n.offer.at<=at?n.offer.at:at;
   if(subjectChanged)this.left.set(old.uuid,at);
   if(old)this.history.push({at,subjectChanged:!!subjectChanged});
-  this.current={signature,uuid:n.targetUuid,view:this.view(n),projection,shotAt:old?at:applied,
+  this.current={signature,requestId:n.requestId,uuid:n.targetUuid,view:this.view(n),projection,shotAt:old?at:applied,
    subjectAt:!old?applied:subjectChanged?at:old.subjectAt,projectionAt:!old?-Infinity:old.projection!==projection?at:old.projectionAt};
   this.history=this.history.filter(h=>at-h.at<60000);
   for(const[k,t]of this.left)if(at-t>=60000)this.left.delete(k);

@@ -51,3 +51,8 @@ test('manual menus and invalid render times cannot advance pacing or authorize a
  f.n.manualDetachRequested=false;f.n.screenOpen=true;assert.equal(f.pacing.check({name:'B',view:'drone_follow'},f.n).allow,false);
  const g=fixture();g.n.requestId='future';g.n.renderedAt=g.now()+60000;g.pacing.observe(g.n);assert.notEqual(g.pacing.current.signature.split(':')[0],'future');
 });
+test('automatic safety fallbacks keep their actual view without consuming editorial cuts or restarting dwell',()=>{
+ const f=fixture(),before=f.pacing.current.shotAt;f.tick(14000);f.n.effectiveView='first_person';f.pacing.observe(f.n);
+ assert.equal(f.pacing.current.view,'first_person');assert.equal(f.pacing.current.shotAt,before);assert.equal(f.pacing.history.length,0);
+ f.tick(4000);f.n.effectiveView='drone_eye';f.pacing.observe(f.n);assert.equal(f.pacing.history.length,0);assert.equal(f.pacing.current.view,'drone_eye');
+});
