@@ -1,4 +1,5 @@
 import org.mcvisual.director.DirectorPolicy;
+import org.mcvisual.director.OrthographicRig;
 import java.util.*;
 public class DirectorPolicyCheck {
     static int checks;
@@ -267,6 +268,10 @@ public class DirectorPolicyCheck {
         int pendingCommands=cancelPending.commands();
         check(cancelPending.stopPendingRig("pending-cancel","lease-one",remote),"pending cancellation stops further native steps");
         check("unknown".equals(cancelPending.phase())&&cancelPending.step(w(2,"observer"),t+30000).command()==null&&cancelPending.commands()==pendingCommands,"pending cancellation preserves uncertainty and never replays an attach");
+        for(String view:OrthographicRig.PRESETS.keySet()){
+            var ortho=policy();check(ortho.offer(r("ortho-"+view,"Alice",view,t),w(1,"uuid-a"),t),"orthographic view uses original observer policy");
+            check(view.equals(ortho.step(w(1,"uuid-a"),t).view()),"orthographic composition preserves actual native actor binding");
+        }
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

@@ -32,7 +32,7 @@ export class CameraDirector {
   async observe() {
     const o=await this.adapter.observe();
     if(o?.schema!==CAMERA_PROTOCOL||!Number.isFinite(o.at)||o.at>this.now()+1000||this.now()-o.at>this.maxAgeMs)fail('STALE_CAMERA_OBSERVATION');
-    if(typeof o.scope!=='string'||!o.scope||typeof o.subjectUuid!=='string'||!Array.isArray(o.shots)||o.shots.length>16)fail('INVALID_CAMERA_OBSERVATION');
+    if(typeof o.scope!=='string'||!o.scope||typeof o.subjectUuid!=='string'||!Array.isArray(o.shots)||o.shots.length>32)fail('INVALID_CAMERA_OBSERVATION');
     return o;
   }
   claim(owner) {

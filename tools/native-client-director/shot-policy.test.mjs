@@ -38,3 +38,24 @@ test('close rear follow can finish on a documented first-person fallback, a requ
  for(const view of['drone_follow','drone_front']){const{native:n,request:r}=fixture();r.view=view;n.shotExecution={requestId:'op',view,phase:'holding',fallback:true};
   n.effectiveView='first_person';assert.equal(nativeShotReceipt(n,r,200).kind,view==='drone_follow'?'applied':'rejected');}
 });
+
+test('prefer original OrthoCamera only for current proven open geometry, with a projection cooldown',()=>{
+ const now=100000,n={...caps,projection:'perspective',orthographic:{ready:true},cameraUuid:'actor',nativeWorldEpoch:1,targets:[{name:'Alice',uuid:'actor'}],
+  spatial:{at:now,targetUuid:'actor',nativeWorldEpoch:1,layout:'open',known:true,floorSafe:true,orthographicVisibility:1}};
+ const choice={name:'Alice',kind:'overview',view:'drone_overview'},opts={enabled:true,orthographic:true,now};
+ assert.equal(selectNativeShot(choice,n,opts).view,'ortho_overview');
+ assert.equal(selectNativeShot(choice,n,{...opts,lastProjectionChangeAt:now-1000}).view,'drone_overview');
+ for(const patch of[{layout:'tunnel'},{layout:'layered'},{known:false},{floorSafe:false},{targetUuid:'other'},{at:now-3000},{orthographicVisibility:.4}]){
+  const other={...n,spatial:{...n.spatial,...patch}};assert.equal(selectNativeShot(choice,other,opts).view,'drone_overview');}
+ assert.equal(selectNativeShot({...choice,kind:'combat'},n,opts).view,'drone_eye');
+ assert.equal(selectNativeShot({...choice,kind:'interaction'},n,opts).view,'first_person');
+});
+
+test('orthographic receipt requires actual projection/profile and bound native frame, including SDK fallback refusal',()=>{
+ const{native:n,request:r}=fixture();r.view='ortho_isometric';n.projection='orthographic';n.projectionProfile=r.view;
+ n.orthographic={requestId:r.id,view:r.view,active:true,phase:'transitioning',targetUuid:'actor',nativeWorldEpoch:1,renderedAt:100};
+ assert.equal(nativeShotReceipt(n,r,200).kind,'waiting');n.orthographic.phase='holding';assert.equal(nativeShotReceipt(n,r,200).kind,'applied');
+ n.projectionProfile='ortho_top';assert.equal(nativeShotReceipt(n,r,200).kind,'waiting');n.projectionProfile=r.view;
+ n.orthographic.targetUuid='other';assert.equal(nativeShotReceipt(n,r,200).kind,'waiting');n.orthographic.targetUuid='actor';
+ n.orthographic.phase='blocked';n.projection='perspective';assert.equal(nativeShotReceipt(n,r,200).kind,'rejected');
+});

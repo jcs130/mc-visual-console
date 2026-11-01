@@ -4,6 +4,53 @@ This optional Fabric 1.21.1 module controls one existing, explicitly configured
 observer. It does not create a player, connect a Minecraft client, run a model,
 choose an agent's game goal, or expose arbitrary command execution.
 
+## 0.1.13: original OrthoCamera integration
+
+Explicit `orthographicEnabled: true` enables the adapter only when the original
+client-side OrthoCamera `0.1.9+1.21` and its checked API are installed. No server
+mod is required. With Sodium, `use_block_face_culling` must be false, as described
+in the [upstream compatibility notes](https://github.com/DimasKama/OrthoCamera#compatibility).
+The matched pixel profile also disables entity/fog occlusion culling. Keep the
+original JAR/license and the current 1.21.1 runtime; the upstream master branch
+targets a newer Minecraft API and is not substituted into this adapter.
+
+Four additional view IDs use the same original actor binding, request, lease,
+cancel and native policy as the 16 perspective views: `ortho_isometric`,
+`ortho_overview`, `ortho_close`, `ortho_top`. Readbacks expose actual projection,
+configured profile and actual yaw/pitch/scale. Native frame confirmation is
+required; a matching request string or an attached body is insufficient. The
+public SDK/tool adapter retains those fields, and the bounded catalogue limit
+is now 32. A missing mod, disabled adapter or incompatible Sodium configuration
+cannot advertise working orthographic presets.
+
+Geometry comes from the actual spectated actor, not the observer's own position.
+Loaded chunks, native VISUAL shapes, roof/headroom and five body sight lines
+provide a fresh UUID/world-bound spatial sample. The thin host can explicitly
+prefer orthographic coverage of proven open scenes, while combat and exact
+interactions use their supported perspective views. Projection changes have a
+45-second host cooldown. This is display selection, with no additional model
+loop, actor commands, account or network endpoint.
+
+Persistent obstruction may choose among twelve bounded yaw/pitch combinations,
+with 700ms easing and a 2.5-second avoidance cooldown. An occluded actor, roof,
+layered/unknown geometry, identity/world loss or stale context ends the owned
+projection and falls back to same-subject perspective. Clearing the obstruction
+cannot replay a blocked request. Manual changes release ownership and preserve
+the user's configuration. The controller restores the configuration it owned
+when leaving orthographic mode; it does not keep saving an enabled projection.
+Cross-projection changes use the existing GPU frame dissolve; same-projection
+adjustments interpolate the original mod's settings.
+
+256 Java checks and independent finished-JAR consumers pass, including 30
+orthographic checks; 79 shared SDK/selection checks and public types pass. The
+finished controller was loaded with original OrthoCamera in the isolated 1.21.1
+client: all four views, perspective return and real wall-occlusion fallback were
+captured with an unchanged static actor and no system mouse input. Six isolated
+host-process cases also pass, including actual-profile verification and cooldown
+after fallback. These are not live shader, full YSM mesh occlusion, room cutaway
+or arbitrary multi-floor topology acceptance. Production loading and program
+verification must still be recorded separately.
+
 ## 0.1.12 candidate: native camera rigs
 
 This is a client-only camera companion. No additional server mod is required;

@@ -51,6 +51,7 @@ public final class DirectorPolicy {
     public DirectorPolicy(Config config){this.config=config;}
     public String target(){return request==null?null:request.target();}
     public String requestId(){return request==null?null:request.id();}
+    public String view(){return request==null?null:request.view();}
     public String activeLease(){return request==null?null:request.lease();}
     public boolean hasSeen(String id){return seen.contains(id);}
     /** Cancel only an already bound local camera rig. In-flight teleport/attach remains unconfirmed. */
@@ -152,7 +153,7 @@ public final class DirectorPolicy {
         }
         if(r==null||r.id()==null||r.lease()==null||!r.id().matches("[A-Za-z0-9:_-]{1,80}")
             ||!r.lease().matches("[A-Za-z0-9_-]{1,80}")||!allowed(r.target())
-            ||r.view()==null||!(Set.of("first_person","third_person_back","third_person_front").contains(r.view())||CinematicRig.VIEWS.contains(r.view())))
+            ||r.view()==null||!(Set.of("first_person","third_person_back","third_person_front").contains(r.view())||CinematicRig.VIEWS.contains(r.view())||OrthographicRig.PRESETS.containsKey(r.view())))
             return refuse("invalid_request");
         if(r.issuedAt()>now+1000||r.expiresAt()<=now||r.expiresAt()-r.issuedAt()>10_000
             ||r.expiresAt()<=r.issuedAt())return refuse("expired_request");

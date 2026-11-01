@@ -11,6 +11,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.*;
 
 /** Explicit opt-in companion for one existing authenticated spectator client. */
@@ -18,6 +19,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private static NativeDirectorClient instance;
     private static final CinematicRig DRONE=new CinematicRig();
     private static final CloseView CLOSE=new CloseView();
+    private static final NativeOrthographic ORTHO=new NativeOrthographic();
     private static boolean droneEnabled,droneActive,worldTransitionActive,cinematicEnabled,autoCloseEnabled;
     private static String droneUuid,droneReason="disabled";
     private static double droneDistance=7,droneHeight=3;
@@ -44,7 +46,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         instance=this;
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
-            authenticated=false;stopDrone("disconnected");FrameBlend.abort();diagnostics(client,false);policy=null;});
+            authenticated=false;stopDrone("disconnected");ORTHO.stop("disconnected");FrameBlend.abort();diagnostics(client,false);policy=null;});
         ClientReceiveMessageEvents.GAME.register((message,overlay)->{
             if(policy==null)return;
             authenticated=DirectorPolicy.authReceipt(authenticated,message.getString());
@@ -54,6 +56,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         // covers the native observer HUD while a remote camera is loading.
         ClientLifecycleEvents.CLIENT_STARTED.register(client->HudRenderCallback.EVENT.register((draw,delta)->renderTransition(client,draw)));
         ClientLifecycleEvents.CLIENT_STOPPING.register(client->FrameBlend.close());
+        WorldRenderEvents.END.register(context->{if(policy!=null&&authenticated&&"attached".equals(policy.phase()))ORTHO.confirmRendered(class_310.method_1551());});
         HudRenderCallback.EVENT.register((draw,delta)->{
             if(policy==null)return;long now=System.currentTimeMillis();lastRenderedAt=now;
             if(frameWindowAt==0)frameWindowAt=now;
@@ -62,7 +65,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     }
     private void join(class_310 client){
         attachedCameraEntity=null;attachedCameraWorld=null;attachedCameraEpoch=0;attachedCameraRequest=null;attachedCameraObservedAt=0;manualDetachRequested=false;
-        droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");trackedTargets=Set.of();
+        droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");ORTHO.configure(false);trackedTargets=Set.of();
         policy=null;authenticated=false;tick=0;lastFileTime=-1;lastCancelFileTime=-1;cancelReceipt=null;cancelledIntents.clear();frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
         hudFramesPerSecond=null;configProblem=null;requestProblem=null;diagnosticsFailed=false;
         observedWorld=client.field_1687;nativeWorldEpoch=observedWorld==null?0:1;worldTransitionActive=false;
@@ -83,6 +86,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             droneEnabled=extra.has("droneEnabled")&&extra.get("droneEnabled").getAsBoolean();
             cinematicEnabled=extra.has("cinematicEnabled")&&extra.get("cinematicEnabled").getAsBoolean();
             autoCloseEnabled=extra.has("autoCloseView")&&extra.get("autoCloseView").getAsBoolean();
+            ORTHO.configure(extra.has("orthographicEnabled")&&extra.get("orthographicEnabled").getAsBoolean());
             droneDistance=extra.has("droneDistance")?extra.get("droneDistance").getAsDouble():7;
             droneHeight=extra.has("droneHeight")?extra.get("droneHeight").getAsDouble():3;
             if(!Double.isFinite(droneDistance)||droneDistance<2||droneDistance>10
@@ -155,6 +159,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(policy==null)return;
         long now=System.currentTimeMillis();
         readCancel(client,now);
+        if(ORTHO.manual())manualDetachRequested=true;
         // A world object replacement is native evidence; coordinates/distance are not.
         if(client.field_1687!=null&&client.field_1687!=observedWorld){
             observedWorld=client.field_1687;nativeWorldEpoch++;
@@ -177,6 +182,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
                         if(request!=null&&request.view()!=null&&CinematicRig.VIEWS.contains(request.view())
                             &&!Set.of("drone_follow","drone_overview").contains(request.view())&&!cinematicEnabled)
                             throw new IllegalArgumentException("cinematic_rig_not_explicitly_enabled");
+                        if(request!=null&&OrthographicRig.PRESETS.containsKey(request.view())&&!ORTHO.ready())
+                            throw new IllegalArgumentException("orthographic_backend_unavailable");
                         if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch)){
                             manualDetachRequested=false;
                             boolean sameRig=droneActive&&request.view().startsWith("drone_")
@@ -191,30 +198,42 @@ public final class NativeDirectorClient implements ClientModInitializer {
         observeRequestCamera(client,now);
         var action=policy.step(frame(client,policy.target()),now);
         worldTransitionActive="world_transition".equals(policy.phase());
-        if(worldTransitionActive){DRONE.reset();droneReason="native_world_replacement";}
-        else if(!"attached".equals(policy.phase()))stopDrone("native_"+policy.phase());
+        if(worldTransitionActive){DRONE.reset();ORTHO.stop("native_world_replacement");droneReason="native_world_replacement";}
+        else if(!"attached".equals(policy.phase())){stopDrone("native_"+policy.phase());ORTHO.stop("native_"+policy.phase());}
         if(action.command()!=null&&client.method_1562()!=null){
             client.method_1562().method_45730(action.command());
             System.out.println("[MCVisualDirector] Observer-only camera request: "+policy.requestId());
         }
         if(action.view()!=null){
+            boolean orthographic=OrthographicRig.PRESETS.containsKey(action.view());
             boolean preserveRig=droneActive&&action.view().startsWith("drone_")
                 &&Objects.equals(droneUuid,frame(client,policy.target()).cameraUuid());
             if(!preserveRig)stopDrone("normal_perspective");
             class_5498 view=switch(action.view()){
                 case "third_person_back"->class_5498.field_26665;
                 case "third_person_front"->class_5498.field_26666;
-                default->action.view().startsWith("drone_")?class_5498.field_26665:class_5498.field_26664;
+                default->action.view().startsWith("drone_")||orthographic?class_5498.field_26665:class_5498.field_26664;
             };
             client.field_1690.method_31043(view);
+            if(orthographic){if(!ORTHO.begin(policy.requestId(),action.view(),client,nativeWorldEpoch,now))perspectiveFallback(client,"orthographic_preflight_failed");}
+            else ORTHO.stop("perspective_requested");
             if(action.view().startsWith("drone_")&&droneEnabled){
                 droneView=action.view();DRONE.begin(policy.requestId(),droneView,System.nanoTime());CLOSE.begin();
                 droneUuid=frame(client,policy.target()).cameraUuid();droneActive=true;droneReason="awaiting_render";
             }
         }
+        if("attached".equals(policy.phase())&&client.field_1755==null){
+            if(!ORTHO.active())ORTHO.observe(client,client.method_1560(),nativeWorldEpoch,now,false,null);
+            if(!ORTHO.tick(client,nativeWorldEpoch,now))perspectiveFallback(client,"orthographic_occlusion_fallback");
+        }
         if(tick%20==0)diagnostics(client,true);
     }
     private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneReason=reason;DRONE.reset();CLOSE.stop();}
+    private void perspectiveFallback(class_310 client,String reason){
+        FrameBlend.begin(client,policy.requestId());client.field_1690.method_31043(class_5498.field_26665);
+        if(droneEnabled){droneView="drone_eye";DRONE.begin(policy.requestId(),droneView,System.nanoTime());CLOSE.begin();
+            droneUuid=frame(client,policy.target()).cameraUuid();droneActive=true;droneReason=reason;}
+    }
     private void readCancel(class_310 client,long now){
         try{
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-director-cancel.json");
@@ -229,8 +248,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
             if(cancelledIntents.size()>=256&&!cancelledIntents.containsKey(id))throw new IllegalStateException("cancel_archive_required");
             String outcome=null;
             if(!policy.hasSeen(id)){cancelledIntents.put(id,lease);outcome="cancelled";}
-            else if(policy.cancelRig(id,lease,frame)){cancelledIntents.put(id,lease);stopDrone("local_rig_cancelled");outcome="cancelled";}
-            else if(policy.stopPendingRig(id,lease,frame)){cancelledIntents.put(id,lease);stopDrone("cancel_pending_reconciliation");outcome="unknown";}
+            else if(policy.cancelRig(id,lease,frame)){cancelledIntents.put(id,lease);stopDrone("local_rig_cancelled");ORTHO.stop("cancelled");outcome="cancelled";}
+            else if(policy.stopPendingRig(id,lease,frame)){cancelledIntents.put(id,lease);stopDrone("cancel_pending_reconciliation");ORTHO.stop("cancelled");outcome="unknown";}
             if(outcome!=null){
                 cancelReceipt=Map.of("id",id,"lease",lease,"connectionEpoch",connectionEpoch,
                     "nativeWorldEpoch",nativeWorldEpoch,"targetUuid",frame.targetUuid(),"at",now,"phase",outcome);
@@ -316,11 +335,12 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("drone",Map.of("enabled",droneEnabled,"active",droneActive,
                 "reason",droneReason,"lastRenderedAt",droneRenderedAt,
                 "requestedDistance",droneRequestedDistance,"clippedDistance",droneClippedDistance));
-            data.put("droneShot",droneView);data.put("shotExecution",DRONE.status());
-            data.put("effectiveView",CLOSE.firstPerson()?"first_person":DRONE.status().get("effectiveView"));
+            data.put("droneShot",droneView);data.put("shotExecution",OrthographicRig.PRESETS.containsKey(policy.view())?ORTHO.status():DRONE.status());
+            data.put("effectiveView",ORTHO.active()?policy.view():CLOSE.firstPerson()?"first_person":DRONE.status().get("effectiveView"));
+            var ortho=ORTHO.status();data.put("orthographic",ortho);data.put("projection",ortho.get("projection"));data.put("projectionProfile",ortho.get("projectionProfile"));data.put("spatial",ORTHO.spatial());
             data.put("closeView",Map.of("enabled",autoCloseEnabled,"firstPerson",CLOSE.firstPerson(),"reason",CLOSE.reason()));
             Set<String> views=new LinkedHashSet<>(Set.of("first_person","third_person_back","third_person_front"));
-            if(droneEnabled)views.addAll(cinematicEnabled?CinematicRig.VIEWS:Set.of("drone_follow","drone_overview"));data.put("availableViews",views);
+            if(droneEnabled)views.addAll(cinematicEnabled?CinematicRig.VIEWS:Set.of("drone_follow","drone_overview"));if(ORTHO.ready())views.addAll(OrthographicRig.PRESETS.keySet());data.put("availableViews",views);
             data.put("screenOpen",client.field_1755!=null);
             data.put("hudFramesPerSecond",System.currentTimeMillis()-lastRenderedAt<3000?hudFramesPerSecond:null);
             data.put("configProblem",configProblem);data.put("requestProblem",requestProblem);

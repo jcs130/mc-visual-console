@@ -28,13 +28,14 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
       const available = Array.isArray(n.availableViews) ? n.availableViews : [];
       const shots = Object.entries(NATIVE_CAMERA_RECIPES).map(([id, recipe]) => ({ id, ...recipe,
         available: available.includes(id) && !manual && !['unknown', 'stopped'].includes(n.phase),
-        projection: 'perspective', preflightRequired: recipe.finite }));
+        projection: recipe.projection??'perspective', ...(recipe.projectionProfile?{projectionProfile:recipe.projectionProfile,projectionReady:n.orthographic?.ready===true}:{}),preflightRequired: recipe.finite }));
       const observed = { schema: CAMERA_PROTOCOL, at: Date.parse(n.recordedAt), scope: `${n.connectionEpoch}:${n.nativeWorldEpoch}`,
         subjectUuid: targetUuid, manualControl: manual, shots, nativePhase: n.phase, effectiveView: n.effectiveView,
         shotExecution: n.shotExecution, closeView: n.closeView };
       if (!operation || !sameScope(n, operation)) return observed;
-      const receipt = { actionId: operation.actionId, lease: operation.lease, phase: 'transitioning', projection: 'perspective',
+      const receipt = { actionId: operation.actionId, lease: operation.lease, phase: 'transitioning', projection: n.projection??'perspective',
         requestedView: operation.shot, effectiveView: n.effectiveView, nativePhase: n.phase, rendered: false };
+      if(n.projectionProfile)receipt.projectionProfile=n.projectionProfile;
       const cancel = n.cancelReceipt;
       if (cancel?.id === operation.actionId && cancel.lease === operation.lease && cancel.connectionEpoch === n.connectionEpoch
         && cancel.nativeWorldEpoch === n.nativeWorldEpoch && cancel.targetUuid === targetUuid && ['cancelled', 'unknown'].includes(cancel.phase)) {
@@ -53,7 +54,8 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
       operation = structuredClone(op); const n = await read();
       if (signal?.aborted) fail('NATIVE_CAMERA_SUBMIT_ABORTED');
       if (!sameScope(n, op) || op.subjectUuid !== targetUuid || !NATIVE_CAMERA_RECIPES[op.shot]
-        || !n.availableViews?.includes(op.shot) || n.manualDetachRequested || ['unknown', 'stopped', 'paused'].includes(n.phase)) fail('NATIVE_CAMERA_EXECUTION_GUARD');
+        || !n.availableViews?.includes(op.shot) || op.shot.startsWith('ortho_')&&n.orthographic?.ready!==true
+        || n.manualDetachRequested || ['unknown', 'stopped', 'paused'].includes(n.phase)) fail('NATIVE_CAMERA_EXECUTION_GUARD');
       await writeRequest({ id: op.actionId, lease: op.lease, target: targetName, view: op.shot,
         issuedAt: op.issuedAt, expiresAt: op.expiresAt, connectionEpoch: n.connectionEpoch }, { signal });
     },

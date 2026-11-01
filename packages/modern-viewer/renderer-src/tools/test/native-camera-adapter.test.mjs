@@ -52,3 +52,20 @@ test('cancellation uses the original native binding, while a pending unknown nev
  const adapter=createNativeCameraAdapter(g.settings),d=new CameraDirector(adapter,{now:()=>100000});const {lease}=d.claim('host-two');
  await d.take({...g.plan,lease});assert.equal((await d.cancel(g.plan.actionId,lease)).phase,'unknown');
 });
+
+test('native OrthoCamera SDK/tool receipts retain real projection and configured preset',async()=>{
+ const f=fixture();f.n.orthographic={ready:true,active:false,phase:'stopped'};
+ const plan={...f.plan,shot:'ortho_isometric'};assert.equal((await callCameraTool(f.director,'broadcast_camera_take',plan)).phase,'accepted');
+ f.n.orthographic={ready:true,active:true,requestId:plan.actionId,view:plan.shot,phase:'holding',targetUuid:'actor-uuid',nativeWorldEpoch:1,renderedAt:100000};
+ f.n.projection='perspective';f.n.projectionProfile=null;assert.equal((await f.director.result(plan.actionId)).phase,'transitioning');
+ f.n.projection='orthographic';f.n.projectionProfile=plan.shot;
+ const done=await callCameraTool(f.director,'broadcast_camera_result',{actionId:plan.actionId});assert.equal(done.phase,'applied');
+ assert.equal(done.evidence.projection,'orthographic');assert.equal(done.evidence.projectionProfile,plan.shot);assert.equal(f.writes(),1);
+ const g=fixture();await assert.rejects(g.director.take({...g.plan,shot:'ortho_isometric'}),/SHOT_PROJECTION_UNAVAILABLE/);
+});
+
+test('the expanded native catalogue stays bounded rather than accepting unlimited tool descriptions',async()=>{
+ const f=fixture();assert.equal((await f.director.query()).observed.shots.length,20);
+ const original=f.adapter.observe;f.adapter.observe=async()=>{const n=await original();n.shots=Array.from({length:33},(_,i)=>({id:'s'+i,available:true}));return n;};
+ await assert.rejects(f.director.query(),/INVALID_CAMERA_OBSERVATION/);
+});

@@ -16,10 +16,14 @@ export const NATIVE_CAMERA_RECIPES = Object.freeze({
   drone_orbit_right:{recipeId:'orbit_arc',label:'右向60度有限环绕',finite:true},
   drone_push_in:{recipeId:'push_in',label:'有终点的推近',finite:true},
   drone_pull_out:{recipeId:'pull_out_reveal',label:'有终点的拉远',finite:true},
+  ortho_isometric:{recipeId:'ortho_overview',label:'正交等距跟随',finite:false,projection:'orthographic',projectionProfile:'ortho_isometric'},
+  ortho_overview:{recipeId:'ortho_overview',label:'正交布局全景',finite:false,projection:'orthographic',projectionProfile:'ortho_overview'},
+  ortho_close:{recipeId:'ortho_overview',label:'正交近景',finite:false,projection:'orthographic',projectionProfile:'ortho_close'},
+  ortho_top:{recipeId:'overhead_tactical',label:'正交俯视',finite:false,projection:'orthographic',projectionProfile:'ortho_top'},
 });
 
-export function selectNativeShot(choice,native,{enabled=false}={}){
-  if(!choice||!enabled||!Array.isArray(native?.availableViews))return choice;
+export function selectNativeShot(choice,native,{enabled=false,orthographic=false,now=Date.now(),lastProjectionChangeAt=0}={}){
+  if(!choice||!enabled&&!orthographic||!Array.isArray(native?.availableViews))return choice;
   const ready=new Set(native.availableViews);
   const preferences=choice.kind==='combat'?['drone_eye','drone_follow','third_person_back']:
     choice.kind==='interaction'?['first_person','drone_eye','third_person_back']:
@@ -28,6 +32,13 @@ export function selectNativeShot(choice,native,{enabled=false}={}){
     choice.kind==='overview'?['drone_overview','drone_follow','third_person_back']:[choice.view];
   // An orbit is deliberate coverage, never an idle timer or random variation.
   if(choice.kind==='showcase'&&choice.verifiedOutcome===true)preferences.unshift('drone_orbit_left','drone_pull_out');
+  const context=native.spatial,subject=native.targets?.find(t=>t.name===choice.name)?.uuid;
+  const canOrtho=orthographic&&native.orthographic?.ready===true&&context?.targetUuid===subject&&native.cameraUuid===subject
+    &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&context.layout==='open'&&context.floorSafe===true
+    &&context.orthographicVisibility>=.8&&Number.isFinite(context.at)&&context.at<=now&&now-context.at<2000
+    &&(native.projection==='orthographic'||now-lastProjectionChangeAt>=45000);
+  if(canOrtho&&['overview','conversation','movement'].includes(choice.kind))
+    preferences.unshift(choice.kind==='overview'?'ortho_overview':choice.kind==='conversation'?'ortho_close':'ortho_isometric');
   const view=preferences.find(v=>ready.has(v))??(ready.has(choice.view)?choice.view:null);
   return view?{...choice,view,framingReason:'native_capability_and_activity'}:null;
 }
@@ -44,6 +55,15 @@ export function nativeShotReceipt(native,request,now=Date.now(),{maxAgeMs=3000}=
   const fresh=at=>Number.isFinite(at)&&at>=request.issuedAt&&at<=now&&now-at<=maxAgeMs;
   const rendered=fresh(native.renderedAt);
   if(!rendered||native.transition?.active===true)return{kind:'waiting',reason:'program_frame_pending'};
+  if(request.view.startsWith('ortho_')){
+    const execution=native.orthographic;
+    if(execution?.requestId!==request.id||execution.view!==request.view)return{kind:'waiting',reason:'projection_binding_pending'};
+    if(['blocked','cancelled','stopped','paused'].includes(execution.phase))return{kind:'rejected',reason:execution.reason??'projection_unavailable'};
+    if(native.projection!=='orthographic'||native.projectionProfile!==request.view||execution.active!==true
+      ||execution.nativeWorldEpoch!==native.nativeWorldEpoch||execution.targetUuid!==request.targetUuid||!fresh(execution.renderedAt))
+      return{kind:'waiting',reason:'actual_projection_frame_pending'};
+    return execution.phase==='holding'?{kind:'applied',reason:'orthographic_projection_rendered'}:{kind:'waiting',reason:'projection_settling'};
+  }
   if(!request.view.startsWith('drone_')){
     const actual={first_person:'FIRST_PERSON',third_person_back:'THIRD_PERSON_BACK',third_person_front:'THIRD_PERSON_FRONT'}[request.view];
     return native.perspective===actual?{kind:'applied',reason:'native_view_rendered'}:{kind:'waiting',reason:'native_view_pending'};
