@@ -83,6 +83,7 @@ test('prefer original OrthoCamera only for current proven open geometry, with a 
  const other={name:'Bob',kind:'movement',view:'drone_follow'};
  assert.equal(selectNativeShot(other,held,{...recent,preferOrthographic:true}),null,'orthographic preference also holds the visible subject, rather than cutting away after twelve seconds');
  assert.notEqual(selectNativeShot(other,held,{...opts,preferOrthographic:true}),null,'subject hold expires');
+ assert.notEqual(selectNativeShot(other,held,{...recent,orthographic:false,preferOrthographic:true}),null,'a preference cannot override disabled orthographic integration');
  assert.notEqual(selectNativeShot(other,{...held,spatial:{...held.spatial,known:false}},{...recent,preferOrthographic:true}),null,'unknown geometry cannot pretend the current frame is safe');
 });
 

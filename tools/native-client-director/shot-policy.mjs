@@ -54,7 +54,7 @@ export function selectNativeShot(choice,native,{enabled=false,orthographic=false
     &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&context.floorSafe===true
     &&['open','room'].includes(context.layout)&&context.orthographicVisibility>=.8
     &&Number.isFinite(context.at)&&context.at<=now&&now-context.at<2000;
-  if(preferOrthographic&&currentOrthoSafe&&choice.name!==native.target&&now-lastProjectionChangeAt<45000)return null;
+  if(orthographic&&preferOrthographic&&currentOrthoSafe&&choice.name!==native.target&&now-lastProjectionChangeAt<45000)return null;
   const canOrtho=orthographic&&native.orthographic?.ready===true&&context?.targetUuid===subject&&native.cameraUuid===subject
     &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&['open','room'].includes(context.layout)&&context.floorSafe===true
     &&context.orthographicVisibility>=.8&&Number.isFinite(context.at)&&context.at<=now&&now-context.at<2000
