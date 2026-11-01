@@ -26,6 +26,23 @@ const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'a
 const samePlan = (a, b) => !!a && !!b && planFields.every(k => a[k] === b[k]);
 const planKey = plan => planFields.map(k => plan?.[k] ?? null);
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+const activityKinds = new Set(['idle', 'combat', 'dungeon', 'fishing', 'crafting', 'interaction', 'conversation', 'travel', 'gathering', 'building', 'unknown']);
+function verifiedActivity(subject, scope, now, maxAgeMs) {
+  const a = subject.activity;
+  if (subject.scope !== scope || !fresh(subject.at, now, maxAgeMs) || !a || !fresh(a.at, now, maxAgeMs)
+    || !activityKinds.has(a.kind) || !['native', 'game'].includes(a.provenance) || !ident(a.evidenceId)
+    || !finite(a.since) || a.since < 0 || a.since > now || !finite(a.lastProgressAt) || a.lastProgressAt < 0 || a.lastProgressAt > now
+    || (a.kind === 'idle' && a.lastProgressAt > a.since)) return null;
+  return { subjectUuid: subject.uuid, kind: a.kind, at: a.at, since: a.since, lastProgressAt: a.lastProgressAt,
+    critical: a.critical === true, provenance: a.provenance, evidenceId: a.evidenceId };
+}
+function activityState(activity, now, pacing) {
+  const valid = activity && fresh(activity.at, now, pacing.maxAgeMs);
+  const engaged = valid && ['combat', 'dungeon'].includes(activity.kind) && now - activity.lastProgressAt <= pacing.engagementGraceMs;
+  return { kind: valid ? activity.kind : 'unknown', activity: valid ? activity : null,
+    longIdle: !!valid && activity.kind === 'idle' && now - activity.since >= pacing.idleAfterMs,
+    engaged: !!engaged, critical: !!engaged && activity.critical === true };
+}
 
 /** Only the adapter may construct executable complete plans. Models receive IDs, never coordinates or code. */
 export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 2500 } = {}) {
@@ -84,12 +101,16 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
   const occluded = quality.visibility < .2 && finite(program.occlusionObservedMs) && program.occlusionObservedMs >= 2500
     && program.visibilityProvenance === 'native' && ident(program.visibilityEvidenceId);
   const compactFacts = [...facts.values()].sort((a, b) => compare(a.key, b.key));
+  const relevantSubjects = new Set(selected.flatMap(x => x.plan ? [x.plan.subjectUuid] : []));
+  const activities = observed.subjects.filter(s => relevantSubjects.has(s.uuid))
+    .map(s => verifiedActivity(s, observed.scope, now, maxAgeMs)).filter(Boolean).sort((a, b) => compare(a.subjectUuid, b.subjectUuid));
   const binding = { scope: observed.scope, generation: observed.generation };
   // Clocks and raw continuous position samples are excluded. Producers supply semantic sceneKey and keyed facts.
   const revision = hash([binding, observed.sceneKey, program.operationId ?? null, targetLost, occluded,
-    selected.map(o => [o.id, o.plan, ['visibility', 'action', 'interest', 'composition', 'stability'].map(k => Math.round(o.quality[k] * 10) / 10), o.evidenceIds]), compactFacts]);
+    selected.map(o => [o.id, o.plan, ['visibility', 'action', 'interest', 'composition', 'stability'].map(k => Math.round(o.quality[k] * 10) / 10), o.evidenceIds]), compactFacts,
+    activities.map(({at: _sampleTime, ...meaningful}) => meaningful)]);
   return { schema: CAMERA_CHOICE_PROTOCOL, ...binding, revision, observedAt: observed.at,
-    manualLocked: observed.manualLocked === true, program, options: selected, facts: compactFacts, excluded,
+    manualLocked: observed.manualLocked === true, program, options: selected, facts: compactFacts, activities, excluded,
     emergency: targetLost ? 'target_lost' : occluded ? 'persistent_occlusion' : null };
 }
 
@@ -124,7 +145,7 @@ export function createCameraJudgePanel(decisions, {
       const questions = Object.fromEntries(requested.map(id => [id, { type: 'choice', instructions: roles.get(id).instructions,
         criteria: Object.fromEntries(packet.options.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
       const request = { questions, state: { schema: packet.schema, scope: packet.scope, generation: packet.generation,
-        revision: packet.revision, options: packet.options, facts: packet.facts } };
+        revision: packet.revision, options: packet.options, facts: packet.facts, activities: packet.activities ?? [] } };
       const inputTokens = countTokens(JSON.stringify(request)) + prefixTokens + toolDescriptionTokens;
       if (!finite(inputTokens) || inputTokens < 0 || inputTokens + reserveOutputTokens > contextTokens) return { kind: 'skipped', reason: 'input_budget' };
       const controller = new AbortController();
@@ -165,6 +186,7 @@ export const CAMERA_PACING_DEFAULTS = Object.freeze({
   minShotMs: 10000, minSubjectMs: 30000, returnSubjectMs: 60000, creativeCooldownMs: 60000,
   sustainMs: 1200, improvement: .14, modelWeight: .08, cutsPerMinute: 4, subjectsPerMinute: 2,
   emergencyGapMs: 5000, maxAgeMs: 2500,
+  idleAfterMs: 20000, idleScorePenalty: .35, combatSubjectMs: 90000, dungeonSubjectMs: 60000, engagementGraceMs: 8000,
 });
 
 /** Single recommendation arbiter. The host still owns the one transactional SDK/native executor. */
@@ -175,7 +197,9 @@ export class CameraChoiceArbiter {
     if (Object.keys(pacing).some(k => !(k in CAMERA_PACING_DEFAULTS)) || !Object.values(p).every(finite)
       || p.minShotMs < 10000 || p.minSubjectMs < p.minShotMs || p.returnSubjectMs < 0 || p.creativeCooldownMs < 0
       || p.sustainMs < 250 || p.improvement < .05 || p.improvement > 1 || p.modelWeight < 0 || p.modelWeight > .15
-      || p.cutsPerMinute < 1 || p.subjectsPerMinute < 1 || p.emergencyGapMs < 1000 || p.maxAgeMs < 1) failure('INVALID_CAMERA_PACING');
+      || p.cutsPerMinute < 1 || p.subjectsPerMinute < 1 || p.emergencyGapMs < 1000 || p.maxAgeMs < 1
+      || p.idleAfterMs < 10000 || !unit(p.idleScorePenalty) || p.idleScorePenalty > .5
+      || p.combatSubjectMs < p.minShotMs || p.dungeonSubjectMs < p.minShotMs || p.engagementGraceMs < 1000) failure('INVALID_CAMERA_PACING');
     this.stopped = false; this.binding = null; this.current = null; this.history = []; this.left = new Map();
     this.seen = new Map(); this.lastCreative = -Infinity; this.challenger = null;
   }
@@ -216,7 +240,10 @@ export class CameraChoiceArbiter {
       && ballots.votes.length <= roles.size && new Set(ballots.votes.map(v => v.role)).size === ballots.votes.length
       && ballots.votes.every(v => roles.has(v.role) && packet.options.some(o => o.id === v.choice));
     const total = validVotes ? ballots.votes.reduce((s, v) => s + roles.get(v.role).weight, 0) : 0;
-    const rank = o => o.ruleScore + (total ? this.p.modelWeight * ballots.votes.reduce((s, v) => s + (v.choice === o.id ? roles.get(v.role).weight : 0), 0) / total : 0);
+    const activity = new Map((packet.activities ?? []).map(a => [a.subjectUuid, activityState(a, now, this.p)]));
+    const currentActivity = activity.get(this.current?.plan.subjectUuid);
+    const rank = o => o.ruleScore - (activity.get(o.plan?.subjectUuid)?.longIdle ? this.p.idleScorePenalty : 0)
+      + (total ? this.p.modelWeight * ballots.votes.reduce((s, v) => s + (v.choice === o.id ? roles.get(v.role).weight : 0), 0) / total : 0);
     const keepScore = rank(packet.options[0]);
     let choices = packet.options.slice(1);
     const emergency = this.current ? packet.emergency : null;
@@ -229,8 +256,13 @@ export class CameraChoiceArbiter {
       const crossSubject = this.current && o.plan.subjectUuid !== this.current.plan.subjectUuid;
       if (emergency) return !creative.has(o.plan.motion);
       if (this.current && now - this.current.shotSince < this.p.minShotMs) return false;
-      if (crossSubject && (now - this.current.subjectSince < this.p.minSubjectMs || this.left.has(o.plan.subjectUuid)
+      let subjectHoldUntil = this.current ? this.current.subjectSince + this.p.minSubjectMs : -Infinity;
+      if (this.current && currentActivity?.longIdle) subjectHoldUntil = this.current.subjectSince + this.p.minShotMs;
+      if (this.current && currentActivity?.engaged) subjectHoldUntil = Math.max(subjectHoldUntil,
+        Math.max(this.current.subjectSince, currentActivity.activity.since) + (currentActivity.kind === 'combat' ? this.p.combatSubjectMs : this.p.dungeonSubjectMs));
+      if (crossSubject && (now < subjectHoldUntil || currentActivity?.critical || this.left.has(o.plan.subjectUuid)
         || this.history.filter(x => x.subjectChanged).length >= this.p.subjectsPerMinute)) return false;
+      if ((currentActivity?.kind === 'combat' && currentActivity.engaged || currentActivity?.critical) && creative.has(o.plan.motion)) return false;
       if (this.history.length >= this.p.cutsPerMinute) return false;
       return !creative.has(o.plan.motion) || now - this.lastCreative >= this.p.creativeCooldownMs;
     }).sort((a, b) => rank(b) - rank(a) || compare(a.id, b.id));
@@ -246,7 +278,8 @@ export class CameraChoiceArbiter {
     }
     return { kind: 'recommendation', schema: CAMERA_CHOICE_PROTOCOL, choice: winner.id, recommendationId: hash([binding, program.operationId, winner.id, winner.plan]),
       scope: packet.scope, generation: packet.generation, revision: packet.revision, observedAt: packet.observedAt,
-      plan: copy(winner.plan), holdMs: this.p.minShotMs, reason: emergency || (validVotes ? 'sustained_rules_and_judges' : 'sustained_rules'),
+      plan: copy(winner.plan), holdMs: this.p.minShotMs, reason: emergency || (currentActivity?.longIdle && winner.plan.subjectUuid !== this.current?.plan.subjectUuid
+        ? 'idle_subject' : validVotes ? 'sustained_rules_and_judges' : 'sustained_rules'),
       requiresFreshExecutionCheck: true };
   }
 }

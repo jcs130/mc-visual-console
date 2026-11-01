@@ -16,6 +16,8 @@ import {CameraChoiceArbiter,buildCameraDecision,createCameraJudgePanel,type Came
 import {BoundedCameraMotion,toJavaCameraAngles} from 'mc-visual-console/broadcast-motion';
 const facts:CameraDecisionObservation={scope:'world',generation:'epochA',at:Date.now(),sceneKey:'travel',program:{phase:'idle'},subjects:[],shots:[]};
 const packet=buildCameraDecision(facts);const arbiter=new CameraChoiceArbiter();const advice=arbiter.decide(packet);
+facts.subjects.push({uuid:'subject',scope:'world',at:Date.now(),loaded:true,alive:true,
+ activity:{kind:'combat',at:Date.now(),since:Date.now(),lastProgressAt:Date.now(),provenance:'game',evidenceId:'verified-hit'}});
 const port:CameraDecisionPort={request:async()=>({answers:{}})};const panel=createCameraJudgePanel(port);
 void panel.judge(packet,{roles:['action','space']});void advice;
 // @ts-expect-error Roles are finite; arbitrary prompt names are not accepted.

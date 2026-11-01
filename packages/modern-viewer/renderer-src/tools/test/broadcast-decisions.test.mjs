@@ -14,6 +14,7 @@ function fixture() {
   const packet = () => {
     observation.at = now; program.renderedAt = now;
     for (const x of [...observation.subjects, ...observation.shots]) x.at = now;
+    for (const subject of observation.subjects) if (subject.activity) subject.activity.at = now;
     return buildCameraDecision(observation, { now });
   };
   const apply = (recommendation, id = `operation${now}`) => Object.assign(program, { phase: 'applied', operationId: id, plan: recommendation.plan,
@@ -210,4 +211,77 @@ test('in-flight judges preserve their original candidate snapshot instead of acc
   const packet = f.packet(), promise = panel.judge(packet, { roles: ['story'] }); await new Promise(r => setImmediate(r));
   packet.options.push({ ...packet.options[1], id: 'invented' }); resolve({ answers: { story: { choice: 'invented' } } });
   assert.equal((await promise).reason, 'invalid_choice');
+});
+
+const setActivity = (f, kind, { subject = 0, since = 0, lastProgressAt = 0, critical = false, provenance = 'game' } = {}) => {
+  f.observation.subjects[subject].activity = { kind, since, lastProgressAt, critical, at: f.now(), provenance, evidenceId: `activity${subject}` };
+};
+
+test('confirmed prolonged idle makes room for a readable active subject before the normal 30 second dwell', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); f.program.quality = q(1);
+  f.observation.shots.forEach(s => { s.quality = q(.8); }); setActivity(f, 'idle'); a.decide(f.packet());
+  f.tick(19999); assert.equal(a.decide(f.packet()).kind, 'keep');
+  f.tick(1); assert.equal(a.decide(f.packet()).reason, 'sustaining_gain');
+  f.tick(1200); const result = a.decide(f.packet()); assert.equal(result.kind, 'recommendation'); assert.equal(result.reason, 'idle_subject');
+});
+
+test('stationary fishing, crafting, UI interaction and conversation are not penalized as idle', () => {
+  for (const kind of ['fishing', 'crafting', 'interaction', 'conversation']) {
+    const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); f.program.quality = q(1);
+    f.observation.shots.forEach(s => { s.quality = q(.8); }); setActivity(f, kind); a.decide(f.packet());
+    f.tick(90000); assert.equal(a.decide(f.packet()).kind, 'keep', kind);
+  }
+});
+
+test('a new verified combat segment extends coverage from its start, including after a long prior shot', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); a.decide(f.packet()); f.tick(45000);
+  setActivity(f, 'combat', { since: f.now(), lastProgressAt: f.now() }); assert.equal(a.decide(f.packet()).kind, 'keep');
+  f.tick(89000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).kind, 'keep');
+  f.tick(1000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).reason, 'sustaining_gain');
+  f.tick(1200); assert.equal(a.decide(f.packet()).kind, 'recommendation');
+});
+
+test('an active critical phase retains the subject past the ordinary combat hold, then releases on a real phase change', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); setActivity(f, 'combat', { critical: true }); a.decide(f.packet());
+  f.tick(120000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).kind, 'keep');
+  f.observation.subjects[0].activity.critical = false; assert.equal(a.decide(f.packet()).reason, 'sustaining_gain');
+  f.tick(1200); assert.equal(a.decide(f.packet()).kind, 'recommendation');
+});
+
+test('active dungeon progress extends coverage to 60 seconds; a stale dungeon tag cannot lock the camera', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); setActivity(f, 'dungeon'); a.decide(f.packet());
+  f.tick(30000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).kind, 'keep');
+  f.tick(30000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).reason, 'sustaining_gain');
+  const stale = fixture(), b = new CameraChoiceArbiter({ now: stale.now }); setActivity(stale, 'dungeon', { critical: true }); b.decide(stale.packet());
+  stale.tick(30000); assert.equal(b.decide(stale.packet()).reason, 'sustaining_gain'); stale.tick(1200); assert.equal(b.decide(stale.packet()).kind, 'recommendation');
+});
+
+test('contradictory idle claims and chat-only activity cannot manufacture an early switch', () => {
+  for (const data of [{ provenance: 'chat' }, { lastProgressAt: 15000 }]) {
+    const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); f.program.quality = q(1);
+    f.observation.shots.forEach(s => { s.quality = q(.8); }); a.decide(f.packet()); f.tick(20000); setActivity(f, 'idle', data);
+    assert.equal(f.packet().activities.length, 0); assert.equal(a.decide(f.packet()).kind, 'keep');
+  }
+});
+
+test('all-idle subjects do not provoke round-robin switching, and snapshot refresh does not renew a combat event', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); f.program.quality = q(.8);
+  f.observation.shots.forEach(s => { s.quality = q(.8); });
+  for (let subject = 0; subject < 3; subject++) setActivity(f, 'idle', { subject }); a.decide(f.packet());
+  f.tick(30000); assert.equal(a.decide(f.packet()).kind, 'keep');
+  const p = f.packet(); f.tick(1000); assert.equal(f.packet().revision, p.revision);
+});
+
+test('even a long-idle subject must finish the newly applied shot minimum and preserve manual/unknown guards', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); f.program.quality = q(1);
+  f.observation.shots.forEach(s => { s.quality = q(.8); }); f.tick(30000); setActivity(f, 'idle'); a.decide(f.packet());
+  f.tick(9999); assert.equal(a.decide(f.packet()).kind, 'keep'); f.tick(1); assert.equal(a.decide(f.packet()).reason, 'sustaining_gain');
+  f.program.phase = 'unknown'; assert.equal(a.decide(f.packet()).reason, 'native_unknown');
+  f.program.phase = 'applied'; f.observation.manualLocked = true; assert.equal(a.decide(f.packet()).reason, 'manual_lock');
+});
+
+test('an existing longer host dwell is preserved when activity-aware pacing is added', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now, minSubjectMs: 120000 }); setActivity(f, 'combat'); a.decide(f.packet());
+  f.tick(90000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).kind, 'keep');
+  f.tick(30000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).reason, 'sustaining_gain');
 });
