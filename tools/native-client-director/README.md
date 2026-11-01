@@ -4,7 +4,7 @@ This optional Fabric 1.21.1 module controls one existing, explicitly configured
 observer. It does not create a player, connect a Minecraft client, run a model,
 choose an agent's game goal, or expose arbitrary command execution.
 
-## 0.1.13: original OrthoCamera integration
+## 0.1.14: original OrthoCamera integration
 
 Explicit `orthographicEnabled: true` enables the adapter only when the original
 client-side OrthoCamera `0.1.9+1.21` and its checked API are installed. No server
@@ -41,7 +41,7 @@ when leaving orthographic mode; it does not keep saving an enabled projection.
 Cross-projection changes use the existing GPU frame dissolve; same-projection
 adjustments interpolate the original mod's settings.
 
-256 Java checks and independent finished-JAR consumers pass, including 30
+258 Java checks and independent finished-JAR consumers pass, including 32
 orthographic checks; 79 shared SDK/selection checks and public types pass. The
 finished controller was loaded with original OrthoCamera in the isolated 1.21.1
 client: all four views, perspective return and real wall-occlusion fallback were
@@ -50,6 +50,25 @@ host-process cases also pass, including actual-profile verification and cooldown
 after fallback. These are not live shader, full YSM mesh occlusion, room cutaway
 or arbitrary multi-floor topology acceptance. Production loading and program
 verification must still be recorded separately.
+
+The first 0.1.13 activation exposed an idle-policy null view reaching an immutable
+map lookup, which prevented fresh diagnostics and therefore blocked the guarded
+selector startup. 0.1.14 uses an explicit nullable view predicate and adds idle
+coverage. The failed artifact/activation is retained separately; it is not counted
+as successful live acceptance. The orthographic driver and geometric solver from
+the isolated pixel test are unchanged by this startup repair.
+
+The corrected 0.1.14 was subsequently loaded in the original live observer.
+Fresh idle diagnostics, authentication, 20 runtime views and the matching native
+host were confirmed. Automatic orthographic coverage was observed for DeepFish
+and Coobot. A real native-window capture of Coobot beside the river has matching
+orthographic/`ortho_overview` and subject UUID readings before and after the frame.
+Open-scene preference can also promote stable eye/rear following, not just an
+idle overview. Exact first-person interaction remains available; obstruction
+fallback and the projection-return cooldown stay active. Only the observer and
+its selector were reloaded. Original server mods, actors, TTS, goals, memory and
+ledger were untouched by this deployment. Full appearance parity and the final
+broadcast-platform program are still separate checks.
 
 ## 0.1.12 candidate: native camera rigs
 
