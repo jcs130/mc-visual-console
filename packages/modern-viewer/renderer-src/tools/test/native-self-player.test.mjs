@@ -6,6 +6,13 @@ import { NATIVE_YSM_SOURCE, NATIVE_YSM_JAR_SHA256 } from '../../src/native-viewe
 const UUID = '01234567-89ab-cdef-0123-456789abcdef'
 const OTHER = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 
+test('an observed encrypted server YSM stays explicit and never becomes a default skin',async()=>{
+  let substitutes=0;const controller=new NativeSelfPlayerController({manifest:{sources:[],assets:{}}},{minecraftFactory:async()=>{substitutes++;throw Error('unexpected replacement')},ysmFactory:async()=>{substitutes++;throw Error('unexpected replacement')}});
+  const self={uuid:UUID,entityId:7,paperAppearance:{playerUuid:UUID,entityId:7,available:false,nativeAvailable:true,modelId:'original.ysm',texture:'white',ysmVersion:'2.6.5',reason:'YSM_WEB_SOURCE_UNAVAILABLE'}};
+  assert.equal(await controller.update(self,UUID),null);assert.equal(substitutes,0);assert.match(controller.appearance().status,/原作者公开/);assert.equal(controller.appearance().unavailable,true);assert.equal(controller.appearance().serverModel.modelId,'original.ysm');
+  await controller.update({...self,paperAppearance:{...self.paperAppearance,playerUuid:OTHER}},UUID);assert.match(controller.appearance().status,/IDENTITY/);assert.equal(substitutes,0);controller.dispose();
+});
+
 test('Paper body/head yaw share the actor/camera display interval without changing authoritative samples',()=>{
  let received
  const actor={assetInfo:{kind:'ysm',uuid:UUID},applyMotion:input=>{received=input}}

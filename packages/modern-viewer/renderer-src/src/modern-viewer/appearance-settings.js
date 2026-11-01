@@ -9,6 +9,7 @@ export function installAppearanceSettings({ document, window, onChange, onUpload
   const summary = make('summary', root, '人物模型');
   const panel = make('div', root); panel.className = 'viewer-scene-panel';
   const subject = make('strong', panel);
+  const serverModel = make('small',panel);serverModel.hidden=true;
   const label = make('label', panel, '模型与配色'), select = make('select', label);
   select.setAttribute('aria-label', '人物模型与配色');
   const restore = make('button', panel, '恢复服务器外观'); restore.type = 'button';
@@ -65,12 +66,14 @@ export function installAppearanceSettings({ document, window, onChange, onUpload
     restore.disabled = !snapshot.available || snapshot.selected === 'server';
     if(uploadInput)uploadInput.disabled=!snapshot.available||uploadBusy;
     subject.textContent = snapshot.subject || '当前观战人物';
+    const original=snapshot.serverModel;
+    serverModel.hidden=!original?.modelId;serverModel.textContent=original?.modelId?`服务器模型：${original.modelId}${original.texture?' / '+original.texture:''}${original.ysmVersion?' · YSM '+original.ysmVersion:''}`:'';
     status.textContent = uploadBusy?'正在校验皮肤……':uploadError??snapshot.status??(snapshot.selected === 'server' ? '跟随服务器外观' : 'Web 外观替换');
     const issues=snapshot.animationIssues??[];
     compatibility.hidden=!issues.length;
     const names={'query.vertical_speed':'垂直速度','query.health':'生命值','query.max_health':'生命上限'};
     compatibility.textContent=issues.length?'本次加载遇到的动作限制：'+issues.map(issue=>issue.startsWith('YSM_MOLANG_INPUT_UNAVAILABLE:')?'缺少'+(names[issue.split(':')[1]]??issue.split(':')[1]):issue).join('；'):'';
-    summary.textContent=issues.length?'人物模型 · 兼容提示':'人物模型';
+    summary.textContent=snapshot.unavailable?'人物模型 · 暂不可用':issues.length?'人物模型 · 兼容提示':'人物模型';
     root.dataset.appearanceSource = snapshot.selected === 'server' ? 'server' : 'web';
     root.dataset.appearanceSelection = snapshot.selected;
     place();
