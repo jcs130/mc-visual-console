@@ -1,0 +1,27 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="mcvisual_native_director"
+version="0.1.20"
+displayName="MC Visual Native Director"
+description="Native NeoForge camera, transition and explicit decision service adapter."
+[[mods]]
+modId="mcvisual_native_observer"
+version="0.1.5"
+displayName="MC Visual Native Observer"
+description="Scoped target HUD and original inventory display."
+[[dependencies.mcvisual_native_director]]
+modId="agentmc_client_platform"
+type="required"
+versionRange="[0.1.0,)"
+ordering="AFTER"
+side="CLIENT"
+[[dependencies.mcvisual_native_observer]]
+modId="agentmc_client_platform"
+type="required"
+versionRange="[0.1.0,)"
+ordering="AFTER"
+side="CLIENT"
+[[mixins]]
+config="mcvisual-neoforge.mixins.json"

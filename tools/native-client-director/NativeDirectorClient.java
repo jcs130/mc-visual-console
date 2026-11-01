@@ -291,6 +291,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(ready&&droneActive&&System.currentTimeMillis()-droneRenderedAt<200)DRONE.confirmRendered();
         FrameBlend.draw(client,draw,policy.requestId(),ready,terminal);
     }
+    public static boolean orthographicProjecting(){return ORTHO.projecting();}
     public static boolean droneMayRender(class_1297 target){
         if(worldTransitionActive){DRONE.reset();return false;}
         if(!droneEnabled||!droneActive||target==null||!target.method_5667().toString().equals(droneUuid))return false;

@@ -20,7 +20,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     private record Config(boolean enabled, String server, String observer, String language,
                           boolean hideObserverSidebar, boolean writeDiagnostics) {}
     private record Data(byte[] bytes, class_8710.class_9154<Data> type) implements class_8710 {
-        @Override public class_8710.class_9154<? extends class_8710> method_56479() { return type; }
+        @Override public class_8710.class_9154<Data> method_56479() { return type; }
     }
     private static NativeObserverClient instance;
     private static final Map<String,class_8710.class_9154<Data>> TYPES = new LinkedHashMap<>();

@@ -1,0 +1,28 @@
+import fs from'node:fs/promises';import path from'node:path';import{fileURLToPath,pathToFileURL}from'node:url';import{execFileSync}from'node:child_process';import{createHash,randomUUID}from'node:crypto';
+const dir=path.dirname(fileURLToPath(import.meta.url)),args=process.argv.slice(2),opt=n=>args[args.indexOf(n)+1];
+for(const n of['--platform-report','--mapper','--mappings','--java-home','--output-dir'])if(!args.includes(n))throw Error('Required explicit input '+n);
+const platform=JSON.parse(await fs.readFile(opt('--platform-report'),'utf8')),cp=[platform.artifact,...platform.classpath].join(path.delimiter);
+const {clientSourceMappings}=await import(pathToFileURL(path.resolve(opt('--mapper'))));const mapper=await clientSourceMappings(opt('--mappings'));
+const out=path.resolve(opt('--output-dir')),work=out+'/compile-'+randomUUID(),src=work+'/src',classes=work+'/classes';await fs.mkdir(src,{recursive:true});await fs.mkdir(classes,{recursive:true});
+const sha=b=>createHash('sha256').update(b).digest('hex'),sources=[],records=[],jdk=opt('--java-home');
+async function add(file,translate=true){const b=await fs.readFile(file),dest=src+'/'+path.basename(file);records.push({file:path.relative(path.resolve(dir,'../..'),file).replaceAll('\\','/'),sha256:sha(b)});await fs.writeFile(dest,translate?mapper.translate(b.toString('utf8')):b);sources.push(dest);}
+const director=path.resolve(dir,'../native-client-director'),observer=path.resolve(dir,'../native-client-observer');
+for(const name of['DirectorPolicy','DroneFollow','CinematicRig','CloseView','OrthographicRig','NativeOrthographic','TransitionEnvelope','FrameBlend','CapturePolicy','NativeVisionCapture','DroneCameraMixin','DirectorInputMixin','DirectorMouseMixin','ObserverBodyMixin','NativeDirectorClient'])await add(director+'/'+name+'.java');
+for(const name of['DirectorPolicyCheck','DroneFollowCheck','TransitionEnvelopeCheck','CinematicRigCheck','OrthographicRigCheck','CapturePolicyCheck'])await add(director+'/test/'+name+'.java');
+for(const name of['ObserverState','ObserverView','TargetInventory','BossBarState','NativeObserverClient','ObserverSidebarMixin','ObserverBossBarMixin'])await add(observer+'/'+name+'.java');
+await add(observer+'/test/ObserverStateCheck.java');
+for(const name of['NeoVisualClient','NeoObserverMetadata','OrthographicProjection','OrthographicCameraMixin','OrthographicMatrixMixin','SpectatorInventoryProtocol'])await add(dir+'/'+name+'.java',false);
+const run=(name,a)=>execFileSync(path.join(jdk,'bin',name+'.exe'),a,{windowsHide:true,encoding:'utf8',maxBuffer:5_000_000,env:{...process.env,JAVA_TOOL_OPTIONS:'-Duser.language=en -Duser.country=US'}});
+await fs.writeFile(work+'/javac.args',['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources].map(s=>'"'+s.replaceAll('\\','/')+'"').join('\n'));run('javac',['@'+work+'/javac.args']);
+const names=['DirectorPolicyCheck','DroneFollowCheck','TransitionEnvelopeCheck','CinematicRigCheck','OrthographicRigCheck','CapturePolicyCheck','ObserverStateCheck'];
+const checks=names.map(n=>run('java',['-cp',classes+path.delimiter+cp,n]).trim());
+const mixins={required:true,minVersion:'0.8',compatibilityLevel:'JAVA_21',package:'org.mcvisual',client:['director.mixin.DroneCameraMixin','director.mixin.DirectorInputMixin','director.mixin.DirectorMouseMixin','director.mixin.ObserverBodyMixin','observer.mixin.ObserverSidebarMixin','observer.mixin.ObserverBossBarMixin','neoforge.mixin.OrthographicCameraMixin','neoforge.mixin.OrthographicMatrixMixin'],injectors:{defaultRequire:1}};
+// A mixin package must not contain entrypoint or policy classes.
+// Use one separate config per component's exclusive mixin namespace.
+const configs=[];for(const part of['director','observer','neoforge']){const value={...mixins,package:'org.mcvisual.'+part+'.mixin',client:mixins.client.filter(n=>n.startsWith(part+'.')).map(n=>n.split('.').at(-1))},name='mcvisual-'+part+'-neoforge.mixins.json';await fs.writeFile(classes+'/'+name,JSON.stringify(value));configs.push(name);}
+await fs.mkdir(classes+'/META-INF',{recursive:true});let metadata=await fs.readFile(dir+'/neoforge.mods.toml','utf8');metadata=metadata.replace('[[mixins]]\nconfig="mcvisual-neoforge.mixins.json"',configs.map(n=>'[[mixins]]\nconfig="'+n+'"').join('\n'));await fs.writeFile(classes+'/META-INF/neoforge.mods.toml',metadata);
+await fs.cp(observer+'/assets',classes+'/assets',{recursive:true});
+const artifact=out+'/mcvisual-native-0.1.20-neoforge.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF','-C',classes,'assets',...configs.flatMap(n=>['-C',classes,n])]);
+const consumer=work+'/consumer';await fs.mkdir(consumer);const tests=sources.filter(n=>n.endsWith('Check.java'));await fs.writeFile(work+'/consumer.args',['--release','21','-encoding','UTF-8','-proc:none','-classpath',artifact+path.delimiter+cp,'-d',consumer,...tests].map(s=>'"'+s.replaceAll('\\','/')+'"').join('\n'));run('javac',['@'+work+'/consumer.args']);
+const packaged=names.map(n=>run('java',['-cp',consumer+path.delimiter+artifact+path.delimiter+cp,n]).trim());if(JSON.stringify(checks)!==JSON.stringify(packaged))throw Error('Packaged consumer mismatch');
+const report={schema:'mcvisual-neoforge-build/v1',at:new Date().toISOString(),artifact,sha256:sha(await fs.readFile(artifact)),platformSha256:platform.sha256,mapping:mapper.report(),sources:records,checks,packaged,work,productionLoaded:false,gameConnections:0};await fs.writeFile(out+'/build-report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({artifact,sha256:report.sha256,checks,packaged}));
