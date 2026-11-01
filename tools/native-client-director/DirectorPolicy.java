@@ -51,6 +51,18 @@ public final class DirectorPolicy {
     public DirectorPolicy(Config config){this.config=config;}
     public String target(){return request==null?null:request.target();}
     public String requestId(){return request==null?null:request.id();}
+    public String activeLease(){return request==null?null:request.lease();}
+    public boolean hasSeen(String id){return seen.contains(id);}
+    /** Cancel only an already bound local camera rig. In-flight teleport/attach remains unconfirmed. */
+    public boolean cancelRig(String id,String lease,Frame f){
+        if(!"attached".equals(phase)||!scoped(f)||!f.authenticated()||!f.spectator()||f.manualDetachRequested()
+            ||request==null||!Objects.equals(request.id(),id)||!Objects.equals(request.lease(),lease)||!Objects.equals(expectedUuid,f.targetUuid())||!attached(f))return false;
+        phase="cancelled";reason="local_camera_rig_cancelled";return true;
+    }
+    public boolean stopPendingRig(String id,String lease,Frame f){
+        if(!pending()||!scoped(f)||!f.authenticated()||request==null||!Objects.equals(request.id(),id)||!Objects.equals(request.lease(),lease)||!Objects.equals(expectedUuid,f.targetUuid()))return false;
+        phase="unknown";reason="camera_cancel_requires_reconciliation";return true;
+    }
     public String phase(){return phase;}
     public String reason(){return reason;}
     public int commands(){return commands;}
@@ -140,7 +152,7 @@ public final class DirectorPolicy {
         }
         if(r==null||r.id()==null||r.lease()==null||!r.id().matches("[A-Za-z0-9:_-]{1,80}")
             ||!r.lease().matches("[A-Za-z0-9_-]{1,80}")||!allowed(r.target())
-            ||r.view()==null||!Set.of("first_person","third_person_back","third_person_front","drone_follow","drone_overview").contains(r.view()))
+            ||r.view()==null||!(Set.of("first_person","third_person_back","third_person_front").contains(r.view())||CinematicRig.VIEWS.contains(r.view())))
             return refuse("invalid_request");
         if(r.issuedAt()>now+1000||r.expiresAt()<=now||r.expiresAt()-r.issuedAt()>10_000
             ||r.expiresAt()<=r.issuedAt())return refuse("expired_request");
@@ -158,7 +170,7 @@ public final class DirectorPolicy {
     public Action step(Frame f,long now){
         if(request==null)return Action.none();
         // Preserve manual/unknown terminal state even if the old target later disconnects.
-        if(Set.of("paused","stopped","unknown").contains(phase))return Action.none();
+        if(Set.of("paused","stopped","unknown","cancelled").contains(phase))return Action.none();
         if(!scoped(f)||!f.authenticated()){phase="stopped";reason="scope_or_auth_lost";return Action.none();}
         // A configured native detach key wins even when the target dies in the same frame.
         if(f.manualDetachRequested()&&Set.of("attached","world_transition","target_death_transition").contains(phase)){

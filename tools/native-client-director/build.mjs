@@ -33,7 +33,7 @@ for(const [type,names]of Object.entries(contract)){
  const shape=run('javap',['-p','-s','-classpath',cp,type]);
  for(const name of names)if(!shape.includes(name))throw Error('Native camera API missing: '+type+' '+name);
 }
-const sources=['DirectorPolicy.java','DroneFollow.java','TransitionEnvelope.java','FrameBlend.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/DroneFollowCheck.java','test/TransitionEnvelopeCheck.java'];
+const sources=['DirectorPolicy.java','DroneFollow.java','CinematicRig.java','CloseView.java','TransitionEnvelope.java','FrameBlend.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/DroneFollowCheck.java','test/TransitionEnvelopeCheck.java','test/CinematicRigCheck.java'];
 const argfile=path.join(scratch,'javac.args');
 const quote=x=>'"'+x.replaceAll('\\','/').replaceAll('"','\\"')+'"';
 fs.writeFileSync(argfile,['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources.map(p=>path.join(source,p))].map(quote).join('\n'));
@@ -41,6 +41,7 @@ run('javac',['@'+argfile]);
 const checks=run('java',['-cp',classes+path.delimiter+cp,'DirectorPolicyCheck']);process.stdout.write(checks);
 const droneChecks=run('java',['-cp',classes+path.delimiter+cp,'DroneFollowCheck']);process.stdout.write(droneChecks);
 const transitionChecks=run('java',['-cp',classes+path.delimiter+cp,'TransitionEnvelopeCheck']);process.stdout.write(transitionChecks);
+const cinematicChecks=run('java',['-cp',classes+path.delimiter+cp,'CinematicRigCheck']);process.stdout.write(cinematicChecks);
 const metadata=JSON.parse(fs.readFileSync(path.join(source,'fabric.mod.json'),'utf8'));
 const mixinConfig=JSON.parse(fs.readFileSync(path.join(source,'mcvisual-director.mixins.json'),'utf8'));
 for(const entry of metadata.entrypoints.client)if(entry.startsWith(mixinConfig.package+'.'))
@@ -54,18 +55,19 @@ run('jar',['--create','--file',jar,'-C',classes,'org','-C',classes,'fabric.mod.j
 // Recompile the consumer against the finished production JAR only.
 const consumer=path.join(scratch,'consumer');fs.mkdirSync(consumer);
 const consumerArgs=path.join(scratch,'consumer.args');
-fs.writeFileSync(consumerArgs,['--release','21','-encoding','UTF-8','-proc:none','-classpath',jar,'-d',consumer,path.join(source,'test/DirectorPolicyCheck.java'),path.join(source,'test/DroneFollowCheck.java'),path.join(source,'test/TransitionEnvelopeCheck.java')].map(quote).join('\n'));
+fs.writeFileSync(consumerArgs,['--release','21','-encoding','UTF-8','-proc:none','-classpath',jar,'-d',consumer,path.join(source,'test/DirectorPolicyCheck.java'),path.join(source,'test/DroneFollowCheck.java'),path.join(source,'test/TransitionEnvelopeCheck.java'),path.join(source,'test/CinematicRigCheck.java')].map(quote).join('\n'));
 run('javac',['@'+consumerArgs]);const packagedChecks=run('java',['-cp',consumer+path.delimiter+jar,'DirectorPolicyCheck']);
 process.stdout.write('Packaged consumer: '+packagedChecks);
 const packagedDroneChecks=run('java',['-cp',consumer+path.delimiter+jar,'DroneFollowCheck']);process.stdout.write('Packaged consumer: '+packagedDroneChecks);
 const packagedTransitionChecks=run('java',['-cp',consumer+path.delimiter+jar,'TransitionEnvelopeCheck']);process.stdout.write('Packaged consumer: '+packagedTransitionChecks);
-for(const file of ['scene-policy.mjs','scene-policy.test.mjs','connection-recovery.mjs','connection-recovery.test.mjs'])fs.copyFileSync(path.join(source,file),path.join(output,file));
-const sceneChecks=execFileSync(process.execPath,['--test',path.join(output,'scene-policy.test.mjs'),path.join(output,'connection-recovery.test.mjs')],{encoding:'utf8',windowsHide:true});
+const packagedCinematicChecks=run('java',['-cp',consumer+path.delimiter+jar,'CinematicRigCheck']);process.stdout.write('Packaged consumer: '+packagedCinematicChecks);
+for(const file of ['scene-policy.mjs','scene-policy.test.mjs','connection-recovery.mjs','connection-recovery.test.mjs','shot-policy.mjs','shot-policy.test.mjs'])fs.copyFileSync(path.join(source,file),path.join(output,file));
+const sceneChecks=execFileSync(process.execPath,['--test',path.join(output,'scene-policy.test.mjs'),path.join(output,'connection-recovery.test.mjs'),path.join(output,'shot-policy.test.mjs')],{encoding:'utf8',windowsHide:true});
 process.stdout.write(sceneChecks.split('\n').slice(-10).join('\n'));
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const report={schema:'native-director-build/v1',at:new Date().toISOString(),version:metadata.version,
  matchingMinecraft:'1.21.1',artifact:jar,sha256:sha(fs.readFileSync(jar)),sources:sources.map(file=>({file,sha256:sha(fs.readFileSync(path.join(source,file)))})),
- nativeApiChecked:true,mixinNamespaceIsolated:true,policyChecks:checks.trim(),droneChecks:droneChecks.trim(),transitionChecks:transitionChecks.trim(),packagedConsumer:packagedChecks.trim(),packagedDroneConsumer:packagedDroneChecks.trim(),packagedTransitionConsumer:packagedTransitionChecks.trim(),
- scenePolicySha256:sha(fs.readFileSync(path.join(output,'scene-policy.mjs'))),connectionRecoverySha256:sha(fs.readFileSync(path.join(output,'connection-recovery.mjs'))),sceneChecks:sceneChecks.split('\n').slice(-10).join('\n').trim(),
+ nativeApiChecked:true,mixinNamespaceIsolated:true,policyChecks:checks.trim(),droneChecks:droneChecks.trim(),transitionChecks:transitionChecks.trim(),cinematicChecks:cinematicChecks.trim(),packagedConsumer:packagedChecks.trim(),packagedDroneConsumer:packagedDroneChecks.trim(),packagedTransitionConsumer:packagedTransitionChecks.trim(),packagedCinematicConsumer:packagedCinematicChecks.trim(),
+ scenePolicySha256:sha(fs.readFileSync(path.join(output,'scene-policy.mjs'))),connectionRecoverySha256:sha(fs.readFileSync(path.join(output,'connection-recovery.mjs'))),shotPolicySha256:sha(fs.readFileSync(path.join(output,'shot-policy.mjs'))),sceneChecks:sceneChecks.split('\n').slice(-10).join('\n').trim(),
  gameConnections:0,modelCalls:0,newPlayers:0,productionLoaded:false};
 fs.writeFileSync(path.join(output,'build-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));

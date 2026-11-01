@@ -4,6 +4,88 @@ This optional Fabric 1.21.1 module controls one existing, explicitly configured
 observer. It does not create a player, connect a Minecraft client, run a model,
 choose an agent's game goal, or expose arbitrary command execution.
 
+## 0.1.12 candidate: native camera rigs
+
+This is a client-only camera companion. No additional server mod is required;
+the existing account still needs its normal spectator/teleport permissions and
+authentication. Existing YSM/server appearance synchronization is independent.
+`cinematicEnabled: true` and `autoCloseView: true` are separate explicit opt-ins,
+alongside `droneEnabled`. Disabled profiles do not gain new runtime view IDs.
+
+The 13 drone views are rear follow, overview, eye-level follow, front lead,
+front-left/right oblique, left/right side tracking, low angle, left/right finite
+orbit, push-in and pull-out. Together with the three native perspectives this is
+16 executable views. The full identifiers, recipe mappings and conservative
+activity choices are maintained in `shot-policy.mjs`; `availableViews` in the
+current authenticated native readback remains authoritative. Orthographic
+projection is a separate optional backend, not a synonym for drone overview.
+
+Front lead physically puts the camera in front of the subject and looks back;
+it is not a rear camera with a renamed label. Tracking reuses the existing
+movement-heading solver. Same-subject reframes keep the rig, with damped radius,
+height and a 45-degree/second angular limit. Finite moves take eight seconds,
+have minimum-jerk starts/stops and hold the end pose. Orbits cover 60 degrees;
+they never loop. Dollies with no usable travel range are refused. A subsequent
+arc starts at the rendered previous endpoint.
+
+Each finite path checks 65 poses, the native near-plane collision rays and swept
+camera volume before starting, and checks newly encountered geometry each frame.
+Unloaded terrain is unavailable. Actor movement beyond the verified 0.75-block
+anchor, a world change, menu, obstruction or cancel stops the finite script.
+This conservative anchor policy intentionally does not orbit a running fighter.
+
+Auto-close uses actual clipped camera space: below 1.25 blocks for 350ms, or an
+immediate dangerous/unknown path, selects native first person. It stays there at
+least three seconds and requires two seconds of clearance above 2.5 blocks;
+outward recovery takes 700ms. The third-person body stays hidden while the boom
+is too short. A blocked front/orbit is reported as degraded/rejected, not a
+successful requested composition. Stable rear/eye/overview may explicitly report
+an adaptive first-person fallback. These thresholds apply only while the opted-in
+camera rig owns the observer; manual control still wins.
+
+## SDK, tool calls and cancellation
+
+Public `mc-visual-console/native-camera` exports `createNativeCameraAdapter`.
+The host supplies `readNative`, `writeRequest`, optional `writeCancel`, exact
+server/observer/subject bindings and its clock. Importing the module does not
+scan files/ports, connect a client, run a model or discover services. The adapter
+implements the existing `CameraAdapter`, so `CameraDirector` and the
+`broadcast_camera_*` tool dispatcher share the same transaction and evidence.
+
+`phase: attached` only proves body attachment. `shotExecution` separately reports
+preflight/running/settling/holding/completed/blocked. Static rigs finish only with
+actual post-request pixels, completed transition and matching UUID/scope/lease;
+finite moves also need their endpoint rendered. Missing context and unknown
+outcomes do not permit a new-ID replay. A close fallback reports `effectiveView`.
+
+The optional `config/mcvisual-director-cancel.json` uses id, lease, target,
+targetUuid, connectionEpoch, issuedAt and expiresAt. Cancellation before admission
+leaves a bounded connection-local tombstone. An attached local rig can be
+cancelled; a pending server command becomes unknown because the client cannot
+claim it was undone. `cancelReceipt` carries the binding and native world epoch.
+Host shutdown must reconcile this receipt rather than equating a written file
+with successful cancellation. The native terminal policy prevents revival.
+
+## Verification scope (2026-11-01)
+
+218 Java source checks and independent consumers recompiled against the finished
+JAR pass (169 policy, 11 follow, 9 transition, 29 cinematic). Shared SDK/tool,
+judges, motion, adapter and shot-policy checks pass 75 cases; the public TypeScript
+consumer passes. The 0.1.12 JAR was actually loaded in an isolated 1.21.1 client.
+Original native screenshot sequences show front, side, low-angle, eight-second
+60-degree orbit, pull-out and close-space first-person/recovery. The test actor
+was a static local armor stand, not a live game Agent. A lamp-post obstruction
+refused an earlier arc; the failed sample is retained privately. Native pixels
+do not replace multiplayer permission, moving-subject or platform-program QA.
+
+The iGPU lab cap is 30 FPS. Synchronous PNG sampling reduced observed lab FPS to
+roughly 15–24; after sampling it returned to 30. This is not production overhead
+measurement. The experimental world was saved and its extra client closed.
+Production remains 0.1.11. Source commit, client installation, live observation
+and broadcast platform acceptance are separate stages; no server or actor host
+was restarted for this candidate. Private JARs, captures and runtime bindings
+stay outside Git.
+
 Version 0.1.11 adds a request-bound `target_position_unconfirmed` failure when
 positioning times out before any target attachment command and the native camera
 is positively still the original observer. The preceding teleport remains

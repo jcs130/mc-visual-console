@@ -28,3 +28,8 @@ const motion=new BoundedCameraMotion({scope:'world',kind:'orbit_arc',position:[0
 const pose=motion.advance(500).pose;const nativeAngles:{yaw:number;pitch:number}=toJavaCameraAngles(pose);void nativeAngles;
 // @ts-expect-error A pose is an explicit vector, not generated code.
 new BoundedCameraMotion({scope:'world',kind:'orbit_arc',position:'run this script',focus:[0,1,0],probe:()=>({known:true,clear:true,visible:true})});
+
+import {createNativeCameraAdapter,type NativeCameraStatus} from 'mc-visual-console/native-camera';
+declare const nativeStatus:NativeCameraStatus;
+const nativeAdapter:CameraAdapter=createNativeCameraAdapter({readNative:async()=>nativeStatus,writeRequest:async(_request,{signal})=>{if(signal.aborted)throw Error('aborted');},
+ expectedServer:'fixture:25565',observerUuid:'observer-uuid',targetUuid:'actor-uuid',targetName:'Alice'});void nativeAdapter;

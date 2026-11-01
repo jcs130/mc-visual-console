@@ -102,6 +102,7 @@ export class CameraDirector {
       } else if(['cancelled','rejected'].includes(receipt.phase)) {
         record.phase=receipt.phase;record.completedAt=this.now();record.evidence=clone(receipt);
       } else if(receipt.phase==='transitioning')record.phase='transitioning';
+      else if(receipt.phase==='unknown'){record.phase='unknown';record.evidence=clone(receipt);}
       if(terminal(record.phase)&&this.pending===actionId)this.pending=null;
     } else if(this.now()>record.operation.expiresAt)record.phase='unknown';
     return clone(record);

@@ -256,6 +256,17 @@ public class DirectorPolicyCheck {
             var changedCamera=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",false,camera,"observer",1);
             unproven.step(changedCamera,t+8001);check("unknown".equals(unproven.phase())&&unproven.positionFailure()==null,"unknown/nonself camera cannot be auto-recovered");
         }
+        var cancel=worldPolicy("cancel-rig",t);
+        check(!cancel.cancelRig("other","lease-one",w(1,"uuid-a")),"foreign camera ID cannot cancel");
+        check(!cancel.cancelRig("cancel-rig","other-lease",w(1,"uuid-a")),"foreign lease cannot cancel");
+        check(cancel.cancelRig("cancel-rig","lease-one",w(1,"uuid-a")),"actual attached local rig can cancel");
+        int beforeCancelCommands=cancel.commands();
+        check("cancelled".equals(cancel.phase())&&cancel.step(w(2,"uuid-a"),t+20000).command()==null&&cancel.commands()==beforeCancelCommands,"world replacement cannot resurrect cancelled rig");
+        var cancelPending=policy();cancelPending.offer(r("pending-cancel","Alice","drone_follow",t),remote,t);cancelPending.step(remote,t);
+        check(!cancelPending.cancelRig("pending-cancel","lease-one",remote),"unconfirmed teleport cannot be reported cancelled");
+        int pendingCommands=cancelPending.commands();
+        check(cancelPending.stopPendingRig("pending-cancel","lease-one",remote),"pending cancellation stops further native steps");
+        check("unknown".equals(cancelPending.phase())&&cancelPending.step(w(2,"observer"),t+30000).command()==null&&cancelPending.commands()==pendingCommands,"pending cancellation preserves uncertainty and never replays an attach");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }
