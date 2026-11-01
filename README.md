@@ -9,6 +9,12 @@
 相机 UUID 确认切换，手动脱离即暂停。目标数据仍由原生 observer HUD 提供，
 模型使用匹配版本的 YSM；不将已发送镜头命令当成显示成功或完整插件兼容。
 
+另有独立的 [NeoForge 1.21.1 观战候选](tools/native-client-neoforge/README.md)，
+使用官方 NeoForge/TLM/YSM 和原生显示接口；不加载 Fabric Loader 或 Connector。
+该可选原生观战成品采用 GPL-3.0-only 并保留共享代码的 MIT 声明，
+参见其 [来源与许可证](tools/native-client-neoforge/NOTICE.md)。核心 SDK 与网页渲染器的许可证保持各自声明。
+源码构建、离线启动与正式服画面分别验收，当前仍需完成兼容认证入口及实服验证。
+
 2026-10-26 公网观战候选：地形重叠增量、多人材质请求合并、缓存限额与可测计数，另修正YSM转向倾斜及怪物持械方向。消费者须同时更新匹配页面和观战源；[改动、实测及未支持范围](packages/modern-viewer/renderer-src/docs/native-public-cache-and-direction.md)。
 
 2026-10-25 Paper 观战动作候选：连续服务器位置驱动原模型行走，保留原受力速度；重复 tick 去重并补齐高频姿态/使用物品字段。原可米模型回放已验，正式消费端须独立更新，见[动作来源与验收边界](packages/modern-viewer/renderer-src/docs/paper-observed-animation.md)。

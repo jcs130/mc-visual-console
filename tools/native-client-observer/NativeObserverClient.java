@@ -126,6 +126,22 @@ public final class NativeObserverClient implements ClientModInitializer {
     }
     private boolean zh(){return config!=null&&"zh_cn".equalsIgnoreCase(config.language);}
     public static boolean scoped(){return instance!=null&&instance.config!=null;}
+    /** Exact current camera/connection identity for optional native display adapters. */
+    public record NativeScope(String player,int entity,long epoch,Object world,Object connection) {}
+    public static NativeScope currentScope(){
+        var self=instance;var client=class_310.method_1551();if(self==null||self.config==null)return null;
+        self.reconcile(client);var camera=self.readCamera(client);var connection=client.method_1562();
+        if(camera==null||!camera.observer()||connection==null)return null;
+        return new NativeScope(camera.player(),camera.entity(),self.state.epoch(),camera.world(),connection);
+    }
+    public static boolean targetStateFresh(){var self=instance;if(currentScope()==null||self==null)return false;return self.state.current(System.nanoTime())!=null;}
+    public static TargetInventory.View<class_1799> currentInventory(){
+        return currentInventory(false);
+    }
+    public static TargetInventory.View<class_1799> currentInventory(boolean ownedFullStream){
+        var self=instance;if(currentScope()==null||self==null)return null;
+        return self.inventory.view(self.state.current(System.nanoTime()),System.nanoTime(),ownedFullStream);
+    }
     public static boolean nativeBarPacket(UUID id,boolean complete,boolean present){
         if(!scoped())return true;
         boolean valid=instance.nativeBars.accept(id,complete,present);
