@@ -365,7 +365,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 "reason",droneReason,"lastRenderedAt",droneRenderedAt,
                 "requestedDistance",droneRequestedDistance,"clippedDistance",droneClippedDistance));
             data.put("droneShot",droneView);data.put("shotExecution",OrthographicRig.supportsView(policy.view())?ORTHO.status():DRONE.status());
-            data.put("effectiveView",ORTHO.active()?policy.view():CLOSE.firstPerson()?"first_person":DRONE.status().get("effectiveView"));
+            data.put("effectiveView",DirectorPolicy.effectiveView(client.field_1690.method_31044().name(),ORTHO.active(),policy.view(),CLOSE.firstPerson(),droneActive,(String)DRONE.status().get("effectiveView")));
             var ortho=ORTHO.status();data.put("orthographic",ortho);data.put("projection",ortho.get("projection"));data.put("projectionProfile",ortho.get("projectionProfile"));data.put("spatial",ORTHO.spatial());
             data.put("closeView",Map.of("enabled",autoCloseEnabled,"firstPerson",CLOSE.firstPerson(),"reason",CLOSE.reason()));
             Set<String> views=new LinkedHashSet<>(Set.of("first_person","third_person_back","third_person_front"));

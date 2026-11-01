@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "mcvisual-native-director",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "name": "MC Visual Native Director",
   "description": "Opt-in camera-only requests for one authenticated observer, with native attachment receipts. No new player, gameplay agent or model loop.",
   "environment": "client",

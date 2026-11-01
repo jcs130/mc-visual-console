@@ -282,6 +282,13 @@ public class DirectorPolicyCheck {
             var ortho=policy();check(ortho.offer(r("ortho-"+view,"Alice",view,t),w(1,"uuid-a"),t),"orthographic view uses original observer policy");
             check(view.equals(ortho.step(w(1,"uuid-a"),t).view()),"orthographic composition preserves actual native actor binding");
         }
+        check("first_person".equals(DirectorPolicy.effectiveView("FIRST_PERSON",false,null,false,false,"drone_follow")),"idle drone label cannot replace actual first-person renderer");
+        check("third_person_back".equals(DirectorPolicy.effectiveView("THIRD_PERSON_BACK",false,null,false,false,"drone_front")),"rear vanilla perspective remains authoritative without a drone");
+        check("third_person_front".equals(DirectorPolicy.effectiveView("THIRD_PERSON_FRONT",false,null,false,false,"drone_follow")),"front vanilla perspective remains authoritative without a drone");
+        check("first_person".equals(DirectorPolicy.effectiveView("THIRD_PERSON_BACK",false,null,true,true,"drone_follow")),"collision fallback reports first person");
+        check("ortho_top".equals(DirectorPolicy.effectiveView("FIRST_PERSON",true,"ortho_top",false,false,"drone_follow")),"active orthographic projection reports its current view");
+        check("drone_side_left".equals(DirectorPolicy.effectiveView("THIRD_PERSON_BACK",false,null,false,true,"drone_side_left")),"active drone reports its current view");
+        check(DirectorPolicy.effectiveView(null,false,null,false,false,"drone_follow")==null,"unknown native perspective cannot borrow a stopped rig label");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

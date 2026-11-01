@@ -185,6 +185,14 @@ public final class DirectorPolicy {
         nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;attachedEntityWorldEpoch=0;deadAttachment=null;detachObservation=null;
         return true;
     }
+    /** An idle rig's remembered label is not an active rendered camera. */
+    public static String effectiveView(String perspective,boolean orthographic,String orthographicView,boolean closeFirst,boolean droneActive,String droneView){
+        if(orthographic)return orthographicView;
+        if(closeFirst)return "first_person";
+        if(droneActive)return droneView;
+        if(perspective==null)return null;
+        return switch(perspective){case "FIRST_PERSON"->"first_person";case "THIRD_PERSON_BACK"->"third_person_back";case "THIRD_PERSON_FRONT"->"third_person_front";default->null;};
+    }
     public Action step(Frame f,long now){
         if(request==null)return Action.none();
         // Preserve manual/unknown terminal state even if the old target later disconnects.
