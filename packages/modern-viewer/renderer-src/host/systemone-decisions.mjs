@@ -4,6 +4,15 @@ const number=x=>typeof x==='number'&&Number.isFinite(x)&&x>=0?x:null;
 const id=x=>typeof x==='string'&&/^[A-Za-z0-9_.:-]{1,160}$/.test(x)?x:null;
 const error=code=>Object.assign(new Error(code),{code});
 const clone=x=>structuredClone(x);
+/** A conditional candidate distribution, not a calibrated probability of real-world success. */
+export function validateChoiceProbabilities(value,criteria){
+  const keys=Object.keys(criteria??{});
+  if(!value||typeof value!=='object'||Array.isArray(value)||!keys.length||Object.keys(value).length!==keys.length
+    ||keys.some(k=>!Object.hasOwn(value,k)||typeof value[k]!=='number'||!Number.isFinite(value[k])||value[k]<0||value[k]>1))return null;
+  const sum=keys.reduce((s,k)=>s+value[k],0);
+  if(Math.abs(sum-1)>.01)return null;
+  return Object.fromEntries(keys.map(k=>[k,value[k]/sum]));
+}
 function visionMetrics(value,depth=0){
   if(value===null||typeof value==='boolean'||typeof value==='number'&&Number.isFinite(value))return value;
   if(!value||typeof value!=='object'||Array.isArray(value)||depth>3)return null;
@@ -16,7 +25,7 @@ function visionMetrics(value,depth=0){
   return Object.keys(out).length?out:null;
 }
 export function systemOneInferenceStats(raw){
-  return{request_id:id(raw?.request_id),session_id:id(raw?.session_id),queue_ms:number(raw?.queue_ms),
+  return{request_id:id(raw?.request_id),session_id:id(raw?.session_id),model:id(raw?.model),queue_ms:number(raw?.queue_ms),
     execution_ms:number(raw?.execution_ms),input_tokens:number(raw?.input_tokens),vision:visionMetrics(raw?.vision)};
 }
 /** Bounds input before HTTP; no URL downloads or image encoding are performed by the transport. */
@@ -87,7 +96,9 @@ export function createSystemOneDecisionPort({endpoint,apiKey,sessionId,model='sy
       const answers={};let invalid=false;
       for(const name of job.questionIds){const choice=raw.answers?.[name]?.choice;
         if(typeof choice!=='string'||!Object.hasOwn(job.criteria[name],choice)){invalid=true;answers[name]={choice:null};}
-        else answers[name]={choice};}
+        else{const probabilities=validateChoiceProbabilities(raw.answers[name].probabilities,job.criteria[name]);
+          answers[name]={choice,...(probabilities?{probabilities}:{}),
+            ...(typeof raw.answers[name].confidence==='number'&&raw.answers[name].confidence>=0&&raw.answers[name].confidence<=1?{confidence:raw.answers[name].confidence}:{})};}}
       const result={answers,model,latency_ms:Math.max(0,now()-job.started),inference_stats:stats,
         usage:{input_tokens:stats.input_tokens,output_tokens:number(raw.usage?.output_tokens)??0,cached_input_tokens:number(raw.usage?.cached_input_tokens)}};
       settle(job,invalid?'invalid_choice':'ok',result,stats);

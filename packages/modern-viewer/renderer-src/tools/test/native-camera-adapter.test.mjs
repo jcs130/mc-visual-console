@@ -14,6 +14,23 @@ function fixture(){
  const plan={actionId:'camera-request',lease,shot:'drone_orbit_left',holdMs:10000};
  return{n,settings,adapter,director,plan,writes:()=>writes,tick:ms=>{now+=ms;}};
 }
+
+test('SDK and MCP carry bounded script parameters and verify the same native rendered values',async()=>{
+ const f=fixture();f.n.cameraScript={schema:'mcvisual.camera-script/v1',parameters:['distance','height','speed'],preflightRequiredForFinite:true};let forwarded;
+ const original=f.settings.writeRequest;f.settings.writeRequest=async r=>{forwarded=r;await original(r);};
+ const d=new CameraDirector(createNativeCameraAdapter(f.settings),{now:()=>100000}),{lease}=d.claim('parameter-host');
+ const plan={actionId:'parameter-shot',lease,shot:'drone_follow',holdMs:10000,motion:{schema:'mcvisual.camera-script/v1',height:1.8,distance:6.5,speed:.7}};
+ const r=await callCameraTool(d,'broadcast_camera_take',plan);assert.deepEqual(r.operation.motion,plan.motion);assert.deepEqual(forwarded.motion,plan.motion);
+ Object.assign(f.n.shotExecution,{phase:'holding',scriptSchema:plan.motion.schema,height:1.8,distance:6.5,speed:.7});
+ assert.equal((await callCameraTool(d,'broadcast_camera_result',{actionId:plan.actionId})).phase,'applied');
+ await assert.rejects(d.take({...plan,motion:{...plan.motion,speed:.8}}),/ACTION_ID_CONFLICT/);
+ const g=fixture();await assert.rejects(g.director.take({...g.plan,shot:'drone_follow',motion:plan.motion}),/CAMERA_SCRIPT_UNAVAILABLE/);assert.equal(g.writes(),0);
+});
+test('native script receipt must prove requested values rather than just the view name',async()=>{
+ const f=fixture();f.n.cameraScript={schema:'mcvisual.camera-script/v1'};const plan={...f.plan,shot:'drone_follow',motion:{schema:'mcvisual.camera-script/v1',height:1.8,speed:.7}};
+ await f.director.take(plan);Object.assign(f.n.shotExecution,{phase:'holding',scriptSchema:plan.motion.schema,height:3,speed:1});
+ const r=await f.director.result(plan.actionId);assert.equal(r.phase,'rejected');assert.equal(r.evidence.reason,'script_parameters_not_rendered');
+});
 test('same SDK/tool operation waits for the finite native endpoint frame, not body attachment or RPC acceptance',async()=>{
  const f=fixture();assert.equal((await callCameraTool(f.director,'broadcast_camera_take',f.plan)).phase,'accepted');
  assert.equal((await f.director.result(f.plan.actionId)).phase,'transitioning');

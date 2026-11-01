@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import {validateCameraScript,CAMERA_SCRIPT_PROTOCOL} from './camera-script.mjs';
 
 /** Display-only host API. The host supplies decisions; this module never calls a model. */
 export const CAMERA_PROTOCOL = 'mcvisual.camera/v1';
@@ -13,7 +14,7 @@ export function mapCameraRecipes(observed,library) {
 }
 export const CAMERA_TOOLS = Object.freeze([
   {name:'broadcast_camera_query',description:'Read fresh camera capabilities, observed subject, ownership and native operation state.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
-  {name:'broadcast_camera_take',description:'Submit a bounded shot with a stable actionId and the current lease. Acceptance is not completion; query the original result.',inputSchema:{type:'object',properties:{actionId:{type:'string'},lease:{type:'string'},shot:{type:'string'},holdMs:{type:'integer',minimum:10000,maximum:120000},reason:{type:'string',maxLength:240}},required:['actionId','lease','shot','holdMs'],additionalProperties:false}},
+  {name:'broadcast_camera_take',description:'Submit a bounded shot with a stable actionId and the current lease. Acceptance is not completion; query the original result.',inputSchema:{type:'object',properties:{actionId:{type:'string'},lease:{type:'string'},shot:{type:'string'},holdMs:{type:'integer',minimum:10000,maximum:120000},reason:{type:'string',maxLength:240},motion:{type:'object',properties:{schema:{const:CAMERA_SCRIPT_PROTOCOL},distance:{type:'number',minimum:2,maximum:10},height:{type:'number',minimum:-.8,maximum:12},speed:{type:'number',minimum:.5,maximum:1.5},durationMs:{type:'integer',minimum:4000,maximum:20000},arcDegrees:{type:'number',minimum:15,maximum:90}},required:['schema'],additionalProperties:false}},required:['actionId','lease','shot','holdMs'],additionalProperties:false}},
   {name:'broadcast_camera_result',description:'Reconcile one original actionId against fresh native evidence; never reissue an unknown action.',inputSchema:{type:'object',properties:{actionId:{type:'string'}},required:['actionId'],additionalProperties:false}},
   {name:'broadcast_camera_cancel',description:'Cancel the original camera action. Only a matching native cancellation acknowledgement establishes cancellation.',inputSchema:{type:'object',properties:{actionId:{type:'string'},lease:{type:'string'}},required:['actionId','lease'],additionalProperties:false}},
 ]);
@@ -46,9 +47,10 @@ export class CameraDirector {
       pending:this.pending,current:this.current,holdUntil:this.holdUntil};
   }
   async take(plan) {
-    if(plan&&Object.keys(plan).some(key=>!['actionId','lease','shot','holdMs','reason'].includes(key)))fail('INVALID_CAMERA_PLAN');
+    if(plan&&Object.keys(plan).some(key=>!['actionId','lease','shot','holdMs','reason','motion'].includes(key)))fail('INVALID_CAMERA_PLAN');
     if(!plan||!id(plan.actionId)||!id(plan.lease)||typeof plan.shot!=='string'||!Number.isInteger(plan.holdMs)||plan.holdMs<this.minHoldMs||plan.holdMs>120000||typeof (plan.reason??'')!=='string'||(plan.reason??'').length>240)fail('INVALID_CAMERA_PLAN');
-    const canonical=JSON.stringify({shot:plan.shot,holdMs:plan.holdMs,reason:plan.reason??'',lease:plan.lease});
+    const motion=validateCameraScript(plan.motion,plan.shot);
+    const canonical=JSON.stringify({shot:plan.shot,holdMs:plan.holdMs,reason:plan.reason??'',lease:plan.lease,...(motion?{motion}:{})});
     const old=this.records.get(plan.actionId);
     if(old){if(old.canonical!==canonical)fail('ACTION_ID_CONFLICT');return this.result(plan.actionId);}
     if(this.stopped)fail('DIRECTOR_STOPPED');if(this.manual)fail('MANUAL_LOCKED');
@@ -62,13 +64,14 @@ export class CameraDirector {
     if(this.now()<this.holdUntil)fail('CAMERA_MINIMUM_HOLD');
     const shot=observed.shots.find(x=>x.id===plan.shot&&x.available===true);
     if(!shot)fail('SHOT_UNAVAILABLE');if(observed.manualControl)fail('NATIVE_MANUAL_CONTROL');
+    if(motion&&shot.cameraScript!==CAMERA_SCRIPT_PROTOCOL)fail('CAMERA_SCRIPT_UNAVAILABLE');
     if(shot.projection!==undefined&&!['perspective','orthographic'].includes(shot.projection))fail('INVALID_SHOT_PROJECTION');
     if(shot.projectionProfile!==undefined&&(!id(shot.projectionProfile)||shot.projection===undefined))fail('INVALID_SHOT_PROJECTION_PROFILE');
     if(shot.projection==='orthographic'&&(!id(shot.projectionProfile)||shot.projectionReady!==true))fail('SHOT_PROJECTION_UNAVAILABLE');
     if(this.records.size>=256)fail('CAMERA_SESSION_ARCHIVE_REQUIRED');
     const operation={schema:CAMERA_PROTOCOL,actionId:plan.actionId,lease:plan.lease,
       scope:observed.scope,subjectUuid:observed.subjectUuid,shot:plan.shot,
-      issuedAt:this.now(),expiresAt:this.now()+10000,holdMs:plan.holdMs,reason:plan.reason??''};
+      issuedAt:this.now(),expiresAt:this.now()+10000,holdMs:plan.holdMs,reason:plan.reason??'',...(motion?{motion}:{})};
     if(shot.projection!==undefined)operation.projection=shot.projection;
     if(shot.projectionProfile!==undefined)operation.projectionProfile=shot.projectionProfile;
     const record={operation,canonical,binding:binding(observed),phase:'accepted',acceptedAt:this.now(),completedAt:null};

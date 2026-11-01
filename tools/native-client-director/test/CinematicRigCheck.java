@@ -45,6 +45,19 @@ public class CinematicRigCheck {
             var invalid=rig(dolly);invalid.next("actor",0,70,0,0,1_000_000_000L,dolly.equals("drone_push_in")?2:10,3);
             check("blocked".equals(invalid.status().get("phase")),"degenerate dolly cannot report an opposite or motionless movement: "+dolly);
         }
+        var adjustable=new CinematicRig();adjustable.begin("adjust","drone_follow",1_000_000_000L,java.util.Map.of("schema",CinematicRig.SCRIPT_PROTOCOL,"height",1.8,"distance",6.5,"speed",.7));
+        var adjusted=next(adjustable,0);check(Math.abs(adjusted.y()-71.8)<.001&&Math.abs(adjusted.z()+6.5)<.001,"explicit height and distance reach real camera geometry");
+        adjustable.begin("adjust-again","drone_follow",1_000_000_000L,java.util.Map.of("schema",CinematicRig.SCRIPT_PROTOCOL,"height",3.0,"distance",8.0,"speed",.7));
+        var smooth=next(adjustable,.02);check(Math.abs(smooth.y()-adjusted.y())<.03,"new dimensions slew rather than jump on a live rig");
+        var custom=new CinematicRig();custom.begin("custom","drone_orbit_right",1_000_000_000L,java.util.Map.of("schema",CinematicRig.SCRIPT_PROTOCOL,"arcDegrees",30,"durationMs",6000,"speed",1));
+        next(custom,0);check(custom.path().size()==65,"parameterized whole path remains preflighted");custom.pathResult(true,1_000_000_000L);
+        DroneFollow.Pose customEnd=null;for(int i=1;i<=180;i++)customEnd=next(custom,i/30.0);
+        check(Math.abs(Math.atan2(customEnd.x(),-customEnd.z())-Math.PI/6)<.001,"30 degree recipe stops at the parameterized endpoint");
+        check("settling".equals(custom.status().get("phase")),"parameter duration still requires actual endpoint rendering");custom.confirmRendered();
+        check("completed".equals(custom.status().get("phase")),"parameterized endpoint completes only after render");
+        for(var invalid:java.util.List.of(java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"speed",Double.NaN),java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"command","tp"),java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"durationMs",4000,"speed",1.5))){
+            boolean rejected=false;try{CinematicRig.parameters("drone_orbit_left",invalid);}catch(IllegalArgumentException e){rejected=true;}check(rejected,"invalid or excessive script parameter rejected");}
+        custom.reset();boolean noRevival=false;try{next(custom,20);}catch(IllegalStateException e){noRevival=true;}check(noRevival,"parameterized stopped rig cannot revive");
         System.out.println(checks+" cinematic-rig checks passed");
     }
 }

@@ -202,6 +202,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                     if(changed!=lastFileTime){
                         lastFileTime=changed;
                         var request=new Gson().fromJson(Files.readString(file),DirectorPolicy.Request.class);
+                        if(request!=null&&request.motion()!=null)CinematicRig.parameters(request.view(),request.motion());
                         if(request!=null&&Objects.equals(cancelledIntents.get(request.id()),request.lease()))throw new IllegalArgumentException("cancelled_before_admission");
                         if(request!=null&&request.view()!=null&&request.view().startsWith("drone_")&&!droneEnabled)
                             throw new IllegalArgumentException("drone_rig_not_explicitly_enabled");
@@ -244,7 +245,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             if(orthographic){if(!ORTHO.begin(policy.requestId(),action.view(),client,nativeWorldEpoch,now))perspectiveFallback(client,"orthographic_preflight_failed");}
             else ORTHO.stop("perspective_requested");
             if(action.view().startsWith("drone_")&&droneEnabled){
-                droneView=action.view();DRONE.begin(policy.requestId(),droneView,System.nanoTime());CLOSE.begin();
+                droneView=action.view();DRONE.begin(policy.requestId(),droneView,System.nanoTime(),policy.motion());CLOSE.begin();
                 droneUuid=frame(client,policy.target()).cameraUuid();droneActive=true;droneReason="awaiting_render";
             }
         }
@@ -369,6 +370,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("closeView",Map.of("enabled",autoCloseEnabled,"firstPerson",CLOSE.firstPerson(),"reason",CLOSE.reason()));
             Set<String> views=new LinkedHashSet<>(Set.of("first_person","third_person_back","third_person_front"));
             if(droneEnabled)views.addAll(cinematicEnabled?CinematicRig.VIEWS:Set.of("drone_follow","drone_overview"));if(ORTHO.ready())views.addAll(OrthographicRig.PRESETS.keySet());data.put("availableViews",views);
+            if(droneEnabled)data.put("cameraScript",Map.of("schema",CinematicRig.SCRIPT_PROTOCOL,"parameters",List.of("distance","height","speed","durationMs","arcDegrees"),"preflightRequiredForFinite",true));
             data.put("screenOpen",client.field_1755!=null);
             data.put("hudFramesPerSecond",System.currentTimeMillis()-lastRenderedAt<3000?hudFramesPerSecond:null);
             data.put("configProblem",configProblem);data.put("requestProblem",requestProblem);

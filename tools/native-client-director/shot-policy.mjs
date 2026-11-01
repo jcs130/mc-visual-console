@@ -100,6 +100,11 @@ export function nativeShotReceipt(native,request,now=Date.now(),{maxAgeMs=3000}=
   if(['blocked','cancelled'].includes(shot.phase)||shot.fallback===true&&!adaptive)return{kind:'rejected',reason:shot.reason??'requested_shot_degraded'};
   if(native.drone?.active!==true||!fresh(native.drone.lastRenderedAt))
     return{kind:'waiting',reason:'native_rig_frame_pending'};
+  if(request.motion&&['holding','completed'].includes(shot.phase)){
+    const m=request.motion,match=(a,b)=>typeof a==='number'&&Math.abs(a-b)<1e-6;
+    if(shot.scriptSchema!==m.schema||['distance','height','speed','arcDegrees'].some(k=>m[k]!==undefined&&!match(shot[k],m[k]))
+      ||m.durationMs!==undefined&&!match(shot.durationMs,Math.round(m.durationMs/(m.speed??1))))return{kind:'rejected',reason:'script_parameters_not_rendered'};
+  }
   return shot.phase===(recipe.finite?'completed':'holding')?{kind:'applied',reason:recipe.finite?'finite_endpoint_rendered':'native_rig_rendered'}:
     {kind:'waiting',reason:recipe.finite?'finite_motion_running':'rig_settling'};
 }

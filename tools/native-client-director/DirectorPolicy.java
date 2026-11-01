@@ -5,7 +5,10 @@ import java.util.*;
 /** Observer-only camera requests. No arbitrary command surface or invented ACK. */
 public final class DirectorPolicy {
     public record Config(boolean enabled,String server,String observer,Set<String> targets,long minSwitchMs) {}
-    public record Request(String id,String lease,String target,String view,long issuedAt,long expiresAt,String connectionEpoch) {
+    public record Request(String id,String lease,String target,String view,long issuedAt,long expiresAt,String connectionEpoch,Map<String,Object> motion) {
+        public Request(String id,String lease,String target,String view,long issuedAt,long expiresAt,String connectionEpoch){
+            this(id,lease,target,view,issuedAt,expiresAt,connectionEpoch,null);
+        }
         public Request(String id,String lease,String target,String view,long issuedAt,long expiresAt){
             this(id,lease,target,view,issuedAt,expiresAt,null);
         }
@@ -52,6 +55,7 @@ public final class DirectorPolicy {
     public String target(){return request==null?null:request.target();}
     public String requestId(){return request==null?null:request.id();}
     public String view(){return request==null?null:request.view();}
+    public Map<String,Object> motion(){return request==null?null:request.motion();}
     public String activeLease(){return request==null?null:request.lease();}
     public boolean hasSeen(String id){return seen.contains(id);}
     /** Cancel only an already bound local camera rig. In-flight teleport/attach remains unconfirmed. */
@@ -169,6 +173,7 @@ public final class DirectorPolicy {
             return refuse("invalid_request");
         if(r.issuedAt()>now+1000||r.expiresAt()<=now||r.expiresAt()-r.issuedAt()>10_000
             ||r.expiresAt()<=r.issuedAt())return refuse("expired_request");
+          try{if(r.motion()!=null)CinematicRig.parameters(r.view(),r.motion());}catch(IllegalArgumentException invalid){return refuse("invalid_camera_script");}
         if(seen.contains(r.id()))return refuse("already_seen");
         if(pending())return refuse("previous_request_pending");
         if(Objects.equals(heldLease,r.lease()))return refuse("manual_override");

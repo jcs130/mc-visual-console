@@ -50,6 +50,14 @@
     "./broadcast-camera": {
       "types": "./packages/modern-viewer/renderer-src/host/broadcast-camera.d.mts",
       "default": "./packages/modern-viewer/renderer-src/host/broadcast-camera.mjs"
+    },
+    "./camera-script": {
+      "types": "./packages/modern-viewer/renderer-src/host/camera-script.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/camera-script.mjs"
+    },
+    "./native-director-policy": {
+      "types": "./packages/modern-viewer/renderer-src/host/native-director-policy.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/native-director-policy.mjs"
     }
   },
   "files": [

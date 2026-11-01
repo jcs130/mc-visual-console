@@ -5,6 +5,7 @@ export interface NativeCameraStatus {
  targets:Array<{name:string;uuid:string|null}>;requestId?:string;activeLease?:string;cameraUuid?:string;targetUuid?:string;
  renderedAt?:number;perspective?:string;effectiveView?:string;manualDetachRequested?:boolean;rigCancelSupported?:boolean;
  drone?:{active:boolean;lastRenderedAt:number};
+ cameraScript?:{schema:'mcvisual.camera-script/v1';parameters:string[];preflightRequiredForFinite:boolean};
  shotExecution?:{requestId:string;view:string;phase:string;fallback?:boolean;[key:string]:unknown};
  cancelReceipt?:{id:string;lease:string;connectionEpoch:string;nativeWorldEpoch:number;targetUuid:string;phase:string};
  closeView?:unknown;transition?:{active:boolean};projection?:'perspective'|'orthographic';projectionProfile?:string|null;
@@ -12,4 +13,4 @@ export interface NativeCameraStatus {
  spatial?:{at:number;targetUuid:string;nativeWorldEpoch:number;layout:string;known:boolean;floorSafe:boolean;orthographicVisibility:number};
 }
 export const NATIVE_CAMERA_RECIPES:Readonly<Record<string,{recipeId:string;label:string;finite:boolean;projection?:'orthographic';projectionProfile?:string}>>;
-export function createNativeCameraAdapter(options:{readNative:()=>Promise<NativeCameraStatus>;writeRequest:(request:{id:string;lease:string;target:string;view:string;issuedAt:number;expiresAt:number;connectionEpoch:string},options:{signal:AbortSignal})=>Promise<unknown>;writeCancel?:(request:{id:string;lease:string;target:string;targetUuid:string;connectionEpoch:string;issuedAt:number;expiresAt:number})=>Promise<unknown>;expectedServer:string;observerUuid:string;targetUuid:string;targetName:string;now?:()=>number;maxAgeMs?:number}):CameraAdapter;
+export function createNativeCameraAdapter(options:{readNative:()=>Promise<NativeCameraStatus>;writeRequest:(request:{id:string;lease:string;target:string;view:string;issuedAt:number;expiresAt:number;connectionEpoch:string;motion?:import('./camera-script.mjs').CameraScript},options:{signal:AbortSignal})=>Promise<unknown>;writeCancel?:(request:{id:string;lease:string;target:string;targetUuid:string;connectionEpoch:string;issuedAt:number;expiresAt:number})=>Promise<unknown>;expectedServer:string;observerUuid:string;targetUuid:string;targetName:string;now?:()=>number;maxAgeMs?:number}):CameraAdapter;

@@ -1,4 +1,5 @@
 import { CAMERA_PROTOCOL } from './broadcast-camera.mjs';
+import {validateCameraScript,CAMERA_SCRIPT_PROTOCOL} from './camera-script.mjs';
 import { NATIVE_CAMERA_RECIPES, nativeShotReceipt } from '../../../../tools/native-client-director/shot-policy.mjs';
 export { NATIVE_CAMERA_RECIPES } from '../../../../tools/native-client-director/shot-policy.mjs';
 
@@ -28,7 +29,7 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
       const available = Array.isArray(n.availableViews) ? n.availableViews : [];
       const shots = Object.entries(NATIVE_CAMERA_RECIPES).map(([id, recipe]) => ({ id, ...recipe,
         available: available.includes(id) && !manual && !['unknown', 'stopped'].includes(n.phase),
-        projection: recipe.projection??'perspective', ...(recipe.projectionProfile?{projectionProfile:recipe.projectionProfile,projectionReady:n.orthographic?.ready===true}:{}),preflightRequired: recipe.finite }));
+        projection: recipe.projection??'perspective', ...(id.startsWith('drone_')&&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL?{cameraScript:CAMERA_SCRIPT_PROTOCOL}:{}),...(recipe.projectionProfile?{projectionProfile:recipe.projectionProfile,projectionReady:n.orthographic?.ready===true}:{}),preflightRequired: recipe.finite }));
       const observed = { schema: CAMERA_PROTOCOL, at: Date.parse(n.recordedAt), scope: `${n.connectionEpoch}:${n.nativeWorldEpoch}`,
         subjectUuid: targetUuid, manualControl: manual, shots, nativePhase: n.phase, effectiveView: n.effectiveView,
         shotExecution: n.shotExecution, closeView: n.closeView };
@@ -43,7 +44,7 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
       }
       if (n.requestId !== operation.actionId || n.activeLease !== operation.lease) return observed;
       const outcome = nativeShotReceipt(n, { id: operation.actionId, lease: operation.lease, view: operation.shot,
-        targetUuid, connectionEpoch: n.connectionEpoch, issuedAt: operation.issuedAt }, now(), { maxAgeMs });
+        targetUuid, connectionEpoch: n.connectionEpoch, issuedAt: operation.issuedAt,...(operation.motion?{motion:operation.motion}:{}) }, now(), { maxAgeMs });
       receipt.reason = outcome.reason;
       if (['applied', 'rejected', 'unknown', 'cancelled'].includes(outcome.kind)) receipt.phase = outcome.kind;
       receipt.rendered = outcome.kind === 'applied';
@@ -53,11 +54,13 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
     async submit(op, { signal }) {
       operation = structuredClone(op); const n = await read();
       if (signal?.aborted) fail('NATIVE_CAMERA_SUBMIT_ABORTED');
+      const motion=validateCameraScript(op.motion,op.shot);
+      if(motion&&n.cameraScript?.schema!==CAMERA_SCRIPT_PROTOCOL)fail('NATIVE_SCRIPT_UNAVAILABLE');
       if (!sameScope(n, op) || op.subjectUuid !== targetUuid || !NATIVE_CAMERA_RECIPES[op.shot]
         || !n.availableViews?.includes(op.shot) || op.shot.startsWith('ortho_')&&n.orthographic?.ready!==true
         || n.manualDetachRequested || ['unknown', 'stopped', 'paused'].includes(n.phase)) fail('NATIVE_CAMERA_EXECUTION_GUARD');
       await writeRequest({ id: op.actionId, lease: op.lease, target: targetName, view: op.shot,
-        issuedAt: op.issuedAt, expiresAt: op.expiresAt, connectionEpoch: n.connectionEpoch }, { signal });
+        issuedAt: op.issuedAt, expiresAt: op.expiresAt, connectionEpoch: n.connectionEpoch,...(motion?{motion}:{}) }, { signal });
     },
   };
   if (typeof writeCancel === 'function') adapter.cancel = async op => {

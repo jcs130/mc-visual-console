@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { validateChoiceProbabilities, systemOneInferenceStats } from './systemone-decisions.mjs';
+import { validateCameraScript } from './camera-script.mjs';
 
 /** Camera-specific policy. Game state and the optional DecisionPort belong to the host. */
 export const CAMERA_CHOICE_PROTOCOL = 'mcvisual.director-choice/v1';
@@ -22,11 +24,11 @@ const hash = x => createHash('sha256').update(JSON.stringify(x)).digest('hex').s
 const failure = code => { throw Object.assign(new Error(code), { code }); };
 const metrics = q => q && ['visibility', 'action', 'interest', 'composition', 'stability'].every(k => unit(q[k]));
 const score = q => .3 * q.visibility + .3 * q.action + .2 * q.interest + .1 * q.composition + .1 * q.stability;
-const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide', 'projection', 'projectionProfile', 'transition'];
+const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide', 'projection', 'projectionProfile', 'transition', 'script'];
 const projection = plan => plan?.projection ?? 'perspective';
 const planKey = plan => planFields.map(k => k === 'projection' ? projection(plan) : plan?.[k] ?? null);
 const samePlan = (a, b) => !!a && !!b && planFields.filter(k => k !== 'transition')
-  .every(k => k === 'projection' ? projection(a) === projection(b) : a[k] === b[k]);
+  .every(k => k === 'projection' ? projection(a) === projection(b) : k==='script'?JSON.stringify(a[k])===JSON.stringify(b[k]):a[k] === b[k]);
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const activityKinds = new Set(['idle', 'combat', 'dungeon', 'fishing', 'crafting', 'interaction', 'conversation', 'travel', 'gathering', 'building', 'unknown']);
 function verifiedActivity(subject, scope, now, maxAgeMs) {
@@ -74,6 +76,7 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
   const options = [{ id: 'keep', plan: program.plan ?? null, quality, evidenceIds: [], ruleScore: score(quality) }];
   const excluded = [], seen = new Set(['keep']);
   for (const shot of observed.shots) {
+    if(shot.script!==undefined)validateCameraScript(shot.script,shot.shotId);
     if (!ident(shot.id) || seen.has(shot.id)) failure('INVALID_OR_DUPLICATE_SHOT_ID');
     seen.add(shot.id);
     const subject = subjects.get(shot.subjectUuid);
@@ -141,7 +144,7 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
 export function createCameraJudgePanel(decisions, {
   now = Date.now, timeoutMs = 800, minIntervalMs = 3000, maxCallsPerMinute = 12,
   maxAgeMs = 2500, contextTokens = 8192, reserveOutputTokens = 1024, prefixTokens = 0, toolDescriptionTokens = 0,
-  countTokens = text => Buffer.byteLength(text, 'utf8'), provider, onAudit = () => {},
+  countTokens = text => Buffer.byteLength(text, 'utf8'), provider, onAudit = () => {}, compactState=false,
 } = {}) {
   if (![timeoutMs, minIntervalMs, maxCallsPerMinute, maxAgeMs, contextTokens, reserveOutputTokens, prefixTokens, toolDescriptionTokens].every(finite)
     || timeoutMs < 1 || timeoutMs > 15000 || minIntervalMs < 1000 || maxCallsPerMinute < 1 || maxCallsPerMinute > 60
@@ -171,6 +174,15 @@ export function createCameraJudgePanel(decisions, {
         criteria: Object.fromEntries(packet.options.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
       const request = { questions, ...(images.length?{images:[...images]}:{}), state: { schema: packet.schema, scope: packet.scope, generation: packet.generation,
         revision: packet.revision, options: packet.options, facts: packet.facts, activities: packet.activities ?? [], viewContexts: packet.viewContexts ?? [] } };
+      if(compactState){
+        const subjects=[...new Set(packet.options.flatMap(o=>o.plan?[o.plan.subjectUuid]:[]))],alias=id=>'actor'+subjects.indexOf(id);
+        request.state={schema:packet.schema,revision:packet.revision,
+          imageEvidence:'The image shows only the current keep camera. Other options have NO preview; do not assume unseen geometry is clear.',
+          options:packet.options.map(o=>({id:o.id,...(o.plan?{actor:alias(o.plan.subjectUuid),view:o.plan.shotId,motion:o.plan.motion,
+            projection:projection(o.plan),...(o.plan.script?{script:o.plan.script}:{})}:{}),ruleScore:Math.round(o.ruleScore*100)/100})),
+          activities:(packet.activities??[]).map(a=>({actor:alias(a.subjectUuid),kind:a.kind,critical:a.critical})),
+          space:(packet.viewContexts??[]).map(a=>({actor:alias(a.subjectUuid),layout:a.layout,floorSafe:a.floorSafe}))};
+      }
       const inputTokens = countTokens(JSON.stringify({questions:request.questions,state:request.state})) + imageTokens + prefixTokens + toolDescriptionTokens;
       if (!finite(inputTokens) || inputTokens < 0 || inputTokens + reserveOutputTokens > contextTokens) return { kind: 'skipped', reason: 'input_budget' };
       const controller = new AbortController();
@@ -180,22 +192,24 @@ export function createCameraJudgePanel(decisions, {
       signal?.addEventListener('abort', abort, { once: true });
       const timer = setTimeout(() => { controller.abort(); stats.timeouts++; end({ kind: 'skipped', reason: 'timeout' }); }, timeoutMs);
       inFlight = { controller, end }; lastStarted = started; lastRevision = requestKey; cached = null; calls.push(started); stats.calls++;
-      audit({ kind: 'request', at: started, request, budget: { inputTokens, reserveOutputTokens, contextTokens } });
+      audit({ kind: 'request', at: started, revision:packet.revision,options:packet.options.length,questions:requested.length,images:images.length,budget: { inputTokens, reserveOutputTokens, contextTokens } });
       // A non-cooperative provider stays busy even after the caller's deadline. No overlapping retry storm.
       const operation = Promise.resolve().then(() => {
         if (controller.signal.aborted || stopped) throw Error('aborted');
         return decisions.request(copy(request), { provider, signal: controller.signal, timeoutMs });
       }).then(answer => {
-        audit({ kind: 'response', revision: packet.revision, at: now(), answer });
+        audit({ kind: 'response', revision: packet.revision, at: now(), inferenceStats:systemOneInferenceStats(answer?.inference_stats) });
         if (stopped || controller.signal.aborted || !fresh(packet.observedAt, now(), maxAgeMs)) return { kind: 'skipped', reason: 'expired' };
-        const votes = requested.map(role => ({ role, choice: answer?.answers?.[role]?.choice }));
+        const criteria=Object.fromEntries(packet.options.map(o=>[o.id,true]));
+        const votes = requested.map(role => {const a=answer?.answers?.[role],probabilities=validateChoiceProbabilities(a?.probabilities,criteria);
+          return{role,choice:a?.choice,...(probabilities?{probabilities}:{})};});
         if (votes.some(v => !packet.options.some(o => o.id === v.choice))) { stats.invalid++; return { kind: 'skipped', reason: 'invalid_choice' }; }
         const usage = answer?.usage;
         if (finite(usage?.input_tokens) && usage.input_tokens >= 0) stats.inputTokens += usage.input_tokens;
         if (finite(usage?.output_tokens) && usage.output_tokens >= 0) stats.outputTokens += usage.output_tokens;
         stats.latencyMs += Math.max(0, now() - started);
         cached = { kind: 'votes', schema: CAMERA_CHOICE_PROTOCOL, scope: packet.scope, generation: packet.generation,
-          revision: packet.revision, at: now(), votes };
+          revision: packet.revision, at: now(), votes, inferenceStats:systemOneInferenceStats(answer?.inference_stats) };
         return copy(cached);
       }, () => { stats.errors++; return { kind: 'skipped', reason: 'provider_error' }; });
       operation.finally(() => { if (inFlight?.controller === controller) inFlight = null; }).catch(() => {});
