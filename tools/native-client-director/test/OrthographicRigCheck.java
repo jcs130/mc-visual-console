@@ -4,6 +4,8 @@ public class OrthographicRigCheck {
     static OrthographicRig.Sample sample(long at){return new OrthographicRig.Sample(at,"actor",1,"open",true,1,List.of(new OrthographicRig.Candidate(45,35.264f,1)));}
     static OrthographicRig start(){var r=new OrthographicRig();check(r.begin("request","ortho_isometric","actor",1,1000,null,false,sample(1000)),"scoped visible orthographic request admitted");return r;}
     public static void main(String[]args){
+        check(!OrthographicRig.supportsView(null),"idle native policy has no projection view and must still publish diagnostics");
+        check(!OrthographicRig.supportsView("unknown")&&OrthographicRig.supportsView("ortho_isometric"),"only explicit projection preset names are supported");
         var r=start();var p=r.advance(1000,sample(1000));check(p.scale()==11,"real orthographic scale uses the configured preset");
         check("transitioning".equals(r.phase()),"acceptance and elapsed time are not a rendered projection");
         r.confirmRendered(new OrthographicRig.Pose(45,55,11),1001);check("transitioning".equals(r.phase()),"wrong actual projection pose cannot complete");

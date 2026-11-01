@@ -182,7 +182,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                         if(request!=null&&request.view()!=null&&CinematicRig.VIEWS.contains(request.view())
                             &&!Set.of("drone_follow","drone_overview").contains(request.view())&&!cinematicEnabled)
                             throw new IllegalArgumentException("cinematic_rig_not_explicitly_enabled");
-                        if(request!=null&&OrthographicRig.PRESETS.containsKey(request.view())&&!ORTHO.ready())
+                        if(request!=null&&OrthographicRig.supportsView(request.view())&&!ORTHO.ready())
                             throw new IllegalArgumentException("orthographic_backend_unavailable");
                         if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch)){
                             manualDetachRequested=false;
@@ -205,7 +205,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             System.out.println("[MCVisualDirector] Observer-only camera request: "+policy.requestId());
         }
         if(action.view()!=null){
-            boolean orthographic=OrthographicRig.PRESETS.containsKey(action.view());
+            boolean orthographic=OrthographicRig.supportsView(action.view());
             boolean preserveRig=droneActive&&action.view().startsWith("drone_")
                 &&Objects.equals(droneUuid,frame(client,policy.target()).cameraUuid());
             if(!preserveRig)stopDrone("normal_perspective");
@@ -335,7 +335,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("drone",Map.of("enabled",droneEnabled,"active",droneActive,
                 "reason",droneReason,"lastRenderedAt",droneRenderedAt,
                 "requestedDistance",droneRequestedDistance,"clippedDistance",droneClippedDistance));
-            data.put("droneShot",droneView);data.put("shotExecution",OrthographicRig.PRESETS.containsKey(policy.view())?ORTHO.status():DRONE.status());
+            data.put("droneShot",droneView);data.put("shotExecution",OrthographicRig.supportsView(policy.view())?ORTHO.status():DRONE.status());
             data.put("effectiveView",ORTHO.active()?policy.view():CLOSE.firstPerson()?"first_person":DRONE.status().get("effectiveView"));
             var ortho=ORTHO.status();data.put("orthographic",ortho);data.put("projection",ortho.get("projection"));data.put("projectionProfile",ortho.get("projectionProfile"));data.put("spatial",ORTHO.spatial());
             data.put("closeView",Map.of("enabled",autoCloseEnabled,"firstPerson",CLOSE.firstPerson(),"reason",CLOSE.reason()));

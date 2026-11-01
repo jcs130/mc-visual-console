@@ -14,6 +14,7 @@ public final class OrthographicRig {
     private long world,start,duration,obstructedAt=-1,lastAvoidAt=Long.MIN_VALUE/2,renderedAt;
     private Pose from,to,pose;private boolean active;private double progress;
     private static float angle(float a){return ((a+180)%360+360)%360-180;}
+    public static boolean supportsView(String view){return view!=null&&PRESETS.containsKey(view);}
     public static boolean matches(Pose a,Pose b){return a!=null&&b!=null&&Math.abs(angle(a.yaw-b.yaw))<.08&&Math.abs(a.pitch-b.pitch)<.08&&Math.abs(a.scale-b.scale)<.02;}
     public static boolean suitable(Sample s,String uuid,long world,long now){return s!=null&&Objects.equals(uuid,s.uuid)&&world==s.world
         &&s.known&&"open".equals(s.layout)&&s.at<=now&&now-s.at<=2000;}
@@ -22,7 +23,7 @@ public final class OrthographicRig {
             .min(Comparator.comparingDouble(c->Math.abs(angle(c.yaw-preferred.yaw))*.01+Math.abs(c.pitch-preferred.pitch)*.01-c.visibility)).orElse(null);
     }
     public boolean begin(String id,String view,String uuid,long world,long now,Pose current,boolean alreadyOrtho,Sample sample){
-        if(!PRESETS.containsKey(view)||id==null||uuid==null)throw new IllegalArgumentException("unknown_orthographic_request");
+        if(!supportsView(view)||id==null||uuid==null)throw new IllegalArgumentException("unknown_orthographic_request");
         if(Objects.equals(this.id,id)&&Set.of("blocked","cancelled","stopped","paused").contains(phase))return false;
         this.id=id;this.view=view;this.uuid=uuid;this.world=world;renderedAt=0;obstructedAt=-1;progress=0;
         if(!suitable(sample,uuid,world,now)){block("orthographic_scene_unsuitable");return false;}
