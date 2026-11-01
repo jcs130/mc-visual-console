@@ -17,6 +17,29 @@ test('acceptance does not mean rendered completion',async()=>{
   f.native.receipt.phase='applied';assert.equal((await f.director.result(f.plan.actionId)).phase,'accepted');
   f.native.receipt.rendered=true;assert.equal((await f.director.result(f.plan.actionId)).phase,'applied');
 });
+
+test('SDK and tool transport forward the registered projection and require matching actual render proof',async()=>{
+  const f=fixture();Object.assign(f.native.shots[0],{projection:'orthographic',projectionProfile:'isometric',projectionReady:true});
+  const accepted=await callCameraTool(f.director,'broadcast_camera_take',f.plan);
+  assert.equal(accepted.operation.projection,'orthographic');assert.equal(accepted.operation.projectionProfile,'isometric');
+  Object.assign(f.native.receipt,{phase:'applied',rendered:true,projection:'perspective',projectionProfile:'isometric'});
+  const wrong=await f.director.result(f.plan.actionId);assert.equal(wrong.phase,'unknown');assert.equal(wrong.verificationError,'PROJECTION_EVIDENCE_MISMATCH');
+  await assert.rejects(f.director.take({...f.plan,actionId:'another'}),/CAMERA_OPERATION_PENDING/);
+  Object.assign(f.native.receipt,{projection:'orthographic',projectionProfile:'wrong_profile'});
+  assert.equal((await callCameraTool(f.director,'broadcast_camera_result',{actionId:f.plan.actionId})).phase,'unknown');
+  f.native.receipt.projectionProfile='isometric';const done=await f.director.result(f.plan.actionId);assert.equal(done.phase,'applied');
+  assert.equal((await f.director.query()).current.projection,'orthographic');assert.equal(f.writes(),1);
+});
+
+test('orthographic without a runtime-ready projector is refused before any native submission',async()=>{
+  const f=fixture();Object.assign(f.native.shots[0],{projection:'orthographic',projectionProfile:'isometric'});
+  await assert.rejects(f.director.take(f.plan),/SHOT_PROJECTION_UNAVAILABLE/);assert.equal(f.writes(),0);
+});
+
+test('a model cannot inject projection parameters into the bounded camera tool',async()=>{
+  const f=fixture();await assert.rejects(callCameraTool(f.director,'broadcast_camera_take',{...f.plan,projection:'orthographic',yaw:45}),/INVALID_CAMERA_PLAN/);
+  assert.equal(f.writes(),0);
+});
 test('stable action ids deduplicate and conflicting payloads reject',async()=>{
   const f=fixture();await f.director.take(f.plan);await f.director.take(f.plan);assert.equal(f.writes(),1);
   await assert.rejects(f.director.take({...f.plan,shot:'overview'}),/ACTION_ID_CONFLICT/);

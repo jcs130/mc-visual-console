@@ -62,10 +62,15 @@ export class CameraDirector {
     if(this.now()<this.holdUntil)fail('CAMERA_MINIMUM_HOLD');
     const shot=observed.shots.find(x=>x.id===plan.shot&&x.available===true);
     if(!shot)fail('SHOT_UNAVAILABLE');if(observed.manualControl)fail('NATIVE_MANUAL_CONTROL');
+    if(shot.projection!==undefined&&!['perspective','orthographic'].includes(shot.projection))fail('INVALID_SHOT_PROJECTION');
+    if(shot.projectionProfile!==undefined&&(!id(shot.projectionProfile)||shot.projection===undefined))fail('INVALID_SHOT_PROJECTION_PROFILE');
+    if(shot.projection==='orthographic'&&(!id(shot.projectionProfile)||shot.projectionReady!==true))fail('SHOT_PROJECTION_UNAVAILABLE');
     if(this.records.size>=256)fail('CAMERA_SESSION_ARCHIVE_REQUIRED');
     const operation={schema:CAMERA_PROTOCOL,actionId:plan.actionId,lease:plan.lease,
       scope:observed.scope,subjectUuid:observed.subjectUuid,shot:plan.shot,
       issuedAt:this.now(),expiresAt:this.now()+10000,holdMs:plan.holdMs,reason:plan.reason??''};
+    if(shot.projection!==undefined)operation.projection=shot.projection;
+    if(shot.projectionProfile!==undefined)operation.projectionProfile=shot.projectionProfile;
     const record={operation,canonical,binding:binding(observed),phase:'accepted',acceptedAt:this.now(),completedAt:null};
     this.records.set(plan.actionId,record);this.pending=plan.actionId;
     // Reserve the unique writer before the asynchronous adapter is called.
@@ -84,8 +89,15 @@ export class CameraDirector {
     const receipt=observed.receipt;
     if(receipt?.actionId===actionId&&receipt.lease===record.operation.lease) {
       if(receipt.phase==='applied'&&receipt.rendered===true) {
+        if(record.operation.projection!==undefined&&(receipt.projection!==record.operation.projection
+          ||record.operation.projectionProfile!==undefined&&receipt.projectionProfile!==record.operation.projectionProfile)){
+          record.phase='unknown';record.verificationError='PROJECTION_EVIDENCE_MISMATCH';return clone(record);
+        }
         record.phase='applied';record.completedAt=this.now();record.evidence=clone(receipt);
+        delete record.verificationError;
         this.current={shot:record.operation.shot,actionId,scope:record.operation.scope,subjectUuid:record.operation.subjectUuid};
+        if(record.operation.projection!==undefined)this.current.projection=record.operation.projection;
+        if(record.operation.projectionProfile!==undefined)this.current.projectionProfile=record.operation.projectionProfile;
         this.holdUntil=this.now()+record.operation.holdMs;
       } else if(['cancelled','rejected'].includes(receipt.phase)) {
         record.phase=receipt.phase;record.completedAt=this.now();record.evidence=clone(receipt);

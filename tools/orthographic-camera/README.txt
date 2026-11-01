@@ -20,6 +20,14 @@ Only the explicit singleplayer lab accepts legacy unversioned preview requests.
 Cancellation records bind the original id/lease/scope/subject, and prevent a
 delayed old request from starting after its cancellation.
 
+Optional projectionProfile binds a configured preset label. Status projection is
+read from the current OrthoCamera state. projectionProfile is returned only after
+an applied rendered orthographic frame and actual scale/yaw/pitch agree with the settled rig;
+otherwise it is null. A host adapter must preserve these fields in the original
+camera receipt, and must not populate them by copying the submitted request.
+Inactive OrthoCamera settings do not establish a perspective rig/profile.
+This remains singleplayer-only candidate source, not a multiplayer adapter.
+
 Same-projection parameters ease along the shortest yaw path. Projection changes
 are labelled cuts. A rendered frame after settling is needed for applied; an
 accepted file or elapsed timer is not rendered proof.

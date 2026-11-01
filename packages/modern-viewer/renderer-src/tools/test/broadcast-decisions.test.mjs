@@ -15,6 +15,7 @@ function fixture() {
     observation.at = now; program.renderedAt = now;
     for (const x of [...observation.subjects, ...observation.shots]) x.at = now;
     for (const subject of observation.subjects) if (subject.activity) subject.activity.at = now;
+    for (const subject of observation.subjects) if (subject.viewContext) subject.viewContext.at = now;
     return buildCameraDecision(observation, { now });
   };
   const apply = (recommendation, id = `operation${now}`) => Object.assign(program, { phase: 'applied', operationId: id, plan: recommendation.plan,
@@ -284,4 +285,61 @@ test('an existing longer host dwell is preserved when activity-aware pacing is a
   const f = fixture(), a = new CameraChoiceArbiter({ now: f.now, minSubjectMs: 120000 }); setActivity(f, 'combat'); a.decide(f.packet());
   f.tick(90000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).kind, 'keep');
   f.tick(30000); f.observation.subjects[0].activity.lastProgressAt = f.now(); assert.equal(a.decide(f.packet()).reason, 'sustaining_gain');
+});
+
+function withOrtho(f) {
+  f.observation.subjects[0].viewContext = { layout: 'open', at: f.now(), provenance: 'native', evidenceId: 'sceneA' };
+  const offer = { ...f.observation.shots[0], id: 'orthoA', shotId: 'isometric', motion: 'hold', projection: 'orthographic',
+    projectionProfile: 'isometric', projectionReady: true, transition: 'dissolve', transitionReady: true };
+  f.observation.shots.push(offer); return offer;
+}
+
+test('orthographic joins the same complete candidate set only with explicit backend and transition capabilities', () => {
+  const f = fixture(), offer = withOrtho(f); offer.projectionReady = false;
+  assert.equal(f.packet().excluded.find(x => x.id === 'orthoA').reason, 'projection_unavailable');
+  offer.projectionReady = true; offer.transitionReady = false;
+  assert.equal(f.packet().excluded.find(x => x.id === 'orthoA').reason, 'transition_unavailable');
+  offer.transitionReady = true; const actual = f.packet().options.find(x => x.id === 'orthoA');
+  assert.equal(actual.plan.projection, 'orthographic'); assert.equal(actual.plan.projectionProfile, 'isometric'); assert.equal(actual.plan.transition, 'dissolve');
+});
+
+test('tunnels, unknown context and unhandled floors exclude orthographic; a verified local floor can enable it', () => {
+  const f = fixture(); withOrtho(f); const context = f.observation.subjects[0].viewContext;
+  for (const layout of ['tunnel', 'unknown', 'layered']) { context.layout = layout;
+    assert.equal(f.packet().excluded.find(x => x.id === 'orthoA').reason, 'orthographic_context_unsuitable', layout); }
+  context.floorSafe = true; assert.ok(f.packet().options.some(x => x.id === 'orthoA'));
+  context.provenance = 'chat'; assert.ok(!f.packet().options.some(x => x.id === 'orthoA'));
+});
+
+test('projection matrix changes cannot pretend to be same-rig smooth movement', () => {
+  const f = fixture(), offer = withOrtho(f); offer.transition = 'smooth';
+  assert.equal(f.packet().excluded.find(x => x.id === 'orthoA').reason, 'projection_transition_unverified');
+  offer.transition = 'cut'; assert.ok(f.packet().options.some(x => x.id === 'orthoA'));
+});
+
+test('perspective and orthographic cannot oscillate before a separate 45 second projection cooldown', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); withOrtho(f);
+  const perspective = { ...f.observation.shots[0], id: 'perspectiveA', projection: 'perspective', transition: 'dissolve', transitionReady: true };
+  f.observation.shots.push(perspective); a.decide(f.packet()); f.tick(10000); a.decide(f.packet()); f.tick(1200);
+  const first = a.decide(f.packet()); assert.equal(first.kind, 'recommendation'); assert.equal(first.plan.projection, 'orthographic');
+  f.apply(first); a.decide(f.packet()); f.tick(44999); assert.equal(a.decide(f.packet()).kind, 'keep');
+  f.tick(1); assert.equal(a.decide(f.packet()).reason, 'sustaining_gain'); f.tick(1200);
+  const next = a.decide(f.packet()); assert.equal(next.kind, 'recommendation'); assert.equal(next.plan.subjectUuid, 'A'); assert.equal(next.plan.projection, 'perspective');
+});
+
+test('a fresh tunnel observation falls back to the same subject perspective, preserving manual and unknown barriers', () => {
+  const f = fixture(), a = new CameraChoiceArbiter({ now: f.now }); withOrtho(f);
+  f.program.plan = { ...plan('A'), shotId: 'isometric', motion: 'hold', projection: 'orthographic', projectionProfile: 'isometric' };
+  f.observation.shots.push({ ...f.observation.shots[0], id: 'perspectiveA', projection: 'perspective', quality: q(.7), transition: 'dissolve', transitionReady: true });
+  a.decide(f.packet()); f.tick(100); f.observation.subjects[0].viewContext.layout = 'tunnel';
+  const result = a.decide(f.packet()); assert.equal(result.kind, 'recommendation'); assert.equal(result.reason, 'projection_unsuitable'); assert.equal(result.plan.subjectUuid, 'A');
+  assert.equal(result.plan.projection, 'perspective'); f.observation.manualLocked = true; assert.equal(a.decide(f.packet()).reason, 'manual_lock');
+  f.observation.manualLocked = false; f.program.phase = 'unknown'; assert.equal(a.decide(f.packet()).reason, 'native_unknown');
+});
+
+test('changing only the transition style does not manufacture another shot, and old unlabelled views stay perspective', () => {
+  const f = fixture(); f.observation.shots[0].transition = 'cut'; f.observation.shots[0].transitionReady = true;
+  f.observation.shots[0].projection = 'perspective';
+  assert.ok(!f.packet().options.some(x => x.id === 'followA'));
+  assert.equal(f.packet().options.find(x => x.id === 'followB').plan.projection, undefined);
 });

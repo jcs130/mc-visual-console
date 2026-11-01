@@ -1,6 +1,7 @@
 import {CameraDirector,CAMERA_PROTOCOL,callCameraTool,loadCameraShotLibrary,mapCameraRecipes,type CameraAdapter,type CameraObservation} from 'mc-visual-console/broadcast-camera';
 const observed:CameraObservation={schema:CAMERA_PROTOCOL,at:Date.now(),scope:'isolated-world',subjectUuid:'subject',shots:[{id:'isometric',available:true}]};
 const adapter:CameraAdapter={observe:async()=>observed,submit:async(operation,{signal})=>{if(signal.aborted)throw Error('aborted');return {actionId:operation.actionId};}};
+observed.shots.push({id:'ortho-isometric',available:true,recipeId:'ortho_overview',projection:'orthographic',projectionProfile:'isometric',projectionReady:true});
 const director=new CameraDirector(adapter);
 const {lease}=director.claim('typed-host');
 const result=director.take({actionId:'typed-shot',lease,shot:'isometric',holdMs:10000});
@@ -17,7 +18,8 @@ import {BoundedCameraMotion,toJavaCameraAngles} from 'mc-visual-console/broadcas
 const facts:CameraDecisionObservation={scope:'world',generation:'epochA',at:Date.now(),sceneKey:'travel',program:{phase:'idle'},subjects:[],shots:[]};
 const packet=buildCameraDecision(facts);const arbiter=new CameraChoiceArbiter();const advice=arbiter.decide(packet);
 facts.subjects.push({uuid:'subject',scope:'world',at:Date.now(),loaded:true,alive:true,
- activity:{kind:'combat',at:Date.now(),since:Date.now(),lastProgressAt:Date.now(),provenance:'game',evidenceId:'verified-hit'}});
+ activity:{kind:'combat',at:Date.now(),since:Date.now(),lastProgressAt:Date.now(),provenance:'game',evidenceId:'verified-hit'},
+ viewContext:{layout:'open',at:Date.now(),provenance:'web',evidenceId:'visible-scene'}});
 const port:CameraDecisionPort={request:async()=>({answers:{}})};const panel=createCameraJudgePanel(port);
 void panel.judge(packet,{roles:['action','space']});void advice;
 // @ts-expect-error Roles are finite; arbitrary prompt names are not accepted.

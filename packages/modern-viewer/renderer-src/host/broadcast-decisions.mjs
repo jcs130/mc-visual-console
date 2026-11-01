@@ -5,7 +5,7 @@ export const CAMERA_CHOICE_PROTOCOL = 'mcvisual.director-choice/v1';
 export const CAMERA_JUDGES = Object.freeze([
   { id: 'story', weight: 1, instructions: '选择最有真实事件价值的完整镜头方案。优先事件因果和正在发生的交流，不编造剧情，不为轮流露脸而切换。' },
   { id: 'action', weight: 1.3, instructions: '选择最能看清当前操作、威胁、协作或结果的完整方案。关键动作期间保持空间连续，不用花哨镜头遮住动作。' },
-  { id: 'space', weight: 1.2, instructions: '选择能解释主体与环境关系的完整方案。窄矿道、楼层重叠、遮挡和未加载区域应采用已经验证可见的候选。' },
+  { id: 'space', weight: 1.2, instructions: '选择能解释主体与环境关系的完整方案。开阔基地、农田和建筑可选已就绪的正交布局镜头；窄矿道、楼层重叠、遮挡和未加载区域应采用已经验证可见的候选。' },
   { id: 'composition', weight: 0.8, instructions: '选择主体与动作目标可辨、留白合理、轴线连续的完整方案。不要把好看的设定图或推测表情当作现场证据。' },
   { id: 'motion', weight: 0.6, instructions: '只有运镜确实揭示新信息且整段路径可用时才选择运动方案。静止和保持当前镜头都是有效选择。' },
   { id: 'continuity', weight: 1.1, instructions: '优先保持本段叙事、屏幕方向和观众空间感。短暂波动选keep；不要用小幅改善换取重复切镜。' },
@@ -22,9 +22,11 @@ const hash = x => createHash('sha256').update(JSON.stringify(x)).digest('hex').s
 const failure = code => { throw Object.assign(new Error(code), { code }); };
 const metrics = q => q && ['visibility', 'action', 'interest', 'composition', 'stability'].every(k => unit(q[k]));
 const score = q => .3 * q.visibility + .3 * q.action + .2 * q.interest + .1 * q.composition + .1 * q.stability;
-const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide'];
-const samePlan = (a, b) => !!a && !!b && planFields.every(k => a[k] === b[k]);
-const planKey = plan => planFields.map(k => plan?.[k] ?? null);
+const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide', 'projection', 'projectionProfile', 'transition'];
+const projection = plan => plan?.projection ?? 'perspective';
+const planKey = plan => planFields.map(k => k === 'projection' ? projection(plan) : plan?.[k] ?? null);
+const samePlan = (a, b) => !!a && !!b && planFields.filter(k => k !== 'transition')
+  .every(k => k === 'projection' ? projection(a) === projection(b) : a[k] === b[k]);
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const activityKinds = new Set(['idle', 'combat', 'dungeon', 'fishing', 'crafting', 'interaction', 'conversation', 'travel', 'gathering', 'building', 'unknown']);
 function verifiedActivity(subject, scope, now, maxAgeMs) {
@@ -43,6 +45,13 @@ function activityState(activity, now, pacing) {
     longIdle: !!valid && activity.kind === 'idle' && now - activity.since >= pacing.idleAfterMs,
     engaged: !!engaged, critical: !!engaged && activity.critical === true };
 }
+function verifiedViewContext(subject, scope, now, maxAgeMs) {
+  const c = subject?.viewContext;
+  if (!subject || subject.scope !== scope || !fresh(subject.at, now, maxAgeMs) || !c || !fresh(c.at, now, maxAgeMs)
+    || !['open', 'enclosed', 'tunnel', 'layered', 'unknown'].includes(c.layout)
+    || !['native', 'web'].includes(c.provenance) || !ident(c.evidenceId)) return null;
+  return { subjectUuid: subject.uuid, layout: c.layout, provenance: c.provenance, evidenceId: c.evidenceId, floorSafe: c.floorSafe === true };
+}
 
 /** Only the adapter may construct executable complete plans. Models receive IDs, never coordinates or code. */
 export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 2500 } = {}) {
@@ -59,7 +68,8 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
   if (program.phase === 'applied' && (!ident(program.operationId) || program.rendered !== true
     || !fresh(program.renderedAt, now, maxAgeMs) || !finite(program.appliedAt) || program.appliedAt > now
     || !program.plan || typeof program.plan.subjectUuid !== 'string' || !ident(program.plan.sourceId)
-    || !ident(program.plan.shotId) || !motions.has(program.plan.motion) || !metrics(program.quality))) failure('UNPROVEN_PROGRAM_IMAGE');
+    || !ident(program.plan.shotId) || !motions.has(program.plan.motion) || !metrics(program.quality)
+    || !['perspective', 'orthographic'].includes(projection(program.plan)))) failure('UNPROVEN_PROGRAM_IMAGE');
   const quality = program.quality ?? { visibility: .5, action: .5, interest: .5, composition: .5, stability: .5 };
   const options = [{ id: 'keep', plan: program.plan ?? null, quality, evidenceIds: [], ruleScore: score(quality) }];
   const excluded = [], seen = new Set(['keep']);
@@ -67,6 +77,7 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
     if (!ident(shot.id) || seen.has(shot.id)) failure('INVALID_OR_DUPLICATE_SHOT_ID');
     seen.add(shot.id);
     const subject = subjects.get(shot.subjectUuid);
+    const view = verifiedViewContext(subject, observed.scope, now, maxAgeMs);
     let reason = null;
     if (shot.ready !== true || shot.scope !== observed.scope || !fresh(shot.at, now, maxAgeMs)
       || !subject || subject.loaded !== true || subject.alive !== true || subject.scope !== observed.scope
@@ -77,10 +88,17 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
     else if (creative.has(shot.motion) && shot.pathClear !== true) reason = 'unverified_motion_path';
     else if (shot.motion === 'follow' && shot.collisionReady !== true) reason = 'missing_follow_collision';
     else if (shot.requiresFloorMask === true && shot.floorSafe !== true) reason = 'unverified_floor';
+    else if (!['perspective', 'orthographic'].includes(projection(shot))) reason = 'invalid_projection';
+    else if (projection(shot) === 'orthographic' && (shot.projectionReady !== true || !ident(shot.projectionProfile))) reason = 'projection_unavailable';
+    else if (projection(shot) === 'orthographic' && (!view || ['unknown', 'tunnel'].includes(view.layout)
+      || shot.quality.visibility < .6 || view.layout === 'layered' && view.floorSafe !== true)) reason = 'orthographic_context_unsuitable';
+    else if (shot.transition !== undefined && (!['cut', 'dissolve', 'smooth'].includes(shot.transition) || shot.transitionReady !== true)) reason = 'transition_unavailable';
+    else if (program.plan && projection(program.plan) !== projection(shot) && (!['cut', 'dissolve'].includes(shot.transition)
+      || shot.transitionReady !== true)) reason = 'projection_transition_unverified';
     else if (program.plan?.axisKey && program.plan.axisKey === shot.axisKey && program.plan.axisSide
       && shot.axisSide && program.plan.axisSide !== shot.axisSide && shot.axisBridge !== true) reason = 'axis_crossing';
     if (reason) { excluded.push({ id: shot.id, reason }); continue; }
-    const plan = Object.fromEntries(['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide']
+    const plan = Object.fromEntries(planFields
       .filter(k => shot[k] !== undefined).map(k => [k, shot[k]]));
     if (samePlan(plan, program.plan)) continue;
     options.push({ id: shot.id, plan, quality: copy(shot.quality), evidenceIds: [...shot.evidenceIds], ruleScore: score(shot.quality) });
@@ -104,14 +122,19 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
   const relevantSubjects = new Set(selected.flatMap(x => x.plan ? [x.plan.subjectUuid] : []));
   const activities = observed.subjects.filter(s => relevantSubjects.has(s.uuid))
     .map(s => verifiedActivity(s, observed.scope, now, maxAgeMs)).filter(Boolean).sort((a, b) => compare(a.subjectUuid, b.subjectUuid));
+  const viewContexts = observed.subjects.filter(s => relevantSubjects.has(s.uuid))
+    .map(s => verifiedViewContext(s, observed.scope, now, maxAgeMs)).filter(Boolean).sort((a, b) => compare(a.subjectUuid, b.subjectUuid));
+  const currentView = verifiedViewContext(current, observed.scope, now, maxAgeMs);
+  const projectionUnsuitable = projection(program.plan) === 'orthographic' && currentView
+    && (currentView.layout === 'tunnel' || currentView.layout === 'layered' && !currentView.floorSafe);
   const binding = { scope: observed.scope, generation: observed.generation };
   // Clocks and raw continuous position samples are excluded. Producers supply semantic sceneKey and keyed facts.
   const revision = hash([binding, observed.sceneKey, program.operationId ?? null, targetLost, occluded,
     selected.map(o => [o.id, o.plan, ['visibility', 'action', 'interest', 'composition', 'stability'].map(k => Math.round(o.quality[k] * 10) / 10), o.evidenceIds]), compactFacts,
-    activities.map(({at: _sampleTime, ...meaningful}) => meaningful)]);
+    activities.map(({at: _sampleTime, ...meaningful}) => meaningful), viewContexts]);
   return { schema: CAMERA_CHOICE_PROTOCOL, ...binding, revision, observedAt: observed.at,
-    manualLocked: observed.manualLocked === true, program, options: selected, facts: compactFacts, activities, excluded,
-    emergency: targetLost ? 'target_lost' : occluded ? 'persistent_occlusion' : null };
+    manualLocked: observed.manualLocked === true, program, options: selected, facts: compactFacts, activities, viewContexts, excluded,
+    emergency: targetLost ? 'target_lost' : occluded ? 'persistent_occlusion' : projectionUnsuitable ? 'projection_unsuitable' : null };
 }
 
 /** Uses the existing core DecisionPort.request shape; no endpoint, model, credentials, loop or camera writes. */
@@ -145,7 +168,7 @@ export function createCameraJudgePanel(decisions, {
       const questions = Object.fromEntries(requested.map(id => [id, { type: 'choice', instructions: roles.get(id).instructions,
         criteria: Object.fromEntries(packet.options.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
       const request = { questions, state: { schema: packet.schema, scope: packet.scope, generation: packet.generation,
-        revision: packet.revision, options: packet.options, facts: packet.facts, activities: packet.activities ?? [] } };
+        revision: packet.revision, options: packet.options, facts: packet.facts, activities: packet.activities ?? [], viewContexts: packet.viewContexts ?? [] } };
       const inputTokens = countTokens(JSON.stringify(request)) + prefixTokens + toolDescriptionTokens;
       if (!finite(inputTokens) || inputTokens < 0 || inputTokens + reserveOutputTokens > contextTokens) return { kind: 'skipped', reason: 'input_budget' };
       const controller = new AbortController();
@@ -187,6 +210,7 @@ export const CAMERA_PACING_DEFAULTS = Object.freeze({
   sustainMs: 1200, improvement: .14, modelWeight: .08, cutsPerMinute: 4, subjectsPerMinute: 2,
   emergencyGapMs: 5000, maxAgeMs: 2500,
   idleAfterMs: 20000, idleScorePenalty: .35, combatSubjectMs: 90000, dungeonSubjectMs: 60000, engagementGraceMs: 8000,
+  projectionCooldownMs: 45000,
 });
 
 /** Single recommendation arbiter. The host still owns the one transactional SDK/native executor. */
@@ -199,9 +223,10 @@ export class CameraChoiceArbiter {
       || p.sustainMs < 250 || p.improvement < .05 || p.improvement > 1 || p.modelWeight < 0 || p.modelWeight > .15
       || p.cutsPerMinute < 1 || p.subjectsPerMinute < 1 || p.emergencyGapMs < 1000 || p.maxAgeMs < 1
       || p.idleAfterMs < 10000 || !unit(p.idleScorePenalty) || p.idleScorePenalty > .5
-      || p.combatSubjectMs < p.minShotMs || p.dungeonSubjectMs < p.minShotMs || p.engagementGraceMs < 1000) failure('INVALID_CAMERA_PACING');
+      || p.combatSubjectMs < p.minShotMs || p.dungeonSubjectMs < p.minShotMs || p.engagementGraceMs < 1000
+      || p.projectionCooldownMs < 10000) failure('INVALID_CAMERA_PACING');
     this.stopped = false; this.binding = null; this.current = null; this.history = []; this.left = new Map();
-    this.seen = new Map(); this.lastCreative = -Infinity; this.challenger = null;
+    this.seen = new Map(); this.lastCreative = -Infinity; this.lastProjectionChange = -Infinity; this.challenger = null;
   }
   stop() { this.stopped = true; this.challenger = null; }
   decide(packet, ballots) {
@@ -224,6 +249,7 @@ export class CameraChoiceArbiter {
         if (this.seen.size >= 256) return keep('host_archive_required');
         const previous = this.current, changed = previous && !samePlan(previous.plan, program.plan);
         const subjectChanged = previous && previous.plan.subjectUuid !== program.plan.subjectUuid;
+        if (previous && projection(previous.plan) !== projection(program.plan)) this.lastProjectionChange = now;
         if (subjectChanged) this.left.set(previous.plan.subjectUuid, now);
         if (changed) this.history.push({ at: now, subjectChanged: !!subjectChanged });
         if (creative.has(program.plan.motion)) this.lastCreative = now;
@@ -248,7 +274,8 @@ export class CameraChoiceArbiter {
     let choices = packet.options.slice(1);
     const emergency = this.current ? packet.emergency : null;
     if (emergency) choices = choices.filter(x => x.quality.visibility >= .5);
-    if (emergency === 'persistent_occlusion') {
+    if (emergency === 'projection_unsuitable') choices = choices.filter(x => projection(x.plan) === 'perspective');
+    if (emergency === 'persistent_occlusion' || emergency === 'projection_unsuitable') {
       const sameSubject = choices.filter(x => x.plan.subjectUuid === this.current.plan.subjectUuid && !creative.has(x.plan.motion));
       if (sameSubject.length) choices = sameSubject;
     }
@@ -256,6 +283,7 @@ export class CameraChoiceArbiter {
       const crossSubject = this.current && o.plan.subjectUuid !== this.current.plan.subjectUuid;
       if (emergency) return !creative.has(o.plan.motion);
       if (this.current && now - this.current.shotSince < this.p.minShotMs) return false;
+      if (this.current && projection(o.plan) !== projection(this.current.plan) && now - this.lastProjectionChange < this.p.projectionCooldownMs) return false;
       let subjectHoldUntil = this.current ? this.current.subjectSince + this.p.minSubjectMs : -Infinity;
       if (this.current && currentActivity?.longIdle) subjectHoldUntil = this.current.subjectSince + this.p.minShotMs;
       if (this.current && currentActivity?.engaged) subjectHoldUntil = Math.max(subjectHoldUntil,

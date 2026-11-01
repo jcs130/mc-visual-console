@@ -21,7 +21,7 @@ public final class OrthoPreviewClient implements ClientModInitializer {
   private String lastId,lease,phase="waiting_singleplayer",problem,scope=UUID.randomUUID().toString();
   private Object world; private boolean local,avoid,rendered,settled;
   private float fromYaw,fromPitch,fromScale,toYaw,toPitch,toScale,baseYaw,basePitch;
-  private String transition="cut"; private double visible=Double.NaN;
+  private String transition="cut",projectionProfile; private boolean requestedProjection; private double visible=Double.NaN;
   private final Set<String> cancelled=new LinkedHashSet<>();
   private JsonArray candidates=new JsonArray();
   public void onInitializeClient(){
@@ -67,11 +67,13 @@ public final class OrthoPreviewClient implements ClientModInitializer {
     else if(r.get("expiresAt").getAsLong()<System.currentTimeMillis()){lastId=id;return;}
     float scale=range(r,"scale",3,32),yaw=range(r,"yaw",-180,180),pitch=range(r,"pitch",10,85);
     boolean enabled=r.get("enabled").getAsBoolean(),was=OrthoCamera.isEnabled();
+    String profile=r.has("projectionProfile")?r.get("projectionProfile").getAsString():null;
+    if(profile!=null&&!profile.matches("[A-Za-z0-9_-]{1,72}"))throw new IllegalArgumentException("invalid_projection_profile");
     fromYaw=OrthoCamera.CONFIG.fixed_yaw;fromPitch=OrthoCamera.CONFIG.fixed_pitch;fromScale=OrthoCamera.CONFIG.scale_y;
     OrthoCamera.CONFIG.setFixed(true);OrthoCamera.CONFIG.enabled=enabled;
     OrthoCamera.CONFIG.setFixedYaw(fromYaw);OrthoCamera.CONFIG.setFixedPitch(fromPitch);
     OrthoCamera.CONFIG.min_distance=-128;OrthoCamera.CONFIG.max_distance=256;
-    lastId=id;lease=r.has("lease")?r.get("lease").getAsString():"manual-preview";
+    lastId=id;lease=r.has("lease")?r.get("lease").getAsString():"manual-preview";projectionProfile=profile;requestedProjection=enabled;
     baseYaw=yaw;basePitch=pitch;avoid=enabled&&r.has("autoAvoid")&&r.get("autoAvoid").getAsBoolean();obstructed=0;
     long ms=r.has("transitionMs")?(long)range(r,"transitionMs",0,2500):700;
     // Orthographic <-> perspective is an explicit cut, never described as a crossfade.
@@ -126,6 +128,11 @@ public final class OrthoPreviewClient implements ClientModInitializer {
     d.addProperty("rendered",rendered);d.addProperty("transition",transition);d.addProperty("autoAvoid",avoid);
     if(Double.isFinite(visible))d.addProperty("visibleFraction",visible);else d.add("visibleFraction",JsonNull.INSTANCE);d.add("avoidanceCandidates",candidates);
     d.addProperty("enabled",OrthoCamera.isEnabled());d.addProperty("scale",OrthoCamera.CONFIG.scale_y);d.addProperty("yaw",OrthoCamera.CONFIG.fixed_yaw);d.addProperty("pitch",OrthoCamera.CONFIG.fixed_pitch);
+    d.addProperty("projection",OrthoCamera.isEnabled()?"orthographic":"perspective");
+    boolean projectionMatches=OrthoCamera.isEnabled()==requestedProjection&&Math.abs(OrthoCamera.CONFIG.scale_y-toScale)<.01
+      &&Math.abs(angle(OrthoCamera.CONFIG.fixed_yaw-toYaw))<.01&&Math.abs(OrthoCamera.CONFIG.fixed_pitch-toPitch)<.01;
+    if(rendered&&"applied".equals(phase)&&requestedProjection&&projectionMatches&&projectionProfile!=null)d.addProperty("projectionProfile",projectionProfile);
+    else d.add("projectionProfile",JsonNull.INSTANCE);
     d.addProperty("fps",client.method_47599());d.addProperty("renderer",GL11.glGetString(GL11.GL_RENDERER));d.addProperty("systemMouseCaptured",client.field_1729.method_1613());
     if(client.field_1724!=null){d.addProperty("username",client.field_1724.method_5477().getString());d.addProperty("uuid",client.field_1724.method_5667().toString());}
     Path dir=game.resolve("ortho-preview");Files.createDirectories(dir);Path temp=dir.resolve("status.tmp.json");Files.writeString(temp,GSON.toJson(d));Files.move(temp,dir.resolve("status.json"),StandardCopyOption.REPLACE_EXISTING);
