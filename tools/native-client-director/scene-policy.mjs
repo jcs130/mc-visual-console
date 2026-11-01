@@ -88,7 +88,7 @@ export class SceneSelector{
       return {name,available:this.available===null?null:this.available.has(name),positionAt:p?.at??null,
         motion:!p||now-p.at>15000?'unknown':this.stationary(name,now)?'stationary':'recent_sample',
         stillSince:p?.stillSince??null,lastSpeechAt:a?.get('conversation')?.at??null,
-        lastMotionAt:a?.get('movement')?.at??null,lastCombatAt:a?.get('combat')?.at??null};});
+        lastMotionAt:a?.get('movement')?.at??null,lastCombatAt:a?.get('combat')?.at??null,lastInteractionAt:a?.get('interaction')?.at??null};});
   }
   observe(name,event,now=Date.now()){
     if(!this.names.includes(name))return;

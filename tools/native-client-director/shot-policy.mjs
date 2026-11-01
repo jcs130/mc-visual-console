@@ -22,6 +22,22 @@ export const NATIVE_CAMERA_RECIPES = Object.freeze({
   ortho_top:{recipeId:'overhead_tactical',label:'正交俯视',finite:false,projection:'orthographic',projectionProfile:'ortho_top'},
 });
 
+/** Adopt the rendered view, never the name of a rig that already fell back. */
+export function nativeCurrentView(native){
+  const available=new Set(native?.availableViews??[]);
+  if(native?.projection==='orthographic'&&native.orthographic?.active===true&&available.has(native.projectionProfile))return native.projectionProfile;
+  if(available.has(native?.effectiveView))return native.effectiveView;
+  if(native?.drone?.active===true&&available.has(native.droneShot))return native.droneShot;
+  return native?.perspective==='THIRD_PERSON_FRONT'?'third_person_front':native?.perspective==='THIRD_PERSON_BACK'?'third_person_back':'first_person';
+}
+
+/** A safety fallback is recoverable; intentional POV interaction retains its close view. */
+export function mayPreferOrthographic(view,{screenOpen=false,lastInteractionAt=null,now=Date.now()}={}){
+  if(screenOpen)return false;
+  if(['drone_overview','drone_eye','drone_follow','drone_front_left'].includes(view))return true;
+  return view==='first_person'&&(lastInteractionAt===null||Number.isFinite(lastInteractionAt)&&now-lastInteractionAt>15000);
+}
+
 export function selectNativeShot(choice,native,{enabled=false,orthographic=false,now=Date.now(),lastProjectionChangeAt=0}={}){
   if(!choice||!enabled&&!orthographic||!Array.isArray(native?.availableViews))return choice;
   const ready=new Set(native.availableViews);
@@ -37,7 +53,10 @@ export function selectNativeShot(choice,native,{enabled=false,orthographic=false
     &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&['open','room'].includes(context.layout)&&context.floorSafe===true
     &&context.orthographicVisibility>=.8&&Number.isFinite(context.at)&&context.at<=now&&now-context.at<2000
     &&(native.projection==='orthographic'||now-lastProjectionChangeAt>=45000);
-  if(canOrtho&&['overview','conversation','movement'].includes(choice.kind))
+  if(canOrtho&&native.projection==='orthographic'&&ready.has(native.projectionProfile)
+    &&choice.kind!=='interaction'&&now-lastProjectionChangeAt<45000)
+    preferences.unshift(native.projectionProfile);
+  else if(canOrtho&&(['overview','conversation','movement'].includes(choice.kind)||native.projection==='orthographic'&&choice.kind==='combat'))
     preferences.unshift(choice.kind==='overview'?'ortho_overview':choice.kind==='conversation'?'ortho_close':'ortho_isometric');
   const view=preferences.find(v=>ready.has(v))??(ready.has(choice.view)?choice.view:null);
   return view?{...choice,view,framingReason:'native_capability_and_activity'}:null;

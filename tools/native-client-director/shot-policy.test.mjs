@@ -1,6 +1,23 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {selectNativeShot,nativeShotReceipt,NATIVE_CAMERA_RECIPES} from './shot-policy.mjs';
+import {selectNativeShot,nativeShotReceipt,NATIVE_CAMERA_RECIPES,mayPreferOrthographic,nativeCurrentView} from './shot-policy.mjs';
 const caps={availableViews:Object.keys(NATIVE_CAMERA_RECIPES)};
+
+test('startup adopts actual first-person fallback instead of the stale requested front rig',()=>{
+ const n={...caps,projection:'perspective',perspective:'FIRST_PERSON',drone:{active:true},droneShot:'drone_front',effectiveView:'first_person'};
+ assert.equal(nativeCurrentView(n),'first_person');
+ assert.equal(nativeCurrentView({...n,projection:'orthographic',projectionProfile:'ortho_isometric',orthographic:{active:true}}),'ortho_isometric');
+ assert.equal(nativeCurrentView({...n,projection:'orthographic',projectionProfile:'ortho_isometric',orthographic:{active:false}}),'first_person');
+});
+
+test('a first-person safety fallback can recover without overriding fresh GUI interaction',()=>{
+ assert.equal(mayPreferOrthographic('first_person',{now:100000}),true);
+ assert.equal(mayPreferOrthographic('first_person',{now:100000,lastInteractionAt:90000}),false);
+ assert.equal(mayPreferOrthographic('first_person',{now:100000,lastInteractionAt:84000}),true);
+ assert.equal(mayPreferOrthographic('first_person',{now:100000,lastInteractionAt:100001}),false);
+ assert.equal(mayPreferOrthographic('drone_eye',{screenOpen:true}),false);
+ assert.equal(mayPreferOrthographic('ortho_isometric'),false);
+ assert.equal(mayPreferOrthographic('drone_orbit_left'),false);
+});
 test('new views require explicit host opt-in and real native capabilities',()=>{
  const choice={kind:'movement',view:'drone_follow'};
  assert.equal(selectNativeShot(choice,caps),choice);
@@ -51,6 +68,13 @@ test('prefer original OrthoCamera only for current proven open geometry, with a 
   const other={...n,spatial:{...n.spatial,...patch}};assert.equal(selectNativeShot(choice,other,opts).view,'drone_overview');}
  assert.equal(selectNativeShot({...choice,kind:'combat'},n,opts).view,'drone_eye');
  assert.equal(selectNativeShot({...choice,kind:'interaction'},n,opts).view,'first_person');
+ const active={...n,projection:'orthographic',projectionProfile:'ortho_overview'};
+ const recent={...opts,lastProjectionChangeAt:now-1000};
+ assert.equal(selectNativeShot({...choice,kind:'combat'},active,recent).view,'ortho_overview','fresh battle labels do not force a projection change');
+ assert.equal(selectNativeShot({...choice,kind:'movement'},active,recent).view,'ortho_overview','keep the proven composition during its dwell');
+ assert.equal(selectNativeShot({...choice,kind:'combat'},active,opts).view,'ortho_isometric','readable battle keeps a safe orthographic view');
+ assert.equal(selectNativeShot({...choice,kind:'interaction'},active,recent).view,'first_person','precise interaction can request POV');
+ assert.equal(selectNativeShot({...choice,kind:'combat'},{...active,spatial:{...n.spatial,layout:'tunnel'}},recent).view,'drone_eye','dwell does not pretend an unsafe view is available');
 });
 
 test('orthographic receipt requires actual projection/profile and bound native frame, including SDK fallback refusal',()=>{

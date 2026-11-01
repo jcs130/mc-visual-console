@@ -64,6 +64,8 @@ test('crafting chooses hand/UI view; idle scenes do not cycle for fake progress'
   p.observe('Alice',{ts:new Date(now).toISOString(),type:'minecraft.task',execution:{terminal:true,evidence:{steps:[
     {outcome:'ok',observedEffect:{skill:'craft'}}]}}},now);
   assert.equal(p.choose(null,0,now).view,'first_person');
+  assert.equal(p.inspect(now)[0].lastInteractionAt,now);
+  assert.equal(p.inspect(now)[1].lastInteractionAt,null);
   assert.equal(p.choose('Alice',0,now),null);
 });
 test('a short chat reply does not erase fresh battle evidence',()=>{
