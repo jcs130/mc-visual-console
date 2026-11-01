@@ -81,10 +81,21 @@ do not replace multiplayer permission, moving-subject or platform-program QA.
 The iGPU lab cap is 30 FPS. Synchronous PNG sampling reduced observed lab FPS to
 roughly 15–24; after sampling it returned to 30. This is not production overhead
 measurement. The experimental world was saved and its extra client closed.
-Production remains 0.1.11. Source commit, client installation, live observation
-and broadcast platform acceptance are separate stages; no server or actor host
-was restarted for this candidate. Private JARs, captures and runtime bindings
-stay outside Git.
+At that checkpoint production remained 0.1.11. Source commit, client installation,
+live observation and broadcast platform acceptance are separate stages. Private
+JARs, captures and runtime bindings stay outside Git.
+
+Subsequent authorized activation on 2026-11-01 installed the same frozen 0.1.12
+JAR in the original live observer and enabled the matching thin selector. A
+concurrent server maintenance initially made the existing address unavailable;
+after its recovery, the original observer authenticated and declared all 16
+views. Real readbacks confirmed Coobot front/oblique/overview and DeepFish oblique
+follow with 450ms dissolve completion; a real native window capture confirmed
+front composition. Later receipts recorded near-space first-person fallback and
+recovery to eye-level follow. Server/game actors, TTS, goals, memory and ledger
+were not modified by this camera deployment. Live finite-orbit/dolly, exact
+appearance-resource parity, orthographic unification and the platform program
+remain separate acceptance scopes; isolated footage is not their live evidence.
 
 Version 0.1.11 adds a request-bound `target_position_unconfirmed` failure when
 positioning times out before any target attachment command and the native camera
