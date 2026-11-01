@@ -108,7 +108,7 @@ export async function createNativePaperAppearanceActor(reader,{uuid,paperAppeara
       inventoryPreviewAvailable:true,equipmentRenderingAvailable:false,
       firstPersonArmsAvailable:row.kind==='skin'||!!arms,
       firstPersonArmReason:row.kind==='ysm'&&!arms?(firstPersonArmReason??'PAPER_FIRST_PERSON_ARM_SOURCE_MISSING'):null,
-      notice:row.kind==='ysm'?'服务器原 YSM 模型与实际动作；完整客户端动画一致性未验':'服务器绑定的原皮肤；当前未提供 YSM 模型状态'}
+      notice:row.presentation==='owner_web_projection'?'主人指定的网页展示模型；游戏内原模型保持，动作完全一致性未验':row.kind==='ysm'?'服务器原 YSM 模型与实际动作；完整客户端动画一致性未验':'服务器绑定的原皮肤；当前未提供 YSM 模型状态'}
     return {root,assetInfo,model:inner.model,playerObject:inner.playerObject,firstPersonRoot:first.firstPersonRoot,
       applyPose(pose){if(disposed)throw Error('PAPER_APPEARANCE_DISPOSED');root.position.set(pose.x,pose.y,pose.z);root.rotation.y=Number.isFinite(pose.bodyYaw)?pose.bodyYaw:pose.yaw;root.visible=true},
       applyMotion(input){

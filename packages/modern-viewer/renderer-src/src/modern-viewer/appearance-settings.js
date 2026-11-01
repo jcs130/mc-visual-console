@@ -67,7 +67,7 @@ export function installAppearanceSettings({ document, window, onChange, onUpload
     if(uploadInput)uploadInput.disabled=!snapshot.available||uploadBusy;
     subject.textContent = snapshot.subject || '当前观战人物';
     const original=snapshot.serverModel;
-    serverModel.hidden=!original?.modelId;serverModel.textContent=original?.modelId?`服务器模型：${original.modelId}${original.texture?' / '+original.texture:''}${original.ysmVersion?' · YSM '+original.ysmVersion:''}`:'';
+    serverModel.hidden=!original?.modelId;serverModel.textContent=original?.modelId?`${original.presentation==='owner_web_projection'?'网页展示':'服务器模型'}：${original.modelId}${original.texture?' / '+original.texture:''}${original.ysmVersion?' · YSM '+original.ysmVersion:''}${original.presentation==='owner_web_projection'&&original.nativeModelId?'；游戏模型：'+original.nativeModelId+(original.nativeTexture?' / '+original.nativeTexture:''):''}`:'';
     status.textContent = uploadBusy?'正在校验皮肤……':uploadError??snapshot.status??(snapshot.selected === 'server' ? '跟随服务器外观' : 'Web 外观替换');
     const issues=snapshot.animationIssues??[];
     compatibility.hidden=!issues.length;
