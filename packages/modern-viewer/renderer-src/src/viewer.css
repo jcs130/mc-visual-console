@@ -141,7 +141,7 @@ to{background-position:128px -128px,-120% 0}
 .corti-skills [data-skill-status]{display:block;margin-top:7px;color:#aebfc1;font-size:11px}
 .corti-inventory-toggle{right:14px;bottom:14px;padding:6px 10px;background:#1a2f36dd;color:#f0f5ed;border:1px solid #aec3b4;border-radius:7px;font:13px system-ui;cursor:pointer}
 .corti-inventory-toggle kbd{font:11px monospace;opacity:.8}
-.corti-menu{top:50%;left:50%;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);transform:translate(-50%,-50%);overflow:auto;padding:8px;background:#14242cec;border:1px solid #b8c8bb;border-radius:8px;box-shadow:0 10px 45px #000b;pointer-events:auto}
+.corti-menu{top:50%;left:50%;z-index:40;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);transform:translate(-50%,-50%);overflow:auto;padding:8px;background:#14242cec;border:1px solid #b8c8bb;border-radius:8px;box-shadow:0 10px 45px #000b;pointer-events:auto}
 .corti-menu[hidden]{display:none}
 .corti-menu header{display:flex;align-items:center;gap:10px;min-height:25px;margin-bottom:5px;color:#f8f8ed}
 .corti-menu header strong{flex:1}
