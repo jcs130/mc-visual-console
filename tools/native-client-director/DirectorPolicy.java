@@ -105,17 +105,29 @@ public final class DirectorPolicy {
         detachObservation=new DetachObservation(now,f.nativeWorldEpoch(),f.spectator(),f.targetUuid(),f.cameraUuid(),f.observerUuid());
     }
     private void pause(Frame f,long now,String why){heldLease=request.lease();phase="paused";reason=why;observeDetach(f,now);}
-    private boolean nativeDeath(Frame f,long now){
+    private boolean nativeDeadAttachment(Frame f,long now){
         var life=f.cameraLife();
         boolean healthyBinding=life!=null&&attachedEntityId!=null&&attachedEntityId==life.entityId()
             &&attachedEntityWorldEpoch==nativeWorldEpoch;
         boolean nativeRequestBinding=life!=null&&request!=null&&Objects.equals(request.id(),life.requestId())
             &&life.observedAttachedAt()>=request.issuedAt()-1000&&life.observedAttachedAt()<=now+1000
             &&now-life.observedAttachedAt()<=3000&&life.entityId()>=0;
-        return sameObserver(f)&&f.spectator()&&cameraSelf(f)&&life!=null&&life.dead()
+        return sameObserver(f)&&f.spectator()&&life!=null&&life.dead()
             &&(life.requestId()==null?healthyBinding:nativeRequestBinding)
             &&Objects.equals(expectedUuid,life.uuid())&&nativeWorldEpoch>0
             &&nativeWorldEpoch==f.nativeWorldEpoch()&&life.nativeWorldEpoch()==nativeWorldEpoch;
+    }
+    private boolean nativeDeath(Frame f,long now){return cameraSelf(f)&&nativeDeadAttachment(f,now);}
+    /** A real death screen must not block the existing, bound camera-death lifecycle. */
+    public boolean shouldAdvanceDeathOverlay(Frame f,boolean deathScreen,long now){
+        return deathScreen&&request!=null&&Set.of("attached","target_death_transition").contains(phase)
+            &&scoped(f)&&f.authenticated()&&!f.manualDetachRequested()&&nativeDeadAttachment(f,now)
+            &&(cameraSelf(f)||attached(f));
+    }
+    /** Dismiss only a stale followed-player overlay on a natively living spectator self. */
+    public boolean shouldDismissDeathOverlay(Frame f,boolean deathScreen,boolean observerAlive,long now){
+        return deathScreen&&observerAlive&&request!=null&&scoped(f)&&f.authenticated()&&!f.manualDetachRequested()
+            &&nativeDeath(f,now)&&("attached".equals(phase)||"stopped".equals(phase)&&"target_died".equals(reason));
     }
     private void rememberAttachedLife(Frame f){
         var life=f.cameraLife();

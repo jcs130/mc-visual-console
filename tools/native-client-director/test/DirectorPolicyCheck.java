@@ -231,6 +231,16 @@ public class DirectorPolicyCheck {
             new DirectorPolicy.CameraLife("uuid-a",42,1,true,"proven-current-camera",t+50),false);
         proven.step(proof,t+100);
         check("target_died".equals(proven.reason())&&proven.commands()==0,"current-request actual camera observation proves death even without an earlier healthy frame for that entity");
+        var overlay=lifePolicy("death-overlay",t);
+        var overlayFrame=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",true,"observer","observer",1,
+            new DirectorPolicy.CameraLife("uuid-a",31,1,true,"death-overlay",t+50),false);
+        check(overlay.shouldAdvanceDeathOverlay(overlayFrame,true,t+100),"actual death screen permits its bound lifecycle readback");
+        check(overlay.shouldDismissDeathOverlay(overlayFrame,true,true,t+100),"living spectator can dismiss the followed-player death overlay");
+        check(!overlay.shouldDismissDeathOverlay(overlayFrame,false,true,t+100),"ordinary menus stay under user control");
+        check(!overlay.shouldDismissDeathOverlay(overlayFrame,true,false,t+100),"actual observer death is not hidden");
+        check(!overlay.shouldDismissDeathOverlay(overlayFrame,true,true,t+4000),"stale death evidence cannot close a screen");
+        overlay.step(overlayFrame,t+100);
+        check("target_died".equals(overlay.reason())&&overlay.shouldDismissDeathOverlay(overlayFrame,true,true,t+150),"confirmed detach can clear the same overlay without replaying a request");
         for(var sample:List.of(new DirectorPolicy.CameraLife("uuid-a",42,1,true,"another-request",t+50),
                 new DirectorPolicy.CameraLife("uuid-a",42,1,true,"proof-guard",t-5000),
                 new DirectorPolicy.CameraLife("uuid-a",42,2,true,"proof-guard",t+50))){

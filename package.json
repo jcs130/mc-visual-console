@@ -35,6 +35,14 @@
       "types": "./packages/modern-viewer/renderer-src/host/broadcast-decisions.d.mts",
       "default": "./packages/modern-viewer/renderer-src/host/broadcast-decisions.mjs"
     },
+    "./systemone-decisions": {
+      "types": "./packages/modern-viewer/renderer-src/host/systemone-decisions.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/systemone-decisions.mjs"
+    },
+    "./native-vision-source": {
+      "types": "./packages/modern-viewer/renderer-src/host/native-vision-source.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/native-vision-source.mjs"
+    },
     "./broadcast-motion": {
       "types": "./packages/modern-viewer/renderer-src/host/broadcast-motion.d.mts",
       "default": "./packages/modern-viewer/renderer-src/host/broadcast-motion.mjs"

@@ -25,6 +25,16 @@ function fixture() {
 const ballots = (p, choice, roleList = ['story', 'action', 'continuity']) => ({ kind: 'votes', schema: p.schema, scope: p.scope,
   generation: p.generation, revision: p.revision, at: p.observedAt, votes: roleList.map(role => ({ role, choice })) });
 
+test('multimodal judges share top-level images, budget encoded vision separately, and accept zero-output classification',async()=>{
+ const f=fixture();let sent,calls=0;
+ const panel=createCameraJudgePanel({request:async input=>{sent=input;calls++;return{answers:{action:{choice:'followB'},space:{choice:'followB'}},usage:{input_tokens:800,output_tokens:0,cached_input_tokens:0}};}},
+  {now:f.now,timeoutMs:15000,reserveOutputTokens:0,contextTokens:4096,countTokens:()=>500});
+ const images=['data:image/jpeg;base64,'+'a'.repeat(10000)];const r=await panel.judge(f.packet(),{roles:['action','space'],images,imageTokens:800,imageRevision:'frameA'});
+ assert.equal(r.kind,'votes');assert.equal(sent.images[0],images[0]);assert.equal(sent.state.images,undefined);assert.equal(calls,1);assert.equal(panel.stats().outputTokens,0);panel.stop();
+ const denied=createCameraJudgePanel({request:async()=>{throw Error('over-budget call');}},{now:f.now,reserveOutputTokens:0,contextTokens:4096,countTokens:()=>500});
+ assert.equal((await denied.judge(f.packet(),{images,imageTokens:4000})).reason,'input_budget');denied.stop();
+});
+
 test('clock-only refresh is stable; keyed facts replace rather than accumulate', () => {
   const f = fixture(); f.observation.facts = [{ key: 'activity', text: 'walking', archiveRef: 'archive/a' }, { key: 'activity', text: 'mining', archiveRef: 'archive/b' }];
   const p = f.packet(); f.tick(1000); const next = f.packet();

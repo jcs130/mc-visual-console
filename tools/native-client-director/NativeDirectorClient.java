@@ -30,6 +30,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private boolean authenticated,diagnosticsFailed,requireConnectionEpoch;
     private long tick,lastFileTime=-1,lastCancelFileTime=-1,frames,frameWindowAt,lastRenderedAt;
     private Map<String,Object> cancelReceipt;
+    private Map<String,Object> deathOverlayReceipt;
     private final Map<String,String> cancelledIntents=new LinkedHashMap<>();
     private Double hudFramesPerSecond;
     private String configProblem,requestProblem,connectionEpoch;
@@ -46,7 +47,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         instance=this;
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
-            authenticated=false;stopDrone("disconnected");ORTHO.stop("disconnected");FrameBlend.abort();diagnostics(client,false);policy=null;});
+            authenticated=false;stopDrone("disconnected");ORTHO.stop("disconnected");FrameBlend.abort();NativeVisionCapture.reset();diagnostics(client,false);policy=null;});
         ClientReceiveMessageEvents.GAME.register((message,overlay)->{
             if(policy==null)return;
             authenticated=DirectorPolicy.authReceipt(authenticated,message.getString());
@@ -55,8 +56,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
         // Register after normal mod initialization so the frozen frame also
         // covers the native observer HUD while a remote camera is loading.
         ClientLifecycleEvents.CLIENT_STARTED.register(client->HudRenderCallback.EVENT.register((draw,delta)->renderTransition(client,draw)));
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client->FrameBlend.close());
-        WorldRenderEvents.END.register(context->{if(policy!=null&&authenticated&&"attached".equals(policy.phase()))ORTHO.confirmRendered(class_310.method_1551());});
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client->{FrameBlend.close();NativeVisionCapture.reset();});
+        WorldRenderEvents.END.register(context->{var client=class_310.method_1551();if(policy!=null&&authenticated&&"attached".equals(policy.phase()))ORTHO.confirmRendered(client);NativeVisionCapture.render(client,visionScope(client));});
         HudRenderCallback.EVENT.register((draw,delta)->{
             if(policy==null)return;long now=System.currentTimeMillis();lastRenderedAt=now;
             if(frameWindowAt==0)frameWindowAt=now;
@@ -69,6 +70,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         });
     }
     private void join(class_310 client){
+        NativeVisionCapture.reset();
         attachedCameraEntity=null;attachedCameraWorld=null;attachedCameraEpoch=0;attachedCameraRequest=null;attachedCameraObservedAt=0;manualDetachRequested=false;
         droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");ORTHO.configure(false);trackedTargets=Set.of();
         policy=null;authenticated=false;tick=0;lastFileTime=-1;lastCancelFileTime=-1;cancelReceipt=null;cancelledIntents.clear();frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
@@ -98,6 +100,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 ||!Double.isFinite(droneHeight)||droneHeight<0.5||droneHeight>5){
                 droneEnabled=false;configProblem="invalid_drone_dimensions";
             }
+            NativeVisionCapture.configure(extra.has("visionCaptureEnabled")&&extra.get("visionCaptureEnabled").getAsBoolean(),
+                FabricLoader.getInstance().getConfigDir(),FabricLoader.getInstance().getGameDir());
             System.out.println("[MCVisualDirector] Explicit observer profile active; awaiting native authentication");
         }catch(Exception error){configProblem=error.getClass().getSimpleName();}
     }
@@ -160,6 +164,11 @@ public final class NativeDirectorClient implements ClientModInitializer {
         return DirectorPolicy.hideObserverBody(instance!=null&&instance.policy!=null,
             client.field_1724!=null&&client.field_1724.method_7325(),entity!=null&&entity==client.field_1724);
     }
+    private CapturePolicy.Scope visionScope(class_310 client){
+        if(policy==null)return null;var f=frame(client,policy.target());
+        return new CapturePolicy.Scope(f.server(),f.observerUuid(),connectionEpoch,nativeWorldEpoch,f.targetUuid(),f.cameraUuid(),policy.requestId(),
+            authenticated,"attached".equals(policy.phase())&&!manualDetachRequested,f.spectator(),client.field_1755!=null,Boolean.TRUE.equals(FrameBlend.status().get("active")));
+    }
     private void tick(class_310 client){
         if(policy==null)return;
         long now=System.currentTimeMillis();
@@ -172,6 +181,18 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(droneActive&&client.field_1690.method_31044()!=(CLOSE.firstPerson()?class_5498.field_26664:class_5498.field_26665)){
             manualDetachRequested=true;stopDrone("manual_perspective");
         }
+        if(client.field_1755 instanceof class_418){
+            var deathFrame=frame(client,policy.target());
+            if(policy.shouldAdvanceDeathOverlay(deathFrame,true,now)){
+                var release=policy.step(deathFrame,now);
+                if("minecraft:spectate".equals(release.command())&&client.method_1562()!=null)client.method_1562().method_45730(release.command());
+            }
+            if(policy.shouldDismissDeathOverlay(frame(client,policy.target()),true,client.field_1724!=null&&client.field_1724.method_5805()&&!client.field_1724.method_29504(),now)){
+                client.method_1507(null);deathOverlayReceipt=Map.of("at",now,"requestId",policy.requestId(),"phase","cleared_followed_death_overlay");
+            }
+        }
+        NativeVisionCapture.poll(visionScope(client),now);
+        if(!"attached".equals(policy.phase())||manualDetachRequested)NativeVisionCapture.invalidate();
         if(client.field_1755!=null){if(++tick%20==0)diagnostics(client,true);return;}
         if(++tick%10==0){
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-director-request.json");
@@ -303,7 +324,9 @@ public final class NativeDirectorClient implements ClientModInitializer {
         try{
             Map<String,Object> data=new LinkedHashMap<>();
             data.put("schema","mcvisual-native-director/v1");data.put("recordedAt",Instant.now().toString());
-            data.put("nativeVersion","0.1.12");
+            data.put("nativeVersion",FabricLoader.getInstance().getModContainer("mcvisual-native-director").map(m->m.getMetadata().getVersion().getFriendlyString()).orElse("unknown"));
+            data.put("visionCapture",NativeVisionCapture.status());
+            data.put("deathOverlay",deathOverlayReceipt);
             data.put("transition",FrameBlend.status());
             data.put("positionFailure",policy.positionFailure());
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());

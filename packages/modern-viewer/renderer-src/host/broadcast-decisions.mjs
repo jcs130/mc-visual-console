@@ -144,13 +144,13 @@ export function createCameraJudgePanel(decisions, {
   countTokens = text => Buffer.byteLength(text, 'utf8'), provider, onAudit = () => {},
 } = {}) {
   if (![timeoutMs, minIntervalMs, maxCallsPerMinute, maxAgeMs, contextTokens, reserveOutputTokens, prefixTokens, toolDescriptionTokens].every(finite)
-    || timeoutMs < 1 || timeoutMs > 3000 || minIntervalMs < 1000 || maxCallsPerMinute < 1 || maxCallsPerMinute > 60
-    || maxAgeMs < 1 || prefixTokens < 0 || toolDescriptionTokens < 0 || reserveOutputTokens < 64 || contextTokens <= reserveOutputTokens) failure('INVALID_JUDGE_BUDGET');
+    || timeoutMs < 1 || timeoutMs > 15000 || minIntervalMs < 1000 || maxCallsPerMinute < 1 || maxCallsPerMinute > 60
+    || maxAgeMs < 1 || prefixTokens < 0 || toolDescriptionTokens < 0 || reserveOutputTokens < 0 || contextTokens <= reserveOutputTokens) failure('INVALID_JUDGE_BUDGET');
   let stopped = false, inFlight = null, lastStarted = -Infinity, lastRevision = null, cached = null;
   const calls = [], stats = { calls: 0, timeouts: 0, invalid: 0, errors: 0, inputTokens: 0, outputTokens: 0, latencyMs: 0 };
   const audit = event => { try { onAudit(copy(event)); } catch { /* Host logging never grants camera authority. */ } };
   return {
-    async judge(packet, { roles: requested = ['story', 'action', 'continuity'], signal } = {}) {
+    async judge(packet, { roles: requested = ['story', 'action', 'continuity'], signal, images = [], imageTokens = 0, imageRevision } = {}) {
       if (stopped || signal?.aborted) return { kind: 'skipped', reason: 'stopped_or_aborted' };
       if (packet?.schema !== CAMERA_CHOICE_PROTOCOL || !fresh(packet.observedAt, now(), maxAgeMs)) return { kind: 'skipped', reason: 'stale' };
       if (packet.manualLocked || ['accepted', 'transitioning', 'unknown', 'stopped'].includes(packet.program.phase)) return { kind: 'skipped', reason: 'camera_blocked' };
@@ -159,17 +159,19 @@ export function createCameraJudgePanel(decisions, {
       if (!decisions?.request) return { kind: 'skipped', reason: 'no_model' };
       if (packet.options.length <= 1) return { kind: 'skipped', reason: 'only_keep' };
       if (!requested.length || requested.length > 6 || new Set(requested).size !== requested.length || requested.some(x => !roles.has(x))) failure('INVALID_JUDGE_ROLES');
+      if(!Array.isArray(images)||images.length>4||images.some(x=>typeof x!=='string'||!x.startsWith('data:image/'))
+        ||!finite(imageTokens)||imageTokens<0||imageRevision!==undefined&&!ident(imageRevision))failure('INVALID_JUDGE_IMAGES');
       if (inFlight) return { kind: 'skipped', reason: 'busy' };
-      const requestKey = hash([packet.scope, packet.generation, packet.revision, requested]);
+      const requestKey = hash([packet.scope, packet.generation, packet.revision, requested,images.length?(imageRevision??hash(images)):null]);
       if (requestKey === lastRevision) return cached ? copy(cached) : { kind: 'skipped', reason: 'duplicate' };
       const started = now();
       while (calls.length && calls[0] <= started - 60000) calls.shift();
       if (started - lastStarted < minIntervalMs || calls.length >= maxCallsPerMinute) return { kind: 'skipped', reason: 'rate_limited' };
       const questions = Object.fromEntries(requested.map(id => [id, { type: 'choice', instructions: roles.get(id).instructions,
         criteria: Object.fromEntries(packet.options.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
-      const request = { questions, state: { schema: packet.schema, scope: packet.scope, generation: packet.generation,
+      const request = { questions, ...(images.length?{images:[...images]}:{}), state: { schema: packet.schema, scope: packet.scope, generation: packet.generation,
         revision: packet.revision, options: packet.options, facts: packet.facts, activities: packet.activities ?? [], viewContexts: packet.viewContexts ?? [] } };
-      const inputTokens = countTokens(JSON.stringify(request)) + prefixTokens + toolDescriptionTokens;
+      const inputTokens = countTokens(JSON.stringify({questions:request.questions,state:request.state})) + imageTokens + prefixTokens + toolDescriptionTokens;
       if (!finite(inputTokens) || inputTokens < 0 || inputTokens + reserveOutputTokens > contextTokens) return { kind: 'skipped', reason: 'input_budget' };
       const controller = new AbortController();
       let end;
