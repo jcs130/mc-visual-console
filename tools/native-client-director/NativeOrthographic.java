@@ -6,11 +6,11 @@ import com.google.gson.*;import net.fabricmc.loader.api.FabricLoader;import net.
 /** Optional adapter to the original OrthoCamera mod. No second observer, model or control socket. */
 public final class NativeOrthographic {
     private final OrthographicRig rig=new OrthographicRig();private Object config;
-    private boolean ready,owned,manual,roomClip;private String problem="disabled";private long sampledAt,keepRoomUntil;private float lastNear=-32;
+    private boolean ready,owned,manual;private String problem="disabled";private long sampledAt;private float lastNear=-32;
     private Map<String,Object> original;private OrthographicRig.Pose lastWritten;
     private OrthographicRig.Sample sample;private Map<String,Object> spatial=Map.of();
     public void configure(boolean enabled){
-        stop("new_connection");ready=false;config=null;manual=false;problem="disabled";sample=null;sampledAt=0;roomClip=false;keepRoomUntil=0;lastNear=-32;
+        stop("new_connection");ready=false;config=null;manual=false;problem="disabled";sample=null;sampledAt=0;lastNear=-32;
         if(!enabled)return;
         try{
             var mod=FabricLoader.getInstance().getModContainer("orthocamera");
@@ -53,8 +53,10 @@ public final class NativeOrthographic {
             write(rig.advance(now,sample));return true;
         }catch(Exception e){rig.block("orthographic_config_error");restoreAfterBlock();problem=e.getClass().getSimpleName();return false;}
     }
-    private void write(OrthographicRig.Pose p)throws Exception{if(p==null)return;var actor=class_310.method_1551().method_1560();
-        lastNear=roomClip&&actor!=null?-OrthographicRig.roomClipDepth(actor.method_17681(),actor.method_17682(),actor.method_5836(1).field_1351-actor.method_23318(),p.yaw(),p.pitch()):-32f;
+    private void write(OrthographicRig.Pose p)throws Exception{if(p==null)return;
+        // OrthoCamera's near plane spans the WHOLE frame. It cannot implement local roof fading.
+        // Keep the original world depth; blocked rooms must rotate or fall back to perspective.
+        lastNear=OrthographicRig.UNCUT_NEAR;
         set("min_distance",lastNear);invoke("setFixedYaw",float.class,p.yaw());invoke("setFixedPitch",float.class,p.pitch());
         invoke("setScaleX",float.class,p.scale());invoke("setScaleY",float.class,p.scale());lastWritten=p;}
     /** False means a verified-owned projection needs a same-subject perspective fallback. */
@@ -71,7 +73,6 @@ public final class NativeOrthographic {
     public void observe(class_310 client,class_1297 actor,long epoch,long now,boolean force,OrthographicRig.Pose preferred){
         if(!ready||actor==null||client.field_1687==null)return;
         if(!force&&now-sampledAt<500&&sample!=null&&Objects.equals(sample.uuid(),actor.method_5667().toString())&&sample.world()==epoch)return;
-        if(sample!=null&&(!Objects.equals(sample.uuid(),actor.method_5667().toString())||sample.world()!=epoch))keepRoomUntil=0;
         sampledAt=now;long start=System.nanoTime();double x=actor.method_23317(),y=actor.method_23318(),z=actor.method_23321();
         float height=actor.method_17682();var world=client.field_1687;boolean known=true;
         double extent=Math.max(20,(preferred==null?16:preferred.scale())*2.1);
@@ -80,36 +81,36 @@ public final class NativeOrthographic {
         var eye=actor.method_5836(1);double headroom=distance(world,actor,eye,new class_243(x,eye.field_1351+12,z));boolean roof=headroom<11.99;
         double sx=distance(world,actor,eye,new class_243(x+8,eye.field_1351,z))+distance(world,actor,eye,new class_243(x-8,eye.field_1351,z));
         double sz=distance(world,actor,eye,new class_243(x,eye.field_1351,z+8))+distance(world,actor,eye,new class_243(x,eye.field_1351,z-8));
-        boolean room=roof&&headroom>=.7&&Math.min(sx,sz)>=1.1;if(room)keepRoomUntil=now+3000;
-        roomClip=room||!roof&&now<keepRoomUntil;
-        String layout=!known?"unknown":roomClip?"room":roof?"tunnel":"open";
-        var current=actual();double visible=current==null?Double.NaN:score(world,actor,current.yaw(),current.pitch(),roomClip);
+        boolean room=roof&&headroom>=.7&&Math.min(sx,sz)>=1.1;
+        String layout=!known?"unknown":room?"room":roof?"tunnel":"open";
+        var current=actual();double visible=current==null?Double.NaN:score(world,actor,current.yaw(),current.pitch());
         var candidates=new ArrayList<OrthographicRig.Candidate>();var base=preferred==null?OrthographicRig.PRESETS.get("ortho_isometric"):preferred;
         for(float pitch:base.pitch()>=55?new float[]{base.pitch()}:new float[]{base.pitch(),55})for(float offset:new float[]{0,45,-45,90,-90,180}){
-            float yaw=((base.yaw()+offset+180)%360+360)%360-180;double v=known?score(world,actor,yaw,pitch,roomClip):Double.NaN;
+            float yaw=((base.yaw()+offset+180)%360+360)%360-180;double v=known?score(world,actor,yaw,pitch):Double.NaN;
             candidates.add(new OrthographicRig.Candidate(yaw,pitch,v));}
         sample=new OrthographicRig.Sample(now,actor.method_5667().toString(),epoch,layout,known,visible,List.copyOf(candidates));
         var m=new LinkedHashMap<String,Object>();m.put("at",now);m.put("targetUuid",sample.uuid());m.put("nativeWorldEpoch",epoch);m.put("layout",layout);
-        m.put("known",known);m.put("floorSafe",!roof||roomClip);m.put("headroom",headroom);m.put("spanX",sx);m.put("spanZ",sz);m.put("roomClip",roomClip);m.put("visibility",Double.isFinite(visible)?visible:null);
+        boolean supported=known;double foot=actor.method_17681()*.35;
+        for(double dx:new double[]{-foot,foot})for(double dz:new double[]{-foot,foot})
+            supported&=distance(world,actor,new class_243(x+dx,y+.2,z+dz),new class_243(x+dx,y-1,z+dz))<1.1;
+        m.put("known",known);m.put("floorSafe",supported);m.put("headroom",headroom);m.put("spanX",sx);m.put("spanZ",sz);m.put("roomClip",false);m.put("worldCutawaySupported",false);m.put("visibility",Double.isFinite(visible)?visible:null);
         m.put("orthographicVisibility",candidates.stream().mapToDouble(c->c.visibility()).filter(Double::isFinite).max().orElse(-1));
         m.put("probeMicros",(System.nanoTime()-start)/1000);spatial=m;
     }
     private static boolean clear(class_638 world,class_1297 actor,class_243 from,class_243 to){
         return world.method_17742(new class_3959(from,to,class_3959.class_3960.valueOf("VISUAL"),class_3959.class_242.valueOf("NONE"),actor)).method_17783()==class_239.class_240.valueOf("MISS");}
     private static double distance(class_638 world,class_1297 actor,class_243 from,class_243 to){var hit=world.method_17742(new class_3959(from,to,class_3959.class_3960.valueOf("VISUAL"),class_3959.class_242.valueOf("NONE"),actor));return from.method_1022(hit.method_17784());}
-    private static double score(class_638 world,class_1297 actor,float yaw,float pitch,boolean room){
+    private static double score(class_638 world,class_1297 actor,float yaw,float pitch){
         double x=actor.method_23317(),y=actor.method_23318(),z=actor.method_23321(),height=actor.method_17682(),side=actor.method_17681()*.38;
         double yr=Math.toRadians(yaw),pr=Math.toRadians(pitch),dx=Math.sin(yr)*Math.cos(pr),dy=Math.sin(pr),dz=-Math.cos(yr)*Math.cos(pr);int visible=0;
-        var eye=actor.method_5836(1);double near=room?OrthographicRig.roomClipDepth(actor.method_17681(),height,eye.field_1351-y,yaw,pitch):32;
         for(double[] p:new double[][]{{x,y+height*.9,z},{x,y+height*.55,z},{x,y+.15,z},{x+Math.cos(yr)*side,y+height*.65,z+Math.sin(yr)*side},{x-Math.cos(yr)*side,y+height*.65,z-Math.sin(yr)*side}}){
-            double depth=(p[0]-eye.field_1352)*dx+(p[1]-eye.field_1351)*dy+(p[2]-eye.field_1350)*dz;
-            double length=room?near-depth:32;if(length<.05)continue;
+            double length=32;if(length<.05)continue;
             for(int distance=0;distance<=length;distance+=8)if(!world.method_8393(((int)Math.floor(p[0]+dx*distance))>>4,((int)Math.floor(p[2]+dz*distance))>>4))return Double.NaN;
             if(clear(world,actor,new class_243(p[0]+dx*.05,p[1]+dy*.05,p[2]+dz*.05),new class_243(p[0]+dx*length,p[1]+dy*length,p[2]+dz*length)))visible++;
         }return visible/5.0;
     }
-    public Map<String,Object> spatial(){return spatial;}public boolean roomClip(){return roomClip;}public boolean projecting(){return active()&&enabled();}
+    public Map<String,Object> spatial(){return spatial;}public boolean roomClip(){return false;}public boolean projecting(){return active()&&enabled();}
     public Map<String,Object> status(){var m=new LinkedHashMap<>(rig.status());m.put("ready",ready);m.put("problem",problem);m.put("active",active());
         m.put("projection",enabled()?"orthographic":"perspective");m.put("projectionProfile",active()&&"holding".equals(rig.phase())&&OrthographicRig.matches(actual(),rig.pose())?rig.view():null);
-        var actual=actual();if(actual!=null){m.put("actualYaw",actual.yaw());m.put("actualPitch",actual.pitch());m.put("actualScale",actual.scale());try{m.put("actualNear",get("min_distance"));}catch(Exception ignored){}}m.put("roomClip",roomClip);return m;}
+        var actual=actual();if(actual!=null){m.put("actualYaw",actual.yaw());m.put("actualPitch",actual.pitch());m.put("actualScale",actual.scale());try{m.put("actualNear",get("min_distance"));}catch(Exception ignored){}}m.put("roomClip",false);m.put("worldCutawaySupported",false);m.put("occlusionHandling","rotate_or_perspective");return m;}
 }

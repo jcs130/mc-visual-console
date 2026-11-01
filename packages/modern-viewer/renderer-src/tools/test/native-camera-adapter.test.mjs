@@ -71,14 +71,15 @@ test('cancellation uses the original native binding, while a pending unknown nev
 });
 
 test('native OrthoCamera SDK/tool receipts retain real projection and configured preset',async()=>{
- const f=fixture();f.n.orthographic={ready:true,active:false,phase:'stopped'};
+ const f=fixture();f.n.orthographic={ready:true,worldCutawaySupported:false,active:false,phase:'stopped'};
  const plan={...f.plan,shot:'ortho_isometric'};assert.equal((await callCameraTool(f.director,'broadcast_camera_take',plan)).phase,'accepted');
- f.n.orthographic={ready:true,active:true,requestId:plan.actionId,view:plan.shot,phase:'holding',targetUuid:'actor-uuid',nativeWorldEpoch:1,renderedAt:100000};
+ f.n.orthographic={ready:true,worldCutawaySupported:false,active:true,requestId:plan.actionId,view:plan.shot,phase:'holding',targetUuid:'actor-uuid',nativeWorldEpoch:1,renderedAt:100000};
  f.n.projection='perspective';f.n.projectionProfile=null;assert.equal((await f.director.result(plan.actionId)).phase,'transitioning');
  f.n.projection='orthographic';f.n.projectionProfile=plan.shot;
  const done=await callCameraTool(f.director,'broadcast_camera_result',{actionId:plan.actionId});assert.equal(done.phase,'applied');
  assert.equal(done.evidence.projection,'orthographic');assert.equal(done.evidence.projectionProfile,plan.shot);assert.equal(f.writes(),1);
- const g=fixture();await assert.rejects(g.director.take({...g.plan,shot:'ortho_isometric'}),/SHOT_PROJECTION_UNAVAILABLE/);
+ const g=fixture();await assert.rejects(g.director.take({...g.plan,shot:'ortho_isometric'}),/SHOT_UNAVAILABLE/);
+ g.n.orthographic={ready:true,active:false};assert.equal((await g.director.query()).observed.shots.find(s=>s.id==='ortho_isometric').available,false,'legacy global clipping is not advertised as safe orthographic coverage');
 });
 
 test('the expanded native catalogue stays bounded rather than accepting unlimited tool descriptions',async()=>{

@@ -35,8 +35,8 @@ Create `config/mcvisual-native-observer.json` there:
 }
 ```
 
-`language` also accepts `zh_cn`. F9 cycles overview, skills, native inventory,
-all received fields, and hidden mode. F10 advances the current page. These are
+`language` also accepts `zh_cn`. F9 cycles compact summary, full overview, skills,
+native inventory, all received fields, and hidden mode. F10 advances the current page. These are
 local display keys; they do not perform or click game actions. Existing original
 inventory/merchant screens and SpectatorPlus controls are retained. The optional
 inventory bridge is verified against SpectatorPlus **1.2.1+mc1.21**; its JAR is a
@@ -119,3 +119,6 @@ offline protocol/display test results. Those results are not a real server login
 native Mixin application, screenshot, private-client compatibility guarantee,
 visual model validation or end-to-end broadcast acceptance. Verify the installed
 client and actual target switches independently.
+# HUD 0.1.4
+
+Default on-air display is a content-sized two-line identity/vitals summary; low food adds one warning. F9 cycles compact, full overview, abilities, inventory, original fields and hidden; F10 pages expanded details. All source fields and original item components remain inspectable. The diagnostics `hud` rectangle measures actual GUI-space area. This display is scoped to the configured existing observer connection and never controls an actor.

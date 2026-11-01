@@ -1,5 +1,40 @@
 import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts} from './camera-script.mjs';
 import {validateChoiceProbabilities} from './systemone-decisions.mjs';
+export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
+
+/** One current image plus real all-actor activity/airtime. Other cameras are explicitly unobserved. */
+export function buildNativeSubjectDecision(native,rows,{forceReview=false,eligibleNames,now=Date.now()}={}){
+ if(!native||!Array.isArray(rows)||rows.length>16||!Array.isArray(native.targets)||native.targets.length>16)return null;
+ const targets=new Map((native.targets??[]).filter(t=>t.uuid&&t.alive!==false).map(t=>[t.name,t]));
+ const allowed=Array.isArray(eligibleNames)?new Set(eligibleNames):null;
+ const eligible=rows.filter(r=>targets.has(r.name)&&r.name!==native.target&&(!allowed||allowed.has(r.name))).slice(0,15);
+ if(!eligible.length||!native.availableViews?.includes('first_person'))return null;
+ const options=[...(!forceReview?[{id:'keep',name:native.target,uuid:native.targetUuid}]:[]),
+  ...eligible.map((r,i)=>({...r,id:'subject'+i,uuid:targets.get(r.name).uuid,view:'first_person'}))];
+ const current=rows.find(r=>r.name===native.target);
+ const state={schema:SUBJECT_CHOICE_PROTOCOL,current:native.target,currentDwellMs:current?.dwellMs??0,
+  reason:forceReview?'ordinary_scene_coverage_deadline':'compare_live_activity',
+  imageEvidence:'Only the CURRENT subject is pictured. Other subjects have no preview. Judge their real activity and coverage facts, not an invented picture.',
+  subjects:options.map(o=>({id:o.id,name:o.name,activity:o.kind??current?.kind??'unknown',
+   activityAgeMs:Number.isFinite(o.at)?Math.max(0,now-o.at):null,motion:o.motionState??current?.motionState??'unknown',
+   waitingMs:o.waitingMs??0,airtimeMs:o.airtimeMs??0,visits:o.visits??0,loaded:targets.get(o.name)?.loaded===true}))};
+ return{schema:SUBJECT_CHOICE_PROTOCOL,forceReview,options,request:{state,questions:{subject:{type:'choice',
+  instructions:'选择下一段直播应观察的人。优先真实战斗、成功操作和新进展；普通发言不能永久占镜。结合等待时间、累计出镜和当前主体驻留。没有其他人的截图不等于对方没有价值。当前有关键战斗时可保持；ordinary_scene_coverage_deadline 表示普通镜头已到覆盖期限，候选只含其他可观战角色，选最值得了解近况的一位。切换先用真实第一人称确认现场，再安排构图。只选给定 ID。',
+  criteria:Object.fromEntries(options.map(o=>[o.id,o.id==='keep'?'继续当前主体':'观察 '+o.name+' 的真实近况']))}}}};
+}
+export function selectNativeSubject(menu,answer){
+ const a=answer?.answers?.subject,criteria=menu?.request.questions.subject.criteria;
+ if(!criteria||!Object.hasOwn(criteria,a?.choice))return{kind:'rules',reason:'invalid_subject_choice'};
+ const probabilities=validateChoiceProbabilities(a.probabilities,criteria);
+ if(probabilities){
+  const sorted=Object.entries(probabilities).sort((a,b)=>b[1]-a[1]),[id,p]=sorted[0],margin=p-(sorted[1]?.[1]??0),
+   entropy=sorted.length>1?-sorted.reduce((s,[,p])=>s+(p?p*Math.log(p):0),0)/Math.log(sorted.length):0;
+  if(id==='keep')return{kind:'keep',source:'probabilities',margin,entropy};
+  if(p<.45||margin<.1)return{kind:menu.forceReview?'rules':'keep',reason:'ambiguous_subject_choice',source:'probabilities',margin,entropy};
+  return{kind:'use',choice:menu.options.find(o=>o.id===id),source:'probabilities',margin,entropy};
+ }
+ return a.choice==='keep'?{kind:'keep',source:'hard_choices'}:{kind:'use',choice:menu.options.find(o=>o.id===a.choice),source:'hard_choices'};
+}
 
 /** Legal native menu; quality is assessed from the ONE current image, not fabricated previews. */
 export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
@@ -8,6 +43,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
  const out=[],seen=new Set(),same=candidate.uuid===n.targetUuid;
  const script=n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL;
  function add(id,view,profile){
+  if(view.startsWith('ortho_')&&nativeSafeOrthographic(n)!==true)return;
   if(!n.availableViews.includes(view)||view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view))return;
   const key=view+':'+(profile??'');if(seen.has(key))return;seen.add(key);
   const motion=script&&view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:profile==='slow'?.7:1,
@@ -29,6 +65,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
  }
  return out.slice(0,6);
 }
+const nativeSafeOrthographic=n=>n.orthographic?.ready===true&&n.orthographic?.worldCutawaySupported===false;
 
 /** Real probability distributions stay distinct from hard-vote fractions. */
 export function selectCameraBallot(options,votes,previous){
@@ -93,13 +130,17 @@ export class NativeCameraPacing{
   this.history=this.history.filter(h=>now-h.at<60000);
   if(now-c.shotAt<12000)return{allow:false,reason:'minimum_shot_12s'};
   if(this.history.length>=4)return{allow:false,reason:'cut_budget_4_per_minute'};
-  if(projection!==c.projection&&now-c.projectionAt<45000)return{allow:false,reason:'projection_hold_45s'};
+  if(!cross&&projection!==c.projection&&now-c.projectionAt<45000)return{allow:false,reason:'projection_hold_45s'};
   if(cross){
    const current=activity.find(a=>a.name===n.target),engaged=Number.isFinite(current?.lastCombatAt)&&now-current.lastCombatAt<8000;
    if(engaged)return{allow:false,reason:'protect_live_combat'};
    const idle=current?.motion==='stationary'&&Number.isFinite(current.stillSince)&&now-current.stillSince>=20000;
-   if(now-c.subjectAt<(idle?12000:30000))return{allow:false,reason:'minimum_subject_hold'};
-   if(this.left.has(subject))return{allow:false,reason:'subject_return_cooldown_60s'};
+   const urgent=choice.kind==='combat'&&Number.isFinite(choice.at)&&now-choice.at>=0&&now-choice.at<5000;
+   if(now-c.subjectAt<(idle||urgent?12000:30000))return{allow:false,reason:'minimum_subject_hold'};
+   const leftAt=this.left.get(subject),newProgress=['combat','movement','interaction'].includes(choice.kind)
+     &&Number.isFinite(choice.at)&&choice.at>leftAt&&now-choice.at>=0&&now-choice.at<5000;
+   // A quiet check-in can yield to genuinely NEW action, while the global cut budget still applies.
+   if(leftAt!==undefined&&!(idle&&now-leftAt>=15000&&newProgress))return{allow:false,reason:'subject_return_cooldown_60s'};
    if(this.history.filter(h=>h.subjectChanged).length>=2)return{allow:false,reason:'subject_budget_2_per_minute'};
   }
   return{allow:true,reason:'pacing_passed'};

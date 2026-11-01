@@ -4,6 +4,7 @@ import java.util.*;
 
 /** Pure, bounded orthographic composition. A rendered native frame is a separate acknowledgement. */
 public final class OrthographicRig {
+    public static final float UNCUT_NEAR=-32f;
     public record Pose(float yaw,float pitch,float scale) {}
     public record Candidate(float yaw,float pitch,double visibility) {}
     public record Sample(long at,String uuid,long world,String layout,boolean known,double visibility,List<Candidate> candidates) {}
@@ -18,7 +19,8 @@ public final class OrthographicRig {
     public static boolean matches(Pose a,Pose b){return a!=null&&b!=null&&Math.abs(angle(a.yaw-b.yaw))<.08&&Math.abs(a.pitch-b.pitch)<.08&&Math.abs(a.scale-b.scale)<.02;}
     public static boolean suitable(Sample s,String uuid,long world,long now){return s!=null&&Objects.equals(uuid,s.uuid)&&world==s.world
         &&s.known&&("open".equals(s.layout)||"room".equals(s.layout))&&s.at<=now&&now-s.at<=2000;}
-    /** Clip behind the native actor bounds, with a margin for visible hair/clothing. */
+    /** Historical geometry helper only. Never use as a whole-world camera clipping plane. */
+    @Deprecated
     public static float roomClipDepth(double width,double height,double eyeHeight,float yaw,float pitch){
         double yr=Math.toRadians(yaw),pr=Math.toRadians(pitch),vertical=Math.sin(pr);
         double nearest=width*.5*Math.cos(pr)*(Math.abs(Math.sin(yr))+Math.abs(Math.cos(yr)))

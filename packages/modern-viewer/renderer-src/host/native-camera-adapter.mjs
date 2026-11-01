@@ -27,8 +27,9 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
     async observe() {
       const n = await read(), manual = n.manualDetachRequested === true || n.phase === 'paused';
       const available = Array.isArray(n.availableViews) ? n.availableViews : [];
+      const safeOrtho=n.orthographic?.ready===true&&n.orthographic?.worldCutawaySupported===false;
       const shots = Object.entries(NATIVE_CAMERA_RECIPES).map(([id, recipe]) => ({ id, ...recipe,
-        available: available.includes(id) && !manual && !['unknown', 'stopped'].includes(n.phase),
+        available: available.includes(id) && (!id.startsWith('ortho_')||safeOrtho) && !manual && !['unknown', 'stopped'].includes(n.phase),
         projection: recipe.projection??'perspective', ...(id.startsWith('drone_')&&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL?{cameraScript:CAMERA_SCRIPT_PROTOCOL}:{}),...(recipe.projectionProfile?{projectionProfile:recipe.projectionProfile,projectionReady:n.orthographic?.ready===true}:{}),preflightRequired: recipe.finite }));
       const observed = { schema: CAMERA_PROTOCOL, at: Date.parse(n.recordedAt), scope: `${n.connectionEpoch}:${n.nativeWorldEpoch}`,
         subjectUuid: targetUuid, manualControl: manual, shots, nativePhase: n.phase, effectiveView: n.effectiveView,
@@ -57,7 +58,7 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
       const motion=validateCameraScript(op.motion,op.shot);
       if(motion&&n.cameraScript?.schema!==CAMERA_SCRIPT_PROTOCOL)fail('NATIVE_SCRIPT_UNAVAILABLE');
       if (!sameScope(n, op) || op.subjectUuid !== targetUuid || !NATIVE_CAMERA_RECIPES[op.shot]
-        || !n.availableViews?.includes(op.shot) || op.shot.startsWith('ortho_')&&n.orthographic?.ready!==true
+        || !n.availableViews?.includes(op.shot) || op.shot.startsWith('ortho_')&&(n.orthographic?.ready!==true||n.orthographic?.worldCutawaySupported!==false)
         || n.manualDetachRequested || ['unknown', 'stopped', 'paused'].includes(n.phase)) fail('NATIVE_CAMERA_EXECUTION_GUARD');
       await writeRequest({ id: op.actionId, lease: op.lease, target: targetName, view: op.shot,
         issuedAt: op.issuedAt, expiresAt: op.expiresAt, connectionEpoch: n.connectionEpoch,...(motion?{motion}:{}) }, { signal });

@@ -126,7 +126,7 @@ test('real combat and interaction are retained over a newer speaker',()=>{
 });
 test('availability filters disconnected speakers and unknown tab data is explicit',()=>{
   const p=new SceneSelector(['Alice','Bob']);p.observe('Bob',speech('Bob',now),now);p.setAvailable(['Alice']);
-  assert.equal(p.choose(null,0,now),null);assert.equal(p.inspect(now)[1].available,false);
+  assert.equal(p.choose(null,0,now).name,'Alice','an explicitly online idle actor can provide the first actual camera frame');assert.equal(p.inspect(now)[1].available,false);
   p.setAvailable(null);assert.equal(p.choose(null,0,now).name,'Bob');
 });
 test('slow travel accumulates; head jitter, teleport and world changes do not invent movement',()=>{
@@ -156,4 +156,25 @@ test('a late completed movement receipt cannot overrule continuous confirmed idl
     {outcome:'ok',observedEffect:{skill:'goto',changed:{position:true}}}]}}},now);
   p.observe('Bob',speech('Bob',now),now);
   assert.equal(p.choose('Alice',now-14000,now).name,'Bob');
+});
+test('ordinary maximum dwell re-evaluates everyone even when the same actor keeps speaking',()=>{
+ const p=new SceneSelector(['Alice','Bob','Carol'],{maxDwellMs:90000});p.setAvailable(['Alice','Bob','Carol']);
+ p.subjectCandidates('Alice',now-95000,now-95000);p.observe('Alice',speech('Alice',now),now);
+ const c=p.choose('Alice',now-95000,now,'drone_follow');assert.notEqual(c.name,'Alice');assert.equal(c.forceSubjectReview,true);assert.equal(c.reason,'coverage_review_after_max_dwell');
+ p.observe('Alice',combat(now),now);assert.equal(p.choose('Alice',now-95000,now,'drone_follow'),null,'fresh combat protects its current subject');
+});
+test('coverage comes from rendered frames and ignores duplicates and unobserved gaps',()=>{
+ const p=new SceneSelector(['Alice','Bob','Carol'],{maxDwellMs:90000});p.setAvailable(['Alice','Bob','Carol']);p.subjectCandidates('Alice',0,1000);
+ p.observeProgram('Alice',{at:1000,scope:'world'},1000);p.observeProgram('Alice',{at:2000,scope:'world'},2000);
+ p.observeProgram('Alice',{at:2000,scope:'world'},2000);p.observeProgram('Alice',{at:12000,scope:'world'},12000);
+ const a=p.subjectCandidates('Alice',1000,12000).find(r=>r.name==='Alice');assert.equal(a.airtimeMs,1000);assert.equal(a.visits,1);
+ p.observeProgram('Carol',{at:12000,scope:'world'},12000);p.observeProgram('Alice',{at:13000,scope:'world'},13000);
+ assert.equal(p.choose('Alice',1000,100000,'drone_follow').name,'Bob','least-covered eligible idle actor can be inspected');
+ p.setAvailable(['Alice']);assert.equal(p.choose('Alice',1000,100000,'drone_follow'),null,'offline or unidentifiable actors are not invented');
+});
+test('two chatty actors cannot starve a third actor by swapping before the maximum dwell',()=>{
+ const p=new SceneSelector(['Alice','Bob','Carol'],{maxDwellMs:90000,minDwellMs:30000});p.setAvailable(['Alice','Bob','Carol']);p.subjectCandidates('Alice',0,0);
+ p.observeProgram('Alice',{at:180000,scope:'world'},180000);p.observeProgram('Bob',{at:190000,scope:'world'},190000);
+ p.observeProgram('Alice',{at:200000,scope:'world'},200000);p.observe('Alice',speech('Alice',210000),210000);p.observe('Bob',speech('Bob',209000),210000);
+ const c=p.choose('Alice',170000,210000,'drone_follow');assert.equal(c.name,'Carol');assert.equal(c.reason,'coverage_starvation_review');assert.deepEqual(c.subjectPool,['Carol']);
 });

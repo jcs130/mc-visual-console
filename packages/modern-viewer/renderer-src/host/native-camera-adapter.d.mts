@@ -9,7 +9,7 @@ export interface NativeCameraStatus {
  shotExecution?:{requestId:string;view:string;phase:string;fallback?:boolean;[key:string]:unknown};
  cancelReceipt?:{id:string;lease:string;connectionEpoch:string;nativeWorldEpoch:number;targetUuid:string;phase:string};
  closeView?:unknown;transition?:{active:boolean};projection?:'perspective'|'orthographic';projectionProfile?:string|null;
- orthographic?:{ready:boolean;active:boolean;phase:string;requestId?:string;view?:string;reason?:string;renderedAt?:number;targetUuid?:string;nativeWorldEpoch?:number};
+ orthographic?:{ready:boolean;active:boolean;phase:string;worldCutawaySupported?:false;roomClip?:boolean;actualNear?:number;occlusionHandling?:string;requestId?:string;view?:string;reason?:string;renderedAt?:number;targetUuid?:string;nativeWorldEpoch?:number};
  spatial?:{at:number;targetUuid:string;nativeWorldEpoch:number;layout:string;known:boolean;floorSafe:boolean;orthographicVisibility:number};
 }
 export const NATIVE_CAMERA_RECIPES:Readonly<Record<string,{recipeId:string;label:string;finite:boolean;projection?:'orthographic';projectionProfile?:string}>>;

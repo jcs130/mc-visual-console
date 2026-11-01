@@ -63,7 +63,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             if(frameWindowAt==0)frameWindowAt=now;
             frames++;if(now-frameWindowAt>=1000){hudFramesPerSecond=frames*1000.0/(now-frameWindowAt);frames=0;frameWindowAt=now;}
             var c=class_310.method_1551();if(authenticated&&c.field_1755==null&&c.field_1724!=null&&c.field_1724.method_7325()){
-                String mode=ORTHO.projecting()?(ORTHO.roomClip()?"正交 · 房间剖视":"正交 · 等距全景"):CLOSE.firstPerson()?"透视 · 近墙避挡":"透视 · 自动跟随";
+                String mode=ORTHO.projecting()?"正交 · 保留地形":CLOSE.firstPerson()?"透视 · 近墙避挡":"透视 · 自动跟随";
                 draw.method_25294(78,8,78+c.field_1772.method_1727(mode)+12,25,0xb0000000);
                 draw.method_51433(c.field_1772,mode,84,12,ORTHO.projecting()?0xff80f5d2:0xfff3d9a1,true);
             }

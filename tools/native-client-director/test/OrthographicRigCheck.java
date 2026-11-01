@@ -39,8 +39,13 @@ public class OrthographicRigCheck {
         var room=new OrthographicRig();check(room.begin("room","ortho_overview","actor",1,1000,null,false,roomSample),"a verified room is not rejected solely because a roof exists");
         room.advance(1000,roomSample);check(room.pose().scale()==7,"room view frames the current room rather than the whole village");
         room.confirmRendered(room.pose(),1001);check("holding".equals(room.phase()),"room projection still requires native rendered confirmation");
-        float near=OrthographicRig.roomClipDepth(.6,1.8,1.62,45,55);check(near>=.8&&near<1.2,"actor-bound near plane retains the body and clips a distant ceiling");
-        check(OrthographicRig.roomClipDepth(2,3,2.5,45,55)>near,"larger actors reserve a larger unclipped depth");
+        float near=OrthographicRig.roomClipDepth(.6,1.8,1.62,45,55);
+        double pitch=Math.toRadians(55),yaw=Math.toRadians(45),groundDepth=6*Math.sin(yaw)*Math.cos(pitch)-2*Math.sin(pitch)+6*Math.cos(yaw)*Math.cos(pitch);
+        check(groundDepth>near,"old actor-bound plane demonstrably removes a foreground ground surface");
+        check(groundDepth<-OrthographicRig.UNCUT_NEAR,"uncut world near plane retains the same foreground terrain");
+        for(double[] point:new double[][]{{6,-2,-6},{8,-2,-8},{0,-6,0},{-5,0,5}}){
+            double depth=point[0]*Math.sin(yaw)*Math.cos(pitch)+point[1]*Math.sin(pitch)-point[2]*Math.cos(yaw)*Math.cos(pitch);
+            check(depth<-OrthographicRig.UNCUT_NEAR,"roof/canopy avoidance does not remove visible ground or expose a lower layer");}
         System.out.println(checks+" orthographic-rig checks passed");
     }
 }

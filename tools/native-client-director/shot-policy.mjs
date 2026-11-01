@@ -49,13 +49,13 @@ export function selectNativeShot(choice,native,{enabled=false,orthographic=false
   // An orbit is deliberate coverage, never an idle timer or random variation.
   if(choice.kind==='showcase'&&choice.verifiedOutcome===true)preferences.unshift('drone_orbit_left','drone_pull_out');
   const context=native.spatial,subject=native.targets?.find(t=>t.name===choice.name)?.uuid;
-  const currentOrthoSafe=native.phase==='attached'&&native.projection==='orthographic'&&native.orthographic?.active===true
+  const currentOrthoSafe=native.phase==='attached'&&native.projection==='orthographic'&&native.orthographic?.active===true&&native.orthographic?.worldCutawaySupported===false
     &&native.targetUuid&&native.cameraUuid===native.targetUuid&&context?.targetUuid===native.targetUuid
     &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&context.floorSafe===true
     &&['open','room'].includes(context.layout)&&context.orthographicVisibility>=.8
     &&Number.isFinite(context.at)&&context.at<=now&&now-context.at<2000;
-  if(orthographic&&preferOrthographic&&currentOrthoSafe&&choice.name!==native.target&&now-lastProjectionChangeAt<45000)return null;
-  const canOrtho=orthographic&&native.orthographic?.ready===true&&context?.targetUuid===subject&&native.cameraUuid===subject
+  // Projection dwell is same-subject composition policy, never a lock on who may be covered next.
+  const canOrtho=orthographic&&native.orthographic?.ready===true&&native.orthographic?.worldCutawaySupported===false&&context?.targetUuid===subject&&native.cameraUuid===subject
     &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&['open','room'].includes(context.layout)&&context.floorSafe===true
     &&context.orthographicVisibility>=.8&&Number.isFinite(context.at)&&context.at<=now&&now-context.at<2000
     &&(native.projection==='orthographic'||now-lastProjectionChangeAt>=45000);
@@ -84,6 +84,8 @@ export function nativeShotReceipt(native,request,now=Date.now(),{maxAgeMs=3000}=
   if(request.view.startsWith('ortho_')){
     const execution=native.orthographic;
     if(execution?.requestId!==request.id||execution.view!==request.view)return{kind:'waiting',reason:'projection_binding_pending'};
+    if(execution.worldCutawaySupported!==false||execution.roomClip===true||typeof execution.actualNear==='number'&&execution.actualNear> -31.9)
+      return{kind:'rejected',reason:'orthographic_world_cutaway_unverified'};
     if(['blocked','cancelled','stopped','paused'].includes(execution.phase))return{kind:'rejected',reason:execution.reason??'projection_unavailable'};
     if(native.projection!=='orthographic'||native.projectionProfile!==request.view||execution.active!==true
       ||execution.nativeWorldEpoch!==native.nativeWorldEpoch||execution.targetUuid!==request.targetUuid||!fresh(execution.renderedAt))

@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {validateChoiceProbabilities,createSystemOneDecisionPort} from '../../host/systemone-decisions.mjs';
 import {CAMERA_SCRIPT_PROTOCOL as schema,validateCameraScript,blendCameraScripts} from '../../host/camera-script.mjs';
-import {nativeCameraCandidates,selectCameraBallot,NativeCameraPacing} from '../../host/native-director-policy.mjs';
+import {nativeCameraCandidates,selectCameraBallot,NativeCameraPacing,buildNativeSubjectDecision,selectNativeSubject} from '../../host/native-director-policy.mjs';
 const menu=[{id:'keep'},{id:'normal',name:'A',view:'drone_follow',motion:{schema,speed:1,height:1,distance:5.5}},{id:'slow',name:'A',view:'drone_follow',motion:{schema,speed:.7,height:1.8,distance:6.5}}];
 const votes=p=>['action','space','continuity'].map(role=>({role,choice:'normal',probabilities:p}));
 test('complete distributions survive transport; malformed, extra and unnormalised values are rejected',async()=>{
@@ -27,7 +27,7 @@ test('camera scripts reject commands, arbitrary coordinates, nonfinite values an
 });
 function fixture(){let now=100000;const n={phase:'attached',target:'A',targetUuid:'a',cameraUuid:'a',requestId:'first',connectionEpoch:'connection',nativeWorldEpoch:1,renderedAt:now,
  effectiveView:'drone_follow',projection:'perspective',offer:{at:60000},targets:[{name:'A',uuid:'a',alive:true,loaded:true},{name:'B',uuid:'b',alive:true,loaded:true}],
- availableViews:['drone_follow','drone_eye','first_person','drone_front_left','ortho_isometric'],cameraScript:{schema},orthographic:{ready:true},
+ availableViews:['drone_follow','drone_eye','first_person','drone_front_left','ortho_isometric'],cameraScript:{schema},orthographic:{ready:true,worldCutawaySupported:false},
  spatial:{targetUuid:'a',nativeWorldEpoch:1,known:true,layout:'open',floorSafe:true,at:now,orthographicVisibility:1}};
  const pacing=new NativeCameraPacing({now:()=>now,currentView:x=>x.effectiveView});pacing.observe(n);
  return{n,pacing,tick:ms=>{now+=ms;n.renderedAt=now;n.spatial.at=now;},ack:(id,name='A',view='drone_eye')=>{n.requestId=id;n.target=name;n.targetUuid=name.toLowerCase();n.cameraUuid=n.targetUuid;n.effectiveView=view;pacing.observe(n);},now:()=>now};}
@@ -55,4 +55,24 @@ test('automatic safety fallbacks keep their actual view without consuming editor
  const f=fixture(),before=f.pacing.current.shotAt;f.tick(14000);f.n.effectiveView='first_person';f.pacing.observe(f.n);
  assert.equal(f.pacing.current.view,'first_person');assert.equal(f.pacing.current.shotAt,before);assert.equal(f.pacing.history.length,0);
  f.tick(4000);f.n.effectiveView='drone_eye';f.pacing.observe(f.n);assert.equal(f.pacing.history.length,0);assert.equal(f.pacing.current.view,'drone_eye');
+});
+test('subject decisions compare all eligible actors and coverage deadlines cannot be monopolised by keep',()=>{
+ const f=fixture();f.n.targets.push({name:'C',uuid:'c',alive:true,loaded:false});
+ const rows=[{name:'A',kind:'conversation',at:f.now(),dwellMs:95000},{name:'B',kind:'coverage',at:f.now(),waitingMs:90000},{name:'C',kind:'interaction',at:f.now(),waitingMs:30000}];
+ const menu=buildNativeSubjectDecision(f.n,rows,{forceReview:true,now:f.now()});assert.equal(menu.options.length,2);assert.ok(!Object.hasOwn(menu.request.questions.subject.criteria,'keep'));
+ assert.match(menu.request.state.imageEvidence,/no preview/);assert.equal(menu.request.state.subjects[1].loaded,false);
+ const r=selectNativeSubject(menu,{answers:{subject:{choice:'subject1',probabilities:{subject0:.2,subject1:.8}}}});assert.equal(r.kind,'use');assert.equal(r.choice.name,'C');assert.equal(r.choice.view,'first_person');
+ assert.equal(selectNativeSubject(menu,{answers:{subject:{choice:'keep'}}}).kind,'rules');
+ f.n.targets[2].alive=false;assert.equal(buildNativeSubjectDecision(f.n,rows,{forceReview:true,now:f.now()}).options.length,1);
+});
+test('projection hold does not lock the old subject; urgent fresh combat may be covered after shot dwell',()=>{
+ const f=fixture();f.tick(31000);f.n.requestId='ortho';f.n.projection='orthographic';f.n.effectiveView='ortho_isometric';f.pacing.observe(f.n);f.tick(13000);
+ assert.equal(f.pacing.check({name:'B',view:'first_person'},f.n).allow,true);
+ assert.equal(f.pacing.check({name:'A',view:'first_person'},f.n).reason,'projection_hold_45s');
+});
+test('a verified idle check-in can return to new physical progress without admitting chat ping-pong',()=>{
+ const f=fixture();f.tick(31000);f.ack('b','B','first_person');f.tick(16000);
+ const activity=[{name:'B',motion:'stationary',stillSince:f.now()-30000}];
+ assert.equal(f.pacing.check({name:'A',view:'first_person',kind:'conversation',at:f.now()},f.n,{activity}).reason,'subject_return_cooldown_60s');
+ assert.equal(f.pacing.check({name:'A',view:'first_person',kind:'movement',at:f.now()},f.n,{activity}).allow,true);
 });

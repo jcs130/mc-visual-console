@@ -22,6 +22,21 @@ public final class ObserverView {
         return java.math.BigDecimal.valueOf(v.getAsDouble()).setScale(1,java.math.RoundingMode.HALF_UP)
                 .stripTrailingZeros().toPlainString();
     }
+    /** On-air summary. Full values, abilities and source fields remain available through F9. */
+    public static List<String> compact(JsonObject d,boolean zh){
+        List<String> rows=new ArrayList<>();JsonObject r=ObserverState.object(d.get("rpg"));
+        String title=text(at(d,"viewerSession","playerName"));
+        if(r!=null&&ObserverState.bool(r.get("available"))){
+            JsonElement label=at(r,"className");if(ObserverState.string(label)==null)label=at(r,"combat");
+            title+=" · "+text(label)+" Lv."+num(at(r,"level"));
+        }
+        rows.add(title);
+        rows.add((zh?"生命 ":"HP ")+gauge(at(d,"vitals","health"))+"/"+gauge(at(d,"vitals","maxHealth"))
+            +(zh?"  魔力 ":"  MP ")+gauge(at(d,"mana","current"))+"/"+gauge(at(d,"mana","max")));
+        JsonElement food=at(d,"vitals","food");
+        if(ObserverState.range(food,0,6))rows.add((zh?"饥饿 ":"Food ")+num(food)+"/20");
+        return List.copyOf(rows);
+    }
     public static List<String> overview(JsonObject d, boolean zh) {
         List<String> rows = new ArrayList<>();
         rows.add((zh ? "观战 · " : "Following · ") + text(at(d,"viewerSession","playerName")));

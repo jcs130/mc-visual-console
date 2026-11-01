@@ -34,6 +34,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     private final BossBarState nativeBars = new BossBarState();
     private String problem;
     private boolean diagnosticsFailure;
+    private Map<String,Object> hudLayout=Map.of("visible",false);
     @Override public void onInitializeClient() {
         instance=this;
         for(String channel:List.of("mcviewer:state","corti:viewer_state")) {
@@ -62,7 +63,7 @@ public final class NativeObserverClient implements ClientModInitializer {
             if(config==null)return;
             reconcile(client);
             if(client.field_1755==null) {
-                while(details.method_1436()){mode=(mode+1)%5;page=0;refresh();}
+                while(details.method_1436()){mode=(mode+1)%6;page=0;refresh();}
                 while(next.method_1436()){page++;refresh();}
             }
             if(++ticks%10==0)refresh();
@@ -137,8 +138,9 @@ public final class NativeObserverClient implements ClientModInitializer {
         if(config==null)return;var current=state.current(System.nanoTime());
         if(current==null){rows=List.of(zh()?"观战目标信息待同步":"Waiting for target state");return;}
         List<String> source=switch(mode){
-            case 1->ObserverView.abilities(current.data(),zh());
-            case 2->{
+            case 1->ObserverView.overview(current.data(),zh());
+            case 2->ObserverView.abilities(current.data(),zh());
+            case 3->{
                 List<String> lines=new ArrayList<>();lines.add(zh()?"观战对象 · 原生背包（只读）":"Target · Native inventory (read only)");
                 var view=inventory.view(current,System.nanoTime());
                 if(view==null)lines.add(zh()?"等待目标背包包；按 E 原生只读查看":"Waiting for target inventory; E opens original read-only screen");
@@ -153,10 +155,11 @@ public final class NativeObserverClient implements ClientModInitializer {
                 }
                 yield lines;
             }
-            case 3->ObserverView.fields(current.data());
-            default->ObserverView.overview(current.data(),zh());
+            case 4->ObserverView.fields(current.data());
+            default->ObserverView.compact(current.data(),zh());
         };
-        var client=class_310.method_1551();int width=Math.max(32,Math.min(mode==0?260:400,client.method_22683().method_4486()-16));
+        if(mode==0){rows=source;return;}
+        var client=class_310.method_1551();int width=Math.max(32,Math.min(mode==1?260:400,client.method_22683().method_4486()-16));
         List<String> wrapped=new ArrayList<>();
         for(String line:source){
             String left=line;
@@ -170,8 +173,9 @@ public final class NativeObserverClient implements ClientModInitializer {
         rows=List.copyOf(wrapped);
     }
     private void render(class_332 draw) {
+        hudLayout=Map.of("visible",false);
         if(config==null)return;var client=class_310.method_1551();reconcile(client);
-        var camera=readCamera(client);if(camera==null||mode==4||client.field_1755!=null)return;
+        var camera=readCamera(client);if(camera==null||mode==5||client.field_1755!=null)return;
         if(!camera.observer()&&(client.field_1724==null||!client.field_1724.method_7325()))return;
         var snapshot=state.current(System.nanoTime());
         // Validate at draw time too: a same-frame camera change cannot show cached old rows.
@@ -179,15 +183,19 @@ public final class NativeObserverClient implements ClientModInitializer {
                 zh()?"等待自动选镜或手动恢复跟拍":"Waiting for camera selection or explicit resume",
                 zh()?"当前没有目标职业／背包读数":"No target profession or inventory readings")
             :snapshot==null?List.of(problem!=null?problem:(zh()?"观战目标信息待同步":"Waiting for target state")):rows;
-        int width=Math.min(mode==0?260:400,draw.method_51421()-16), x=draw.method_51421()-width-8,y=14;
-        int count=Math.max(3,(draw.method_51443()-44)/11);
+        boolean compact=mode==0;
+        int desired=compact?Math.max(84,visible.stream().mapToInt(client.field_1772::method_1727).max().orElse(84)):mode==1?260:400;
+        int width=Math.max(32,Math.min(compact?Math.min(170,desired):desired,draw.method_51421()-16)), x=draw.method_51421()-width-8,y=compact?8:14;
+        int count=compact?3:Math.max(3,(draw.method_51443()-44)/11);
         int pages=Math.max(1,(visible.size()+count-1)/count),start=(page%pages)*count;
         int end=Math.min(visible.size(),start+count);
-        draw.method_25294(x-4,y-4,x+width+4,y+(end-start)*11+16,0xB0101820);
-        for(int i=start;i<end;i++)draw.method_51433(client.field_1772,client.field_1772.method_27523(visible.get(i),width),x,y+(i-start)*11,i==0?0xFF9EE7FF:0xFFF3F5FA,true);
-        draw.method_51433(client.field_1772,"F9 / F10  "+(start+1)+"–"+end+"/"+visible.size(),x,y+(end-start)*11+3,0xFFBCC5D6,true);
+        draw.method_25294(x-4,y-4,x+width+4,y+(end-start)*11+16,compact?0x70101820:0xB0101820);
+        for(int i=start;i<end;i++)draw.method_51433(client.field_1772,client.field_1772.method_27523(visible.get(i),width),x,y+(i-start)*11,i==0?0xFF9EE7FF:compact&&i>=2?0xFFFFC25C:0xFFF3F5FA,true);
+        draw.method_51433(client.field_1772,compact?(zh()?"F9 详情":"F9 Details"):"F9 / F10  "+(start+1)+"–"+end+"/"+visible.size(),x,y+(end-start)*11+3,0xFFBCC5D6,true);
+        hudLayout=Map.of("visible",true,"mode",compact?"compact":"details","x",x-4,"y",y-4,"width",width+8,"height",(end-start)*11+20,
+            "lines",end-start,"canvasWidth",draw.method_51421(),"canvasHeight",draw.method_51443());
         var inventoryView=inventory.view(snapshot,System.nanoTime());
-        if(mode==2&&inventoryView!=null) {
+        if(mode==3&&inventoryView!=null) {
             // Original native ItemStacks retain components and original resource-pack models.
             int gridY=14+(end-start)*11+24,slot=0;
             for(var item:inventoryView.slots()){if(gridY+(slot/9)*19+18>=draw.method_51443())break;
@@ -199,7 +207,8 @@ public final class NativeObserverClient implements ClientModInitializer {
     private void diagnostics(boolean connected) {
         try {
             Map<String,Object> data=new LinkedHashMap<>(state.diagnostics(System.nanoTime()));
-            data.put("nativeVersion","0.1.3");data.put("observerSelfSidebarHidden",hideSidebar());
+            data.put("nativeVersion",FabricLoader.getInstance().getModContainer("mcvisual-native-observer").map(m->m.getMetadata().getVersion().getFriendlyString()).orElse("unknown"));data.put("observerSelfSidebarHidden",hideSidebar());
+            data.put("hud",hudLayout);
             data.put("recordedAt",Instant.now().toString());data.put("connected",connected);
             var view=inventory.view(state.current(System.nanoTime()),System.nanoTime());
             data.put("nativeInventoryReceived",view!=null);data.put("nativeInventorySlots",view==null?0:view.slots().size());
