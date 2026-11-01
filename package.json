@@ -26,7 +26,43 @@
     "./agent-visuals": "./packages/modern-viewer/renderer-src/host/viewer-agent.mjs",
     "./performance-relay": "./packages/modern-viewer/renderer-src/host/viewer-performance-relay.mjs",
     "./java-data-viewer": "./packages/modern-viewer/renderer-src/host/java-data-viewer.mjs",
-    "./native-mineflayer": "./packages/modern-viewer/renderer-src/host/native-mineflayer.mjs"
+    "./native-mineflayer": "./packages/modern-viewer/renderer-src/host/native-mineflayer.mjs",
+    "./native-camera": {
+      "types": "./packages/modern-viewer/renderer-src/host/native-camera-adapter.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/native-camera-adapter.mjs"
+    },
+    "./broadcast-decisions": {
+      "types": "./packages/modern-viewer/renderer-src/host/broadcast-decisions.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/broadcast-decisions.mjs"
+    },
+    "./systemone-decisions": {
+      "types": "./packages/modern-viewer/renderer-src/host/systemone-decisions.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/systemone-decisions.mjs"
+    },
+    "./native-vision-source": {
+      "types": "./packages/modern-viewer/renderer-src/host/native-vision-source.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/native-vision-source.mjs"
+    },
+    "./broadcast-motion": {
+      "types": "./packages/modern-viewer/renderer-src/host/broadcast-motion.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/broadcast-motion.mjs"
+    },
+    "./broadcast-camera": {
+      "types": "./packages/modern-viewer/renderer-src/host/broadcast-camera.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/broadcast-camera.mjs"
+    },
+    "./camera-script": {
+      "types": "./packages/modern-viewer/renderer-src/host/camera-script.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/camera-script.mjs"
+    },
+    "./native-director-policy": {
+      "types": "./packages/modern-viewer/renderer-src/host/native-director-policy.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/native-director-policy.mjs"
+    },
+    "./scene-selection": {
+      "types": "./tools/native-client-director/scene-policy.d.mts",
+      "default": "./tools/native-client-director/scene-policy.mjs"
+    }
   },
   "files": [
     "src",
@@ -47,11 +83,15 @@
     "tools/model-status-overlay",
     "tools/client-console",
     "tools/native-client-observer",
+    "tools/native-client-director/shot-policy.mjs",
     "README.md",
     "LICENSE",
-    "packages/modern-viewer/asset-packs/vanilla-1.21.1"
+    "packages/modern-viewer/asset-packs/vanilla-1.21.1",
+    "tools/native-client-director/scene-policy.mjs",
+    "tools/native-client-director/scene-policy.d.mts"
   ],
   "scripts": {
+    "test:director": "node --test packages/modern-viewer/renderer-src/tools/test/broadcast-camera.test.mjs packages/modern-viewer/renderer-src/tools/test/broadcast-decisions.test.mjs packages/modern-viewer/renderer-src/tools/test/broadcast-motion.test.mjs packages/modern-viewer/renderer-src/tools/test/native-camera-adapter.test.mjs tools/native-client-director/shot-policy.test.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "npm run test:compatibility && vitest run && node --test packages/modern-viewer/renderer-src/test/renderer-equipment.test.mjs packages/modern-viewer/renderer-src/test/fishing-visuals.test.mjs packages/modern-viewer/renderer-src/test/fishing-catch.test.mjs packages/modern-viewer/renderer-src/test/host-presentation-bridge.test.mjs packages/modern-viewer/renderer-src/test/host-assets.test.mjs packages/modern-viewer/renderer-src/test/viewer-page.test.mjs packages/modern-viewer/renderer-src/test/photo-page.test.mjs packages/modern-viewer/renderer-src/test/host-content.test.mjs packages/modern-viewer/renderer-src/test/host-appearance.test.mjs packages/modern-viewer/renderer-src/test/viewer-agent.test.mjs packages/modern-viewer/renderer-src/test/ysm-assets.test.mjs packages/modern-viewer/renderer-src/test/map-photos.test.mjs packages/modern-viewer/renderer-src/test/server-particles.test.mjs packages/modern-viewer/renderer-src/test/text-displays.test.mjs && npm run test:web-controls && tsx --test packages/modern-viewer/test/viewer-projectile-stream.test.mjs packages/modern-viewer/test/fishing-owner.test.mjs packages/modern-viewer/test/viewer-session-slots.test.mjs && npm run --prefix packages/modern-viewer/renderer-src test:tools",
     "test:text-displays": "node --test packages/modern-viewer/renderer-src/test/text-displays.test.mjs",

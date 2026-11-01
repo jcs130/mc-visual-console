@@ -7,24 +7,31 @@ import java.util.*;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.*;
 
 /** Explicit opt-in companion for one existing authenticated spectator client. */
 public final class NativeDirectorClient implements ClientModInitializer {
     private static NativeDirectorClient instance;
-    private static final DroneFollow DRONE=new DroneFollow();
-    private static boolean droneEnabled,droneActive,worldTransitionActive;
+    private static final CinematicRig DRONE=new CinematicRig();
+    private static final CloseView CLOSE=new CloseView();
+    private static final NativeOrthographic ORTHO=new NativeOrthographic();
+    private static boolean droneEnabled,droneActive,worldTransitionActive,cinematicEnabled,autoCloseEnabled;
     private static String droneUuid,droneReason="disabled";
     private static double droneDistance=7,droneHeight=3;
-    private static boolean droneOverview;
+    private static String droneView="drone_follow";
     private static long droneRenderedAt;
     private static float droneRequestedDistance,droneClippedDistance;
     private DirectorPolicy policy;
     private boolean authenticated,diagnosticsFailed,requireConnectionEpoch;
-    private long tick,lastFileTime=-1,frames,frameWindowAt,lastRenderedAt;
+    private long tick,lastFileTime=-1,lastCancelFileTime=-1,frames,frameWindowAt,lastRenderedAt;
+    private Map<String,Object> cancelReceipt;
+    private Map<String,Object> deathOverlayReceipt;
+    private final Map<String,String> cancelledIntents=new LinkedHashMap<>();
     private Double hudFramesPerSecond;
     private String configProblem,requestProblem,connectionEpoch;
     private Object observedWorld;
@@ -40,22 +47,33 @@ public final class NativeDirectorClient implements ClientModInitializer {
         instance=this;
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
-            authenticated=false;stopDrone("disconnected");diagnostics(client,false);policy=null;});
+            authenticated=false;stopDrone("disconnected");ORTHO.stop("disconnected");FrameBlend.abort();NativeVisionCapture.reset();diagnostics(client,false);policy=null;});
         ClientReceiveMessageEvents.GAME.register((message,overlay)->{
             if(policy==null)return;
             authenticated=DirectorPolicy.authReceipt(authenticated,message.getString());
         });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+        // Register after normal mod initialization so the frozen frame also
+        // covers the native observer HUD while a remote camera is loading.
+        ClientLifecycleEvents.CLIENT_STARTED.register(client->HudRenderCallback.EVENT.register((draw,delta)->renderTransition(client,draw)));
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client->{FrameBlend.close();NativeVisionCapture.reset();});
+        WorldRenderEvents.END.register(context->{var client=class_310.method_1551();if(policy!=null&&authenticated&&"attached".equals(policy.phase()))ORTHO.confirmRendered(client);NativeVisionCapture.render(client,visionScope(client));});
         HudRenderCallback.EVENT.register((draw,delta)->{
             if(policy==null)return;long now=System.currentTimeMillis();lastRenderedAt=now;
             if(frameWindowAt==0)frameWindowAt=now;
             frames++;if(now-frameWindowAt>=1000){hudFramesPerSecond=frames*1000.0/(now-frameWindowAt);frames=0;frameWindowAt=now;}
+            var c=class_310.method_1551();if(authenticated&&c.field_1755==null&&c.field_1724!=null&&c.field_1724.method_7325()){
+                String mode=ORTHO.projecting()?"正交 · 保留地形":CLOSE.firstPerson()?"透视 · 近墙避挡":"透视 · 自动跟随";
+                draw.method_25294(78,8,78+c.field_1772.method_1727(mode)+12,25,0xb0000000);
+                draw.method_51433(c.field_1772,mode,84,12,ORTHO.projecting()?0xff80f5d2:0xfff3d9a1,true);
+            }
         });
     }
     private void join(class_310 client){
+        NativeVisionCapture.reset();
         attachedCameraEntity=null;attachedCameraWorld=null;attachedCameraEpoch=0;attachedCameraRequest=null;attachedCameraObservedAt=0;manualDetachRequested=false;
-        droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");trackedTargets=Set.of();
-        policy=null;authenticated=false;tick=0;lastFileTime=-1;frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
+        droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");ORTHO.configure(false);trackedTargets=Set.of();
+        policy=null;authenticated=false;tick=0;lastFileTime=-1;lastCancelFileTime=-1;cancelReceipt=null;cancelledIntents.clear();frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
         hudFramesPerSecond=null;configProblem=null;requestProblem=null;diagnosticsFailed=false;
         observedWorld=client.field_1687;nativeWorldEpoch=observedWorld==null?0:1;worldTransitionActive=false;
         try{
@@ -70,14 +88,20 @@ public final class NativeDirectorClient implements ClientModInitializer {
             policy=new DirectorPolicy(config);
             trackedTargets=Set.copyOf(config.targets());
             var extra=JsonParser.parseString(source).getAsJsonObject();
+            FrameBlend.configure(extra.has("transitionsEnabled")&&extra.get("transitionsEnabled").getAsBoolean(),extra.has("transitionMs")?extra.get("transitionMs").getAsInt():350);
             requireConnectionEpoch=extra.has("requireConnectionEpoch")&&extra.get("requireConnectionEpoch").getAsBoolean();
             droneEnabled=extra.has("droneEnabled")&&extra.get("droneEnabled").getAsBoolean();
+            cinematicEnabled=extra.has("cinematicEnabled")&&extra.get("cinematicEnabled").getAsBoolean();
+            autoCloseEnabled=extra.has("autoCloseView")&&extra.get("autoCloseView").getAsBoolean();
+            ORTHO.configure(extra.has("orthographicEnabled")&&extra.get("orthographicEnabled").getAsBoolean());
             droneDistance=extra.has("droneDistance")?extra.get("droneDistance").getAsDouble():7;
             droneHeight=extra.has("droneHeight")?extra.get("droneHeight").getAsDouble():3;
             if(!Double.isFinite(droneDistance)||droneDistance<2||droneDistance>10
                 ||!Double.isFinite(droneHeight)||droneHeight<0.5||droneHeight>5){
                 droneEnabled=false;configProblem="invalid_drone_dimensions";
             }
+            NativeVisionCapture.configure(extra.has("visionCaptureEnabled")&&extra.get("visionCaptureEnabled").getAsBoolean(),
+                FabricLoader.getInstance().getConfigDir(),FabricLoader.getInstance().getGameDir());
             System.out.println("[MCVisualDirector] Explicit observer profile active; awaiting native authentication");
         }catch(Exception error){configProblem=error.getClass().getSimpleName();}
     }
@@ -110,7 +134,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             client.field_1724==null?null:client.field_1724.method_5667().toString(),nativeWorldEpoch,life,manualDetachRequested);
     }
     private void observeRequestCamera(class_310 client,long now){
-        if(policy.requestId()==null||Set.of("paused","unknown","stopped").contains(policy.phase()))return;
+        if(policy.requestId()==null||Set.of("paused","unknown","stopped","cancelled").contains(policy.phase()))return;
         var camera=client.method_1560();var network=client.method_1562();
         var entry=network==null||policy.target()==null?null:network.method_2874(policy.target());
         if(camera==null||camera==client.field_1724||entry==null||client.field_1687==null
@@ -140,14 +164,35 @@ public final class NativeDirectorClient implements ClientModInitializer {
         return DirectorPolicy.hideObserverBody(instance!=null&&instance.policy!=null,
             client.field_1724!=null&&client.field_1724.method_7325(),entity!=null&&entity==client.field_1724);
     }
+    private CapturePolicy.Scope visionScope(class_310 client){
+        if(policy==null)return null;var f=frame(client,policy.target());
+        return new CapturePolicy.Scope(f.server(),f.observerUuid(),connectionEpoch,nativeWorldEpoch,f.targetUuid(),f.cameraUuid(),policy.requestId(),
+            authenticated,"attached".equals(policy.phase())&&!manualDetachRequested,f.spectator(),client.field_1755!=null,Boolean.TRUE.equals(FrameBlend.status().get("active")));
+    }
     private void tick(class_310 client){
         if(policy==null)return;
         long now=System.currentTimeMillis();
+        readCancel(client,now);
+        if(ORTHO.manual())manualDetachRequested=true;
         // A world object replacement is native evidence; coordinates/distance are not.
         if(client.field_1687!=null&&client.field_1687!=observedWorld){
             observedWorld=client.field_1687;nativeWorldEpoch++;
         }
-        if(droneActive&&client.field_1690.method_31044()!=class_5498.field_26665)stopDrone("manual_perspective");
+        if(droneActive&&client.field_1690.method_31044()!=(CLOSE.firstPerson()?class_5498.field_26664:class_5498.field_26665)){
+            manualDetachRequested=true;stopDrone("manual_perspective");
+        }
+        if(client.field_1755 instanceof class_418){
+            var deathFrame=frame(client,policy.target());
+            if(policy.shouldAdvanceDeathOverlay(deathFrame,true,now)){
+                var release=policy.step(deathFrame,now);
+                if("minecraft:spectate".equals(release.command())&&client.method_1562()!=null)client.method_1562().method_45730(release.command());
+            }
+            if(policy.shouldDismissDeathOverlay(frame(client,policy.target()),true,client.field_1724!=null&&client.field_1724.method_5805()&&!client.field_1724.method_29504(),now)){
+                client.method_1507(null);deathOverlayReceipt=Map.of("at",now,"requestId",policy.requestId(),"phase","cleared_followed_death_overlay");
+            }
+        }
+        NativeVisionCapture.poll(visionScope(client),now);
+        if(!"attached".equals(policy.phase())||manualDetachRequested)NativeVisionCapture.invalidate();
         if(client.field_1755!=null){if(++tick%20==0)diagnostics(client,true);return;}
         if(++tick%10==0){
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-director-request.json");
@@ -157,10 +202,21 @@ public final class NativeDirectorClient implements ClientModInitializer {
                     if(changed!=lastFileTime){
                         lastFileTime=changed;
                         var request=new Gson().fromJson(Files.readString(file),DirectorPolicy.Request.class);
+                        if(request!=null&&request.motion()!=null)CinematicRig.parameters(request.view(),request.motion());
+                        if(request!=null&&Objects.equals(cancelledIntents.get(request.id()),request.lease()))throw new IllegalArgumentException("cancelled_before_admission");
                         if(request!=null&&request.view()!=null&&request.view().startsWith("drone_")&&!droneEnabled)
                             throw new IllegalArgumentException("drone_rig_not_explicitly_enabled");
-                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch))
+                        if(request!=null&&request.view()!=null&&CinematicRig.VIEWS.contains(request.view())
+                            &&!Set.of("drone_follow","drone_overview").contains(request.view())&&!cinematicEnabled)
+                            throw new IllegalArgumentException("cinematic_rig_not_explicitly_enabled");
+                        if(request!=null&&OrthographicRig.supportsView(request.view())&&!ORTHO.ready())
+                            throw new IllegalArgumentException("orthographic_backend_unavailable");
+                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch)){
                             manualDetachRequested=false;
+                            boolean sameRig=droneActive&&request.view().startsWith("drone_")
+                                &&Objects.equals(droneUuid,frame(client,request.target()).targetUuid());
+                            if(!sameRig)FrameBlend.begin(client,request.id());
+                        }
                         requestProblem=null;
                     }
                 }
@@ -169,41 +225,97 @@ public final class NativeDirectorClient implements ClientModInitializer {
         observeRequestCamera(client,now);
         var action=policy.step(frame(client,policy.target()),now);
         worldTransitionActive="world_transition".equals(policy.phase());
-        if(worldTransitionActive){DRONE.reset();droneReason="native_world_replacement";}
-        else if(!"attached".equals(policy.phase()))stopDrone("native_"+policy.phase());
+        if(worldTransitionActive){DRONE.reset();ORTHO.stop("native_world_replacement");droneReason="native_world_replacement";}
+        else if(!"attached".equals(policy.phase())){stopDrone("native_"+policy.phase());ORTHO.stop("native_"+policy.phase());}
         if(action.command()!=null&&client.method_1562()!=null){
             client.method_1562().method_45730(action.command());
             System.out.println("[MCVisualDirector] Observer-only camera request: "+policy.requestId());
         }
         if(action.view()!=null){
-            stopDrone("normal_perspective");
+            boolean orthographic=OrthographicRig.supportsView(action.view());
+            boolean preserveRig=droneActive&&action.view().startsWith("drone_")
+                &&Objects.equals(droneUuid,frame(client,policy.target()).cameraUuid());
+            if(!preserveRig)stopDrone("normal_perspective");
             class_5498 view=switch(action.view()){
-                case "third_person_back","drone_follow","drone_overview"->class_5498.field_26665;
+                case "third_person_back"->class_5498.field_26665;
                 case "third_person_front"->class_5498.field_26666;
-                default->class_5498.field_26664;
+                default->action.view().startsWith("drone_")||orthographic?class_5498.field_26665:class_5498.field_26664;
             };
             client.field_1690.method_31043(view);
+            if(orthographic){if(!ORTHO.begin(policy.requestId(),action.view(),client,nativeWorldEpoch,now))perspectiveFallback(client,"orthographic_preflight_failed");}
+            else ORTHO.stop("perspective_requested");
             if(action.view().startsWith("drone_")&&droneEnabled){
-                droneOverview="drone_overview".equals(action.view());
+                droneView=action.view();DRONE.begin(policy.requestId(),droneView,System.nanoTime(),policy.motion());CLOSE.begin();
                 droneUuid=frame(client,policy.target()).cameraUuid();droneActive=true;droneReason="awaiting_render";
             }
         }
+        if("attached".equals(policy.phase())&&client.field_1755==null){
+            if(!ORTHO.active())ORTHO.observe(client,client.method_1560(),nativeWorldEpoch,now,false,null);
+            if(!ORTHO.tick(client,nativeWorldEpoch,now))perspectiveFallback(client,"orthographic_occlusion_fallback");
+        }
         if(tick%20==0)diagnostics(client,true);
     }
-    private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneReason=reason;DRONE.reset();}
+    private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneReason=reason;DRONE.reset();CLOSE.stop();}
+    private void perspectiveFallback(class_310 client,String reason){
+        FrameBlend.begin(client,policy.requestId());client.field_1690.method_31043(class_5498.field_26665);
+        if(droneEnabled){droneView="drone_eye";DRONE.begin(policy.requestId(),droneView,System.nanoTime());CLOSE.begin();
+            droneUuid=frame(client,policy.target()).cameraUuid();droneActive=true;droneReason=reason;}
+    }
+    private void readCancel(class_310 client,long now){
+        try{
+            Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-director-cancel.json");
+            if(!Files.isRegularFile(file)||Files.size(file)>4096)return;
+            long modified=Files.getLastModifiedTime(file).toMillis();if(modified==lastCancelFileTime)return;lastCancelFileTime=modified;
+            var r=JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+            long issued=r.get("issuedAt").getAsLong(),expires=r.get("expiresAt").getAsLong();
+            if(issued>now+1000||expires<now||expires-issued>10000||expires<issued||!connectionEpoch.equals(r.get("connectionEpoch").getAsString()))return;
+            String id=r.get("id").getAsString(),lease=r.get("lease").getAsString(),target=r.get("target").getAsString();
+            if(!id.matches("[A-Za-z0-9:_-]{1,80}")||!lease.matches("[A-Za-z0-9_-]{1,80}")||!trackedTargets.contains(target)||!authenticated)return;
+            var frame=frame(client,target);if(frame.targetUuid()==null||!frame.targetUuid().equals(r.get("targetUuid").getAsString()))return;
+            if(cancelledIntents.size()>=256&&!cancelledIntents.containsKey(id))throw new IllegalStateException("cancel_archive_required");
+            String outcome=null;
+            if(!policy.hasSeen(id)){cancelledIntents.put(id,lease);outcome="cancelled";}
+            else if(policy.cancelRig(id,lease,frame)){cancelledIntents.put(id,lease);stopDrone("local_rig_cancelled");ORTHO.stop("cancelled");outcome="cancelled";}
+            else if(policy.stopPendingRig(id,lease,frame)){cancelledIntents.put(id,lease);stopDrone("cancel_pending_reconciliation");ORTHO.stop("cancelled");outcome="unknown";}
+            if(outcome!=null){
+                cancelReceipt=Map.of("id",id,"lease",lease,"connectionEpoch",connectionEpoch,
+                    "nativeWorldEpoch",nativeWorldEpoch,"targetUuid",frame.targetUuid(),"at",now,"phase",outcome);
+            }
+        }catch(Exception error){requestProblem="cancel_"+error.getClass().getSimpleName();}
+    }
+    private void renderTransition(class_310 client,class_332 draw){
+        if(policy==null||!authenticated){FrameBlend.abort();return;}
+        var f=frame(client,policy.target());
+        boolean ready="attached".equals(policy.phase())&&f.targetUuid()!=null&&f.targetUuid().equals(f.cameraUuid());
+        boolean terminal=manualDetachRequested||Set.of("paused","unknown","stopped","cancelled").contains(policy.phase());
+        if(ready&&droneActive&&System.currentTimeMillis()-droneRenderedAt<200)DRONE.confirmRendered();
+        FrameBlend.draw(client,draw,policy.requestId(),ready,terminal);
+    }
     public static boolean droneMayRender(class_1297 target){
         if(worldTransitionActive){DRONE.reset();return false;}
         if(!droneEnabled||!droneActive||target==null||!target.method_5667().toString().equals(droneUuid))return false;
         var client=class_310.method_1551();
         if(client.field_1724==null||!client.field_1724.method_7325()) {stopDrone("not_spectator");return false;}
-        if(client.field_1690.method_31044()!=class_5498.field_26665){stopDrone("manual_perspective");return false;}
-        if(client.field_1755!=null){DRONE.reset();return false;}
+        if(client.field_1690.method_31044()!=(CLOSE.firstPerson()?class_5498.field_26664:class_5498.field_26665)){stopDrone("manual_perspective");return false;}
+        if(client.field_1755!=null){DRONE.suspend();return false;}
         return true;
     }
     public static DroneFollow.Pose dronePose(class_1297 target,class_243 eye){
         return DRONE.next(droneUuid,eye.field_1352,eye.field_1351,eye.field_1350,target.method_36454(),
-            System.nanoTime(),droneOverview?3.5:droneDistance,droneOverview?9:droneHeight);
+            System.nanoTime(),droneDistance,droneHeight);
     }
+    public static java.util.List<DroneFollow.Pose> dronePath(){return DRONE.path();}
+    public static boolean finiteShotActive(){return DRONE.finiteActive();}
+    public static void dronePathResult(boolean clear){DRONE.pathResult(clear,System.nanoTime());}
+    public static void dronePathBlocked(){DRONE.abort("native_path_changed");DRONE.closeFallback();}
+    public static boolean closeView(float clipped,boolean known){
+        if(!autoCloseEnabled)return false;
+        boolean first=CLOSE.update(System.currentTimeMillis(),clipped,known);
+        if(first)DRONE.closeFallback();
+        var client=class_310.method_1551();client.field_1690.method_31043(first?class_5498.field_26664:class_5498.field_26665);
+        return first;
+    }
+    public static double closeRecovery(){return CLOSE.recovery(System.currentTimeMillis());}
     public static void droneRendered(float requested,float clipped){
         droneRequestedDistance=requested;droneClippedDistance=clipped;
         droneRenderedAt=System.currentTimeMillis();droneReason="rendered_with_native_collision";
@@ -213,11 +325,17 @@ public final class NativeDirectorClient implements ClientModInitializer {
         try{
             Map<String,Object> data=new LinkedHashMap<>();
             data.put("schema","mcvisual-native-director/v1");data.put("recordedAt",Instant.now().toString());
-            data.put("nativeVersion","0.1.10");
+            data.put("nativeVersion",FabricLoader.getInstance().getModContainer("mcvisual-native-director").map(m->m.getMetadata().getVersion().getFriendlyString()).orElse("unknown"));
+            data.put("visionCapture",NativeVisionCapture.status());
+            data.put("deathOverlay",deathOverlayReceipt);
+            data.put("transition",FrameBlend.status());
+            data.put("positionFailure",policy.positionFailure());
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());
             data.put("connectionEpoch",connectionEpoch);data.put("connectionBoundRequests",requireConnectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());
+            data.put("activeLease",policy.activeLease());data.put("cancelReceipt",cancelReceipt);data.put("rigCancelSupported",true);data.put("renderedAt",lastRenderedAt);
             var f=frame(client,policy.target());data.put("targetUuid",f.targetUuid());data.put("cameraUuid",f.cameraUuid());
+            data.put("server",f.server());data.put("observer",f.observer());
             data.put("observerUuid",f.observerUuid());data.put("offer",policy.offerReceipt());
             data.put("nativeWorldEpoch",nativeWorldEpoch);data.put("detachObservation",policy.detachObservation());
             data.put("cameraLife",f.cameraLife());data.put("manualDetachRequested",f.manualDetachRequested());
@@ -246,7 +364,13 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("drone",Map.of("enabled",droneEnabled,"active",droneActive,
                 "reason",droneReason,"lastRenderedAt",droneRenderedAt,
                 "requestedDistance",droneRequestedDistance,"clippedDistance",droneClippedDistance));
-            data.put("droneShot",droneOverview?"overview":"follow");
+            data.put("droneShot",droneView);data.put("shotExecution",OrthographicRig.supportsView(policy.view())?ORTHO.status():DRONE.status());
+            data.put("effectiveView",DirectorPolicy.effectiveView(client.field_1690.method_31044().name(),ORTHO.active(),policy.view(),CLOSE.firstPerson(),droneActive,(String)DRONE.status().get("effectiveView")));
+            var ortho=ORTHO.status();data.put("orthographic",ortho);data.put("projection",ortho.get("projection"));data.put("projectionProfile",ortho.get("projectionProfile"));data.put("spatial",ORTHO.spatial());
+            data.put("closeView",Map.of("enabled",autoCloseEnabled,"firstPerson",CLOSE.firstPerson(),"reason",CLOSE.reason()));
+            Set<String> views=new LinkedHashSet<>(Set.of("first_person","third_person_back","third_person_front"));
+            if(droneEnabled)views.addAll(cinematicEnabled?CinematicRig.VIEWS:Set.of("drone_follow","drone_overview"));if(ORTHO.ready())views.addAll(OrthographicRig.PRESETS.keySet());data.put("availableViews",views);
+            if(droneEnabled)data.put("cameraScript",Map.of("schema",CinematicRig.SCRIPT_PROTOCOL,"parameters",List.of("distance","height","speed","durationMs","arcDegrees"),"preflightRequiredForFinite",true));
             data.put("screenOpen",client.field_1755!=null);
             data.put("hudFramesPerSecond",System.currentTimeMillis()-lastRenderedAt<3000?hudFramesPerSecond:null);
             data.put("configProblem",configProblem);data.put("requestProblem",requestProblem);

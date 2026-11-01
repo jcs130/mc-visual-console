@@ -7,6 +7,7 @@ public final class DroneFollow {
     private double ax,ay,az,cx,cy,cz,heading;
     private long previousNanos;
     public void reset(){identity=null;previousNanos=0;}
+    public double headingDegrees(){return heading;}
     private static double alpha(double dt,double seconds){return 1-Math.exp(-dt/seconds);}
     private static double angle(double value){return ((value+180)%360+360)%360-180;}
     private static boolean finite(double... v){for(double n:v)if(!Double.isFinite(n))return false;return true;}

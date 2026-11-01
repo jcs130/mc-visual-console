@@ -60,7 +60,7 @@ export class SceneSelector{
   constructor(names,{minDwellMs=30_000,maxDwellMs=120_000,cinematicFraming=false}={}){
     this.names=[...names];this.minDwellMs=Math.max(10_000,minDwellMs);
     this.maxDwellMs=Math.max(this.minDwellMs,maxDwellMs);this.activities=new Map();this.presence=new Map();this.cinematicFraming=cinematicFraming===true;
-    this.available=null;
+    this.available=null;this.coverage=new Map();this.program=null;this.firstOpportunityAt=null;
   }
   setAvailable(names){this.available=names===null?null:new Set(names.filter(n=>this.names.includes(n)));}
   remember(name,value){
@@ -83,12 +83,39 @@ export class SceneSelector{
     if(moved)this.remember(name,{at,score:4,kind:'movement',source:'observed-native-position-delta'});
   }
   stationary(name,now){const p=this.presence.get(name);return !!p&&now-p.at<=15000&&p.at-p.stillSince>=8000;}
+  /** Only the host's fresh, actually rendered camera observation advances airtime. */
+  observeProgram(name,{at,scope},now=Date.now()){
+    if(!this.names.includes(name)||!Number.isFinite(at)||at>now+1000||now-at>3000||typeof scope!=='string'||!scope)return;
+    if(this.program?.scope===scope&&at<=this.program.at)return;
+    if(this.program&&this.program.scope!==scope){this.program=null;this.coverage.clear();this.firstOpportunityAt=now;}
+    const old=this.program,c=this.coverage.get(name)??{lastShownAt:null,airtimeMs:0,visits:0};
+    if(old?.name===name){const dt=at-old.at;if(dt>=0&&dt<=3000)c.airtimeMs+=dt;}else c.visits++;
+    c.lastShownAt=at;this.coverage.set(name,c);this.program={name,at,scope};
+  }
+  subjectCandidates(current,currentSince,now=Date.now()){
+    this.firstOpportunityAt??=now;
+    return this.names.filter(name=>this.available===null||this.available.has(name)).map(name=>{
+      const scored=[...(this.activities.get(name)?.values()??[])].map(e=>{
+        const age=now-e.at,horizon=e.kind==='combat'?12000:e.kind==='interaction'?15000:e.kind==='conversation'?45000:20000;
+        return{...e,score:e.kind==='movement'&&this.stationary(name,now)||age<0||age>horizon?0:e.score*Math.exp(-age/(e.kind==='conversation'?30000:12000))};
+      }).filter(e=>e.score>=.15);
+      const physical=scored.filter(e=>e.kind!=='conversation').sort((a,b)=>b.score-a.score),speech=scored.filter(e=>e.kind==='conversation').sort((a,b)=>b.at-a.at);
+      const best=physical[0]??speech[0],c=this.coverage.get(name),p=this.presence.get(name),waitingMs=Math.max(0,now-(c?.lastShownAt??this.firstOpportunityAt));
+      const priority=best?.kind==='combat'?3:physical.length?2:speech.length?1:0;
+      return{name,score:best?.score??0,kind:best?.kind??'coverage',at:best?.at??p?.at??now,priority,
+        waitingMs,lastShownAt:c?.lastShownAt??null,airtimeMs:c?.airtimeMs??0,visits:c?.visits??0,
+        motionState:!p||now-p.at>15000?'unknown':this.stationary(name,now)?'stationary':'recent_sample',
+        positionAt:p?.at??null,protected:best?.kind==='combat'&&now-best.at<=8000,
+        current:name===current,dwellMs:name===current?Math.max(0,now-currentSince):0};
+    }).sort((a,b)=>b.priority-a.priority||b.score-a.score||b.waitingMs-a.waitingMs||a.name.localeCompare(b.name));
+  }
   inspect(now=Date.now()){
     return this.names.map(name=>{const p=this.presence.get(name),a=this.activities.get(name);
       return {name,available:this.available===null?null:this.available.has(name),positionAt:p?.at??null,
         motion:!p||now-p.at>15000?'unknown':this.stationary(name,now)?'stationary':'recent_sample',
-        stillSince:p?.stillSince??null,lastSpeechAt:a?.get('conversation')?.at??null,
-        lastMotionAt:a?.get('movement')?.at??null,lastCombatAt:a?.get('combat')?.at??null};});
+        stillSince:p?.stillSince??null,lastShownAt:this.coverage.get(name)?.lastShownAt??null,airtimeMs:this.coverage.get(name)?.airtimeMs??0,
+        lastSpeechAt:a?.get('conversation')?.at??null,
+        lastMotionAt:a?.get('movement')?.at??null,lastCombatAt:a?.get('combat')?.at??null,lastInteractionAt:a?.get('interaction')?.at??null};});
   }
   observe(name,event,now=Date.now()){
     if(!this.names.includes(name))return;
@@ -103,6 +130,19 @@ export class SceneSelector{
     const value=classifyEvent(event,now);if(value)this.remember(name,value);
   }
   choose(current,currentSince,now=Date.now(),currentView=null){
+    const subjects=this.subjectCandidates(current,currentSince,now),active=subjects.find(s=>s.name===current);
+    // Re-evaluate ordinary scenes at the real subject deadline, even when the same actor keeps talking.
+    // A fight remains protected by fresh action evidence; this is not unconditional round-robin.
+    if(current&&this.available!==null&&!active?.protected){
+      const others=subjects.filter(s=>s.name!==current),waitLimit=this.maxDwellMs*Math.max(2,subjects.length-1),
+        urgent=others.filter(s=>s.protected),starved=others.filter(s=>s.waitingMs>=waitLimit).sort((a,b)=>b.waitingMs-a.waitingMs||b.priority-a.priority);
+      const overdue=starved.length>0&&!urgent.length&&now-currentSince>=this.minDwellMs;
+      if(overdue||now-currentSince>=this.maxDwellMs){
+        const pool=urgent.length?urgent:overdue?starved:others,other=pool[0];
+        if(other)return{...other,kind:other.priority?other.kind:'coverage',view:'first_person',subjectPool:pool.map(s=>s.name),
+          reason:overdue?'coverage_starvation_review':'coverage_review_after_max_dwell',forceSubjectReview:true};
+      }
+    }
     const stationary=name=>this.stationary(name,now);
     const scored=this.names.filter(name=>this.available===null||this.available.has(name)).flatMap(name=>{
       const activities=[...(this.activities.get(name)?.values()??[])];
@@ -117,6 +157,7 @@ export class SceneSelector{
     const speakers=scored.filter(s=>s.kind==='conversation').sort((a,b)=>b.at-a.at);
     const best=physical[0]??speakers[0];
     if(!best||best.score<0.15){
+      if(!current&&this.available!==null&&subjects.length)return{...subjects[0],kind:'coverage',view:'first_person',reason:'initial_available_subject'};
       if(this.cinematicFraming&&current&&currentView&&currentView!=='drone_overview'&&stationary(current)
         &&now-this.presence.get(current).stillSince>=15000)
         return {name:current,score:0,kind:'overview',at:this.presence.get(current).at,view:'drone_overview',reframe:true};

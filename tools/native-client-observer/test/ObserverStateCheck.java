@@ -91,6 +91,11 @@ public final class ObserverStateCheck {
         check(ObserverView.overview(bad,false).stream().anyMatch(x->x.contains("HP 15.4/30  Armor 15.9")),"floating gauges have readable precision");
         check(ObserverView.fields(bad).stream().anyMatch(x->x.equals("vitals.health = 15.42033576965332")),"field inspector keeps exact gauge precision");
         check(ObserverView.gauge(JsonNull.INSTANCE).equals("?"),"unknown gauge stays unknown");
+        var compact=ObserverView.compact(d,true);check(compact.size()==2,"normal broadcast summary is two rows");
+        check(compact.get(0).contains("Lv.")&&compact.get(1).contains("生命")&&compact.get(1).contains("魔力"),"summary retains identity and important live vitals");
+        check(compact.stream().noneMatch(x->x.contains("RPG XP")||x.contains("金币")||x.contains("学习点")),"verbose progression moves out of the default on-air panel");
+        var hungry=d.deepCopy();hungry.getAsJsonObject("vitals").addProperty("food",0);check(ObserverView.compact(hungry,true).size()==3,"low food gets one compact warning rather than a full statistics panel");
+        check(ObserverView.fields(hungry).stream().anyMatch(x->x.equals("vitals.food = 0")),"expanded source inspector preserves original values");
         var bag=new TargetInventory<String>();s=state(A,8);s.accept(bytes(d),t);
         var camera=s.current(t).camera();long epoch=s.epoch();
         List<String> hotbar=new ArrayList<>(Collections.nCopies(9,null));hotbar.set(0,"original-bow");hotbar.set(1,"");

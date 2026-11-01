@@ -11,6 +11,21 @@ test('only native confirmed death on the same target/world yields a fresh select
   assert.deepEqual(targetLoss(death()),{reason:'target_died',cooldownMs:15000});
   const d=death();const old=structuredClone(d);targetLoss(d);assert.deepEqual(d,old,'readback classifier mutates no control state');
 });
+const positionFailure=()=>({expectedTarget:'Alice',expectedUuid:'uuid-a',native:{phase:'stopped',reason:'target_position_unconfirmed',
+  connected:true,authenticated:true,spectator:true,target:'Alice',observerUuid:'observer',cameraUuid:'observer',manualDetachRequested:false,
+  requestId:'position-failure',nativeWorldEpoch:5,offer:{id:'position-failure',lease:'lease-1'},
+  positionFailure:{requestId:'position-failure',lease:'lease-1',targetUuid:'uuid-a',observerUuid:'observer',cameraUuid:'observer',nativeWorldEpoch:5,observedAt:10000,commands:2}}});
+test('unconfirmed positioning with a proven self camera permits a different subject, not a teleport replay',()=>{
+  assert.deepEqual(targetLoss(positionFailure()),{reason:'target_position_unconfirmed',cooldownMs:30000,previousTeleportOutcome:'unconfirmed',replayPreviousRequest:false});
+});
+test('position timeout recovery requires exact native request/lease/world and no attachment command',()=>{
+  for(const patch of [{requestId:'other'},{lease:'other'},{targetUuid:'other'},{observerUuid:'other'},{cameraUuid:'other'},{nativeWorldEpoch:4},{commands:3},{observedAt:null}]){
+    const f=positionFailure();Object.assign(f.native.positionFailure,patch);assert.equal(targetLoss(f),null,JSON.stringify(patch));
+  }
+  for(const patch of [{phase:'unknown'},{phase:'paused'},{manualDetachRequested:true}]){
+    const f=positionFailure();Object.assign(f.native,patch);assert.equal(targetLoss(f),null,JSON.stringify(patch));
+  }
+});
 test('manual pause, unknown result, another camera and unproven death never recover',()=>{
   for(const patch of [{phase:'paused'},{phase:'unknown'},{manualDetachRequested:true},{cameraUuid:'foreign'},
       {connected:false},{authenticated:false},{spectator:false},{target:'Bob'},{cameraLife:null}]){

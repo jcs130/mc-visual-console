@@ -1,4 +1,5 @@
 import org.mcvisual.director.DirectorPolicy;
+import org.mcvisual.director.OrthographicRig;
 import java.util.*;
 public class DirectorPolicyCheck {
     static int checks;
@@ -230,6 +231,16 @@ public class DirectorPolicyCheck {
             new DirectorPolicy.CameraLife("uuid-a",42,1,true,"proven-current-camera",t+50),false);
         proven.step(proof,t+100);
         check("target_died".equals(proven.reason())&&proven.commands()==0,"current-request actual camera observation proves death even without an earlier healthy frame for that entity");
+        var overlay=lifePolicy("death-overlay",t);
+        var overlayFrame=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",true,"observer","observer",1,
+            new DirectorPolicy.CameraLife("uuid-a",31,1,true,"death-overlay",t+50),false);
+        check(overlay.shouldAdvanceDeathOverlay(overlayFrame,true,t+100),"actual death screen permits its bound lifecycle readback");
+        check(overlay.shouldDismissDeathOverlay(overlayFrame,true,true,t+100),"living spectator can dismiss the followed-player death overlay");
+        check(!overlay.shouldDismissDeathOverlay(overlayFrame,false,true,t+100),"ordinary menus stay under user control");
+        check(!overlay.shouldDismissDeathOverlay(overlayFrame,true,false,t+100),"actual observer death is not hidden");
+        check(!overlay.shouldDismissDeathOverlay(overlayFrame,true,true,t+4000),"stale death evidence cannot close a screen");
+        overlay.step(overlayFrame,t+100);
+        check("target_died".equals(overlay.reason())&&overlay.shouldDismissDeathOverlay(overlayFrame,true,true,t+150),"confirmed detach can clear the same overlay without replaying a request");
         for(var sample:List.of(new DirectorPolicy.CameraLife("uuid-a",42,1,true,"another-request",t+50),
                 new DirectorPolicy.CameraLife("uuid-a",42,1,true,"proof-guard",t-5000),
                 new DirectorPolicy.CameraLife("uuid-a",42,2,true,"proof-guard",t+50))){
@@ -242,6 +253,42 @@ public class DirectorPolicyCheck {
         String manualReason=preserveReason.reason();
         preserveReason.offer(r("after-pause-refused","Alice","first_person",t+200),life(1,"observer","uuid-a",31,true,false),t+200);
         check(manualReason.equals(preserveReason.reason())&&"manual_override".equals(preserveReason.offerReceipt().reason()),"refused offers retain both original terminal reason and separate refusal evidence");
+        var positionFail=policy();
+        var remote=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",false,"observer","observer",1);
+        check(positionFail.offer(r("position-failure","Alice","first_person",t),remote,t),"positioning request admitted");
+        check("minecraft:tp @s Alice".equals(positionFail.step(remote,t).command()),"only observer teleport before attachment");
+        check(positionFail.step(remote,t+8001).command()==null&&"stopped".equals(positionFail.phase())
+            &&"target_position_unconfirmed".equals(positionFail.reason()),"confirmed self-camera position timeout becomes a known display failure");
+        check(positionFail.positionFailure()!=null&&positionFail.positionFailure().commands()==1
+            &&"position-failure".equals(positionFail.positionFailure().requestId()),"position failure is request-bound evidence");
+        check(positionFail.step(w(1,"observer"),t+9000).command()==null,"late target presence never replays old request");
+        for(String camera:Arrays.asList(null,"another-player")){
+            var unproven=policy();unproven.offer(r("position-unknown-"+(camera==null?"null":"other"),"Alice","first_person",t),remote,t);unproven.step(remote,t);
+            var changedCamera=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",false,camera,"observer",1);
+            unproven.step(changedCamera,t+8001);check("unknown".equals(unproven.phase())&&unproven.positionFailure()==null,"unknown/nonself camera cannot be auto-recovered");
+        }
+        var cancel=worldPolicy("cancel-rig",t);
+        check(!cancel.cancelRig("other","lease-one",w(1,"uuid-a")),"foreign camera ID cannot cancel");
+        check(!cancel.cancelRig("cancel-rig","other-lease",w(1,"uuid-a")),"foreign lease cannot cancel");
+        check(cancel.cancelRig("cancel-rig","lease-one",w(1,"uuid-a")),"actual attached local rig can cancel");
+        int beforeCancelCommands=cancel.commands();
+        check("cancelled".equals(cancel.phase())&&cancel.step(w(2,"uuid-a"),t+20000).command()==null&&cancel.commands()==beforeCancelCommands,"world replacement cannot resurrect cancelled rig");
+        var cancelPending=policy();cancelPending.offer(r("pending-cancel","Alice","drone_follow",t),remote,t);cancelPending.step(remote,t);
+        check(!cancelPending.cancelRig("pending-cancel","lease-one",remote),"unconfirmed teleport cannot be reported cancelled");
+        int pendingCommands=cancelPending.commands();
+        check(cancelPending.stopPendingRig("pending-cancel","lease-one",remote),"pending cancellation stops further native steps");
+        check("unknown".equals(cancelPending.phase())&&cancelPending.step(w(2,"observer"),t+30000).command()==null&&cancelPending.commands()==pendingCommands,"pending cancellation preserves uncertainty and never replays an attach");
+        for(String view:OrthographicRig.PRESETS.keySet()){
+            var ortho=policy();check(ortho.offer(r("ortho-"+view,"Alice",view,t),w(1,"uuid-a"),t),"orthographic view uses original observer policy");
+            check(view.equals(ortho.step(w(1,"uuid-a"),t).view()),"orthographic composition preserves actual native actor binding");
+        }
+        check("first_person".equals(DirectorPolicy.effectiveView("FIRST_PERSON",false,null,false,false,"drone_follow")),"idle drone label cannot replace actual first-person renderer");
+        check("third_person_back".equals(DirectorPolicy.effectiveView("THIRD_PERSON_BACK",false,null,false,false,"drone_front")),"rear vanilla perspective remains authoritative without a drone");
+        check("third_person_front".equals(DirectorPolicy.effectiveView("THIRD_PERSON_FRONT",false,null,false,false,"drone_follow")),"front vanilla perspective remains authoritative without a drone");
+        check("first_person".equals(DirectorPolicy.effectiveView("THIRD_PERSON_BACK",false,null,true,true,"drone_follow")),"collision fallback reports first person");
+        check("ortho_top".equals(DirectorPolicy.effectiveView("FIRST_PERSON",true,"ortho_top",false,false,"drone_follow")),"active orthographic projection reports its current view");
+        check("drone_side_left".equals(DirectorPolicy.effectiveView("THIRD_PERSON_BACK",false,null,false,true,"drone_side_left")),"active drone reports its current view");
+        check(DirectorPolicy.effectiveView(null,false,null,false,false,"drone_follow")==null,"unknown native perspective cannot borrow a stopped rig label");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

@@ -5,7 +5,10 @@ import java.util.*;
 /** Observer-only camera requests. No arbitrary command surface or invented ACK. */
 public final class DirectorPolicy {
     public record Config(boolean enabled,String server,String observer,Set<String> targets,long minSwitchMs) {}
-    public record Request(String id,String lease,String target,String view,long issuedAt,long expiresAt,String connectionEpoch) {
+    public record Request(String id,String lease,String target,String view,long issuedAt,long expiresAt,String connectionEpoch,Map<String,Object> motion) {
+        public Request(String id,String lease,String target,String view,long issuedAt,long expiresAt,String connectionEpoch){
+            this(id,lease,target,view,issuedAt,expiresAt,connectionEpoch,null);
+        }
         public Request(String id,String lease,String target,String view,long issuedAt,long expiresAt){
             this(id,lease,target,view,issuedAt,expiresAt,null);
         }
@@ -28,6 +31,8 @@ public final class DirectorPolicy {
     public record DetachObservation(long at,long nativeWorldEpoch,boolean spectator,
                                     String targetUuid,String cameraUuid,String observerUuid) {}
     public record OfferReceipt(String id,String lease,String target,long at,boolean accepted,String reason) {}
+    public record PositionFailure(String requestId,String lease,String targetUuid,String observerUuid,
+                                  String cameraUuid,long nativeWorldEpoch,long observedAt,int commands) {}
     public record Action(String command,String view) {
         static Action none(){return new Action(null,null);}
     }
@@ -42,16 +47,33 @@ public final class DirectorPolicy {
     private long attachedEntityWorldEpoch;
     private CameraLife deadAttachment;
     private DetachObservation detachObservation;
+    private PositionFailure positionFailure;
+    private String requestObserverUuid;
     private static final long WORLD_SETTLE_MS=3000;
     private int commands;
     public DirectorPolicy(Config config){this.config=config;}
     public String target(){return request==null?null:request.target();}
     public String requestId(){return request==null?null:request.id();}
+    public String view(){return request==null?null:request.view();}
+    public Map<String,Object> motion(){return request==null?null:request.motion();}
+    public String activeLease(){return request==null?null:request.lease();}
+    public boolean hasSeen(String id){return seen.contains(id);}
+    /** Cancel only an already bound local camera rig. In-flight teleport/attach remains unconfirmed. */
+    public boolean cancelRig(String id,String lease,Frame f){
+        if(!"attached".equals(phase)||!scoped(f)||!f.authenticated()||!f.spectator()||f.manualDetachRequested()
+            ||request==null||!Objects.equals(request.id(),id)||!Objects.equals(request.lease(),lease)||!Objects.equals(expectedUuid,f.targetUuid())||!attached(f))return false;
+        phase="cancelled";reason="local_camera_rig_cancelled";return true;
+    }
+    public boolean stopPendingRig(String id,String lease,Frame f){
+        if(!pending()||!scoped(f)||!f.authenticated()||request==null||!Objects.equals(request.id(),id)||!Objects.equals(request.lease(),lease)||!Objects.equals(expectedUuid,f.targetUuid()))return false;
+        phase="unknown";reason="camera_cancel_requires_reconciliation";return true;
+    }
     public String phase(){return phase;}
     public String reason(){return reason;}
     public int commands(){return commands;}
     public OfferReceipt offerReceipt(){return offerReceipt;}
     public DetachObservation detachObservation(){return detachObservation;}
+    public PositionFailure positionFailure(){return positionFailure;}
     public static boolean hideObserverBody(boolean scoped,boolean spectator,boolean self){
         return scoped&&spectator&&self;
     }
@@ -87,17 +109,29 @@ public final class DirectorPolicy {
         detachObservation=new DetachObservation(now,f.nativeWorldEpoch(),f.spectator(),f.targetUuid(),f.cameraUuid(),f.observerUuid());
     }
     private void pause(Frame f,long now,String why){heldLease=request.lease();phase="paused";reason=why;observeDetach(f,now);}
-    private boolean nativeDeath(Frame f,long now){
+    private boolean nativeDeadAttachment(Frame f,long now){
         var life=f.cameraLife();
         boolean healthyBinding=life!=null&&attachedEntityId!=null&&attachedEntityId==life.entityId()
             &&attachedEntityWorldEpoch==nativeWorldEpoch;
         boolean nativeRequestBinding=life!=null&&request!=null&&Objects.equals(request.id(),life.requestId())
             &&life.observedAttachedAt()>=request.issuedAt()-1000&&life.observedAttachedAt()<=now+1000
             &&now-life.observedAttachedAt()<=3000&&life.entityId()>=0;
-        return sameObserver(f)&&f.spectator()&&cameraSelf(f)&&life!=null&&life.dead()
+        return sameObserver(f)&&f.spectator()&&life!=null&&life.dead()
             &&(life.requestId()==null?healthyBinding:nativeRequestBinding)
             &&Objects.equals(expectedUuid,life.uuid())&&nativeWorldEpoch>0
             &&nativeWorldEpoch==f.nativeWorldEpoch()&&life.nativeWorldEpoch()==nativeWorldEpoch;
+    }
+    private boolean nativeDeath(Frame f,long now){return cameraSelf(f)&&nativeDeadAttachment(f,now);}
+    /** A real death screen must not block the existing, bound camera-death lifecycle. */
+    public boolean shouldAdvanceDeathOverlay(Frame f,boolean deathScreen,long now){
+        return deathScreen&&request!=null&&Set.of("attached","target_death_transition").contains(phase)
+            &&scoped(f)&&f.authenticated()&&!f.manualDetachRequested()&&nativeDeadAttachment(f,now)
+            &&(cameraSelf(f)||attached(f));
+    }
+    /** Dismiss only a stale followed-player overlay on a natively living spectator self. */
+    public boolean shouldDismissDeathOverlay(Frame f,boolean deathScreen,boolean observerAlive,long now){
+        return deathScreen&&observerAlive&&request!=null&&scoped(f)&&f.authenticated()&&!f.manualDetachRequested()
+            &&nativeDeath(f,now)&&("attached".equals(phase)||"stopped".equals(phase)&&"target_died".equals(reason));
     }
     private void rememberAttachedLife(Frame f){
         var life=f.cameraLife();
@@ -135,10 +169,11 @@ public final class DirectorPolicy {
         }
         if(r==null||r.id()==null||r.lease()==null||!r.id().matches("[A-Za-z0-9:_-]{1,80}")
             ||!r.lease().matches("[A-Za-z0-9_-]{1,80}")||!allowed(r.target())
-            ||r.view()==null||!Set.of("first_person","third_person_back","third_person_front","drone_follow","drone_overview").contains(r.view()))
+            ||r.view()==null||!(Set.of("first_person","third_person_back","third_person_front").contains(r.view())||CinematicRig.VIEWS.contains(r.view())||OrthographicRig.supportsView(r.view())))
             return refuse("invalid_request");
         if(r.issuedAt()>now+1000||r.expiresAt()<=now||r.expiresAt()-r.issuedAt()>10_000
             ||r.expiresAt()<=r.issuedAt())return refuse("expired_request");
+          try{if(r.motion()!=null)CinematicRig.parameters(r.view(),r.motion());}catch(IllegalArgumentException invalid){return refuse("invalid_camera_script");}
         if(seen.contains(r.id()))return refuse("already_seen");
         if(pending())return refuse("previous_request_pending");
         if(Objects.equals(heldLease,r.lease()))return refuse("manual_override");
@@ -146,14 +181,22 @@ public final class DirectorPolicy {
         if(request!=null&&!request.target().equalsIgnoreCase(r.target())
             &&now-lastSwitchAt<Math.max(10_000,config.minSwitchMs()))return refuse("switch_cooldown");
         seen.add(r.id());while(seen.size()>32)seen.remove(seen.iterator().next());
-        request=r;expectedUuid=f.targetUuid();commands=0;phase="ready";reason="accepted";phaseAt=now;
+        request=r;expectedUuid=f.targetUuid();requestObserverUuid=f.observerUuid();positionFailure=null;commands=0;phase="ready";reason="accepted";phaseAt=now;
         nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;attachedEntityWorldEpoch=0;deadAttachment=null;detachObservation=null;
         return true;
+    }
+    /** An idle rig's remembered label is not an active rendered camera. */
+    public static String effectiveView(String perspective,boolean orthographic,String orthographicView,boolean closeFirst,boolean droneActive,String droneView){
+        if(orthographic)return orthographicView;
+        if(closeFirst)return "first_person";
+        if(droneActive)return droneView;
+        if(perspective==null)return null;
+        return switch(perspective){case "FIRST_PERSON"->"first_person";case "THIRD_PERSON_BACK"->"third_person_back";case "THIRD_PERSON_FRONT"->"third_person_front";default->null;};
     }
     public Action step(Frame f,long now){
         if(request==null)return Action.none();
         // Preserve manual/unknown terminal state even if the old target later disconnects.
-        if(Set.of("paused","stopped","unknown").contains(phase))return Action.none();
+        if(Set.of("paused","stopped","unknown","cancelled").contains(phase))return Action.none();
         if(!scoped(f)||!f.authenticated()){phase="stopped";reason="scope_or_auth_lost";return Action.none();}
         // A configured native detach key wins even when the target dies in the same frame.
         if(f.manualDetachRequested()&&Set.of("attached","world_transition","target_death_transition").contains(phase)){
@@ -212,7 +255,20 @@ public final class DirectorPolicy {
             return Action.none();
         }
         if(!pending())return Action.none();
-        if(now-phaseAt>8000){phase="unknown";reason="native_attachment_timeout";return Action.none();}
+        if(now-phaseAt>8000){
+            // Positioning never sent a target attachment command. Once this
+            // request stops, its state machine cannot attach a late respawn.
+            // Preserve the unconfirmed teleport, but publish the known self
+            // camera so the host may choose another subject under a NEW id.
+            if("position".equals(phase)&&f.spectator()&&!f.manualDetachRequested()
+                    &&requestObserverUuid!=null&&requestObserverUuid.equals(f.observerUuid())
+                    &&cameraSelf(f)&&f.nativeWorldEpoch()>0){
+                positionFailure=new PositionFailure(request.id(),request.lease(),expectedUuid,
+                    f.observerUuid(),f.cameraUuid(),f.nativeWorldEpoch(),now,commands);
+                phase="stopped";reason="target_position_unconfirmed";observeDetach(f,now);
+            }else{phase="unknown";reason="native_attachment_timeout";}
+            return Action.none();
+        }
         if(attached(f)){
             var life=f.cameraLife();
             if(life!=null&&life.dead()&&Objects.equals(expectedUuid,life.uuid())&&life.entityId()>=0

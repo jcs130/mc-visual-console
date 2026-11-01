@@ -5,6 +5,14 @@ export function directorTargetLoss({native,expectedTarget,expectedUuid}={}) {
       ||!native.observerUuid||native.cameraUuid!==native.observerUuid
       ||native.target!==expectedTarget||!expectedUuid||native.manualDetachRequested===true)return null;
   if(native.reason==='target_identity_lost')return{reason:native.reason,cooldownMs:15000};
+  const failure=native.positionFailure;
+  if(native.reason==='target_position_unconfirmed'&&failure?.requestId===native.requestId
+      &&failure.lease===native.offer?.lease&&native.offer?.id===native.requestId
+      &&failure.targetUuid===expectedUuid&&failure.observerUuid===native.observerUuid
+      &&failure.cameraUuid===native.observerUuid&&failure.nativeWorldEpoch===native.nativeWorldEpoch
+      &&Number.isSafeInteger(failure.nativeWorldEpoch)&&failure.nativeWorldEpoch>0
+      &&Number.isFinite(failure.observedAt)&&Number.isInteger(failure.commands)&&failure.commands>=1&&failure.commands<=2)
+    return{reason:native.reason,cooldownMs:30000,previousTeleportOutcome:'unconfirmed',replayPreviousRequest:false};
   const life=native.cameraLife;
   if(native.reason==='target_died'&&life?.dead===true&&life.uuid===expectedUuid
       &&Number.isSafeInteger(life.entityId)&&life.entityId>=0
