@@ -63,7 +63,7 @@ export class NativeSelfPlayerController {
   appearance () {
     const original=this.lastInput?.[0]?.paperAppearance;
     return { available: !!this.lastInput && !this.disposed, selected: this.appearanceId, choices: nativeAppearanceChoices(this.reader.manifest, this.bundledAppearanceReader),
-      serverModel:original?{modelId:original.modelId,texture:original.texture,ysmVersion:original.ysmVersion,nativeAvailable:original.nativeAvailable===true||original.available===true,webAvailable:original.available===true,reason:original.reason??null}:null,
+      serverModel:original?{modelId:original.modelId,texture:original.texture,ysmVersion:original.ysmVersion,nativeModelId:original.nativeModelId,nativeTexture:original.nativeTexture,presentation:original.presentation,nativeAvailable:original.nativeAvailable===true||original.available===true,webAvailable:original.available===true,reason:original.reason??null}:null,
       unavailable:this.appearanceId==='server'&&original?.nativeAvailable===true&&original.available!==true,
       status: `${this.appearanceId === 'server' ? '跟随服务器外观' : 'Web 外观替换'} · ${this.status ?? '等待当前观战玩家'}` }
   }
