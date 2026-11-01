@@ -44,6 +44,8 @@ test('prefer original OrthoCamera only for current proven open geometry, with a 
   spatial:{at:now,targetUuid:'actor',nativeWorldEpoch:1,layout:'open',known:true,floorSafe:true,orthographicVisibility:1}};
  const choice={name:'Alice',kind:'overview',view:'drone_overview'},opts={enabled:true,orthographic:true,now};
  assert.equal(selectNativeShot(choice,n,opts).view,'ortho_overview');
+ const room={...n,spatial:{...n.spatial,layout:'room'}};
+ assert.equal(selectNativeShot(choice,room,opts).view,'ortho_overview');
  assert.equal(selectNativeShot(choice,n,{...opts,lastProjectionChangeAt:now-1000}).view,'drone_overview');
  for(const patch of[{layout:'tunnel'},{layout:'layered'},{known:false},{floorSafe:false},{targetUuid:'other'},{at:now-3000},{orthographicVisibility:.4}]){
   const other={...n,spatial:{...n.spatial,...patch}};assert.equal(selectNativeShot(choice,other,opts).view,'drone_overview');}

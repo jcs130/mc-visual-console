@@ -35,6 +35,12 @@ public class OrthographicRigCheck {
         var unknown=start();unknown.advance(1000,sample(1000));unknown.confirmRendered(unknown.pose(),1001);
         check(unknown.advance(1500,new OrthographicRig.Sample(1500,"actor",1,"open",true,Double.NaN,List.of()))==null,"unknown ray path is not clear terrain");
         r.stop("cancelled");check(r.advance(1500,sample(1500))==null,"cancelled projection cannot advance");r.confirmRendered(p,1501);check("cancelled".equals(r.phase()),"late frame cannot revive cancellation");
+        var roomSample=new OrthographicRig.Sample(1000,"actor",1,"room",true,1,List.of(new OrthographicRig.Candidate(45,55,1)));
+        var room=new OrthographicRig();check(room.begin("room","ortho_overview","actor",1,1000,null,false,roomSample),"a verified room is not rejected solely because a roof exists");
+        room.advance(1000,roomSample);check(room.pose().scale()==7,"room view frames the current room rather than the whole village");
+        room.confirmRendered(room.pose(),1001);check("holding".equals(room.phase()),"room projection still requires native rendered confirmation");
+        float near=OrthographicRig.roomClipDepth(.6,1.8,1.62,45,55);check(near>=.8&&near<1.2,"actor-bound near plane retains the body and clips a distant ceiling");
+        check(OrthographicRig.roomClipDepth(2,3,2.5,45,55)>near,"larger actors reserve a larger unclipped depth");
         System.out.println(checks+" orthographic-rig checks passed");
     }
 }

@@ -17,7 +17,14 @@ public final class OrthographicRig {
     public static boolean supportsView(String view){return view!=null&&PRESETS.containsKey(view);}
     public static boolean matches(Pose a,Pose b){return a!=null&&b!=null&&Math.abs(angle(a.yaw-b.yaw))<.08&&Math.abs(a.pitch-b.pitch)<.08&&Math.abs(a.scale-b.scale)<.02;}
     public static boolean suitable(Sample s,String uuid,long world,long now){return s!=null&&Objects.equals(uuid,s.uuid)&&world==s.world
-        &&s.known&&"open".equals(s.layout)&&s.at<=now&&now-s.at<=2000;}
+        &&s.known&&("open".equals(s.layout)||"room".equals(s.layout))&&s.at<=now&&now-s.at<=2000;}
+    /** Clip behind the native actor bounds, with a margin for visible hair/clothing. */
+    public static float roomClipDepth(double width,double height,double eyeHeight,float yaw,float pitch){
+        double yr=Math.toRadians(yaw),pr=Math.toRadians(pitch),vertical=Math.sin(pr);
+        double nearest=width*.5*Math.cos(pr)*(Math.abs(Math.sin(yr))+Math.abs(Math.cos(yr)))
+            +Math.max(-eyeHeight*vertical,(height-eyeHeight)*vertical);
+        return (float)Math.max(.8,nearest+.4);
+    }
     private Candidate best(Sample s,Pose preferred){
         return s.candidates.stream().filter(c->Double.isFinite(c.visibility)&&c.visibility>=.8)
             .min(Comparator.comparingDouble(c->Math.abs(angle(c.yaw-preferred.yaw))*.01+Math.abs(c.pitch-preferred.pitch)*.01-c.visibility)).orElse(null);
@@ -29,13 +36,15 @@ public final class OrthographicRig {
         if(!suitable(sample,uuid,world,now)){block("orthographic_scene_unsuitable");return false;}
         Pose preset=PRESETS.get(view);Candidate candidate=best(sample,preset);
         if(candidate==null){block("orthographic_subject_occluded");return false;}
-        to=new Pose(candidate.yaw,candidate.pitch,preset.scale);from=alreadyOrtho&&current!=null?current:to;pose=from;
+        to=new Pose(candidate.yaw,candidate.pitch,"room".equals(sample.layout)?Math.min(7,preset.scale):preset.scale);from=alreadyOrtho&&current!=null?current:to;pose=from;
         start=now;duration=alreadyOrtho?700:0;active=true;phase="transitioning";reason="awaiting_projection_frame";return true;
     }
     public Pose advance(long now,Sample sample){
         if(!active)return null;
         if(now<start||!suitable(sample,uuid,world,now)){block("orthographic_context_lost");return null;}
         if("holding".equals(phase)){
+            float sceneScale="room".equals(sample.layout)?Math.min(7,PRESETS.get(view).scale):PRESETS.get(view).scale;
+            if(Math.abs(to.scale-sceneScale)>.02){from=pose;to=new Pose(to.yaw,to.pitch,sceneScale);start=now;duration=700;phase="transitioning";reason="scene_scale_changed";renderedAt=0;}
             if(!Double.isFinite(sample.visibility)){block("orthographic_visibility_unknown");return null;}
             if(sample.visibility<.8){
                 if(obstructedAt<0)obstructedAt=now;

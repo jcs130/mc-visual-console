@@ -34,7 +34,7 @@ export function selectNativeShot(choice,native,{enabled=false,orthographic=false
   if(choice.kind==='showcase'&&choice.verifiedOutcome===true)preferences.unshift('drone_orbit_left','drone_pull_out');
   const context=native.spatial,subject=native.targets?.find(t=>t.name===choice.name)?.uuid;
   const canOrtho=orthographic&&native.orthographic?.ready===true&&context?.targetUuid===subject&&native.cameraUuid===subject
-    &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&context.layout==='open'&&context.floorSafe===true
+    &&context.nativeWorldEpoch===native.nativeWorldEpoch&&context.known===true&&['open','room'].includes(context.layout)&&context.floorSafe===true
     &&context.orthographicVisibility>=.8&&Number.isFinite(context.at)&&context.at<=now&&now-context.at<2000
     &&(native.projection==='orthographic'||now-lastProjectionChangeAt>=45000);
   if(canOrtho&&['overview','conversation','movement'].includes(choice.kind))
