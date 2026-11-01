@@ -61,7 +61,10 @@ export class NativeSelfPlayerController {
   }
   notify (actor, status) { this.status = status; this.onChange(actor, status) }
   appearance () {
+    const original=this.lastInput?.[0]?.paperAppearance;
     return { available: !!this.lastInput && !this.disposed, selected: this.appearanceId, choices: nativeAppearanceChoices(this.reader.manifest, this.bundledAppearanceReader),
+      serverModel:original?{modelId:original.modelId,texture:original.texture,ysmVersion:original.ysmVersion,nativeAvailable:original.nativeAvailable===true||original.available===true,webAvailable:original.available===true,reason:original.reason??null}:null,
+      unavailable:this.appearanceId==='server'&&original?.nativeAvailable===true&&original.available!==true,
       status: `${this.appearanceId === 'server' ? '跟随服务器外观' : 'Web 外观替换'} · ${this.status ?? '等待当前观战玩家'}` }
   }
   selectAppearance (id) {
@@ -87,7 +90,13 @@ export class NativeSelfPlayerController {
     if (this.selectionUuid !== playerUuid) { this.appearanceId = this.restoredSelection(playerUuid); this.selectionUuid = playerUuid }
     this.lastInput = [self, playerUuid, ysm]
     let binding
-    try { binding = this.appearanceId === 'server'
+    try {
+      if(this.appearanceId==='server'&&self.paperAppearance?.nativeAvailable===true&&self.paperAppearance.available!==true){
+        const original=self.paperAppearance;
+        if(original.playerUuid!==playerUuid||original.entityId!==self.entityId)throw Error('PAPER_APPEARANCE_IDENTITY_OR_ASSET_INVALID');
+        this.clear(`原生 YSM ${original.ysmVersion??''} · ${original.modelId??'原模型'}：网页暂缺原作者公开的几何、动画和贴图；本地客户端可显示。`,true);return null;
+      }
+      binding = this.appearanceId === 'server'
       ? self.paperAppearance?.available===true?nativePaperAppearanceBinding(self,playerUuid):nativeSelfPlayerBinding(self, playerUuid, ysm, { ysmAssetsPresent: this.ysmAssetsPresent })
       : nativeWebAppearanceBinding(self, playerUuid, this.appearanceId, this.reader.manifest, this.bundledAppearanceReader) }
     catch (error) { this.clear(error.message, true); return null }
