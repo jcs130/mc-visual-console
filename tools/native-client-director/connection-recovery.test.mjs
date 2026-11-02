@@ -1,6 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {directorConnectionRecovery as recover,directorTargetLoss as targetLoss} from './connection-recovery.mjs';
+import {directorConnectionRecovery as recover,directorTargetLoss as targetLoss,directorWorldReconciliation as reconcileWorld} from './connection-recovery.mjs';
+test('a new world can be reconciled for the same rendered request without resending or claiming completion',()=>{
+ const r={id:'request',lease:'lease',connectionEpoch:'connection',nativeWorldEpoch:1,targetUuid:'alice',issuedAt:1000};
+ const n={connected:true,authenticated:true,phase:'attached',spectator:true,observerUuid:'observer',requestId:r.id,activeLease:r.lease,
+   connectionEpoch:r.connectionEpoch,nativeWorldEpoch:2,targetUuid:'alice',cameraUuid:'alice',offer:{id:r.id,lease:r.lease,accepted:true},
+   cameraLife:{requestId:r.id,uuid:'alice',entityId:12,nativeWorldEpoch:2,dead:false,observedAttachedAt:2000},renderedAt:2000,recordedAt:new Date(2000).toISOString()};
+ const f={native:n,request:r,expectedObserverUuid:'observer',now:2100};
+ assert.deepEqual(reconcileWorld(f),{requestId:'request',previousWorldEpoch:1,nativeWorldEpoch:2,targetUuid:'alice',requestReissued:false,completionVerified:false});
+ assert.equal(r.nativeWorldEpoch,1,'the original request remains untouched');
+ for(const patch of [{phase:'unknown'},{phase:'paused'},{manualDetachRequested:true},{connectionEpoch:'new'},{observerUuid:'other'},
+   {requestId:'other'},{activeLease:'other'},{targetUuid:'other'},{cameraUuid:'observer'},{nativeWorldEpoch:1},{renderedAt:0},
+   {transition:{active:true}},{offer:{...n.offer,accepted:false}},{cameraLife:{...n.cameraLife,dead:true}},
+   {cameraLife:{...n.cameraLife,requestId:'old'}},{cameraLife:{...n.cameraLife,nativeWorldEpoch:1}}])assert.equal(reconcileWorld({...f,native:{...n,...patch}}),null,JSON.stringify(patch));
+ assert.equal(reconcileWorld({...f,now:6000}),null,'stale attachments cannot rebind a pending request');
+});
 const input=()=>({enabled:true,previousEpoch:'old',expectedObserverUuid:'observer',targets:['Alice'],
   native:{connectionEpoch:'new',connected:true,authenticated:true,phase:'idle',observerUuid:'observer',cameraUuid:'observer'}});
 

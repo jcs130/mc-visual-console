@@ -1,5 +1,21 @@
 // Camera-only recovery after a positively observed new native connection.
 // Prior effects remain unknown; callers must create a new lease/request.
+/** Adopt a newly rendered world only after the SAME accepted request is authoritatively attached there. */
+export function directorWorldReconciliation({native:n,request:r,expectedObserverUuid,now=Date.now()}={}){
+  if(!n||!r||!Number.isSafeInteger(r.nativeWorldEpoch)||r.nativeWorldEpoch<1
+    ||!Number.isSafeInteger(n.nativeWorldEpoch)||n.nativeWorldEpoch<=r.nativeWorldEpoch
+    ||!expectedObserverUuid||n.observerUuid!==expectedObserverUuid||n.connected!==true||n.authenticated!==true
+    ||n.phase!=='attached'||n.spectator!==true||n.manualDetachRequested===true
+    ||n.connectionEpoch!==r.connectionEpoch||n.requestId!==r.id||n.activeLease!==r.lease
+    ||!r.targetUuid||n.targetUuid!==r.targetUuid||n.cameraUuid!==r.targetUuid
+    ||n.offer?.id!==r.id||n.offer.lease!==r.lease||n.offer.accepted!==true)return null;
+  const life=n.cameraLife,fresh=t=>Number.isFinite(t)&&t>=r.issuedAt&&t<=now&&now-t<=3000;
+  if(life?.requestId!==r.id||life.uuid!==r.targetUuid||life.nativeWorldEpoch!==n.nativeWorldEpoch||life.dead!==false
+    ||!Number.isSafeInteger(life.entityId)||life.entityId<0||!fresh(life.observedAttachedAt)||!fresh(n.renderedAt)
+    ||!fresh(Date.parse(n.recordedAt))||n.transition?.active===true)return null;
+  return{requestId:r.id,previousWorldEpoch:r.nativeWorldEpoch,nativeWorldEpoch:n.nativeWorldEpoch,
+    targetUuid:r.targetUuid,requestReissued:false,completionVerified:false};
+}
 export function directorTargetLoss({native,expectedTarget,expectedUuid}={}) {
   if(native?.phase!=='stopped'||native.connected!==true||native.authenticated!==true||native.spectator!==true
       ||!native.observerUuid||native.cameraUuid!==native.observerUuid
