@@ -50,6 +50,15 @@ test('blocked finite paths back off rather than reissuing the same animation',()
  const f=fixture();f.n.shotExecution={requestId:'original',view:'drone_orbit_left',phase:'blocked'};
  assert.ok(!f.choose().view.startsWith('drone_orbit_'));f.tick(61000);assert.equal(f.choose().view,'drone_orbit_left');
 });
+
+test('an actual nonfinite safety fallback chooses another composition instead of repeating the failed side',()=>{
+ const f=fixture();f.n.effectiveView='first_person';f.n.drone.active=false;
+ f.n.shotExecution={requestId:f.n.requestId,view:'drone_front_left',phase:'holding',fallback:true};
+ const next=f.choose();assert.equal(next.view,'drone_front');
+ const menu=nativeCameraCandidates({...next,kind:'movement'},f.n,{now:f.now()});
+ assert.ok(menu.every(o=>o.view!=='drone_front_left'),'the movement alternative also honours the actual rejected side');
+ f.n.shotExecution.requestId='retired-request';assert.equal(f.choose().view,'drone_front_left','a retired request cannot forbid the current camera');
+});
 test('orthographic progression honours projection dwell, preserves floors, and returns to perspective',()=>{
  const f=fixture();Object.assign(f.n,{projection:'orthographic',effectiveView:'ortho_overview'});
  const options={orthographic:true,preferOrthographic:true,lastProjectionChangeAt:f.now()-20000};

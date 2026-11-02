@@ -58,8 +58,10 @@ export class NativeCameraSequence{
     &&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL&&n.cameraScript.preflightRequiredForFinite===true&&n.rigCancelSupported===true
     &&n.projection!=='orthographic'&&n.drone?.active===true&&fresh(n.drone.lastRenderedAt,2000)
     &&!Array.from(this.blocked.values()).some(until=>until>now);
+  const shot=n.shotExecution;
+  const unavailable=shot?.requestId===n.requestId&&!finite(shot.view)&&shot.fallback===true?shot.view:null;
   for(const view of candidates){
-   if(!caps.has(view)||view===c.view||view.startsWith('ortho_')&&!orthoSafe||finite(view)&&!pathReady)continue;
+   if(!caps.has(view)||view===c.view||view===unavailable||view.startsWith('ortho_')&&!orthoSafe||finite(view)&&!pathReady)continue;
    if(view.startsWith('ortho_')!==(n.projection==='orthographic')&&projectionAge<45000)continue;
    const motion=finite(view)?{schema:CAMERA_SCRIPT_PROTOCOL,speed:.75,durationMs:view.startsWith('drone_orbit_')?7500:6000,
       ...(view.startsWith('drone_orbit_')?{arcDegrees:35}:{})}:

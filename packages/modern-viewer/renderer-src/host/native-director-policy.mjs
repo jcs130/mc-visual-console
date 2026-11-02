@@ -48,6 +48,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
   if(choice.sequence?.reviewRequired===true&&same&&view===actualView)return;
   if(view.startsWith('ortho_')&&nativeSafeOrthographic(n)!==true)return;
   const finite=view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view);
+  if(same&&!finite&&n.shotExecution?.requestId===n.requestId&&n.shotExecution.view===view&&n.shotExecution.fallback===true)return;
   if(!n.availableViews.includes(view))return;
   if(finite&&(!same||view!==choice.view||profile||choice.sequence?.schema!=='mcvisual.shot-sequence/v1'
     ||choice.sequence.pathPreflightRequired!==true||!script||n.cameraScript.preflightRequiredForFinite!==true||n.rigCancelSupported!==true))return;
