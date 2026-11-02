@@ -89,6 +89,20 @@ ImmediatelyFast1.6.15, FerriteCore7.0.3, NotEnoughAnimations1.12.7, TLM and YSM 
 all twelve transformed targets, including Iris HandRenderer, on RTX5090. Actual
 shader hand pixels and animations still require live acceptance after installation.
 
+## Scoped final-frame capture, 0.1.24
+
+The existing one-shot `mcvisual-vision-request.json` accepts optional
+`"stage":"composited"` on the NeoForge adapter. It captures the final Minecraft
+framebuffer, including original hands and GUI, on RenderFrameEvent.Post. The
+default stage remains world-only for existing visual decision consumers. All
+current server/observer/connection/world/target/camera request bindings, 5-second
+expiry and 512-pixel budgets remain mandatory. Explicit final-frame requests can
+include a scoped menu; transitions and stale/wrong camera scopes are refused.
+The receipt declares `captureStage` and the exact output hash. No window focus,
+desktop pixels, key press, gameplay input or extra connection is used. Hosts whose
+adapter lacks the final-frame hook reject this stage instead of silently returning
+a world-only image. Eight additional admission checks cover these boundaries.
+
 ## Actual acceptance, 2026-11-02
 
 - The installed 0.1.21 client passed an authenticated same-target audit of native

@@ -43,6 +43,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private boolean manualDetachRequested;
     private long nativeWorldEpoch;
     private Set<String> trackedTargets=Set.of();
+    public static void captureCompositedFrame(){var self=instance;if(self!=null){var client=class_310.method_1551();NativeVisionCapture.renderComposited(client,self.visionScope(client));}}
     @Override public void onInitializeClient(){
         instance=this;
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));

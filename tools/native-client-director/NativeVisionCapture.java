@@ -19,7 +19,7 @@ public final class NativeVisionCapture {
     private static final AtomicBoolean BUSY=new AtomicBoolean();
     private static volatile long generation;
     private static volatile String latestId;
-    private static boolean enabled;private static Path requestFile,output;
+    private static boolean enabled,compositedAvailable;private static Path requestFile,output;
     private static long lastPoll,lastCapture,lastModified=-1;
     private static CapturePolicy.Request pending;
     private static final Set<String> seen=new LinkedHashSet<>();
@@ -32,6 +32,7 @@ public final class NativeVisionCapture {
     public static void reset(){generation++;enabled=false;pending=null;latestId=null;status=Map.of("enabled",false);}
     public static void invalidate(){if(pending!=null||BUSY.get()){generation++;pending=null;latestId=null;}}
     public static Map<String,Object> status(){return status;}
+    public static void declareCompositedFrameSupport(){compositedAvailable=true;}
     private static void atomic(Path target,byte[] data)throws Exception{
         Files.createDirectories(target.getParent());Path tmp=target.resolveSibling(target.getFileName()+".tmp");
         Files.write(tmp,data);Files.move(tmp,target,StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
@@ -51,12 +52,20 @@ public final class NativeVisionCapture {
             var r=JSON.fromJson(Files.readString(requestFile),CapturePolicy.Request.class);
             if(r==null||seen.contains(r.id()))return;
             seen.add(r.id());while(seen.size()>128)seen.remove(seen.iterator().next());latestId=r.id();
-            String why=CapturePolicy.refusal(r,scope,now);if(why!=null){pending=null;refused(r,why);return;}pending=r;
+            String why=CapturePolicy.refusal(r,scope,now);if(why==null&&r.composited()&&!compositedAvailable)why="composited_capture_unavailable";if(why!=null){pending=null;refused(r,why);return;}pending=r;
         }catch(Exception ignored){status=Map.of("enabled",true,"phase","rejected","reason","invalid_capture_request");}
     }
     /** Called on the render thread after world rendering, before OS/desktop overlays. */
     public static void render(class_310 client,CapturePolicy.Scope scope){
+        renderStage(client,scope,false);
+    }
+    /** Final game framebuffer only; no OS window activation or desktop capture. */
+    public static void renderComposited(class_310 client,CapturePolicy.Scope scope){
+        if(compositedAvailable)renderStage(client,scope,true);
+    }
+    private static void renderStage(class_310 client,CapturePolicy.Scope scope,boolean composited){
         if(!enabled||pending==null||BUSY.get())return;long now=System.currentTimeMillis();var r=pending;
+        if(r.composited()!=composited)return;
         String why=CapturePolicy.refusal(r,scope,now);if(why!=null){pending=null;refused(r,why);return;}
         if(now-lastCapture<750)return;
         var framebuffer=client.method_1522();int sw=framebuffer.field_1482,sh=framebuffer.field_1481;
@@ -102,6 +111,7 @@ public final class NativeVisionCapture {
                 meta.put("sha256",HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())));
                 meta.put("server",scope.server());meta.put("observerUuid",scope.observerUuid());meta.put("connectionEpoch",scope.connectionEpoch());meta.put("nativeWorldEpoch",scope.nativeWorldEpoch());
                 meta.put("targetUuid",scope.targetUuid());meta.put("cameraRequestId",scope.cameraRequestId());
+                meta.put("captureStage",r.composited()?"composited":"world");
                 atomic(folder.resolve("frame.jpg"),bytes.toByteArray());
                 if(!enabled||generation!=boundGeneration||!Objects.equals(latestId,r.id()))return;
                 atomic(folder.resolve("frame.json"),JSON.toJson(meta).getBytes(java.nio.charset.StandardCharsets.UTF_8));

@@ -36,7 +36,7 @@ await fs.cp(observer+'/assets',classes+'/assets',{recursive:true});
 await fs.copyFile(dir+'/LICENSE-SPECTATORPLUS',classes+'/META-INF/LICENSE-GPL-3.0');
 await fs.copyFile(path.resolve(dir,'../../LICENSE'),classes+'/META-INF/LICENSE-MIT');
 await fs.copyFile(dir+'/NOTICE.md',classes+'/META-INF/NOTICE.md');
-const artifact=out+'/mcvisual-native-0.1.23-neoforge.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF','-C',classes,'assets',...configs.flatMap(n=>['-C',classes,n])]);
+const artifact=out+'/mcvisual-native-0.1.24-neoforge.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF','-C',classes,'assets',...configs.flatMap(n=>['-C',classes,n])]);
 const consumer=work+'/consumer';await fs.mkdir(consumer);const tests=sources.filter(n=>n.endsWith('Check.java'));await fs.writeFile(work+'/consumer.args',['--release','21','-encoding','UTF-8','-proc:none','-classpath',artifact+path.delimiter+cp,'-d',consumer,...tests].map(s=>'"'+s.replaceAll('\\','/')+'"').join('\n'));run('javac',['@'+work+'/consumer.args']);
 const packaged=names.map(n=>run('java',['-cp',consumer+path.delimiter+artifact+path.delimiter+cp,n]).trim());if(JSON.stringify(checks)!==JSON.stringify(packaged))throw Error('Packaged consumer mismatch');
 for(const name of['build.mjs','neoforge.mods.toml','NOTICE.md','LICENSE-SPECTATORPLUS'])records.push({file:'tools/native-client-neoforge/'+name,sha256:sha(await fs.readFile(dir+'/'+name))});
