@@ -3,7 +3,7 @@ loaderVersion="[4,)"
 license="GPL-3.0-only; shared policies MIT"
 [[mods]]
 modId="mcvisual_native_director"
-version="0.1.22"
+version="0.1.23"
 displayName="MC Visual Native Director"
 description="Native NeoForge camera, transition and explicit decision service adapter."
 [[mods]]

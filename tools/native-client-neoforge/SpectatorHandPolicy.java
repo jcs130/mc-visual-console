@@ -14,6 +14,7 @@ public final class SpectatorHandPolicy {
    &&Objects.equals(f.targetUuid,f.cameraUuid);
  }
  public static boolean draw(Frame f){return body(f)&&f.sameTickScope&&f.firstPerson&&!f.hideGui&&!f.screenOpen;}
+ public static boolean drawPass(Frame f,boolean shaderPack,boolean shaderPass){return draw(f)&&shaderPack==shaderPass;}
  /** Bits 1/2 select main/off hand, including the vanilla charged-crossbow exclusions. */
  public static int hands(boolean anyBow,boolean using,boolean usedBow,boolean usedMain,boolean mainCharged,boolean offCharged){
   if(!anyBow)return 3;

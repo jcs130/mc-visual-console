@@ -20,5 +20,12 @@ logic is retained with native UUID/entity/connection/world and fresh-state gates
 Only renderer-owned cached item references are updated; no player inventory,
 server selection, gameplay input or network packet is written by these hooks.
 
+The optional 0.1.23 Iris integration targets the original HandRenderer display
+gate/material classification and delegates drawing to the original renderer in
+Iris's own active pass. The exact official 1.8.12 NeoForge artifact was inspected
+alongside the upstream 1.21.1 source:
+https://github.com/IrisShaders/Iris/blob/1.21.1/common/src/main/java/net/irisshaders/iris/pathways/HandRenderer.java
+No Iris code, binaries or shader-pack assets are redistributed by this adapter.
+
 Minecraft, NeoForge, Sodium, TLM and YSM are separate original installations with
 their own licenses; this artifact does not distribute their code or model assets.

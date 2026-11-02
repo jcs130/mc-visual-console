@@ -15,6 +15,7 @@ public final class OfflineContractCheck {
     Class.forName(name,false,loader);checks.add(name);
    }
    Class.forName("net.minecraft.client.renderer.ItemInHandRenderer",false,loader);checks.add("net.minecraft.client.renderer.ItemInHandRenderer");
+   if(ModList.get().isLoaded("iris")){Class.forName("net.irisshaders.iris.pathways.HandRenderer",false,loader);checks.add("net.irisshaders.iris.pathways.HandRenderer");}
    Class.forName("cpw.mods.bootstraplauncher.BootstrapLauncher",false,loader);
    try{Class.forName("net.fabricmc.loader.impl.launch.knot.KnotClient",false,loader);throw new IllegalStateException("Fabric Loader found in normal NeoForge client");}catch(ClassNotFoundException expected){}
    var versions=new LinkedHashMap<String,String>();for(var mod:ModList.get().getMods())versions.put(mod.getModId(),mod.getVersion().toString());

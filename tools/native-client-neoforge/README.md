@@ -67,6 +67,28 @@ The builder resolves MixinExtras from the exact original NeoForge universal JAR
 already supplied in the core build report, records both hashes, and uses it only
 for compilation. It does not download or bundle another copy of that library.
 
+## Optional Iris hand path, 0.1.23
+
+Iris owns separate solid/translucent hand passes and excludes spectator accounts
+from them. Calling the vanilla hand renderer can produce a draw receipt while the
+shader pipeline discards the result. The optional pseudo-mixin therefore changes
+only the shader display gate for the exact fresh native target and supplies that
+target's item for Iris's existing material classification. It never changes the
+actual game mode. Original detached-camera, hidden-GUI and sleeping checks remain.
+
+Inside Iris's active hand pass the adapter invokes the original item renderer with
+the same target, cached equipment, swing/use state and shader-owned buffer. With
+shaders enabled it suppresses the duplicate vanilla pass; with shaders disabled or
+Iris absent the existing vanilla path remains. Original Iris binaries and notices
+stay separate; the adapter does not package their code. Unsupported optional API
+shapes fail closed and report the incompatibility rather than drawing fake hands.
+
+The scope/pipeline regression has 28 hand cases (466 total source and packaged
+checks). Real disconnected NeoForge with the official Iris1.8.12, Sodium0.6.13,
+ImmediatelyFast1.6.15, FerriteCore7.0.3, NotEnoughAnimations1.12.7, TLM and YSM loads
+all twelve transformed targets, including Iris HandRenderer, on RTX5090. Actual
+shader hand pixels and animations still require live acceptance after installation.
+
 ## Actual acceptance, 2026-11-02
 
 - The installed 0.1.21 client passed an authenticated same-target audit of native

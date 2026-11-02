@@ -4,6 +4,7 @@
 package org.mcvisual.neoforge.mixin;
 
 import org.mcvisual.neoforge.NativeSpectatorHands;
+import org.mcvisual.neoforge.NativeShaderHands;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -37,6 +38,12 @@ public abstract class SpectatorItemInHandMixin {
     @Shadow private ItemStack offHandItem;
 
     @Unique private AbstractClientPlayer spectated;
+
+    @Inject(method="renderHandsWithItems(FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;Lnet/minecraft/client/player/LocalPlayer;I)V",at=@At("HEAD"),cancellable=true)
+    private void mcvisual$renderShaderTarget(float delta,PoseStack pose,MultiBufferSource.BufferSource buffers,LocalPlayer observer,int light,CallbackInfo ci){
+        if(!NativeShaderHands.handPass()||!NativeSpectatorHands.renderPassReady(true))return;
+        ci.cancel();try{NativeSpectatorHands.renderOriginalItems(delta,pose,buffers,light);}catch(RuntimeException failure){NativeSpectatorHands.failed(failure);}
+    }
 
     @Inject(at = @At("HEAD"), method = "tick", cancellable = true)
     public void spectatorplus$fixSpectatorHandHeight(CallbackInfo ci) {

@@ -52,7 +52,7 @@ public abstract class SpectatorHandGameRendererMixin {
 
     @Inject(method = "renderItemInHand(Lnet/minecraft/client/Camera;FLorg/joml/Matrix4f;)V", at = @At(value = "INVOKE", target = "Lorg/joml/Matrix4fStack;popMatrix()Lorg/joml/Matrix4fStack;"))
     public void spectatorplus$renderItemInHand(Camera camera, float partialTicks, Matrix4f matrix4f, CallbackInfo ci, @Local PoseStack poseStackIn) {
-        if (NativeSpectatorHands.renderReady() && this.minecraft.player != null && this.minecraft.options.getCameraType().isFirstPerson() && !this.minecraft.options.hideGui) {
+        if (NativeSpectatorHands.renderPassReady(false) && this.minecraft.player != null && this.minecraft.options.getCameraType().isFirstPerson() && !this.minecraft.options.hideGui) {
             final AbstractClientPlayer spectated = NativeSpectatorHands.target();
             if (spectated != null && !spectated.isSpectator()) {
                 this.lightTexture.turnOnLightLayer();

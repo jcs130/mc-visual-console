@@ -26,6 +26,14 @@ public final class SpectatorHandPolicyCheck {
   check(SpectatorHandPolicy.hands(true,false,false,true,true,false)==1,"charged main crossbow at rest");
   check(SpectatorHandPolicy.hands(true,false,false,true,false,true)==3,"charged offhand at rest keeps both");
   check(SpectatorHandPolicy.hands(false,true,false,true,false,false)==3,"food and tools retain original use animation selection");
+  check(SpectatorHandPolicy.drawPass(valid(),false,false),"unshaded target uses original vanilla pass");
+  check(!SpectatorHandPolicy.drawPass(valid(),true,false),"a shader pack must not draw into a later discarded vanilla pass");
+  check(SpectatorHandPolicy.drawPass(valid(),true,true),"verified target renders inside the shader-owned hand pass");
+  check(!SpectatorHandPolicy.drawPass(valid(),false,true),"stale shader pass cannot render after pack was disabled");
+  check(!SpectatorHandPolicy.drawPass(new Frame(true,false,true,false,"observer","actor","actor",true,true,false,false),true,true),"shader path cannot revive stale target equipment");
+  check(!SpectatorHandPolicy.drawPass(new Frame(true,true,true,false,"observer","actor","other",true,true,false,false),true,true),"shader camera change does not borrow previous target");
+  check(!SpectatorHandPolicy.drawPass(new Frame(true,true,true,false,"observer","actor","actor",true,false,false,false),true,true),"orthographic or third-person shader pass draws no first-person pair");
+  check(!SpectatorHandPolicy.drawPass(new Frame(true,true,true,false,"observer","actor","actor",true,true,false,true),true,true),"shader hand remains hidden in a menu");
   System.out.println(checks+" spectator-hand scope and animation checks passed");
  }
 }
