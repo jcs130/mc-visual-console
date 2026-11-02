@@ -32,6 +32,11 @@ def build(profile: Path, output: Path):
         ):
             raise ValueError(f"Only official Modrinth CDN downloads are allowed: {path}")
     allowed_overrides = {"options.txt", "config/iris.properties"}
+    rpg_hud = "mods/[1.21.1][NeoForge] RPG-HUD 3.13.jar"
+    if (index.get("dependencies", {}).get("minecraft") == "1.21.1"
+            and index.get("dependencies", {}).get("neoforge")
+            and rpg_hud in seen):
+        allowed_overrides.add("config/RPG-HUD")
     allowed_overrides.update(entry["path"] + ".txt" for entry in index["files"]
                              if entry["path"].startswith("shaderpacks/"))
     overrides = []
@@ -42,6 +47,8 @@ def build(profile: Path, output: Path):
             name = path.relative_to(profile / "overrides").as_posix()
             if name not in allowed_overrides:
                 raise ValueError(f"Unexpected override: {name}")
+            if name == "config/RPG-HUD" and path.read_bytes() != b"Version=1.0\nH:hud_type=default\n":
+                raise ValueError("Only the public RPG-HUD default-style preset is allowed")
             overrides.append((path, "overrides/" + name))
     output.parent.mkdir(parents=True, exist_ok=True)
     # Exclusive creation protects existing archives from accidental replacement.

@@ -5,6 +5,7 @@ import {publicSpectatorPresentation} from '../../host/spectator-public.mjs'
 import {nativeExtensionSupport} from '../../src/native-viewer/native-survival-ui.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import {tmpdir} from 'node:os'
 import {pathToFileURL} from 'node:url'
 import {buildSpectatorSite} from '../build-native-spectator-site.mjs'
 const uuid='01234567-89ab-3def-8123-456789abcdef',other='11111111-1111-3111-8111-111111111111'
@@ -42,7 +43,7 @@ test('projection is bounded, repeatable at cloud fanout and carries no raw profi
  assert.deepEqual(projectNativeRpgSkills(s,uuid),s);assert.ok(Buffer.byteLength(JSON.stringify(s))<40000)
 })
 test('portable spectator artifact includes its RPG module and preserves public native RPG data',async()=>{
- const workspace=path.resolve('D:/codex/2026-09-14/new-chat'),dir=await fs.mkdtemp(path.join(workspace,'.tmp-rpg-site-'))
+ const workspace=path.resolve(tmpdir()),dir=await fs.mkdtemp(path.join(workspace,'.tmp-rpg-site-'))
  try{
   const manifest=await buildSpectatorSite(dir);assert.ok(manifest.files['native-console.js'].bytes>0)
   const module=await import(pathToFileURL(path.join(dir,'spectator-public.mjs')).href)
