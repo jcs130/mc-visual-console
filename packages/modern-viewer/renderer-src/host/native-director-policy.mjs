@@ -42,8 +42,10 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
  if(!choice||!n.availableViews?.includes(choice.view))return[];
  const candidate=n.targets?.find(t=>t.name===choice.name);if(!candidate?.loaded||candidate.alive!==true)return[];
  const out=[],seen=new Set(),same=candidate.uuid===n.targetUuid;
+ const actualView=n.projection==='orthographic'&&n.orthographic?.active===true?n.projectionProfile:n.effectiveView;
  const script=n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL;
  function add(id,view,profile){
+  if(choice.sequence?.reviewRequired===true&&same&&view===actualView)return;
   if(view.startsWith('ortho_')&&nativeSafeOrthographic(n)!==true)return;
   const finite=view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view);
   if(!n.availableViews.includes(view))return;
@@ -74,6 +76,7 @@ const nativeSafeOrthographic=n=>n.orthographic?.ready===true&&n.orthographic?.wo
 /** Real probability distributions stay distinct from hard-vote fractions. */
 export function selectCameraBallot(options,votes,previous){
  const criteria=Object.fromEntries(options.map(o=>[o.id,true])),weights={action:1.3,space:1.2,continuity:1.1};
+ const canKeep=Object.hasOwn(criteria,'keep');
  const valid=votes?.filter(v=>Object.hasOwn(criteria,v.choice)&&Object.hasOwn(weights,v.role))??[];
  if(valid.length<2)return{kind:'keep',reason:'insufficient_votes'};
  const distributions=valid.map(v=>validateChoiceProbabilities(v.probabilities,criteria));
@@ -87,12 +90,13 @@ export function selectCameraBallot(options,votes,previous){
   const ranked=[...families.values()].sort((a,b)=>b.mass-a.mass),family=ranked[0],p=family.mass,
    winner=family.options.slice().sort((a,b)=>scores[b.id]-scores[a.id])[0].id,margin=p-(ranked[1]?.mass??0);
   const entropy=options.length>1?-Object.values(scores).reduce((s,p)=>s+(p>0?p*Math.log(p):0),0)/Math.log(options.length):0;
-  if(winner==='keep'||p<.5||margin<.12)return{kind:'keep',reason:'probability_hysteresis',scores,entropy,margin};
+  if(winner==='keep'||canKeep&&(p<.5||margin<.12))return{kind:'keep',reason:'probability_hysteresis',scores,entropy,margin};
   const option=options.find(o=>o.id===winner),motion=blendCameraScripts(options,scores,winner);
   return{kind:'use',choice:{...option,...(motion?{motion}:{})},scores,entropy,margin,source:'probabilities'};
  }
- const totals=Object.fromEntries(options.map(o=>[o.id,valid.filter(v=>v.choice===o.id).length])),[winner,count]=Object.entries(totals).sort((a,b)=>b[1]-a[1])[0];
- return winner==='keep'||count<2?{kind:'keep',reason:'hard_vote_hold'}:{kind:'use',choice:options.find(o=>o.id===winner),source:'hard_choices'};
+ const totals=Object.fromEntries(options.map(o=>[o.id,valid.filter(v=>v.choice===o.id).length])),weight=id=>valid.filter(v=>v.choice===id).reduce((s,v)=>s+weights[v.role],0),
+  [winner,count]=Object.entries(totals).sort((a,b)=>b[1]-a[1]||(!canKeep?weight(b[0])-weight(a[0]):0))[0];
+ return winner==='keep'||canKeep&&count<2?{kind:'keep',reason:'hard_vote_hold'}:{kind:'use',choice:options.find(o=>o.id===winner),source:'hard_choices'};
 }
 
 /** One pacing gate, advanced ONLY by actual rendered native observations, never by accepted advice. */

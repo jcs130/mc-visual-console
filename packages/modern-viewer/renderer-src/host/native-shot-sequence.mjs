@@ -41,6 +41,7 @@ export class NativeCameraSequence{
   if(!subject?.loaded||subject.alive!==true||space?.known!==true||space.targetUuid!==n.targetUuid
     ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at,2000)||space.floorSafe!==true){this.phase='waiting_for_scene_evidence';return null;}
   const caps=new Set(n.availableViews),still=a?.motion==='stationary'&&fresh(a.positionAt,15000)&&Number.isFinite(a.stillSince)&&now-a.stillSince>=15000;
+  const travelling=a?.motion!=='stationary'&&fresh(a?.lastMotionAt,5000);
   const tight=['tunnel','layered'].includes(space.layout);
   const orthoSafe=orthographic&&n.orthographic?.ready===true&&n.orthographic.worldCutawaySupported===false&&!n.orthographic.roomClip
     &&['open','room'].includes(space.layout)&&space.orthographicVisibility>=.8;
@@ -64,7 +65,7 @@ export class NativeCameraSequence{
       ...(view.startsWith('drone_orbit_')?{arcDegrees:35}:{})}:
     view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:.75}:undefined;
    this.phase='proposing_sequence';
-   return{name:n.target,view,kind:still?'overview':'movement',at:now,reframe:true,reason:'native_scene_sequence',
+   return{name:n.target,view,kind:travelling?'movement':'overview',at:now,reframe:true,reason:'native_scene_sequence',
     sequence:{schema:'mcvisual.shot-sequence/v1',previousView:c.view,shotAgeMs:now-c.since,subjectStationary:still,
       pathPreflightRequired:finite(view),nativeSceneAt:space.at,reviewRequired:still&&now-c.since>=45000},...(motion?{motion}:{})};
   }

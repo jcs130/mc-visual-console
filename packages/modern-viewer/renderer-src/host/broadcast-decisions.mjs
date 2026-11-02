@@ -146,7 +146,7 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
     &&now-program.appliedAt>=45000&&observed.manualLocked!==true&&currentView?.floorSafe===true
     &&['open','enclosed'].includes(currentView.layout)&&current?.loaded===true&&current.alive===true
     &&!['combat','dungeon','interaction','crafting'].includes(currentActivity?.kind)
-    &&selected.some(o=>o.id!=='keep'&&o.plan.subjectUuid===program.plan.subjectUuid);
+    &&selected.some(o=>o.id!=='keep'&&o.plan.subjectUuid===program.plan.subjectUuid&&o.plan.shotId!==program.plan.shotId);
   const cameraReview=reviewRequired?{schema:CAMERA_REVIEW_PROTOCOL,required:true,reason:'quiet_shot_deadline',heldMs:now-program.appliedAt}:null;
   const binding = { scope: observed.scope, generation: observed.generation };
   // Clocks and raw continuous position samples are excluded. Producers supply semantic sceneKey and keyed facts.
@@ -188,7 +188,7 @@ export function createCameraJudgePanel(decisions, {
       const started = now();
       while (calls.length && calls[0] <= started - 60000) calls.shift();
       if (started - lastStarted < minIntervalMs || calls.length >= maxCallsPerMinute) return { kind: 'skipped', reason: 'rate_limited' };
-      const offered=packet.cameraReview?.required?packet.options.filter(o=>o.id!=='keep'&&o.plan?.subjectUuid===packet.program.plan?.subjectUuid):packet.options;
+      const offered=packet.cameraReview?.required?packet.options.filter(o=>o.id!=='keep'&&o.plan?.subjectUuid===packet.program.plan?.subjectUuid&&o.plan.shotId!==packet.program.plan?.shotId):packet.options;
       const questions = Object.fromEntries(requested.map(id => [id, { type: 'choice', instructions: roles.get(id).instructions+' 当 state.cameraReview.required 为真，安静镜头已到构图复评期限，从给定合法方案选择下一段；运镜仍须通过原生路径检查。',
         criteria: Object.fromEntries(offered.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
       const request = { questions, ...(images.length?{images:[...images]}:{}), state: { schema: packet.schema, scope: packet.scope, generation: packet.generation,

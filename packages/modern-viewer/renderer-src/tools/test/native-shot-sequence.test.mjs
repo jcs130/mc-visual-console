@@ -40,6 +40,7 @@ test('combat, recent interaction and real GUI protect action readability',()=>{
 });
 test('moving actors and tight spaces cannot receive a stationary orbit',()=>{
  const f=fixture();f.activity[0].motion='recent_sample';assert.ok(!f.choose().view.startsWith('drone_orbit_'));
+ assert.equal(f.choose().kind,'overview','a newly received position is not evidence of travel');f.activity[0].lastMotionAt=f.now();assert.equal(f.choose().kind,'movement');
  const g=fixture();g.n.spatial.layout='tunnel';assert.equal(g.choose().view,'first_person');
  for(const change of[n=>n.cameraScript.preflightRequiredForFinite=false,n=>n.rigCancelSupported=false,n=>n.spatial.headroom=2,n=>n.spatial.spanX=4]){
   const h=fixture();change(h.n);assert.ok(!h.choose().view.startsWith('drone_orbit_'));

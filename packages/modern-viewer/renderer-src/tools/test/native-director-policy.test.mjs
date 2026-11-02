@@ -28,6 +28,15 @@ test('probability ambiguity holds; supported same-family parameters interpolate,
  const mixed=[...menu,{id:'foreign',name:'B',view:'drone_front',motion:{schema,speed:1.5,height:12,distance:10}}];
  assert.deepEqual(blendCameraScripts(mixed,{normal:1,foreign:100},'normal'),menu[1].motion);
 });
+
+test('an explicit legal review menu cannot invent KEEP or offer its current view again',()=>{
+ const options=[{id:'front',name:'A',view:'drone_front'},{id:'side',name:'A',view:'drone_side_left'}];
+ const distributions=['action','space','continuity'].map(role=>({role,choice:'front',probabilities:{front:.51,side:.49}}));
+ const r=selectCameraBallot(options,distributions);assert.equal(r.kind,'use');assert.equal(r.choice.id,'front');assert.equal(r.source,'probabilities');
+ const one=selectCameraBallot([options[0]],distributions.map(v=>({...v,probabilities:{front:1}})));assert.equal(one.entropy,0);
+ const f=fixture();const offered=nativeCameraCandidates({name:'A',view:'drone_front_left',kind:'overview',sequence:{reviewRequired:true}},f.n,{now:f.now()});
+ assert.ok(offered.every(o=>o.view!==f.n.effectiveView));
+});
 test('camera scripts reject commands, arbitrary coordinates, nonfinite values and conflicting semantics',()=>{
  for(const value of[{schema,x:12},{schema,speed:Infinity},{schema,height:20},{schema,speed:.1},{schema,durationMs:4001.5}])assert.throws(()=>validateCameraScript(value,'drone_follow'));
  assert.throws(()=>validateCameraScript({schema,height:2},'drone_orbit_left'));
