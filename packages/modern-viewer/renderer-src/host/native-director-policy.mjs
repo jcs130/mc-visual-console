@@ -86,7 +86,7 @@ export function selectCameraBallot(options,votes,previous){
   const families=new Map();for(const o of options){const key=o.id==='keep'?'keep':o.name+'|'+o.view;const group=families.get(key)??{key,mass:0,options:[]};group.mass+=scores[o.id];group.options.push(o);families.set(key,group);}
   const ranked=[...families.values()].sort((a,b)=>b.mass-a.mass),family=ranked[0],p=family.mass,
    winner=family.options.slice().sort((a,b)=>scores[b.id]-scores[a.id])[0].id,margin=p-(ranked[1]?.mass??0);
-  const entropy=-Object.values(scores).reduce((s,p)=>s+(p>0?p*Math.log(p):0),0)/Math.log(options.length);
+  const entropy=options.length>1?-Object.values(scores).reduce((s,p)=>s+(p>0?p*Math.log(p):0),0)/Math.log(options.length):0;
   if(winner==='keep'||p<.5||margin<.12)return{kind:'keep',reason:'probability_hysteresis',scores,entropy,margin};
   const option=options.find(o=>o.id===winner),motion=blendCameraScripts(options,scores,winner);
   return{kind:'use',choice:{...option,...(motion?{motion}:{})},scores,entropy,margin,source:'probabilities'};

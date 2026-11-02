@@ -443,3 +443,13 @@ the entire actual trajectory before starting and may reject it. Ordinary unverif
 motion proposals remain excluded. The shared atomic JSON transport uses unique
 prepared files, per-destination ordering and a bounded retry under Windows readers;
 it never truncates or deletes the destination to make a write succeed.
+
+The optional `mcvisual.camera-review/v1` request prevents an ordinary quiet shot
+from being held indefinitely by repeated model KEEP votes. It becomes eligible only
+after 45 seconds of the actually applied shot, with fresh native floor/layout evidence,
+matching actor/operation and no current critical action or manual lock. The canonical
+packet retains KEEP for compatibility; the bounded model review menu contains only
+legal reframes of that same actor and preserves the model's original probabilities.
+Unknown space, action, GUI and manual/unknown lifecycle guards remain authoritative.
+The host prioritizes a due sequence over a routine same-actor framing suggestion;
+subject changes and actual action are separate higher-priority decisions.

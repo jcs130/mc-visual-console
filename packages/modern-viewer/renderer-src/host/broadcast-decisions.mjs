@@ -5,6 +5,7 @@ import { validateCameraScript } from './camera-script.mjs';
 /** Camera-specific policy. Game state and the optional DecisionPort belong to the host. */
 export const CAMERA_CHOICE_PROTOCOL = 'mcvisual.director-choice/v1';
 export const CAMERA_PATH_PREFLIGHT_PROTOCOL = 'mcvisual.native-path-preflight/v1';
+export const CAMERA_REVIEW_PROTOCOL = 'mcvisual.camera-review/v1';
 export const CAMERA_JUDGES = Object.freeze([
   { id: 'story', weight: 1, instructions: '选择最有真实事件价值的完整镜头方案。优先事件因果和正在发生的交流，不编造剧情，不为轮流露脸而切换。' },
   { id: 'action', weight: 1.3, instructions: '选择最能看清当前操作、威胁、协作或结果的完整方案。关键动作期间保持空间连续，不用花哨镜头遮住动作。' },
@@ -139,13 +140,21 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
   const currentView = verifiedViewContext(current, observed.scope, now, maxAgeMs);
   const projectionUnsuitable = projection(program.plan) === 'orthographic' && currentView
     && (currentView.layout === 'tunnel' || currentView.layout === 'layered' && !currentView.floorSafe);
+  const review=observed.cameraReview,currentActivity=current?verifiedActivity(current,observed.scope,now,maxAgeMs):null;
+  const reviewRequired=review?.schema===CAMERA_REVIEW_PROTOCOL&&review.required===true&&fresh(review.at,now,maxAgeMs)
+    &&review.currentRequestId===program.operationId&&review.subjectUuid===program.plan?.subjectUuid&&program.phase==='applied'
+    &&now-program.appliedAt>=45000&&observed.manualLocked!==true&&currentView?.floorSafe===true
+    &&['open','enclosed'].includes(currentView.layout)&&current?.loaded===true&&current.alive===true
+    &&!['combat','dungeon','interaction','crafting'].includes(currentActivity?.kind)
+    &&selected.some(o=>o.id!=='keep'&&o.plan.subjectUuid===program.plan.subjectUuid);
+  const cameraReview=reviewRequired?{schema:CAMERA_REVIEW_PROTOCOL,required:true,reason:'quiet_shot_deadline',heldMs:now-program.appliedAt}:null;
   const binding = { scope: observed.scope, generation: observed.generation };
   // Clocks and raw continuous position samples are excluded. Producers supply semantic sceneKey and keyed facts.
-  const revision = hash([binding, observed.sceneKey, program.operationId ?? null, targetLost, occluded,
+  const revision = hash([binding, observed.sceneKey, program.operationId ?? null, targetLost, occluded,!!cameraReview,
     selected.map(o => [o.id, o.plan, ['visibility', 'action', 'interest', 'composition', 'stability'].map(k => Math.round(o.quality[k] * 10) / 10), o.evidenceIds]), compactFacts,
     activities.map(({at: _sampleTime, ...meaningful}) => meaningful), viewContexts]);
   return { schema: CAMERA_CHOICE_PROTOCOL, ...binding, revision, observedAt: observed.at,
-    manualLocked: observed.manualLocked === true, program, options: selected, facts: compactFacts, activities, viewContexts, excluded,
+    manualLocked: observed.manualLocked === true, program, options: selected, facts: compactFacts, activities, viewContexts, excluded,...(cameraReview?{cameraReview}:{}),
     emergency: targetLost ? 'target_lost' : occluded ? 'persistent_occlusion' : projectionUnsuitable ? 'projection_unsuitable' : null };
 }
 
@@ -179,18 +188,19 @@ export function createCameraJudgePanel(decisions, {
       const started = now();
       while (calls.length && calls[0] <= started - 60000) calls.shift();
       if (started - lastStarted < minIntervalMs || calls.length >= maxCallsPerMinute) return { kind: 'skipped', reason: 'rate_limited' };
-      const questions = Object.fromEntries(requested.map(id => [id, { type: 'choice', instructions: roles.get(id).instructions,
-        criteria: Object.fromEntries(packet.options.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
+      const offered=packet.cameraReview?.required?packet.options.filter(o=>o.id!=='keep'&&o.plan?.subjectUuid===packet.program.plan?.subjectUuid):packet.options;
+      const questions = Object.fromEntries(requested.map(id => [id, { type: 'choice', instructions: roles.get(id).instructions+' 当 state.cameraReview.required 为真，安静镜头已到构图复评期限，从给定合法方案选择下一段；运镜仍须通过原生路径检查。',
+        criteria: Object.fromEntries(offered.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
       const request = { questions, ...(images.length?{images:[...images]}:{}), state: { schema: packet.schema, scope: packet.scope, generation: packet.generation,
-        revision: packet.revision, options: packet.options, facts: packet.facts, activities: packet.activities ?? [], viewContexts: packet.viewContexts ?? [] } };
+        revision: packet.revision, options: offered, facts: packet.facts, activities: packet.activities ?? [], viewContexts: packet.viewContexts ?? [],...(packet.cameraReview?{cameraReview:packet.cameraReview}:{}) } };
       if(compactState){
         const subjects=[...new Set(packet.options.flatMap(o=>o.plan?[o.plan.subjectUuid]:[]))],alias=id=>'actor'+subjects.indexOf(id);
         request.state={schema:packet.schema,revision:packet.revision,
           imageEvidence:'The image shows only the current keep camera. Other options have NO preview; do not assume unseen geometry is clear. pathPreflightRequired means conditional advice: the native executor MUST verify the entire path before motion, and can reject it. It is NOT evidence that the path is already clear.',
-          options:packet.options.map(o=>({id:o.id,...(o.plan?{actor:alias(o.plan.subjectUuid),view:o.plan.shotId,motion:o.plan.motion,
+          options:offered.map(o=>({id:o.id,...(o.plan?{actor:alias(o.plan.subjectUuid),view:o.plan.shotId,motion:o.plan.motion,
             projection:projection(o.plan),...(o.plan.script?{script:o.plan.script}:{}),...(o.plan.pathPreflightRequired?{pathPreflightRequired:true}:{})}:{}),ruleScore:Math.round(o.ruleScore*100)/100})),
           activities:(packet.activities??[]).map(a=>({actor:alias(a.subjectUuid),kind:a.kind,critical:a.critical})),
-          space:(packet.viewContexts??[]).map(a=>({actor:alias(a.subjectUuid),layout:a.layout,floorSafe:a.floorSafe}))};
+          space:(packet.viewContexts??[]).map(a=>({actor:alias(a.subjectUuid),layout:a.layout,floorSafe:a.floorSafe})),...(packet.cameraReview?{cameraReview:packet.cameraReview}:{})};
       }
       const inputTokens = countTokens(JSON.stringify({questions:request.questions,state:request.state})) + imageTokens + prefixTokens + toolDescriptionTokens;
       if (!finite(inputTokens) || inputTokens < 0 || inputTokens + reserveOutputTokens > contextTokens) return { kind: 'skipped', reason: 'input_budget' };
@@ -209,10 +219,10 @@ export function createCameraJudgePanel(decisions, {
       }).then(answer => {
         audit({ kind: 'response', revision: packet.revision, at: now(), inferenceStats:systemOneInferenceStats(answer?.inference_stats) });
         if (stopped || controller.signal.aborted || !fresh(packet.observedAt, now(), maxAgeMs)) return { kind: 'skipped', reason: 'expired' };
-        const criteria=Object.fromEntries(packet.options.map(o=>[o.id,true]));
+        const criteria=Object.fromEntries(offered.map(o=>[o.id,true]));
         const votes = requested.map(role => {const a=answer?.answers?.[role],probabilities=validateChoiceProbabilities(a?.probabilities,criteria);
           return{role,choice:a?.choice,...(probabilities?{probabilities}:{})};});
-        if (votes.some(v => !packet.options.some(o => o.id === v.choice))) { stats.invalid++; return { kind: 'skipped', reason: 'invalid_choice' }; }
+        if (votes.some(v => !offered.some(o => o.id === v.choice))) { stats.invalid++; return { kind: 'skipped', reason: 'invalid_choice' }; }
         const usage = answer?.usage;
         if (finite(usage?.input_tokens) && usage.input_tokens >= 0) stats.inputTokens += usage.input_tokens;
         if (finite(usage?.output_tokens) && usage.output_tokens >= 0) stats.outputTokens += usage.output_tokens;

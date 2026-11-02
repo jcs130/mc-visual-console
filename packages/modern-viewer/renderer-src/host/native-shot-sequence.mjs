@@ -47,8 +47,10 @@ export class NativeCameraSequence{
   const projectionAge=now-lastProjectionChangeAt;
   let candidates;
   if(tight)candidates=['first_person','drone_eye'];
-  else if(n.projection==='orthographic')candidates=projectionAge>=45000?['drone_front_left','drone_eye']:
-    orthoSafe?rotate(orthographics,c.view):[];
+  else if(n.projection==='orthographic'){
+   if(projectionAge<45000&&45000-projectionAge<8000){this.phase='awaiting_projection_exit';return null;}
+   candidates=projectionAge>=45000?['drone_front_left','drone_eye']:orthoSafe?rotate(orthographics,c.view):[];
+  }
   else if(still&&orthoSafe&&preferOrthographic&&projectionAge>=75000)candidates=orthographics;
   else candidates=rotate(still?perspectives:['drone_front_left','drone_side_right','drone_front_right','drone_side_left','drone_eye'],c.view);
   const pathReady=still&&space.layout==='open'&&space.headroom>=3.5&&space.spanX>=8&&space.spanZ>=8
@@ -64,7 +66,7 @@ export class NativeCameraSequence{
    this.phase='proposing_sequence';
    return{name:n.target,view,kind:still?'overview':'movement',at:now,reframe:true,reason:'native_scene_sequence',
     sequence:{schema:'mcvisual.shot-sequence/v1',previousView:c.view,shotAgeMs:now-c.since,subjectStationary:still,
-      pathPreflightRequired:finite(view),nativeSceneAt:space.at},...(motion?{motion}:{})};
+      pathPreflightRequired:finite(view),nativeSceneAt:space.at,reviewRequired:still&&now-c.since>=45000},...(motion?{motion}:{})};
   }
   this.phase='holding_legal_view';return null;
  }
