@@ -20,6 +20,24 @@ public final class OnlineTargetsCheck {
   discovered.observeOnlineTargets(Map.of());check("ready".equals(discovered.phase()),"roster refresh does not fabricate completion or reset operation state");
   var wrongIdentity=new DirectorPolicy(config,true);wrongIdentity.observeOnlineTargets(roster);
   check(!wrongIdentity.offer(request,new DirectorPolicy.Frame("fixture","live",true,true,alice,false,self,self,1),1000),"candidate name must match the native online UUID");
+  var serverAccess=ObserverAccess.server();var boundAccess=new ObserverAccess.Config(ObserverAccess.SCHEMA,"bound-player",alice);
+  check(ObserverAccess.valid(serverAccess)&&ObserverAccess.valid(boundAccess),"versioned server and bound-player scopes");
+  check(!ObserverAccess.valid(new ObserverAccess.Config(ObserverAccess.SCHEMA,"server",alice)),"server scope cannot silently inherit an eye binding");
+  check(!ObserverAccess.valid(new ObserverAccess.Config("other/v1","server",null)),"unknown scope version rejected");
+  check(!ObserverAccess.discoveryAllowed(boundAccess,true),"eye cannot enable all-online discovery");
+  var observed=List.of(new OnlineTargets.Player("Alice",alice,false),new OnlineTargets.Player("OtherEye",bob,true),new OnlineTargets.Player("UnknownMode","44444444-4444-4444-4444-444444444444",null));
+  var serverTargets=OnlineTargets.collect(observed,self,"live",Set.of(),serverAccess);
+  check(serverTargets.size()==1&&serverTargets.containsKey("Alice"),"live excludes spectator and unknown game modes from actual native list");
+  check(OnlineTargets.collect(List.of(new OnlineTargets.Player("OrdinaryName",bob,true)),self,"live",Set.of(),serverAccess).isEmpty(),"spectator filtering uses received mode, never an eye name prefix");
+  check(OnlineTargets.collect(List.of(new OnlineTargets.Player("EyeNamedNormal",bob,false)),self,"live",Set.of(),serverAccess).containsKey("EyeNamedNormal"),"names do not define permissions");
+  var eye=new DirectorPolicy(config,false,boundAccess);eye.observeOnlineTargets(roster);
+  check(!eye.offer(request,frame,1000)&&eye.commands()==0,"bound eye refuses an unrelated target even in an overbroad supplied roster");
+  var aliceRequest=new DirectorPolicy.Request("alice-one","eye-lease","Alice","first_person",1000,5000);
+  check(eye.offer(aliceRequest,new DirectorPolicy.Frame("fixture","live",true,true,alice,true,self,self,1),1000),"bound eye accepts only its corresponding UUID");
+  var renamed=OnlineTargets.collect(List.of(new OnlineTargets.Player("RenamedOwner",alice,false),new OnlineTargets.Player("Alice",bob,false)),self,"live",Set.of(),boundAccess);
+  check(renamed.size()==1&&renamed.containsKey("RenamedOwner"),"eye UUID binding survives rename and rejects name reuse");
+  boolean scopeConflict=false;try{new DirectorPolicy(config,true,boundAccess);}catch(IllegalArgumentException expected){scopeConflict=true;}
+  check(scopeConflict,"conflicting bound and global configuration fails closed");
   System.out.println(count+" online target checks passed");
  }
 }

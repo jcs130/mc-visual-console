@@ -15,6 +15,21 @@ function fixture(){
  return{n,settings,adapter,director,plan,writes:()=>writes,tick:ms=>{now+=ms;}};
 }
 
+test('SDK and MCP reject spectator targets and bound-eye UUID escape before any command',async()=>{
+ const server=fixture();server.n.observerAccess={schema:'mcvisual.observer-access/v1',mode:'server'};server.n.targets[0].spectator=true;
+ await assert.rejects(server.adapter.observe(),/NATIVE_TARGET_NOT_ELIGIBLE/);
+ await assert.rejects(callCameraTool(server.director,'broadcast_camera_take',server.plan),/NATIVE_TARGET_NOT_ELIGIBLE/);
+ assert.equal(server.writes(),0);
+ server.n.targets[0].spectator=false;
+ assert.deepEqual((await server.adapter.observe()).observerAccess,server.n.observerAccess);
+ assert.deepEqual((await callCameraTool(server.director,'broadcast_camera_query',{})).observed.observerAccess,server.n.observerAccess);
+ const eye=fixture();eye.n.observerAccess={schema:'mcvisual.observer-access/v1',mode:'bound-player',boundTargetUuid:'someone-else'};
+ await assert.rejects(eye.adapter.observe(),/NATIVE_OBSERVER_BINDING_MISMATCH/);
+ await assert.rejects(callCameraTool(eye.director,'broadcast_camera_take',eye.plan),/NATIVE_OBSERVER_BINDING_MISMATCH/);
+ assert.equal(eye.writes(),0);
+ eye.n.observerAccess.boundTargetUuid='actor-uuid';assert.equal((await eye.adapter.observe()).subjectUuid,'actor-uuid');
+});
+
 test('SDK and MCP carry bounded script parameters and verify the same native rendered values',async()=>{
  const f=fixture();f.n.cameraScript={schema:'mcvisual.camera-script/v1',parameters:['distance','height','speed'],preflightRequiredForFinite:true};let forwarded;
  const original=f.settings.writeRequest;f.settings.writeRequest=async r=>{forwarded=r;await original(r);};

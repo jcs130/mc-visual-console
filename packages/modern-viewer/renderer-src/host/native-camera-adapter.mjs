@@ -21,6 +21,12 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
       || typeof n.connectionEpoch !== 'string' || !n.connectionEpoch || !Number.isInteger(n.nativeWorldEpoch) || n.nativeWorldEpoch < 1
       || !Number.isFinite(at) || at > now() || now() - at > maxAgeMs) fail('NATIVE_CAMERA_CONTEXT_UNAVAILABLE');
     if (!n.targets?.some(x => x.name === targetName && x.uuid === targetUuid)) fail('NATIVE_TARGET_IDENTITY_MISMATCH');
+    if(n.observerAccess){
+      const access=n.observerAccess,target=n.targets.find(x=>x.name===targetName&&x.uuid===targetUuid);
+      if(access.schema!=='mcvisual.observer-access/v1'||!['server','bound-player'].includes(access.mode))fail('NATIVE_OBSERVER_SCOPE_UNAVAILABLE');
+      if(access.mode==='bound-player'&&access.boundTargetUuid?.toLowerCase()!==targetUuid.toLowerCase())fail('NATIVE_OBSERVER_BINDING_MISMATCH');
+      if(access.mode==='server'&&(access.boundTargetUuid!=null||target.spectator!==false))fail('NATIVE_TARGET_NOT_ELIGIBLE');
+    }
     return n;
   }
   const adapter = {
@@ -33,7 +39,7 @@ export function createNativeCameraAdapter({ readNative, writeRequest, writeCance
         projection: recipe.projection??'perspective', ...(id.startsWith('drone_')&&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL?{cameraScript:CAMERA_SCRIPT_PROTOCOL}:{}),...(recipe.projectionProfile?{projectionProfile:recipe.projectionProfile,projectionReady:n.orthographic?.ready===true}:{}),preflightRequired: recipe.finite }));
       const observed = { schema: CAMERA_PROTOCOL, at: Date.parse(n.recordedAt), scope: `${n.connectionEpoch}:${n.nativeWorldEpoch}`,
         subjectUuid: targetUuid, manualControl: manual, shots, nativePhase: n.phase, effectiveView: n.effectiveView,
-        shotExecution: n.shotExecution, closeView: n.closeView };
+        shotExecution: n.shotExecution, closeView: n.closeView,...(n.observerAccess?{observerAccess:structuredClone(n.observerAccess)}:{}) };
       if (!operation || !sameScope(n, operation)) return observed;
       const receipt = { actionId: operation.actionId, lease: operation.lease, phase: 'transitioning', projection: n.projection??'perspective',
         requestedView: operation.shot, effectiveView: n.effectiveView, nativePhase: n.phase, rendered: false };
