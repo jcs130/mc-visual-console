@@ -1,5 +1,7 @@
 ## 2026-11-03 native camera sequence and rejected-expiry candidate
 
+End-to-end follow-up explicitly distinguishes conditional native path preflight from an already clear path; complete plans and compact model prompts preserve the execution requirement, and stale/cross-subject/known-blocked declarations stay excluded. Shared atomic JSON publishing now orders overlapping writes and retries transient Windows sharing conflicts without removing the destination. Model-menu/host acceptance remains separate from actual native endpoint/render acceptance.
+
 Shared display-only NativeCameraSequence is explicitly enabled by hosts, paced from actual rendered requests, and uses current target/world geometry. Quiet open scenes may propose bounded arcs/push/pull through the existing native path-preflight/cancel contract; blocked paths back off, real action/GUI and projection/cut budgets remain protected. The model menu preserves only the exact proposed finite script. New directorExpiredOffer proves rejection before admission only with fresh matching offer/account/world/connection and the unchanged pre-submission camera; it never replays an old request or recovers unknown/manual outcomes. 42 focused shared tests and an independent public TypeScript consumer pass. No Java/JAR or core package changes. Consumer loading and real motion pixels are separate later stages; private captures and third-party resource packs remain outside Git.
 
 ## 2026-11-02 standalone Fabric/NeoForge client modules

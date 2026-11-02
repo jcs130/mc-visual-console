@@ -4,6 +4,7 @@ import { validateCameraScript } from './camera-script.mjs';
 
 /** Camera-specific policy. Game state and the optional DecisionPort belong to the host. */
 export const CAMERA_CHOICE_PROTOCOL = 'mcvisual.director-choice/v1';
+export const CAMERA_PATH_PREFLIGHT_PROTOCOL = 'mcvisual.native-path-preflight/v1';
 export const CAMERA_JUDGES = Object.freeze([
   { id: 'story', weight: 1, instructions: '选择最有真实事件价值的完整镜头方案。优先事件因果和正在发生的交流，不编造剧情，不为轮流露脸而切换。' },
   { id: 'action', weight: 1.3, instructions: '选择最能看清当前操作、威胁、协作或结果的完整方案。关键动作期间保持空间连续，不用花哨镜头遮住动作。' },
@@ -24,13 +25,21 @@ const hash = x => createHash('sha256').update(JSON.stringify(x)).digest('hex').s
 const failure = code => { throw Object.assign(new Error(code), { code }); };
 const metrics = q => q && ['visibility', 'action', 'interest', 'composition', 'stability'].every(k => unit(q[k]));
 const score = q => .3 * q.visibility + .3 * q.action + .2 * q.interest + .1 * q.composition + .1 * q.stability;
-const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide', 'projection', 'projectionProfile', 'transition', 'script'];
+const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide', 'projection', 'projectionProfile', 'transition', 'script', 'pathPreflightRequired'];
 const projection = plan => plan?.projection ?? 'perspective';
 const planKey = plan => planFields.map(k => k === 'projection' ? projection(plan) : plan?.[k] ?? null);
 const samePlan = (a, b) => !!a && !!b && planFields.filter(k => k !== 'transition')
   .every(k => k === 'projection' ? projection(a) === projection(b) : k==='script'?JSON.stringify(a[k])===JSON.stringify(b[k]):a[k] === b[k]);
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const activityKinds = new Set(['idle', 'combat', 'dungeon', 'fishing', 'crafting', 'interaction', 'conversation', 'travel', 'gathering', 'building', 'unknown']);
+function executionPreflight(shot,program,scope,now,maxAgeMs){
+ const p=shot.pathPreflight;
+ return shot.pathClear===undefined&&shot.pathPreflightRequired===true&&shot.script!==undefined
+  &&(shot.motion==='orbit_arc'&&shot.shotId.startsWith('drone_orbit_')||shot.motion==='push_in'&&shot.shotId==='drone_push_in'||shot.motion==='pull_out'&&shot.shotId==='drone_pull_out')
+  &&p?.schema===CAMERA_PATH_PREFLIGHT_PROTOCOL&&p.requiredAtExecution===true&&p.provenance==='native'
+  &&p.scope===scope&&p.subjectUuid===shot.subjectUuid&&p.currentRequestId===program.operationId
+  &&program.phase==='applied'&&program.plan?.subjectUuid===shot.subjectUuid&&fresh(p.at,now,maxAgeMs)&&ident(p.evidenceId);
+}
 function verifiedActivity(subject, scope, now, maxAgeMs) {
   const a = subject.activity;
   if (subject.scope !== scope || !fresh(subject.at, now, maxAgeMs) || !a || !fresh(a.at, now, maxAgeMs)
@@ -88,7 +97,7 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
     else if (!ident(shot.sourceId) || !ident(shot.shotId) || !motions.has(shot.motion)
       || !metrics(shot.quality) || !Array.isArray(shot.evidenceIds) || !shot.evidenceIds.length
       || shot.evidenceIds.length > 8 || shot.evidenceIds.some(x => !ident(x))) reason = 'invalid_plan';
-    else if (creative.has(shot.motion) && shot.pathClear !== true) reason = 'unverified_motion_path';
+    else if (creative.has(shot.motion) && shot.pathClear !== true && !executionPreflight(shot,program,observed.scope,now,maxAgeMs)) reason = 'unverified_motion_path';
     else if (shot.motion === 'follow' && shot.collisionReady !== true) reason = 'missing_follow_collision';
     else if (shot.requiresFloorMask === true && shot.floorSafe !== true) reason = 'unverified_floor';
     else if (!['perspective', 'orthographic'].includes(projection(shot))) reason = 'invalid_projection';
@@ -177,9 +186,9 @@ export function createCameraJudgePanel(decisions, {
       if(compactState){
         const subjects=[...new Set(packet.options.flatMap(o=>o.plan?[o.plan.subjectUuid]:[]))],alias=id=>'actor'+subjects.indexOf(id);
         request.state={schema:packet.schema,revision:packet.revision,
-          imageEvidence:'The image shows only the current keep camera. Other options have NO preview; do not assume unseen geometry is clear.',
+          imageEvidence:'The image shows only the current keep camera. Other options have NO preview; do not assume unseen geometry is clear. pathPreflightRequired means conditional advice: the native executor MUST verify the entire path before motion, and can reject it. It is NOT evidence that the path is already clear.',
           options:packet.options.map(o=>({id:o.id,...(o.plan?{actor:alias(o.plan.subjectUuid),view:o.plan.shotId,motion:o.plan.motion,
-            projection:projection(o.plan),...(o.plan.script?{script:o.plan.script}:{})}:{}),ruleScore:Math.round(o.ruleScore*100)/100})),
+            projection:projection(o.plan),...(o.plan.script?{script:o.plan.script}:{}),...(o.plan.pathPreflightRequired?{pathPreflightRequired:true}:{})}:{}),ruleScore:Math.round(o.ruleScore*100)/100})),
           activities:(packet.activities??[]).map(a=>({actor:alias(a.subjectUuid),kind:a.kind,critical:a.critical})),
           space:(packet.viewContexts??[]).map(a=>({actor:alias(a.subjectUuid),layout:a.layout,floorSafe:a.floorSafe}))};
       }

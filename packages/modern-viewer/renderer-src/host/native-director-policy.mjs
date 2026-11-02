@@ -52,7 +52,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
   const key=view+':'+(profile??'');if(seen.has(key))return;seen.add(key);
   const motion=finite?validateCameraScript(choice.motion,view):script&&view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:profile==='slow'?.7:1,
     ...(['drone_follow','drone_front_left','drone_front'].includes(view)?{height:profile==='slow'?1.8:1,distance:profile==='slow'?6.5:5.5}:{})}:undefined;
-  out.push({...choice,id,view,...(motion?{motion}:{})});
+  const entry={...choice,id,view};if(motion)entry.motion=motion;else delete entry.motion;out.push(entry);
  }
  add('proposal',choice.view);
  if(script&&choice.view.startsWith('drone_'))add('proposal_slow',choice.view,'slow');

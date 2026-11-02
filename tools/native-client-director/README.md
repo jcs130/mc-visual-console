@@ -433,3 +433,13 @@ an unknown outcome. It requires matching account, connection, world, offer ID/le
 and unchanged pre-submission native camera/request. A host may then reselect from
 fresh state with a new ID and bounded backoff. It must retain the rejected ID and
 must not replay it, infer completion, resume a manual pause, or retry an unknown result.
+
+`mcvisual.native-path-preflight/v1` distinguishes a currently clear path from a
+conditional same-subject motion proposal. A fresh, scoped native capability must
+match the current rendered operation; the full plan retains `pathPreflightRequired`.
+It never treats a known blocked path as admissible. Model prompts explicitly state
+that conditional advice is not path evidence; the native executor still validates
+the entire actual trajectory before starting and may reject it. Ordinary unverified
+motion proposals remain excluded. The shared atomic JSON transport uses unique
+prepared files, per-destination ordering and a bounded retry under Windows readers;
+it never truncates or deletes the destination to make a write succeed.
