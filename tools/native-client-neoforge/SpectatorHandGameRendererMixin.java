@@ -181,4 +181,3 @@ public abstract class SpectatorHandGameRendererMixin {
         return original;
     }
 }
-

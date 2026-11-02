@@ -146,7 +146,23 @@ desktop pixels, key press, gameplay input or extra connection is used. Hosts who
 adapter lacks the final-frame hook reject this stage instead of silently returning
 a world-only image. Eight additional admission checks cover these boundaries.
 
-## Actual acceptance, 2026-11-02
+## Current acceptance, 0.1.25 (2026-11-02)
+
+- Source checks and independently compiled JAR consumers each pass 496 Java
+  policy, display, capture and window checks. This is offline build evidence.
+- A separately configured production observer has verified original NeoForge,
+  TLM and YSM loading; actual 1920x1080 and 2560x1440 framebuffers; continuing
+  world renders while unfocused and not minimized; and an ungrabbed cursor.
+  Its retained output is 1920x1080. No account, target or model change is required.
+- These observations do not establish minimized/locked-session rendering, every
+  mod menu, or a fixed-frame GPU performance comparison. A live TLM maid's work,
+  inventory and menu interactions have not been accepted.
+- The independent `native-client-content` mod is optional. Its WebSocket panels,
+  disconnect clearing and reconnect redraw are accepted separately; it is not a
+  dependency of this director adapter. Private captures and deployment settings
+  stay outside this repository. Merging source does not restart a consumer.
+
+## Historical acceptance, 0.1.21-0.1.22 (2026-11-02)
 
 - The installed 0.1.21 client passed an authenticated same-target audit of native
   first/third-person cameras, orthographic isometric/top/overview/close projection,

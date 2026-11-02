@@ -141,4 +141,3 @@ public abstract class SpectatorItemInHandMixin {
         return target == null ? instance.isInvisible() : target.isInvisible();
     }
 }
-

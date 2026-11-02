@@ -43,4 +43,3 @@ public interface SpectatorHandRendererAccessor {
         throw new AssertionError();
     }
 }
-

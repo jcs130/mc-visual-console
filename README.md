@@ -13,7 +13,7 @@
 使用官方 NeoForge/TLM/YSM 和原生显示接口；不加载 Fabric Loader 或 Connector。
 该可选原生观战成品采用 GPL-3.0-only 并保留共享代码的 MIT 声明，
 参见其 [来源与许可证](tools/native-client-neoforge/NOTICE.md)。核心 SDK 与网页渲染器的许可证保持各自声明。
-源码构建、离线启动与正式服画面分别验收，当前仍需完成兼容认证入口及实服验证。
+源码构建、离线启动与正式服画面分别验收；各版本的实际验收范围见原生观战说明，其他消费端仍需独立加载与验证。
 
 2026-10-26 公网观战候选：地形重叠增量、多人材质请求合并、缓存限额与可测计数，另修正YSM转向倾斜及怪物持械方向。消费者须同时更新匹配页面和观战源；[改动、实测及未支持范围](packages/modern-viewer/renderer-src/docs/native-public-cache-and-direction.md)。
 
