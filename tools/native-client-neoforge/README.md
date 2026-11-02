@@ -5,6 +5,13 @@ It consumes the core's `agentmc_client_platform` companion and canonical client
 source translator. The existing Fabric builders and installed profiles stay
 independent. No Fabric loader, Connector, agent host or model loop is bundled.
 
+Since 0.1.26, background rendering/free cursor belongs to the independent
+[Background Window](../native-client-window/README.md) mod, available for Fabric
+and NeoForge. This director no longer bundles its policy, runtime or window hooks.
+Install the matching window JAR separately when using that opt-in configuration.
+The independent [Content Stream](../native-client-content/README.md) mod is also
+optional and needs neither this director nor the core companion.
+
 The shared director policy, target ownership, finite camera scripts, near-wall
 fallback, transitions, original native screenshot capture, compact HUD and
 UUID/world/epoch-bound inventory policies are compiled from their existing source.
@@ -99,7 +106,7 @@ current server/observer/connection/world/target/camera request bindings, 5-secon
 expiry and 512-pixel budgets remain mandatory. Explicit final-frame requests can
 include a scoped menu; transitions and stale/wrong camera scopes are refused.
 
-## Explicit window policy, 0.1.25
+## Historical bundled window policy, 0.1.25
 
 Only a visual observer launched with `-Dmcvisual.windowPolicyFile=<absolute-json>`
 enables this optional policy. Ordinary game clients keep their original input and
@@ -134,8 +141,10 @@ framebuffer size, resize phase, frame counters and timestamps. Frame counters ar
 advanced by original render events, not diagnostic reads. Capture receipts now
 include optional `sourceWidth`/`sourceHeight`; the existing 512px visual-decision
 thumbnail and all scope/hash/expiry limits stay unchanged. The offline diagnostic
-can opt into `-Dmcvisual.offlineWindowCheck=true` with a free-cursor policy to call
-the actual transformed grab method and verify that it leaves the cursor normal.
+used `-Dmcvisual.offlineWindowCheck=true` with a free-cursor policy to probe the
+actual transformed grab method. In 0.1.26 that optional check instead requires the
+separate window module; its own `mcvisual.windowOfflineCheck` verifies transformed
+hooks without invoking grab or injecting input.
 
 API references: [GLFW cursor modes](https://www.glfw.org/docs/latest/input) and
 [window focus/framebuffer sizing](https://www.glfw.org/docs/latest/window).
@@ -146,7 +155,15 @@ desktop pixels, key press, gameplay input or extra connection is used. Hosts who
 adapter lacks the final-frame hook reject this stage instead of silently returning
 a world-only image. Eight additional admission checks cover these boundaries.
 
-## Current acceptance, 0.1.25 (2026-11-02)
+## Current split, 0.1.26 (2026-11-02)
+
+The native build and independently compiled JAR consumers each pass 474 checks.
+The former 22 window checks moved with their one canonical implementation to the
+independent window mod, where both loader builds pass. No window implementation is
+left in the director artifact. The independent modules have disconnected loader
+and WebSocket verification; the new director combination is not installed live.
+
+## Historical acceptance, 0.1.25 (2026-11-02)
 
 - Source checks and independently compiled JAR consumers each pass 496 Java
   policy, display, capture and window checks. This is offline build evidence.

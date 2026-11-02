@@ -1,4 +1,4 @@
-import org.mcvisual.director.WindowPolicy;
+import org.mcvisual.window.WindowPolicy;
 public final class WindowPolicyCheck {
  private static int n;private static void check(boolean value,String name){n++;if(!value)throw new AssertionError(name);}
  public static void main(String[] args){

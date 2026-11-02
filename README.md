@@ -1,5 +1,8 @@
 # mc-visual-console
 
+可单独安装的 [客户端信息卡与后台窗口模组](docs/client-modules.md) 已提供 Fabric／NeoForge
+1.21.1 两套构建；不依赖 Agent 框架、游戏核心或服务器插件，也可与导播组合使用。
+
 静态摄影的 [viewerPhotoPage](packages/modern-viewer/renderer-src/host/viewer-photo-page.mjs) 支持显式第一／第三人称模式。
 就绪判断要求实际地形网格、皮肤、头部材质和 YSM 加载任务完成；隐藏的第一人称本人及视野外人物不会被误算成模型加载失败。
 宿主应先选择当前连接已完整接收的区块范围，并处理传输背压错误；不能用放行缺失区块或延长超时来假装成片成功。

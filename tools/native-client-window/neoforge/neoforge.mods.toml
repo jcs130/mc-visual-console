@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="mcvisual_window"
+version="0.1.0"
+displayName="MC Visual Background Window"
+description="Opt-in free cursor, nonactivating window and unfocused rendering. No Agent, director, server plugin or network."
+[[dependencies.mcvisual_window]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+side="CLIENT"
+[[dependencies.mcvisual_window]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+side="CLIENT"
+[[mixins]]
+config="mcvisual-window-neoforge.mixins.json"
+[[dependencies.mcvisual_window]]
+modId="mcvisual_native_director"
+type="incompatible"
+versionRange="[0.1.25,0.1.26)"
+side="CLIENT"

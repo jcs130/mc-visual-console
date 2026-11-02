@@ -1,4 +1,4 @@
-package org.mcvisual.director;
+package org.mcvisual.window;
 
 /** Explicit visual-client policy. Unconfigured game bodies retain vanilla behavior. */
 public final class WindowPolicy {
