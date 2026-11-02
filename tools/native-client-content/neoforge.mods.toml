@@ -1,0 +1,18 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="mcvisual_content"
+version="0.1.1"
+displayName="MC Visual Content Stream"
+description="Client-only, scoped custom content over an explicitly configured WebSocket. No server mod or Agent framework required."
+[[dependencies.mcvisual_content]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+side="CLIENT"
+[[dependencies.mcvisual_content]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+side="CLIENT"

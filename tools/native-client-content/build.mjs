@@ -1,0 +1,23 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {createHash,randomUUID} from 'node:crypto';
+const dir=import.meta.dirname,args=process.argv.slice(2),option=key=>{const at=args.indexOf(key);if(at<0||!args[at+1])throw Error('Explicit '+key+' required');return args[at+1];};
+const report=JSON.parse(await fs.readFile(option('--classpath-report'),'utf8')),jdk=option('--java-home'),out=path.resolve(option('--output-dir'));
+if(!Array.isArray(report.classpath)||report.classpath.length<1)throw Error('Original Mojmap Minecraft/NeoForge library classpath required');
+// No companion, Cortico, SDK, loader emulation, network access or dependency extraction.
+const cp=report.classpath.join(path.delimiter),work=out+'/compile-'+randomUUID(),classes=work+'/classes',consumer=work+'/consumer';
+await fs.mkdir(classes,{recursive:true});await fs.mkdir(consumer,{recursive:true});
+const sources=['ContentState.java','ContentRuntime.java','ContentMod.java','test/ContentStateCheck.java'].map(f=>path.join(dir,f));
+const records=[];for(const file of [...sources,path.join(dir,'build.mjs'),path.join(dir,'neoforge.mods.toml')])records.push({file:path.relative(path.resolve(dir,'../..'),file).replaceAll('\\','/'),sha256:createHash('sha256').update(await fs.readFile(file)).digest('hex')});
+const run=(tool,argv)=>execFileSync(path.join(jdk,'bin',tool+'.exe'),argv,{windowsHide:true,encoding:'utf8',maxBuffer:2_000_000});
+const quote=s=>'"'+s.replaceAll('\\','/')+'"';
+await fs.writeFile(work+'/compile.args',['--release','21','-proc:none','-encoding','UTF-8','-classpath',cp,'-d',classes,...sources].map(quote).join('\n'));
+run('javac',['@'+work+'/compile.args']);
+const checks=run('java',['-cp',classes+path.delimiter+cp,'ContentStateCheck']).trim();
+await fs.mkdir(classes+'/META-INF',{recursive:true});await fs.copyFile(dir+'/neoforge.mods.toml',classes+'/META-INF/neoforge.mods.toml');await fs.copyFile(path.resolve(dir,'../../LICENSE'),classes+'/META-INF/LICENSE-MIT');
+const artifact=out+'/mcvisual-content-0.1.1-neoforge-1.21.1.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF']);
+await fs.writeFile(work+'/consumer.args',['--release','21','-proc:none','-encoding','UTF-8','-classpath',artifact+path.delimiter+cp,'-d',consumer,sources.at(-1)].map(quote).join('\n'));
+run('javac',['@'+work+'/consumer.args']);const packaged=run('java',['-cp',consumer+path.delimiter+artifact+path.delimiter+cp,'ContentStateCheck']).trim();if(checks!==packaged)throw Error('Packaged consumer mismatch');
+const result={schema:'mcvisual-content-build/v1',at:new Date().toISOString(),artifact,sha256:createHash('sha256').update(await fs.readFile(artifact)).digest('hex'),checks,packaged,sources:records,agentFrameworkDependencies:[],companionDependency:false,gameConnections:0,productionLoaded:false};
+await fs.writeFile(out+'/build-report.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
