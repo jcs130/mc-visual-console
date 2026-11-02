@@ -27,10 +27,11 @@ const contract={
  'net.minecraft.class_2629':['method_34091(net.minecraft.class_2629$class_5881)'],
  'net.minecraft.class_329':['method_1757(net.minecraft.class_332, net.minecraft.class_266)']};
 for(const [type,signatures]of Object.entries(contract)){const out=run('javap',['-p','-classpath',cp,type]);for(const signature of signatures)if(!out.includes(signature))throw Error('Native hook contract missing: '+type+' '+signature);}
-const sources=['ObserverState.java','ObserverView.java','TargetInventory.java','BossBarState.java','NativeObserverClient.java','SpectatorHotbarMixin.java','SpectatorInventoryMixin.java','ObserverSidebarMixin.java','ObserverBossBarMixin.java','test/ObserverStateCheck.java'];
+const sources=['ObserverState.java','ObserverView.java','TargetInventory.java','TargetPacketInbox.java','BossBarState.java','NativeObserverClient.java','SpectatorHotbarMixin.java','SpectatorInventoryMixin.java','ObserverSidebarMixin.java','ObserverBossBarMixin.java','test/ObserverStateCheck.java','test/TargetPacketInboxCheck.java'];
 const argfile=path.join(scratch,'javac.args');fs.writeFileSync(argfile,['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources.map(p=>path.join(source,p))].map(x=>'"'+x.replaceAll('\\','/').replaceAll('"','\\"')+'"').join('\n'));
 run('javac',['@'+argfile]);
 const checks=run('java',['-cp',classes+path.delimiter+cp,'ObserverStateCheck']);process.stdout.write(checks);
+process.stdout.write(run('java',['-cp',classes+path.delimiter+cp,'TargetPacketInboxCheck']));
 const metadata=JSON.parse(fs.readFileSync(path.join(source,'fabric.mod.json'),'utf8'));
 const mixins=JSON.parse(fs.readFileSync(path.join(source,'mcvisual-native-observer.mixins.json'),'utf8'));
 for(const name of mixins.client)if(!fs.existsSync(path.join(classes,...mixins.package.split('.'),name+'.class')))throw Error('Missing declared Mixin '+name);
@@ -38,7 +39,11 @@ const jar=path.join(output,metadata.id+'-'+metadata.version+'.jar');
 run('jar',['--create','--file',jar,'-C',classes,'org','-C',source,'fabric.mod.json','-C',source,'mcvisual-native-observer.mixins.json','-C',source,'assets']);
 // The consumer can see only the packaged production classes, not their compile directory.
 const consumer=path.join(scratch,'consumer');fs.mkdirSync(consumer);
-fs.copyFileSync(path.join(classes,'ObserverStateCheck.class'),path.join(consumer,'ObserverStateCheck.class'));
+const pureCp=[jar,...walk(path.join(game,'libraries')).filter(p=>path.basename(p).startsWith('gson-'))].join(path.delimiter);
+const quoteArg=x=>'"'+x.replaceAll('\\','/')+'"';
+const testArgs=['--release','21','-encoding','UTF-8','-proc:none','-classpath',pureCp,'-d',consumer,...['test/ObserverStateCheck.java','test/TargetPacketInboxCheck.java'].map(p=>path.join(source,p))];
+const testArgFile=path.join(scratch,'consumer.args');fs.writeFileSync(testArgFile,testArgs.map(quoteArg).join('\n'));run('javac',['@'+testArgFile]);
+process.stdout.write(run('java',['-cp',consumer+path.delimiter+pureCp,'TargetPacketInboxCheck']));
 const consumerChecks=run('java',['-cp',[consumer,jar,...walk(path.join(game,'libraries')).filter(p=>path.basename(p).startsWith('gson-'))].join(path.delimiter),'ObserverStateCheck']);
 if(consumerChecks.trim()!==checks.trim())throw Error('Packaged consumer did not reproduce protocol/display checks');
 const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');

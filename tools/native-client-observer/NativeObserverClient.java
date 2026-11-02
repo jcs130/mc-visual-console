@@ -4,6 +4,7 @@ import com.google.gson.*;
 import java.nio.file.*;
 import java.time.Instant;
 import java.util.*;
+import java.util.function.Consumer;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -31,6 +32,10 @@ public final class NativeObserverClient implements ClientModInitializer {
     private class_304 details, next;
     private List<String> rows = List.of();
     private final TargetInventory<class_1799> inventory = new TargetInventory<>();
+    private final TargetPacketInbox<Consumer<NativeScope>> inbox=new TargetPacketInbox<>();
+    private ObserverState.Camera packetCamera;
+    private Object packetConnection;
+    private long packetGeneration,inventoryPacketsSeen,detailPacketsSeen;
     private final BossBarState nativeBars = new BossBarState();
     private String problem;
     private boolean diagnosticsFailure;
@@ -56,12 +61,12 @@ public final class NativeObserverClient implements ClientModInitializer {
         next=KeyBindingHelper.registerKeyBinding(new class_304("key.mcvisual_observer.page",GLFW.GLFW_KEY_F10,"key.categories.mcvisual_observer"));
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
-            state.clear("disconnected");inventory.reconcile(null,state.epoch());nativeBars.clear();rows=List.of();
+            state.clear("disconnected");inventory.reconcile(null,state.epoch());inbox.clear();packetCamera=null;packetConnection=null;nativeBars.clear();rows=List.of();
             if(config!=null&&config.writeDiagnostics)diagnostics(false);config=null;
         });
         ClientTickEvents.END_CLIENT_TICK.register(client->{
             if(config==null)return;
-            reconcile(client);
+            reconcile(client);drainPackets(client);
             if(client.field_1755==null) {
                 while(details.method_1436()){mode=(mode+1)%6;page=0;refresh();}
                 while(next.method_1436()){page++;refresh();}
@@ -73,7 +78,7 @@ public final class NativeObserverClient implements ClientModInitializer {
     }
     private void join(class_310 client) {
         config=null;problem=null;mode=0;page=0;ticks=0;diagnosticsFailure=false;
-        state.clear("joining");inventory.reconcile(null,state.epoch());nativeBars.clear();rows=List.of();
+        state.clear("joining");inventory.reconcile(null,state.epoch());inbox.clear();packetCamera=null;packetConnection=null;nativeBars.clear();rows=List.of();
         try {
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-native-observer.json");
             if(!Files.isRegularFile(file)||Files.size(file)>16_384)return;
@@ -109,15 +114,31 @@ public final class NativeObserverClient implements ClientModInitializer {
         state.current(System.nanoTime());
         inventory.reconcile(camera,state.epoch());
     }
+    private TargetPacketInbox.Context packetContext(class_310 client){
+        var c=readCamera(client);var connection=client.method_1562();
+        if(!Objects.equals(packetCamera,c)||packetConnection!=connection){packetGeneration++;packetCamera=c;packetConnection=connection;}
+        return c==null?null:new TargetPacketInbox.Context(connection,c.world(),c.recipient(),packetGeneration,c.player(),c.observer());
+    }
+    /** No values become current until the original camera binds the packet UUID. */
+    public static void targetData(UUID subject,Consumer<NativeScope> receive){
+        var self=instance;var client=class_310.method_1551();if(self==null||self.config==null||subject==null||receive==null)return;
+        self.detailPacketsSeen++;self.reconcile(client);var context=self.packetContext(client);var scope=currentScope();
+        if(scope!=null&&scope.player().equalsIgnoreCase(subject.toString()))receive.accept(scope);
+        else self.inbox.offer(context,subject.toString(),receive,System.nanoTime());
+    }
+    private void drainPackets(class_310 client){
+        var context=packetContext(client);var ready=inbox.drain(context,System.nanoTime());var scope=currentScope();
+        if(scope!=null)for(var receive:ready)receive.accept(scope);
+    }
     /** Read the actual UUID-bearing SpectatorPlus packet after its native handler. */
     public static void targetInventory(UUID subject,class_1799[] delta,boolean full) {
         var self=instance;var client=class_310.method_1551();
         if(self==null||self.config==null||subject==null||delta==null||delta.length!=(full?36:9))return;
-        self.reconcile(client);ObserverState.Camera camera=self.readCamera(client);
-        if(camera==null||!camera.observer())return;
+        self.inventoryPacketsSeen++;
         List<class_1799> copy=new ArrayList<>();
         for(var stack:delta)copy.add(stack==null?null:stack.method_7972());
-        if(self.inventory.accept(camera,self.state.epoch(),subject.toString(),copy,full,System.nanoTime()))self.refresh();
+        targetData(subject,scope->{self.reconcile(client);var camera=self.readCamera(client);
+            if(camera!=null&&scope.equals(currentScope())&&self.inventory.accept(camera,self.state.epoch(),subject.toString(),copy,full,System.nanoTime()))self.refresh();});
     }
     public static boolean hideSidebar() {
         var self=instance;if(self==null||self.config==null||!self.config.hideObserverSidebar)return false;
@@ -225,6 +246,7 @@ public final class NativeObserverClient implements ClientModInitializer {
             Map<String,Object> data=new LinkedHashMap<>(state.diagnostics(System.nanoTime()));
             data.put("nativeVersion",FabricLoader.getInstance().getModContainer("mcvisual-native-observer").map(m->m.getMetadata().getVersion().getFriendlyString()).orElse("unknown"));data.put("observerSelfSidebarHidden",hideSidebar());
             data.put("hud",hudLayout);
+            data.put("inventoryPacketsSeen",inventoryPacketsSeen);data.put("passivePacketsSeen",detailPacketsSeen);data.put("targetPacketInbox",inbox.diagnostics());
             data.put("recordedAt",Instant.now().toString());data.put("connected",connected);
             var view=inventory.view(state.current(System.nanoTime()),System.nanoTime());
             data.put("nativeInventoryReceived",view!=null);data.put("nativeInventorySlots",view==null?0:view.slots().size());

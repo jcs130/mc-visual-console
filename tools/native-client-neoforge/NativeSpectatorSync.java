@@ -49,9 +49,9 @@ public final class NativeSpectatorSync {
   ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->ClientPlayNetworking.registerReceiver(type,(data,ctx)->receive.accept(data)));
  }
  public static void initialize(){
-  register(FOOD,b->new Food(b.readUUID(),b.readInt(),b.readFloat()),p->{var s=accept(p.player);if(s!=null)DETAILS.food(s,p.food,p.saturation);});
-  register(EXPERIENCE,b->new Experience(b.readUUID(),b.readFloat(),b.readInt(),b.readInt()),p->{var s=accept(p.player);if(s!=null)DETAILS.experience(s,p.progress,p.needed,p.level);});
-  register(SELECTED,b->new Selected(b.readUUID(),b.readByte()),p->{var s=accept(p.player);if(s!=null)DETAILS.selected(s,p.slot);});
+  register(FOOD,b->new Food(b.readUUID(),b.readInt(),b.readFloat()),p->NativeObserverClient.targetData(p.player,s->{DETAILS.reconcile(s);DETAILS.food(s,p.food,p.saturation);}));
+  register(EXPERIENCE,b->new Experience(b.readUUID(),b.readFloat(),b.readInt(),b.readInt()),p->NativeObserverClient.targetData(p.player,s->{DETAILS.reconcile(s);DETAILS.experience(s,p.progress,p.needed,p.level);}));
+  register(SELECTED,b->new Selected(b.readUUID(),b.readByte()),p->NativeObserverClient.targetData(p.player,s->{DETAILS.reconcile(s);DETAILS.selected(s,p.slot);}));
   register(SCREEN,b->new ScreenInfo(b.readUUID(),b.readByte()),p->{var s=accept(p.player);if(s!=null&&DETAILS.screen(s,p.flags,now())){announcedScope=s;announcedAt=now();}});
   register(CURSOR,b->new Cursor(b.readUUID(),SpectatorInventoryProtocol.readItem(b),b.readByte()),p->{var s=accept(p.player);if(s!=null){cursor=p.item.copy();cursorScope=s;}});
   ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{DETAILS.reconcile(null);cursor=ItemStack.EMPTY;cursorScope=null;announcedScope=null;pendingMenuScope=null;ownedMenu=null;ownedMenuScope=null;});

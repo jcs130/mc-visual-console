@@ -231,3 +231,27 @@ installation and actual rendered acceptance are recorded separately.
   after a compatible authenticated modded entry exists.
 
 Offline readiness, installation and actual spectator behavior remain separate.
+
+## Initial hotbar ordering (native 0.1.29 / observer 0.1.8)
+
+The upstream Paper 1.2.1 handlers send the initial hotbar and selected-slot
+packets from PlayerStartSpectatingEntityEvent, before the later camera update.
+Dropping every packet whose UUID does not yet match the old camera loses that
+baseline; unchanged slots and selected slot need not be sent again.
+
+The shared observer now stages passive hotbar, inventory, selected-slot, food
+and experience values for at most two seconds/eight messages. The original
+connection, world and recipient must match, and only the immediate next actual
+native camera generation may release the packet for its exact UUID. A different
+camera, disconnect, stop, world change, expiry or ABA return drops it. No values
+are displayed before actual binding. Screen-open announcements are not replayed.
+There is no automatic inventory polling, added server request or guessed slot.
+
+Fabric observer 0.1.6 uses the same hotbar/inventory staging policy while the
+original SpectatorPlus owns its selected-slot handling. Diagnostics expose only
+received/deferred/released/dropped counts and the bounded queue state. Nineteen
+ordering checks cover initial data integration, authority boundaries, wrong
+subject, same-UUID return, expiry and bounded storage; independent finished-JAR
+consumers recompile and pass them. Actual live acceptance is recorded separately.
+
+Original protocol: https://github.com/hpfxd/SpectatorPlus/tree/ddc5aec185a59bfa8ecb6c12793a3262da6ee0d5
