@@ -1,5 +1,6 @@
-import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts} from './camera-script.mjs';
+import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts,validateCameraScript} from './camera-script.mjs';
 import {validateChoiceProbabilities} from './systemone-decisions.mjs';
+export {NativeCameraSequence} from './native-shot-sequence.mjs';
 export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
 
 /** One current image plus real all-actor activity/airtime. Other cameras are explicitly unobserved. */
@@ -44,9 +45,12 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
  const script=n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL;
  function add(id,view,profile){
   if(view.startsWith('ortho_')&&nativeSafeOrthographic(n)!==true)return;
-  if(!n.availableViews.includes(view)||view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view))return;
+  const finite=view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view);
+  if(!n.availableViews.includes(view))return;
+  if(finite&&(!same||view!==choice.view||profile||choice.sequence?.schema!=='mcvisual.shot-sequence/v1'
+    ||choice.sequence.pathPreflightRequired!==true||!script||n.cameraScript.preflightRequiredForFinite!==true||n.rigCancelSupported!==true))return;
   const key=view+':'+(profile??'');if(seen.has(key))return;seen.add(key);
-  const motion=script&&view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:profile==='slow'?.7:1,
+  const motion=finite?validateCameraScript(choice.motion,view):script&&view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:profile==='slow'?.7:1,
     ...(['drone_follow','drone_front_left','drone_front'].includes(view)?{height:profile==='slow'?1.8:1,distance:profile==='slow'?6.5:5.5}:{})}:undefined;
   out.push({...choice,id,view,...(motion?{motion}:{})});
  }

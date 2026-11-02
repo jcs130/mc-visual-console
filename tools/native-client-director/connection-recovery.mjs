@@ -1,5 +1,22 @@
 // Camera-only recovery after a positively observed new native connection.
 // Prior effects remain unknown; callers must create a new lease/request.
+/** Only a fresh, explicitly refused offer with the pre-submission camera intact proves non-execution. */
+export function directorExpiredOffer({native:n,request:r,expectedObserverUuid,now=Date.now()}={}){
+ if(!n||!r||!expectedObserverUuid||n.observerUuid!==expectedObserverUuid||n.connected!==true||n.authenticated!==true
+  ||n.spectator!==true||n.manualDetachRequested===true||!['attached','idle'].includes(n.phase)
+  ||n.connectionEpoch!==r.connectionEpoch||n.nativeWorldEpoch!==r.nativeWorldEpoch)return null;
+ const fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000;
+ const o=n.offer;
+ if(!fresh(Date.parse(n.recordedAt))||!fresh(o?.at)||o.id!==r.id||o.lease!==r.lease||o.target!==r.target
+  ||o.accepted!==false||o.reason!=='expired_request'||!Number.isFinite(r.issuedAt)||!Number.isFinite(r.expiresAt)
+  ||r.expiresAt<=r.issuedAt||r.expiresAt-r.issuedAt>10000||r.expiresAt>o.at)return null;
+ if(!Object.hasOwn(r,'previousNativeRequestId')||!Object.hasOwn(r,'previousCameraUuid')||n.requestId===r.id
+  ||(n.requestId??null)!==r.previousNativeRequestId||n.cameraUuid!==r.previousCameraUuid)return null;
+ if(n.phase==='attached'&&(!n.targetUuid||n.cameraUuid!==n.targetUuid)
+  ||n.phase==='idle'&&n.cameraUuid!==n.observerUuid)return null;
+ return{action:'reselect_after_explicit_non_execution',reason:'request_expired_before_admission',requestId:r.id,
+  requestReissued:false,completionVerified:false,backoffMs:2000};
+}
 /** Adopt a newly rendered world only after the SAME accepted request is authoritatively attached there. */
 export function directorWorldReconciliation({native:n,request:r,expectedObserverUuid,now=Date.now()}={}){
   if(!n||!r||!Number.isSafeInteger(r.nativeWorldEpoch)||r.nativeWorldEpoch<1

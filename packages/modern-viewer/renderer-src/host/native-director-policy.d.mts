@@ -1,4 +1,5 @@
 import type {CameraScript} from './camera-script.mjs';
+export {NativeCameraSequence} from './native-shot-sequence.mjs';
 import type {SceneSubjectCandidate} from '../../../../tools/native-client-director/scene-policy.mjs';
 export const SUBJECT_CHOICE_PROTOCOL:'mcvisual.subject-choice/v1';
 export interface NativeSubjectDecision {schema:typeof SUBJECT_CHOICE_PROTOCOL;forceReview:boolean;options:Array<Partial<SceneSubjectCandidate>&{id:string;name:string;uuid:string;view?:string}>;request:{state:unknown;questions:Record<string,{type:'choice';instructions:string;criteria:Record<string,string>}>}}

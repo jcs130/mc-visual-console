@@ -410,3 +410,26 @@ Diagnostics carry the same access object, target gameMode/spectator fields and
 all_online/bound_player/configured discovery mode. The thin host must select
 matching all-online/bound-player/configured mode. SDK and MCP reject unrelated
 UUIDs or ineligible server-wide targets before writing a native request.
+# Opt-in native shot progression
+
+The shared `NativeCameraSequence` export supplements subject selection with display-only
+shot progression. Enable it explicitly in the host; default cadence is 22 seconds with
+the existing cut budget and 45-second projection dwell still authoritative. It uses
+fresh same-target/world geometry and observed movement. Quiet open scenes can propose
+35-degree arcs, an endpoint-limited push/pull, or front views; movement uses tracking,
+tight passages keep readable eye/POV views, and fresh combat, interaction and real GUI
+protect the current shot. Orthographic progression preserves the full floor and uses
+the original native renderer; no global cutaway or synthetic scene is introduced.
+
+Finite proposals require advertised native path preflight and cancellation support.
+Model menus may include that exact scoped proposal, with unchanged bounded script
+parameters. Native collision preflight can still reject it; advice or an accepted
+request does not finish a shot. Completed native endpoint frames advance progression,
+blocked arcs back off, and stopped instances cannot revive. No model loop or network
+client is hidden in the shared sequence.
+
+`directorExpiredOffer` distinguishes a fresh explicit rejection before admission from
+an unknown outcome. It requires matching account, connection, world, offer ID/lease,
+and unchanged pre-submission native camera/request. A host may then reselect from
+fresh state with a new ID and bounded backoff. It must retain the rejected ID and
+must not replay it, infer completion, resume a manual pause, or retry an unknown result.
