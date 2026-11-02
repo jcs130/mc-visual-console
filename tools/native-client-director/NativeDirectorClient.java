@@ -43,6 +43,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private boolean manualDetachRequested;
     private long nativeWorldEpoch;
     private Set<String> trackedTargets=Set.of();
+    public static void captureCompositedFrame(){var self=instance;if(self!=null){var client=class_310.method_1551();NativeVisionCapture.renderComposited(client,self.visionScope(client));}}
     @Override public void onInitializeClient(){
         instance=this;
         ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->join(client));
@@ -291,6 +292,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         if(ready&&droneActive&&System.currentTimeMillis()-droneRenderedAt<200)DRONE.confirmRendered();
         FrameBlend.draw(client,draw,policy.requestId(),ready,terminal);
     }
+    public static boolean orthographicProjecting(){return ORTHO.projecting();}
     public static boolean droneMayRender(class_1297 target){
         if(worldTransitionActive){DRONE.reset();return false;}
         if(!droneEnabled||!droneActive||target==null||!target.method_5667().toString().equals(droneUuid))return false;

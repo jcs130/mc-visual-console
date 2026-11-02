@@ -31,11 +31,14 @@ export function createNativeVisionSource({readNative,writeRequest,readReceipt,re
       if(receipt.phase==='rejected')return{kind:'unavailable',reason:'capture_rejected'};
       if(receipt.phase==='captured'){
        const latest=await readNative();
+       const sourceSize=receipt.sourceWidth!==undefined||receipt.sourceHeight!==undefined;
        if(!bound(latest,request)||receipt.connectionEpoch!==request.connectionEpoch||receipt.nativeWorldEpoch!==request.nativeWorldEpoch
          ||receipt.targetUuid!==request.targetUuid||receipt.observerUuid!==observerUuid||receipt.server!==expectedServer
          ||receipt.cameraRequestId!==request.cameraRequestId||receipt.file!=='frame.jpg'||receipt.mime!=='image/jpeg'
          ||!Number.isInteger(receipt.width)||!Number.isInteger(receipt.height)||receipt.width<1||receipt.height<1
          ||receipt.width>maxWidth||receipt.height>maxHeight||!Number.isFinite(receipt.capturedAt)
+         ||sourceSize&&(!Number.isInteger(receipt.sourceWidth)||!Number.isInteger(receipt.sourceHeight)
+           ||receipt.sourceWidth<receipt.width||receipt.sourceHeight<receipt.height||receipt.sourceWidth>32768||receipt.sourceHeight>32768)
          ||receipt.capturedAt<request.issuedAt||receipt.capturedAt>now()+1000||now()-receipt.capturedAt>3000)
          return{kind:'unavailable',reason:'capture_binding_changed'};
        const bytes=await readImage('frame.jpg');
@@ -44,6 +47,7 @@ export function createNativeVisionSource({readNative,writeRequest,readReceipt,re
        const after=await readNative();if(!bound(after,request)||stopped||controller.signal.aborted)return{kind:'unavailable',reason:'capture_binding_changed'};
        return{kind:'frame',images:['data:image/jpeg;base64,'+Buffer.from(bytes).toString('base64')],revision:receipt.sha256,
         capturedAt:receipt.capturedAt,width:receipt.width,height:receipt.height,scope:request.connectionEpoch+':'+request.nativeWorldEpoch,
+        ...(sourceSize?{sourceWidth:receipt.sourceWidth,sourceHeight:receipt.sourceHeight}:{}),
         targetUuid:request.targetUuid,cameraRequestId:request.cameraRequestId};
       }
      }

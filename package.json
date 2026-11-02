@@ -62,6 +62,14 @@
     "./scene-selection": {
       "types": "./tools/native-client-director/scene-policy.d.mts",
       "default": "./tools/native-client-director/scene-policy.mjs"
+    },
+    "./client-content": {
+      "types": "./packages/modern-viewer/renderer-src/host/client-content-stream.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/client-content-stream.mjs"
+    },
+    "./agent-content": {
+      "types": "./packages/modern-viewer/renderer-src/host/agent-content.d.mts",
+      "default": "./packages/modern-viewer/renderer-src/host/agent-content.mjs"
     }
   },
   "files": [
@@ -88,7 +96,9 @@
     "LICENSE",
     "packages/modern-viewer/asset-packs/vanilla-1.21.1",
     "tools/native-client-director/scene-policy.mjs",
-    "tools/native-client-director/scene-policy.d.mts"
+    "tools/native-client-director/scene-policy.d.mts",
+    "tools/native-client-content",
+    "hosts/cortico/content-records.mjs"
   ],
   "scripts": {
     "test:director": "node --test packages/modern-viewer/renderer-src/tools/test/broadcast-camera.test.mjs packages/modern-viewer/renderer-src/tools/test/broadcast-decisions.test.mjs packages/modern-viewer/renderer-src/tools/test/broadcast-motion.test.mjs packages/modern-viewer/renderer-src/tools/test/native-camera-adapter.test.mjs tools/native-client-director/shot-policy.test.mjs",

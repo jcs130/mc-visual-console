@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "mcvisual-native-observer",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "name": "MC Visual Native Observer",
   "description": "Explicitly scoped, read-only HUD for the actual spectator camera. Does not connect another player or send gameplay commands.",
   "environment": "client",
