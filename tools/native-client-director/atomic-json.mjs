@@ -12,7 +12,7 @@ async function publish(file,bytes){
  if(existing?.isDirectory())throw Object.assign(Error('ATOMIC_JSON_DESTINATION_IS_DIRECTORY'),{code:'EISDIR'});
  const temp=file+'.'+process.pid+'.'+randomUUID()+'.tmp';
  await fs.writeFile(temp,bytes,{flag:'wx'});
- const end=performance.now()+1800;let attempt=0;
+ const end=performance.now()+5000;let attempt=0;
  try{for(;;){
   try{await fs.rename(temp,file);return;}
   catch(error){
