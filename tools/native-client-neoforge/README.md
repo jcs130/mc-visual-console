@@ -98,6 +98,49 @@ default stage remains world-only for existing visual decision consumers. All
 current server/observer/connection/world/target/camera request bindings, 5-second
 expiry and 512-pixel budgets remain mandatory. Explicit final-frame requests can
 include a scoped menu; transitions and stale/wrong camera scopes are refused.
+
+## Explicit window policy, 0.1.25
+
+Only a visual observer launched with `-Dmcvisual.windowPolicyFile=<absolute-json>`
+enables this optional policy. Ordinary game clients keep their original input and
+window behavior; no default directories, ports or services are discovered.
+
+```json
+{"schema":"mcvisual.window-policy/v1","enabled":true,"freeCursor":true,"renderUnfocused":true,"avoidFocusOnShow":true,"backgroundFps":60,"framebufferWidth":1920,"framebufferHeight":1080,"revision":"1080p"}
+```
+
+`freeCursor` prevents the original MouseHandler from grabbing and centering the
+system cursor, including after a screen closes. It does not repeatedly release or
+move the cursor. Menus retain normal pointing/clicking; game-body mouse look is not
+appropriate for this observer mode. `avoidFocusOnShow` supplies GLFW creation hints
+and never activates or raises another application. These flags require restart.
+
+`renderUnfocused` disables pause-on-focus-loss and applies the explicit 10–240 FPS
+background cap while a non-minimized world renders. Zero selects 60. This is not a
+claim that minimized windows render: that state is reported separately. Minecraft
+1.21.1 has no later-version FramerateLimitTracker; the adapter uses its actual
+Window frame limiter instead of installing an unrelated throttling mod.
+
+Dimensions refer to the actual main render target, not a scaled capture. The
+adapter accounts for GLFW window/framebuffer scaling and attempts each explicit
+revision once; a request is not marked applied until the render target matches.
+Resolution and FPS can change in the same policy file without restart. Manual
+resizing is reported rather than fought every frame. Fullscreen changes and
+iconified windows defer/refuse the resize. Both dimensions may be zero to retain
+the launcher's size; nonzero dimensions have a 4K pixel budget.
+
+`diagnostics/mcvisual-native-window.json` contains actual focus, cursor mode,
+framebuffer size, resize phase, frame counters and timestamps. Frame counters are
+advanced by original render events, not diagnostic reads. Capture receipts now
+include optional `sourceWidth`/`sourceHeight`; the existing 512px visual-decision
+thumbnail and all scope/hash/expiry limits stay unchanged. The offline diagnostic
+can opt into `-Dmcvisual.offlineWindowCheck=true` with a free-cursor policy to call
+the actual transformed grab method and verify that it leaves the cursor normal.
+
+API references: [GLFW cursor modes](https://www.glfw.org/docs/latest/input) and
+[window focus/framebuffer sizing](https://www.glfw.org/docs/latest/window).
+Avoiding grab at its source prevents the normal grab/release center warp; this
+policy never tries to recover a desktop lock owned by another application.
 The receipt declares `captureStage` and the exact output hash. No window focus,
 desktop pixels, key press, gameplay input or extra connection is used. Hosts whose
 adapter lacks the final-frame hook reject this stage instead of silently returning

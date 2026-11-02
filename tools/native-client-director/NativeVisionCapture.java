@@ -108,6 +108,7 @@ public final class NativeVisionCapture {
                 if(!enabled||generation!=boundGeneration||!Objects.equals(latestId,r.id()))return;
                 var meta=new LinkedHashMap<String,Object>();meta.put("schema","mcvisual.vision-frame/v1");meta.put("id",r.id());meta.put("phase","captured");meta.put("capturedAt",now);
                 meta.put("width",w);meta.put("height",h);meta.put("mime","image/jpeg");meta.put("bytes",bytes.size());meta.put("file","frame.jpg");
+                meta.put("sourceWidth",sw);meta.put("sourceHeight",sh);
                 meta.put("sha256",HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())));
                 meta.put("server",scope.server());meta.put("observerUuid",scope.observerUuid());meta.put("connectionEpoch",scope.connectionEpoch());meta.put("nativeWorldEpoch",scope.nativeWorldEpoch());
                 meta.put("targetUuid",scope.targetUuid());meta.put("cameraRequestId",scope.cameraRequestId());
