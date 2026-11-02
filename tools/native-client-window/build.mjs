@@ -1,0 +1,17 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {buildContext,sha} from '../native-client-shared/build-support.mjs';
+const dir=import.meta.dirname,root=path.resolve(dir,'../..'),ctx=await buildContext(process.argv.slice(2),{mixinExtras:true});
+const {loader,classes,consumer,cp,out,run,compile}=ctx;
+const shared=['WindowPolicy.java','WindowPlatform.java','WindowRuntime.java'],binding=['WindowMod.java',loader==='fabric'?'FabricWindowPlatform.java':'NeoForgeWindowPlatform.java','MouseCaptureMixin.java','WindowHintsMixin.java','FrameCounterMixin.java'].map(f=>loader+'/'+f);
+const tests=['test/WindowPolicyCheck.java'],files=[...shared,...binding,...tests].map(f=>path.join(dir,f));await ctx.sources([...files,dir+'/build.mjs',path.resolve(dir,'../native-client-shared/build-support.mjs')],root);
+await compile(files);const checked=run('java',['-cp',classes+path.delimiter+cp,'WindowPolicyCheck']).trim();
+await fs.mkdir(classes+'/META-INF',{recursive:true});await fs.copyFile(root+'/LICENSE',classes+'/META-INF/LICENSE-MIT');
+const metadata=dir+'/'+loader+(loader==='fabric'?'/fabric.mod.json':'/neoforge.mods.toml');await ctx.sources([metadata],root);
+await fs.copyFile(metadata,classes+(loader==='fabric'?'/fabric.mod.json':'/META-INF/neoforge.mods.toml'));
+const mixin='mcvisual-window-'+loader+'.mixins.json';await fs.writeFile(classes+'/'+mixin,JSON.stringify({required:true,minVersion:'0.8',compatibilityLevel:'JAVA_21',package:'org.mcvisual.window.'+loader+'.mixin',client:['MouseCaptureMixin','WindowHintsMixin','FrameCounterMixin'],injectors:{defaultRequire:1}}));
+const artifact=out+'/mcvisual-window-0.1.0-'+loader+'-1.21.1.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF','-C',classes,mixin,...(loader==='fabric'?['-C',classes,'fabric.mod.json']:[])]);
+await compile(tests.map(f=>path.join(dir,f)),consumer,artifact+path.delimiter+cp);const packaged=run('java',['-cp',consumer+path.delimiter+artifact+path.delimiter+cp,'WindowPolicyCheck']).trim();if(checked!==packaged)throw Error('Packaged consumer mismatch');
+const entries=run('jar',['--list','--file',artifact]).split(/\r?\n/);if(entries.some(e=>/org\/(?:agentmc|mcvisual\/(?:director|content))\//.test(e)))throw Error('Unrelated implementation bundled');
+const result={schema:'mcvisual-window-build/v1',loader,version:'0.1.0',at:new Date().toISOString(),artifact,sha256:sha(await fs.readFile(artifact)),checks:checked,packaged,sources:ctx.records,work:ctx.work,classpath:ctx.files,excludedClasspath:ctx.excluded,runtimeDependencies:ctx.runtimeDependencies,agentFrameworkDependencies:[],companionDependency:false,gameConnections:0,productionLoaded:false};
+await fs.writeFile(out+'/build-report.json',JSON.stringify(result,null,2));console.log(JSON.stringify({loader,artifact,sha256:result.sha256,checks:checked,packaged}));

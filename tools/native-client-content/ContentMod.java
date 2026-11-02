@@ -6,5 +6,5 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 @Mod(value="mcvisual_content",dist=Dist.CLIENT)
 public final class ContentMod {
- public ContentMod(){var runtime=new ContentRuntime();NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post e)->runtime.tick());NeoForge.EVENT_BUS.addListener((RenderGuiEvent.Post e)->runtime.render(e.getGuiGraphics()));}
+ public ContentMod(){var platform=new NeoForgeContentPlatform();var runtime=new ContentRuntime(platform);NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post e)->runtime.tick());NeoForge.EVENT_BUS.addListener((RenderGuiEvent.Post e)->runtime.render(platform.canvas(e.getGuiGraphics())));}
 }

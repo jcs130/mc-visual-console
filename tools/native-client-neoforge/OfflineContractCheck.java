@@ -18,14 +18,9 @@ public final class OfflineContractCheck {
    Class.forName("net.minecraft.client.MouseHandler",false,loader);checks.add("net.minecraft.client.MouseHandler");
    Class.forName("com.mojang.blaze3d.platform.Window",false,loader);checks.add("com.mojang.blaze3d.platform.Window");
    if(Boolean.getBoolean("mcvisual.offlineWindowCheck")){
-    if(!NativeWindowRuntime.enabled()||!NativeWindowRuntime.freeCursor())throw new IllegalStateException("Explicit free-cursor offline policy required before grab probe");
-    long attempts=NativeWindowRuntime.suppressedGrabRequests(),window=mc.getWindow().getWindow();
-    int beforeMode=org.lwjgl.glfw.GLFW.glfwGetInputMode(window,org.lwjgl.glfw.GLFW.GLFW_CURSOR);
-    mc.mouseHandler.grabMouse();
-    int afterMode=org.lwjgl.glfw.GLFW.glfwGetInputMode(window,org.lwjgl.glfw.GLFW.GLFW_CURSOR);
-    if(mc.mouseHandler.isMouseGrabbed()||NativeWindowRuntime.suppressedGrabRequests()!=attempts+1||beforeMode!=afterMode||afterMode!=org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL)
-     throw new IllegalStateException("Actual transformed MouseHandler captured the cursor");
-    data.put("mouseGrabProbe",Map.of("suppressed",true,"cursorModeBefore",beforeMode,"cursorModeAfter",afterMode));
+    var windowModule=Class.forName("org.mcvisual.window.WindowRuntime",false,loader);
+    if(!Boolean.TRUE.equals(windowModule.getMethod("enabled").invoke(null))||!Boolean.TRUE.equals(windowModule.getMethod("freeCursor").invoke(null)))throw new IllegalStateException("Explicit standalone window policy required");
+    data.put("windowModule",Map.of("configured",true,"inputInjected",false,"standaloneDiagnostic","mcvisual-window-offline.json"));
    }
    if(ModList.get().isLoaded("iris")){Class.forName("net.irisshaders.iris.pathways.HandRenderer",false,loader);checks.add("net.irisshaders.iris.pathways.HandRenderer");}
    Class.forName("cpw.mods.bootstraplauncher.BootstrapLauncher",false,loader);

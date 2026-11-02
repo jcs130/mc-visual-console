@@ -1,4 +1,4 @@
-# Client content stream (Minecraft 1.21.1 / NeoForge)
+# Client content stream (Minecraft 1.21.1 / Fabric and NeoForge)
 
 An independent, client-only MIT mod for custom content over WebSocket. It does not
 require a server mod, Cortico, N.E.K.O., an Agent SDK or the native director companion.
@@ -12,7 +12,11 @@ first version; the existing Web renderer retains those features independently.
 
 ## Explicit activation
 
-Install `mcvisual-content-0.1.1-neoforge-1.21.1.jar` in the actual client's mods.
+Install the **one** matching `mcvisual-content-0.2.0-fabric-1.21.1.jar` or
+`mcvisual-content-0.2.0-neoforge-1.21.1.jar` in the actual client's mods.
+Fabric requires Fabric API. The two JARs use the same transport, scope, expiry and
+layout implementation; loader-specific code only reads the original scene and
+draws through the original GUI. Neither version needs the background-window mod.
 Start Java with `-Dmcvisual.contentConfig=<absolute-config-path>`:
 
 ```json
@@ -95,17 +99,29 @@ distinct; recent rows retain source age. Missing public goals remain missing.
 ## Build and verification
 
 ```text
-node tools/native-client-content/build.mjs --classpath-report <json-with-classpath-array> --java-home <JDK21> --output-dir <private-output>
+node tools/native-client-content/build.mjs --loader fabric --game-dir <matching-Fabric-1.21.1-profile> --java-home <JDK21> --output-dir <private-output>
+node tools/native-client-content/build.mjs --loader neoforge --classpath-report <json-with-classpath-array> --java-home <JDK21> --output-dir <private-output>
 ```
 
-The classpath contains the original Mojmap 1.21.1/NeoForge libraries. The builder
+The NeoForge classpath contains the original Mojmap 1.21.1/NeoForge libraries;
+Fabric uses its original matching intermediary client and Fabric API cache. The builder
 does not add the report's companion artifact, extract Cortico source, patch other
 mods or fetch dependencies. Source and independently compiled JAR consumers run
-40 scope/expiry/presentation checks. The JS tests use real loopback WebSocket
-connections, including target changes and cancellation; public declarations have
+40 scope/expiry/presentation checks for each loader. `ContentRuntime` also runs
+from each finished JAR with only JDK21/Gson and a fake scene/drawing platform;
+no Minecraft or loader classes are present in that fixture runtime. Those tests
+use real loopback WebSockets for target/world changes, render suppression, expiry,
+disconnect/reconnect, cancellation during a pending HTTP upgrade, and stop without
+revival. Unconfigured clients do not create a connection. Public declarations have
 an independent consumer check. This is separate from real GUI/pixel acceptance.
 
 `diagnostics/mcvisual-content.json` records only version, counts, context and actual
 draw rectangles/times. It is diagnostic metadata, not a content input or archive.
 No prompts, widget text, auth headers or bearer values are written there. Real
 runtime results, backups and captures belong in the deployment's private audit.
+
+The standalone 0.2.0 packages were separately loaded on disconnected Fabric and
+NeoForge title screens with the independent window mod and original loader/API
+dependencies, without a director, core companion or Agent framework. This checks
+real loader binding; it is separate from in-world HUD pixels or live deployment.
+See [the module matrix](../../docs/client-modules.md) for optional combinations.
