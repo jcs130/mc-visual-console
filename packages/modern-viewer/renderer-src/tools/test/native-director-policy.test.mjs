@@ -4,6 +4,16 @@ import {CAMERA_SCRIPT_PROTOCOL as schema,validateCameraScript,blendCameraScripts
 import {nativeCameraCandidates,selectCameraBallot,NativeCameraPacing,buildNativeSubjectDecision,selectNativeSubject} from '../../host/native-director-policy.mjs';
 const menu=[{id:'keep'},{id:'normal',name:'A',view:'drone_follow',motion:{schema,speed:1,height:1,distance:5.5}},{id:'slow',name:'A',view:'drone_follow',motion:{schema,speed:.7,height:1.8,distance:6.5}}];
 const votes=p=>['action','space','continuity'].map(role=>({role,choice:'normal',probabilities:p}));
+test('a large actual online roster keeps each model menu bounded and does not invent previews',()=>{
+ const targets=Array.from({length:100},(_,i)=>({name:'Player'+i,uuid:'uuid'+i,loaded:false}));
+ const n={target:'Player0',targetUuid:'uuid0',targets,availableViews:['first_person']};
+ const rows=targets.map(t=>({name:t.name,kind:'coverage',at:1000}));
+ const menu=buildNativeSubjectDecision(n,rows,{now:1000});
+ assert.equal(menu.options.length,16);assert.equal(menu.options[0].id,'keep');
+ assert.equal(menu.request.state.subjects.filter(s=>s.loaded).length,0);
+ assert.match(menu.request.state.imageEvidence,/CURRENT/);
+ assert.equal(buildNativeSubjectDecision({...n,targets:Array.from({length:257},()=>targets[0])},rows),null);
+});
 test('complete distributions survive transport; malformed, extra and unnormalised values are rejected',async()=>{
  const criteria={keep:'hold',normal:'follow',slow:'slow'};assert.deepEqual(validateChoiceProbabilities({keep:.1,normal:.6,slow:.3},criteria),{keep:.1,normal:.6,slow:.3});
  for(const p of[{keep:1},{keep:.1,normal:.6,slow:.3,command:0},{keep:NaN,normal:1,slow:0},{keep:0,normal:4,slow:0},{keep:.1,normal:.1,slow:.1}])assert.equal(validateChoiceProbabilities(p,criteria),null);

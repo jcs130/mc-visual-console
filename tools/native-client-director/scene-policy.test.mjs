@@ -2,6 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {classifyEvent,SceneSelector,belongsToActor,eventActor} from './scene-policy.mjs';
 const now=100_000,combat=t=>({ts:new Date(t).toISOString(),type:'minecraft.combat',text:'native combat clear'});
+test('native online roster admits ordinary players and removes stale identities without inheriting airtime',()=>{
+  const p=new SceneSelector(['Agent']);
+  assert.equal(p.setRoster([{name:'Bob',uuid:'bob-old'},{name:'Alice',uuid:'alice'}]),true);
+  p.setAvailable(['Bob','Alice']);
+  assert.equal(p.choose(null,0,now).name,'Alice');
+  p.observeProgram('Bob',{at:now,scope:'live'},now);
+  p.observePosition('Bob',{at:now,position:[1,2,3],scope:'live'},now);
+  p.setRoster([{name:'Bob',uuid:'bob-new'}]);
+  assert.equal(p.coverage.has('Bob'),false);assert.equal(p.presence.has('Bob'),false);
+  assert.equal(p.names.includes('Alice'),false);
+  assert.equal(p.setRoster([{name:'Bob',uuid:'x'},{name:'BOB',uuid:'y'}]),false);
+  assert.deepEqual(p.names,['Bob'],'invalid replacement cannot corrupt the accepted roster');
+  assert.equal(p.setRoster(Array.from({length:257},(_,i)=>({name:'p'+i,uuid:'id'+i}))),false);
+});
 const position=(at,x,run='one')=>({ts:new Date(at).toISOString(),run,type:'minecraft.world.snapshot',
   text:`[Minecraft] 我在fixture，脚下是石头，站在格 (${x}, 70, 0)，世界 fixture:one。我站着没动。`});
 test('observed movement switches off a stationary actor while a long task is still running',()=>{

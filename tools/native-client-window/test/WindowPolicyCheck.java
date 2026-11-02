@@ -26,6 +26,19 @@ public final class WindowPolicyCheck {
   check(!WindowPolicy.sameStartupPolicy(live,new WindowPolicy.Config(WindowPolicy.SCHEMA,true,false,true,true,60,1920,1080,"manual")),"capture policy cannot silently change mid-session");
   check(!WindowPolicy.valid(new WindowPolicy.Config("unknown/v2",true,true,true,true,60,1920,1080,"")),"unknown schema refused");
   check(!WindowPolicy.valid(new WindowPolicy.Config(WindowPolicy.SCHEMA,true,true,true,true,9999,1920,1080,"")),"unbounded FPS refused");
+  var work=new WindowPolicy.Area(0,0,1920,1032);var border=new WindowPolicy.Border(8,31,8,8);
+  var fit=WindowPolicy.fit(work,border,0,0,1920,1080);
+  check(fit.clamped(),"desktop-sized client fits inside titlebar and taskbar");
+  check(fit.y()>=31&&fit.x()>=8,"negative titlebar recovered even if requested size already matches framebuffer");
+  check(fit.y()+fit.height()+8<=1032&&fit.x()+fit.width()+8<=1920,"full decorated bounds visible");
+  var regular=WindowPolicy.fit(work,border,40,60,1600,900);
+  check(!regular.clamped()&&regular.x()==40&&regular.y()==60,"visible user window position preserved");
+  var left=WindowPolicy.fit(new WindowPolicy.Area(-1920,-100,1920,1032),border,0,-999,1600,900);
+  check(left.x()>=-1912&&left.x()+left.width()+8<=0&&left.y()>=-69,"negative-coordinate monitor and taskbar supported");
+  var hidpi=WindowPolicy.fit(new WindowPolicy.Area(0,0,1280,688),border,-8,-31,WindowPolicy.logicalSize(1920,1280,1920),WindowPolicy.logicalSize(1080,720,1080));
+  check(hidpi.width()+16<=1280&&hidpi.height()+39<=688,"high-DPI logical work area fitting");
+  check(WindowPolicy.overlap(new WindowPolicy.Area(-100,0,200,100),work)==10000,"monitor overlap selects the actual window monitor");
+  check(WindowPolicy.overlap(new WindowPolicy.Area(-200,-200,10,10),work)==0,"disconnected monitor positions have zero overlap");
   System.out.println(n+" observer window policy checks passed");
  }
 }

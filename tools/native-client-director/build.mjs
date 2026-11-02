@@ -33,12 +33,13 @@ for(const [type,names]of Object.entries(contract)){
  const shape=run('javap',['-p','-s','-classpath',cp,type]);
  for(const name of names)if(!shape.includes(name))throw Error('Native camera API missing: '+type+' '+name);
 }
-const sources=['DirectorPolicy.java','DroneFollow.java','CinematicRig.java','CloseView.java','OrthographicRig.java','NativeOrthographic.java','TransitionEnvelope.java','FrameBlend.java','CapturePolicy.java','NativeVisionCapture.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/DroneFollowCheck.java','test/TransitionEnvelopeCheck.java','test/CinematicRigCheck.java','test/OrthographicRigCheck.java','test/CapturePolicyCheck.java'];
+const sources=['DirectorPolicy.java','OnlineTargets.java','DroneFollow.java','CinematicRig.java','CloseView.java','OrthographicRig.java','NativeOrthographic.java','TransitionEnvelope.java','FrameBlend.java','CapturePolicy.java','NativeVisionCapture.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/OnlineTargetsCheck.java','test/DroneFollowCheck.java','test/TransitionEnvelopeCheck.java','test/CinematicRigCheck.java','test/OrthographicRigCheck.java','test/CapturePolicyCheck.java'];
 const argfile=path.join(scratch,'javac.args');
 const quote=x=>'"'+x.replaceAll('\\','/').replaceAll('"','\\"')+'"';
 fs.writeFileSync(argfile,['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources.map(p=>path.join(source,p))].map(quote).join('\n'));
 run('javac',['@'+argfile]);
 const checks=run('java',['-cp',classes+path.delimiter+cp,'DirectorPolicyCheck']);process.stdout.write(checks);
+process.stdout.write(run('java',['-cp',classes+path.delimiter+cp,'OnlineTargetsCheck']));
 const droneChecks=run('java',['-cp',classes+path.delimiter+cp,'DroneFollowCheck']);process.stdout.write(droneChecks);
 const transitionChecks=run('java',['-cp',classes+path.delimiter+cp,'TransitionEnvelopeCheck']);process.stdout.write(transitionChecks);
 const cinematicChecks=run('java',['-cp',classes+path.delimiter+cp,'CinematicRigCheck']);process.stdout.write(cinematicChecks);
@@ -57,9 +58,10 @@ run('jar',['--create','--file',jar,'-C',classes,'org','-C',classes,'fabric.mod.j
 // Recompile the consumer against the finished production JAR only.
 const consumer=path.join(scratch,'consumer');fs.mkdirSync(consumer);
 const consumerArgs=path.join(scratch,'consumer.args');
-fs.writeFileSync(consumerArgs,['--release','21','-encoding','UTF-8','-proc:none','-classpath',jar,'-d',consumer,path.join(source,'test/DirectorPolicyCheck.java'),path.join(source,'test/DroneFollowCheck.java'),path.join(source,'test/TransitionEnvelopeCheck.java'),path.join(source,'test/CinematicRigCheck.java'),path.join(source,'test/OrthographicRigCheck.java'),path.join(source,'test/CapturePolicyCheck.java')].map(quote).join('\n'));
+fs.writeFileSync(consumerArgs,['--release','21','-encoding','UTF-8','-proc:none','-classpath',jar,'-d',consumer,path.join(source,'test/DirectorPolicyCheck.java'),path.join(source,'test/OnlineTargetsCheck.java'),path.join(source,'test/DroneFollowCheck.java'),path.join(source,'test/TransitionEnvelopeCheck.java'),path.join(source,'test/CinematicRigCheck.java'),path.join(source,'test/OrthographicRigCheck.java'),path.join(source,'test/CapturePolicyCheck.java')].map(quote).join('\n'));
 run('javac',['@'+consumerArgs]);const packagedChecks=run('java',['-cp',consumer+path.delimiter+jar,'DirectorPolicyCheck']);
 process.stdout.write('Packaged consumer: '+packagedChecks);
+process.stdout.write(run('java',['-cp',consumer+path.delimiter+jar,'OnlineTargetsCheck']));
 const packagedDroneChecks=run('java',['-cp',consumer+path.delimiter+jar,'DroneFollowCheck']);process.stdout.write('Packaged consumer: '+packagedDroneChecks);
 const packagedTransitionChecks=run('java',['-cp',consumer+path.delimiter+jar,'TransitionEnvelopeCheck']);process.stdout.write('Packaged consumer: '+packagedTransitionChecks);
 const packagedCinematicChecks=run('java',['-cp',consumer+path.delimiter+jar,'CinematicRigCheck']);process.stdout.write('Packaged consumer: '+packagedCinematicChecks);

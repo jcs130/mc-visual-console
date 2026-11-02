@@ -16,6 +16,10 @@ public final class WindowRuntime {
     private static long lastPoll,lastWrite,lastModified=-1,frames,worldFrames,frameAt,worldFrameAt,grabSuppressed,resizeStarted;
     private static boolean attempted,restartRequired,offlineChecked;
     private static String resizePhase="unchanged",error="";
+    private static int effectiveW,effectiveH;
+    private static WindowPolicy.Area workArea;
+    private static WindowPolicy.Border border;
+    private static boolean clamped;
     private static Path policyFile(){
         var p=System.getProperty("mcvisual.windowPolicyFile");
         if(p==null||p.isBlank())return null;
@@ -63,33 +67,56 @@ public final class WindowRuntime {
         }
         int[] ww={0},wh={0},dw={0},dh={0};GLFW.glfwGetWindowSize(handle,ww,wh);GLFW.glfwGetFramebufferSize(handle,dw,dh);
         int fw=observed.framebufferWidth(),fh=observed.framebufferHeight(),wantW=requested.framebufferWidth(),wantH=requested.framebufferHeight();
+        int[] wx={0},wy={0},left={0},top={0},right={0},bottom={0};
+        GLFW.glfwGetWindowPos(handle,wx,wy);GLFW.glfwGetWindowFrameSize(handle,left,top,right,bottom);
         if(wantW>0){
-            if(fw==wantW&&fh==wantH){resizePhase="applied";attempted=true;}
-            else if(!attempted){
+            if(!attempted){
                 if(iconified)resizePhase="deferred_iconified";
                 else if(observed.fullscreen())resizePhase="unsupported_fullscreen";
                 else if(dw[0]>0&&dh[0]>0&&ww[0]>0&&wh[0]>0){
-                    try{GLFW.glfwSetWindowSize(handle,WindowPolicy.logicalSize(wantW,ww[0],dw[0]),WindowPolicy.logicalSize(wantH,wh[0],dh[0]));attempted=true;resizeStarted=now;resizePhase="requested";}
+                    try{
+                        border=new WindowPolicy.Border(left[0],top[0],right[0],bottom[0]);
+                        var current=new WindowPolicy.Area(wx[0]-left[0],wy[0]-top[0],ww[0]+left[0]+right[0],wh[0]+top[0]+bottom[0]);
+                        workArea=monitorArea(current);
+                        var placed=WindowPolicy.fit(workArea,border,wx[0],wy[0],WindowPolicy.logicalSize(wantW,ww[0],dw[0]),WindowPolicy.logicalSize(wantH,wh[0],dh[0]));
+                        effectiveW=(int)Math.round(placed.width()*(double)dw[0]/ww[0]);effectiveH=(int)Math.round(placed.height()*(double)dh[0]/wh[0]);clamped=placed.clamped();
+                        if(ww[0]!=placed.width()||wh[0]!=placed.height())GLFW.glfwSetWindowSize(handle,placed.width(),placed.height());
+                        if(wx[0]!=placed.x()||wy[0]!=placed.y())GLFW.glfwSetWindowPos(handle,placed.x(),placed.y());
+                        attempted=true;resizeStarted=now;resizePhase="requested";
+                    }
                     catch(Exception failure){attempted=true;resizePhase="failed";error="native_resize_failed";}
                 }
-            }else if(resizePhase.equals("applied"))resizePhase="changed_externally";
+            }else if(dw[0]==effectiveW&&dh[0]==effectiveH)resizePhase=clamped?"applied_clamped":"applied";
+            else if(resizePhase.startsWith("applied"))resizePhase="changed_externally";
             else if(resizeStarted>0&&now-resizeStarted>5000&&resizePhase.equals("requested")){resizePhase="failed";error="framebuffer_size_not_observed";}
         }else resizePhase="unchanged";
         if(Boolean.getBoolean("mcvisual.windowOfflineCheck")&&!offlineChecked&&!observed.worldPresent()&&!observed.connected()){
             offlineChecked=true;offlineCheck(platform);
         }
         if(now-lastWrite<1000)return;lastWrite=now;
-        var data=new LinkedHashMap<String,Object>();data.put("schema","mcvisual.native-window/v1");data.put("moduleVersion","0.1.0");data.put("loader",platform.loader());data.put("recordedAt",Instant.now().toString());
+        var data=new LinkedHashMap<String,Object>();data.put("schema","mcvisual.native-window/v1");data.put("moduleVersion","0.1.1");data.put("loader",platform.loader());data.put("recordedAt",Instant.now().toString());
         data.put("instanceId",INSTANCE);data.put("processId",ProcessHandle.current().pid());data.put("enabled",true);
         data.put("freeCursor",STARTUP.freeCursor());data.put("renderUnfocused",STARTUP.renderUnfocused());data.put("avoidFocusOnShow",STARTUP.avoidFocusOnShow());
         data.put("focused",focused);data.put("iconified",iconified);data.put("fullscreen",observed.fullscreen());
         data.put("mouseGrabbed",observed.mouseGrabbed());data.put("cursorMode",GLFW.glfwGetInputMode(handle,GLFW.GLFW_CURSOR));data.put("suppressedGrabRequests",grabSuppressed);
         data.put("framebufferWidth",fw);data.put("framebufferHeight",fh);data.put("windowWidth",ww[0]);data.put("windowHeight",wh[0]);data.put("drawableWidth",dw[0]);data.put("drawableHeight",dh[0]);
         data.put("requestedFramebufferWidth",wantW);data.put("requestedFramebufferHeight",wantH);data.put("resizePhase",resizePhase);
+        data.put("effectiveDrawableWidth",effectiveW);data.put("effectiveDrawableHeight",effectiveH);data.put("workArea",workArea);data.put("frameBorder",border);data.put("clamped",clamped);
+        data.put("windowX",wx[0]);data.put("windowY",wy[0]);data.put("decorated",GLFW.glfwGetWindowAttrib(handle,GLFW.GLFW_DECORATED)==GLFW.GLFW_TRUE);data.put("resizable",GLFW.glfwGetWindowAttrib(handle,GLFW.GLFW_RESIZABLE)==GLFW.GLFW_TRUE);
         data.put("frameCount",frames);data.put("frameAt",frameAt);data.put("worldFrameCount",worldFrames);data.put("worldFrameAt",worldFrameAt);
         data.put("worldPresent",observed.worldPresent());data.put("fps",observed.fps());data.put("frameLimit",observed.appliedFrameLimit());
         data.put("restartRequired",restartRequired);data.put("error",error);data.put("revision",Objects.toString(requested.revision(),""));
         write(platform.gameDirectory().resolve("diagnostics/mcvisual-native-window.json"),data);
+    }
+    private static WindowPolicy.Area monitorArea(WindowPolicy.Area window){
+        var monitors=GLFW.glfwGetMonitors();if(monitors==null||monitors.remaining()==0)throw new IllegalStateException("monitor_unavailable");
+        WindowPolicy.Area chosen=null;long best=-1;
+        for(int i=0;i<Math.min(32,monitors.remaining());i++){
+            long monitor=monitors.get(monitors.position()+i);int[] x={0},y={0},w={0},h={0};GLFW.glfwGetMonitorWorkarea(monitor,x,y,w,h);
+            if(w[0]<1||h[0]<1)continue;var area=new WindowPolicy.Area(x[0],y[0],w[0],h[0]);long overlap=WindowPolicy.overlap(window,area);
+            if(overlap>best||overlap==best&&monitor==GLFW.glfwGetPrimaryMonitor()){chosen=area;best=overlap;}
+        }
+        if(chosen==null)throw new IllegalStateException("work_area_unavailable");return chosen;
     }
     private static void offlineCheck(WindowPlatform platform){
         var data=new LinkedHashMap<String,Object>();boolean passed=false;var classes=new ArrayList<String>();

@@ -37,6 +37,8 @@ public final class DirectorPolicy {
         static Action none(){return new Action(null,null);}
     }
     private final Config config;
+    private final boolean discoverOnline;
+    private Map<String,String> onlineTargets=Map.of();
     private final LinkedHashSet<String> seen=new LinkedHashSet<>();
     private Request request;
     private OfferReceipt offerReceipt;
@@ -51,7 +53,14 @@ public final class DirectorPolicy {
     private String requestObserverUuid;
     private static final long WORLD_SETTLE_MS=3000;
     private int commands;
-    public DirectorPolicy(Config config){this.config=config;}
+    public DirectorPolicy(Config config){this(config,false);}
+    public DirectorPolicy(Config config,boolean discoverOnline){this.config=config;this.discoverOnline=discoverOnline;}
+    /** Called only with the actual same-connection native roster. Does not reset leases or terminal state. */
+    public void observeOnlineTargets(Map<String,String> observed){
+        if(!discoverOnline)return;
+        if(observed==null||observed.size()>OnlineTargets.MAX_PLAYERS||observed.entrySet().stream().anyMatch(e->!OnlineTargets.validName(e.getKey())||!OnlineTargets.validUuid(e.getValue())))throw new IllegalArgumentException("invalid_online_roster");
+        onlineTargets=Map.copyOf(observed);
+    }
     public String target(){return request==null?null:request.target();}
     public String requestId(){return request==null?null:request.id();}
     public String view(){return request==null?null:request.view();}
@@ -89,8 +98,8 @@ public final class DirectorPolicy {
     private boolean scoped(Frame f){return config.enabled()&&Objects.equals(config.server(),f.server())
         &&config.observer()!=null&&config.observer().equalsIgnoreCase(f.observer());}
     private boolean allowed(String target){return target!=null&&target.matches("[A-Za-z0-9_]{1,16}")
-        &&!target.equalsIgnoreCase(config.observer())&&config.targets()!=null
-        &&config.targets().stream().anyMatch(n->n.equalsIgnoreCase(target));}
+        &&!target.equalsIgnoreCase(config.observer())
+        &&(discoverOnline?onlineTargets.keySet():config.targets()==null?Set.<String>of():config.targets()).stream().anyMatch(n->n.equalsIgnoreCase(target));}
     private boolean pending(){return Set.of("mode","detach","position","attach","ready","world_transition","target_death_transition").contains(phase);}
     private boolean cameraSelf(Frame f){return f.observerUuid()!=null&&f.observerUuid().equals(f.cameraUuid());}
     private boolean attached(Frame f){return f.spectator()&&expectedUuid!=null&&expectedUuid.equals(f.cameraUuid());}
@@ -178,6 +187,7 @@ public final class DirectorPolicy {
         if(pending())return refuse("previous_request_pending");
         if(Objects.equals(heldLease,r.lease()))return refuse("manual_override");
         if(f.targetUuid()==null)return refuse("target_offline");
+        if(discoverOnline&&onlineTargets.entrySet().stream().noneMatch(e->e.getKey().equalsIgnoreCase(r.target())&&e.getValue().equalsIgnoreCase(f.targetUuid())))return refuse("target_identity_lost");
         if(request!=null&&!request.target().equalsIgnoreCase(r.target())
             &&now-lastSwitchAt<Math.max(10_000,config.minSwitchMs()))return refuse("switch_cooldown");
         seen.add(r.id());while(seen.size()>32)seen.remove(seen.iterator().next());

@@ -3,7 +3,7 @@ loaderVersion="[4,)"
 license="MIT"
 [[mods]]
 modId="mcvisual_window"
-version="0.1.0"
+version="0.1.1"
 displayName="MC Visual Background Window"
 description="Opt-in free cursor, nonactivating window and unfocused rendering. No Agent, director, server plugin or network."
 [[dependencies.mcvisual_window]]

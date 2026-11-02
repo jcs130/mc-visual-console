@@ -4,7 +4,7 @@ export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
 
 /** One current image plus real all-actor activity/airtime. Other cameras are explicitly unobserved. */
 export function buildNativeSubjectDecision(native,rows,{forceReview=false,eligibleNames,now=Date.now()}={}){
- if(!native||!Array.isArray(rows)||rows.length>16||!Array.isArray(native.targets)||native.targets.length>16)return null;
+ if(!native||!Array.isArray(rows)||rows.length>256||!Array.isArray(native.targets)||native.targets.length>256)return null;
  const targets=new Map((native.targets??[]).filter(t=>t.uuid&&t.alive!==false).map(t=>[t.name,t]));
  const allowed=Array.isArray(eligibleNames)?new Set(eligibleNames):null;
  const eligible=rows.filter(r=>targets.has(r.name)&&r.name!==native.target&&(!allowed||allowed.has(r.name))).slice(0,15);
