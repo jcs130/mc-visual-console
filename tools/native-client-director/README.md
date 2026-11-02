@@ -368,3 +368,45 @@ for unchanged identities and discarding offline/reused identities. Ordinary
 players need no Agent event file. Actual native movement and bounded coverage
 reviews complement explicitly configured Agent sources; model menus remain at
 most 16 choices. Missing discovery support must stay explicitly unavailable.
+
+## Observer access (Fabric 0.1.21 / NeoForge 0.1.28)
+
+Observer scope is explicit and versioned. It narrows local requests and does
+not grant permissions; the server remains authoritative. Account names never
+imply a scope. Existing configured-only profiles retain their previous behavior.
+
+Server-wide director (the local deployment uses this for live):
+
+```json
+{
+  "discoverOnlinePlayers": true,
+  "observerAccess": { "schema": "mcvisual.observer-access/v1", "mode": "server" }
+}
+```
+
+Candidates must have a received game mode that is explicitly non-SPECTATOR.
+Unknown modes wait for native synchronization. Other observer accounts are
+excluded by game mode, not an eye-name heuristic. This is a migration requirement
+for earlier all-online profiles: add the explicit access object when upgrading.
+
+A dedicated eye can only follow its configured owner's UUID:
+
+```json
+{
+  "discoverOnlinePlayers": false,
+  "targets": ["OwnerName"],
+  "observerAccess": {
+    "schema": "mcvisual.observer-access/v1",
+    "mode": "bound-player",
+    "boundTargetUuid": "22222222-2222-2222-2222-222222222222"
+  }
+}
+```
+
+Bound-player scope cannot enable all-online discovery. The actual connection
+resolves the bound UUID's current name, so owner renames and reused names do not
+redirect the eye. A roster refresh cannot change the binding or reset cancellation.
+Diagnostics carry the same access object, target gameMode/spectator fields and
+all_online/bound_player/configured discovery mode. The thin host must select
+matching all-online/bound-player/configured mode. SDK and MCP reject unrelated
+UUIDs or ineligible server-wide targets before writing a native request.

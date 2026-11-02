@@ -44,6 +44,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private long nativeWorldEpoch;
     private Set<String> trackedTargets=Set.of();
     private boolean discoverOnlinePlayers;
+    private ObserverAccess.Config observerAccess;
     private Set<String> excludedTargets=Set.of();
     private int observedOnlinePlayers;
     public static void captureCompositedFrame(){var self=instance;if(self!=null){var client=class_310.method_1551();NativeVisionCapture.renderComposited(client,self.visionScope(client));}}
@@ -77,7 +78,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         NativeVisionCapture.reset();
         attachedCameraEntity=null;attachedCameraWorld=null;attachedCameraEpoch=0;attachedCameraRequest=null;attachedCameraObservedAt=0;manualDetachRequested=false;
         droneEnabled=false;requireConnectionEpoch=false;stopDrone("new_connection");ORTHO.configure(false);trackedTargets=Set.of();discoverOnlinePlayers=false;excludedTargets=Set.of();observedOnlinePlayers=0;
-        policy=null;authenticated=false;tick=0;lastFileTime=-1;lastCancelFileTime=-1;cancelReceipt=null;cancelledIntents.clear();frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
+        policy=null;observerAccess=null;authenticated=false;tick=0;lastFileTime=-1;lastCancelFileTime=-1;cancelReceipt=null;cancelledIntents.clear();frames=0;frameWindowAt=0;connectionEpoch=UUID.randomUUID().toString();
         hudFramesPerSecond=null;configProblem=null;requestProblem=null;diagnosticsFailed=false;
         observedWorld=client.field_1687;nativeWorldEpoch=observedWorld==null?0:1;worldTransitionActive=false;
         try{
@@ -87,11 +88,13 @@ public final class NativeDirectorClient implements ClientModInitializer {
             DirectorPolicy.Config config=new Gson().fromJson(source,DirectorPolicy.Config.class);
             var extra=JsonParser.parseString(source).getAsJsonObject();
             discoverOnlinePlayers=extra.has("discoverOnlinePlayers")&&extra.get("discoverOnlinePlayers").getAsBoolean();
+            observerAccess=extra.has("observerAccess")?new Gson().fromJson(extra.get("observerAccess"),ObserverAccess.Config.class):null;
+            if((discoverOnlinePlayers||extra.has("observerAccess"))&&!ObserverAccess.discoveryAllowed(observerAccess,discoverOnlinePlayers))throw new IllegalArgumentException("explicit_observer_scope_required");
             if(config==null||!config.enabled()||config.server()==null||config.observer()==null
                 ||config.targets()==null||!discoverOnlinePlayers&&config.targets().isEmpty()||config.targets().size()>16
                 ||client.method_1558()==null||!config.server().equals(client.method_1558().field_3761)
                 ||!config.observer().equalsIgnoreCase(client.method_1548().method_1676()))return;
-            policy=new DirectorPolicy(config,discoverOnlinePlayers);
+            policy=new DirectorPolicy(config,discoverOnlinePlayers,observerAccess);
             trackedTargets=Set.copyOf(config.targets());
             if(extra.has("excludedTargets")){var values=extra.getAsJsonArray("excludedTargets");if(values.size()>32)throw new IllegalArgumentException("excluded_target_limit");var excluded=new HashSet<String>();for(var value:values){String name=value.getAsString();if(!OnlineTargets.validName(name))throw new IllegalArgumentException("invalid_excluded_target");excluded.add(name);}excludedTargets=Set.copyOf(excluded);}
             FrameBlend.configure(extra.has("transitionsEnabled")&&extra.get("transitionsEnabled").getAsBoolean(),extra.has("transitionMs")?extra.get("transitionMs").getAsInt():350);
@@ -177,11 +180,11 @@ public final class NativeDirectorClient implements ClientModInitializer {
     }
     private void tick(class_310 client){
         if(policy==null)return;
-        if(discoverOnlinePlayers){
+        if(discoverOnlinePlayers||ObserverAccess.bound(observerAccess)){
             var network=client.method_1562();var players=new ArrayList<OnlineTargets.Player>();
-            if(network!=null)for(var entry:network.method_2880()){var p=entry.method_2966();players.add(new OnlineTargets.Player(p.getName(),p.getId().toString()));}
+            if(network!=null)for(var entry:network.method_2880()){var p=entry.method_2966();var mode=entry.method_2958();players.add(new OnlineTargets.Player(p.getName(),p.getId().toString(),mode==null?null:mode==class_1934.field_9219));}
             observedOnlinePlayers=players.size();
-            var allowed=OnlineTargets.collect(players,client.field_1724==null?null:client.field_1724.method_5667().toString(),client.method_1548().method_1676(),excludedTargets);
+            var allowed=OnlineTargets.collect(players,client.field_1724==null?null:client.field_1724.method_5667().toString(),client.method_1548().method_1676(),excludedTargets,observerAccess);
             trackedTargets=allowed.keySet();policy.observeOnlineTargets(allowed);
         }
         long now=System.currentTimeMillis();
@@ -361,6 +364,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 var entry=client.method_1562()==null?null:client.method_1562().method_2874(name);
                 String uuid=entry==null?null:entry.method_2966().getId().toString();
                 target.put("uuid",uuid);target.put("loaded",false);
+                var mode=entry==null?null:entry.method_2958();target.put("gameMode",mode==null?null:mode.name());target.put("spectator",mode==null?null:mode==class_1934.field_9219);
                 if(uuid!=null&&client.field_1687!=null)for(var player:client.field_1687.method_18456()){
                     if(!uuid.equals(player.method_5667().toString()))continue;
                     target.put("loaded",true);
@@ -373,7 +377,8 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 targets.add(target);
             }
             data.put("targets",targets);
-            data.put("targetDiscovery",Map.of("mode",discoverOnlinePlayers?"all_online":"configured","observedPlayerCount",observedOnlinePlayers,"maxTargets",OnlineTargets.MAX_PLAYERS,"truncated",observedOnlinePlayers>OnlineTargets.MAX_PLAYERS));
+            data.put("targetDiscovery",Map.of("mode",discoverOnlinePlayers?"all_online":ObserverAccess.bound(observerAccess)?"bound_player":"configured","observedPlayerCount",observedOnlinePlayers,"maxTargets",OnlineTargets.MAX_PLAYERS,"truncated",observedOnlinePlayers>OnlineTargets.MAX_PLAYERS,"excludeSpectators",observerAccess!=null&&!ObserverAccess.bound(observerAccess)));
+            data.put("observerAccess",observerAccess);
             data.put("spectator",f.spectator());data.put("commandsSent",policy.commands());
             data.put("perspective",client.field_1690.method_31044().name());
             data.put("drone",Map.of("enabled",droneEnabled,"active",droneActive,

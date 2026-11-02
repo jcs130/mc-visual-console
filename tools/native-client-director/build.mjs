@@ -18,6 +18,7 @@ fs.mkdirSync(output,{recursive:true});const scratch=fs.mkdtempSync(path.join(out
 fs.mkdirSync(classes);
 const run=(tool,argv)=>execFileSync(path.join(jdk,'bin',tool+(process.platform==='win32'?'.exe':'')),argv,{encoding:'utf8',windowsHide:true,maxBuffer:8*1024*1024});
 const contract={'net.minecraft.class_634':['method_2874(java.lang.String)','method_45730(java.lang.String)'],
+ 'net.minecraft.class_640':['method_2958()'],'net.minecraft.class_1934':['field_9219'],
  'net.minecraft.class_638':['method_18456()'],'net.minecraft.class_315':['method_31043(net.minecraft.class_5498)'],
  'net.minecraft.class_5498':['field_26664','field_26665','field_26666'],
  'net.minecraft.class_4184':['method_19321(net.minecraft.class_1922, net.minecraft.class_1297, boolean, boolean, float)','method_19318(float)','method_19324(float, float, float)','field_18719'],
@@ -33,7 +34,7 @@ for(const [type,names]of Object.entries(contract)){
  const shape=run('javap',['-p','-s','-classpath',cp,type]);
  for(const name of names)if(!shape.includes(name))throw Error('Native camera API missing: '+type+' '+name);
 }
-const sources=['DirectorPolicy.java','OnlineTargets.java','DroneFollow.java','CinematicRig.java','CloseView.java','OrthographicRig.java','NativeOrthographic.java','TransitionEnvelope.java','FrameBlend.java','CapturePolicy.java','NativeVisionCapture.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/OnlineTargetsCheck.java','test/DroneFollowCheck.java','test/TransitionEnvelopeCheck.java','test/CinematicRigCheck.java','test/OrthographicRigCheck.java','test/CapturePolicyCheck.java'];
+const sources=['DirectorPolicy.java','ObserverAccess.java','OnlineTargets.java','DroneFollow.java','CinematicRig.java','CloseView.java','OrthographicRig.java','NativeOrthographic.java','TransitionEnvelope.java','FrameBlend.java','CapturePolicy.java','NativeVisionCapture.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/OnlineTargetsCheck.java','test/DroneFollowCheck.java','test/TransitionEnvelopeCheck.java','test/CinematicRigCheck.java','test/OrthographicRigCheck.java','test/CapturePolicyCheck.java'];
 const argfile=path.join(scratch,'javac.args');
 const quote=x=>'"'+x.replaceAll('\\','/').replaceAll('"','\\"')+'"';
 fs.writeFileSync(argfile,['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources.map(p=>path.join(source,p))].map(quote).join('\n'));

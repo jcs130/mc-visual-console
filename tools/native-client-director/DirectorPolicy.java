@@ -38,6 +38,7 @@ public final class DirectorPolicy {
     }
     private final Config config;
     private final boolean discoverOnline;
+    private final ObserverAccess.Config access;
     private Map<String,String> onlineTargets=Map.of();
     private final LinkedHashSet<String> seen=new LinkedHashSet<>();
     private Request request;
@@ -54,12 +55,18 @@ public final class DirectorPolicy {
     private static final long WORLD_SETTLE_MS=3000;
     private int commands;
     public DirectorPolicy(Config config){this(config,false);}
-    public DirectorPolicy(Config config,boolean discoverOnline){this.config=config;this.discoverOnline=discoverOnline;}
+    public DirectorPolicy(Config config,boolean discoverOnline){this(config,discoverOnline,null);}
+    public DirectorPolicy(Config config,boolean discoverOnline,ObserverAccess.Config access){
+        if(access!=null&&!ObserverAccess.discoveryAllowed(access,discoverOnline))throw new IllegalArgumentException("observer_scope_conflict");
+        this.config=config;this.discoverOnline=discoverOnline||ObserverAccess.bound(access);this.access=access;
+    }
     /** Called only with the actual same-connection native roster. Does not reset leases or terminal state. */
     public void observeOnlineTargets(Map<String,String> observed){
         if(!discoverOnline)return;
         if(observed==null||observed.size()>OnlineTargets.MAX_PLAYERS||observed.entrySet().stream().anyMatch(e->!OnlineTargets.validName(e.getKey())||!OnlineTargets.validUuid(e.getValue())))throw new IllegalArgumentException("invalid_online_roster");
-        onlineTargets=Map.copyOf(observed);
+        var accepted=new HashMap<String,String>();
+        observed.forEach((name,uuid)->{if(!ObserverAccess.bound(access)||access.boundTargetUuid().equalsIgnoreCase(uuid))accepted.put(name,uuid);});
+        onlineTargets=Map.copyOf(accepted);
     }
     public String target(){return request==null?null:request.target();}
     public String requestId(){return request==null?null:request.id();}
