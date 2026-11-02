@@ -14,6 +14,7 @@ public final class OfflineContractCheck {
    for(String name:List.of("net.minecraft.client.gui.Gui","net.minecraft.client.KeyboardHandler","net.minecraft.client.multiplayer.ClientPacketListener","net.minecraft.world.inventory.Slot","net.minecraft.client.gui.screens.inventory.AbstractContainerScreen","net.minecraft.client.multiplayer.MultiPlayerGameMode","net.minecraft.client.Camera","net.minecraft.client.renderer.GameRenderer","net.minecraft.client.renderer.entity.EntityRenderDispatcher","com.elfmcys.yesstevemodel.Oo0OOO00o00oOOo0O0o000O0")){
     Class.forName(name,false,loader);checks.add(name);
    }
+   Class.forName("net.minecraft.client.renderer.ItemInHandRenderer",false,loader);checks.add("net.minecraft.client.renderer.ItemInHandRenderer");
    Class.forName("cpw.mods.bootstraplauncher.BootstrapLauncher",false,loader);
    try{Class.forName("net.fabricmc.loader.impl.launch.knot.KnotClient",false,loader);throw new IllegalStateException("Fabric Loader found in normal NeoForge client");}catch(ClassNotFoundException expected){}
    var versions=new LinkedHashMap<String,String>();for(var mod:ModList.get().getMods())versions.put(mod.getModId(),mod.getVersion().toString());

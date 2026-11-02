@@ -47,7 +47,53 @@ binary. The combined native visual artifact is GPL-3.0-only with shared MIT noti
 see [NOTICE.md](NOTICE.md) and [LICENSE-SPECTATORPLUS](LICENSE-SPECTATORPLUS).
 The consumed `agent-mc-world` platform and SDK remain separate MIT artifacts.
 
-## Actual acceptance, 2026-11-01
+## First-person rendering, 0.1.22
+
+The native observer now renders the actual camera subject's original main/offhand
+ItemStacks and player arms through the original Minecraft item renderer. It keeps
+equip interpolation, swings, use animations, maps and bow/crossbow hand selection.
+The hooks are adapted from the reviewed upstream version recorded in NOTICE.md.
+Renderer-owned cached references are the only item state changed by these hooks.
+They do not send gameplay input or mutate the target's inventory.
+
+Rendering requires the explicit native observer scope, a fresh authoritative target,
+an exact camera UUID match and a hand tick from the same connection/world/entity
+scope. Third-person, hidden GUI and open menus do not draw an extra foreground pair.
+The optional diagnostic `diagnostics/mcvisual-first-person.json` reports the current
+target, original item IDs, last draw time and render failures. A draw receipt is not
+proof of model fidelity or of every animation being available over the network.
+
+The builder resolves MixinExtras from the exact original NeoForge universal JAR
+already supplied in the core build report, records both hashes, and uses it only
+for compilation. It does not download or bundle another copy of that library.
+
+## Actual acceptance, 2026-11-02
+
+- The installed 0.1.21 client passed an authenticated same-target audit of native
+  first/third-person cameras, orthographic isometric/top/overview/close projection,
+  and a genuine 36-slot read-only target inventory. Third-person equipment was
+  visible; first-person hands/items were missing, which prompted 0.1.22.
+- Finite motion remains bounded: one pull-out completed, while an obstructed orbit
+  and a moving-subject push-in stopped conservatively. Accepted requests are not
+  counted as completed shots. Near-wall low shots can fall back to first-person.
+- The 0.1.22 candidate passes 458 source checks and the same 458 checks from an
+  independently compiled packaged consumer, including 20 hand scope/use cases.
+  The 84 JavaScript camera/decision/motion/adapter/shot regressions also pass.
+- The final 0.1.22 JAR reaches the real disconnected NeoForge title screen with
+  original TLM1.5.3, YSM2.6.5 and Sodium. Eleven actual transformed target classes
+  load, including GameRenderer and ItemInHandRenderer; no game connection exists.
+- This candidate has not been installed into the live observer. Actual first-person
+  sword/shield, map/use animation and YSM arm pixels require a separate live check.
+  Workbench/furnace/mod-specific mirrored menus are also not yet accepted. Their
+  server window delivery cannot be inferred from an E-key inventory snapshot.
+- A server-side YSM readiness failure is tracked separately from item rendering.
+  Original model selection, assets and server bindings stay untouched. A bright
+  blurred menu backdrop was observed and is not claimed fixed by the hand patch.
+
+Private screenshots, logs and binaries remain outside Git. Source, build, live
+installation and actual rendered acceptance are recorded separately.
+
+## Historical acceptance, 2026-11-01
 
 - 438 Java policy/display checks pass from classes and from the packaged consumer,
   including target ownership, read-only windows, expiry and request-rate cases.

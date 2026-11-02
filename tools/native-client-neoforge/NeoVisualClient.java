@@ -11,6 +11,7 @@ public final class NeoVisualClient {
   new org.mcvisual.observer.NativeObserverClient().onInitializeClient();
   SpectatorInventoryProtocol.initialize();
   NativeSpectatorSync.initialize();
+  NativeSpectatorHands.initialize();
   OfflineContractCheck.install();
   bus.addListener((RegisterPayloadHandlersEvent event)->NativeSpectatorSync.registerOutbound(event));
  }

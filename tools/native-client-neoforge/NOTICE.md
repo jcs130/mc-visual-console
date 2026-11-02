@@ -13,5 +13,12 @@ Fabric mod JAR and its loader are not bundled or loaded here. The native adapter
 retains the UUID-bearing packet framing and original compressed item NBT, with
 additional connection/world/epoch and read-only controls.
 
+The 0.1.22 native display adds the upstream GameRenderer and ItemInHandRenderer
+first-person hooks, including original bow/crossbow selection, target arm/map
+identity, equip interpolation and view bobbing. Their original GPL rendering
+logic is retained with native UUID/entity/connection/world and fresh-state gates.
+Only renderer-owned cached item references are updated; no player inventory,
+server selection, gameplay input or network packet is written by these hooks.
+
 Minecraft, NeoForge, Sodium, TLM and YSM are separate original installations with
 their own licenses; this artifact does not distribute their code or model assets.
