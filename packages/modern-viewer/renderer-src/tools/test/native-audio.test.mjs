@@ -10,10 +10,10 @@ const flush=async()=>{for(let i=0;i<16;i++)await new Promise(r=>setImmediate(r))
 const until=async condition=>{const deadline=Date.now()+2000;while(!condition()&&Date.now()<deadline)await new Promise(r=>setTimeout(r,1));assert.ok(condition(),'audio work reaches its observed terminal state')}
 const digest=(kind,bytes)=>createHash(kind).update(bytes).digest('hex')
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r});return{promise,resolve}}
-function fixture({gate=null,tamper=false,stream=false,storage=null,schedule=undefined,cancelSchedule=undefined}={}){
+function fixture({gate=null,tamper=false,stream=false,storage=null,schedule=undefined,cancelSchedule=undefined,musicIncluded=true}={}){
   // Decoder double, explicitly not an original OGG or a playback acceptance.
   const bytes=Buffer.from('offline audio transport fixture'),sources=[],panners=[],gains=[],requests=[],media=[],listeners=[]
-  const metadata={available:true,minecraftVersion:'1.21.1',source:'verified_original_launcher_assets',
+  const metadata={available:true,musicIncluded,minecraftVersion:'1.21.1',source:'verified_original_launcher_assets',
     definitions:Object.fromEntries(['block.test','music.game','ui.button.click'].map(n=>[n,{sounds:[{name:'test',stream:stream&&n==='music.game'}]}])) ,
     files:{'test.ogg':{bytes:bytes.length,sha1:digest('sha1',bytes),sha256:digest('sha256',bytes)}}}
   let contexts=0,decoded=0
@@ -81,6 +81,18 @@ test('original streamed music stays compressed, is explicitly selected and stops
   assert.equal(f.media[0].played,true);assert.match(f.media[0].src,/^blob:/);assert.equal(f.media[0].preservesPitch,false)
   assert.equal(f.audio.state().soundEnabled,false);assert.equal(f.audio.state().musicEnabled,true)
   f.audio.connect(false);assert.equal(f.media[0].paused,true);assert.equal(f.audio.state().active,0);f.audio.dispose()
+})
+
+test('optional music absence cannot queue a retry or disable original effects',async()=>{
+  const scheduled=[],f=fixture({musicIncluded:false,schedule:(fn,delay)=>{scheduled.push(delay);return 1}})
+  await f.audio.load();f.audio.connect(true)
+  assert.equal(f.audio.state().musicIncluded,false)
+  assert.equal(await f.audio.playlist(),false)
+  assert.equal(await f.audio.toggle('music'),false)
+  assert.equal(scheduled.length,0);assert.equal(f.media.length,0)
+  await f.audio.toggle('effects');f.event();await until(()=>f.sources.length>0)
+  assert.equal(f.audio.state().failed,0);assert.equal(f.audio.state().missing,0)
+  f.audio.dispose()
 })
 test('entity audio follows only the original entity identity and stops on ID reuse',async()=>{
   const f=fixture();await f.audio.load();f.audio.connect(true);await f.audio.toggle('effects')

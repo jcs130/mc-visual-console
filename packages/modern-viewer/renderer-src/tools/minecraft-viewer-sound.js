@@ -88,6 +88,7 @@ function cortiAudioStatus(snapshot) {
     'foreground-music': '前景歌曲播放中，背景音乐暂候',
     'catalog-unavailable': '原创音乐目录尚未就绪',
     'resources-unavailable': '背景音乐资源尚未就绪',
+    'not-installed': '当前为精简音效版；可在插件中选择完整原版音画组件',
     playing: `正在播放：${snapshot.musicTrack || '背景音乐'}`,
     scheduled: `背景音乐将在 ${cortiAudioWaitLabel(snapshot.musicWaitMs)} 后播放`,
     'awaiting-schedule': '正在安排背景音乐',
@@ -183,12 +184,14 @@ function cortiInstallWorldSound(socket) {
   const bindings = [];
   const localTimers = new Map();
   const now = () => performance.now();
-  const musicAvailable = () => musicSource === 'custom' ? Boolean(customCatalog) : Boolean(manifest);
+  const musicIncluded = () => manifest?.audioProfile !== 'effects-only';
+  const musicAvailable = () => musicSource === 'custom' ? Boolean(customCatalog) : Boolean(manifest && musicIncluded());
   const musicCandidate = () => musicSource === 'off' ? null : musicSource === 'custom'
     ? customCatalog?.tracks.length ? 'music.custom' : null : explicitMusic ?? cortiMusicEvent(musicState, manifest?.events);
   const musicGate = () => {
     if (disposed) return 'disposed';
     if (!musicEnabled || musicSource === 'off') return 'disabled';
+    if (musicSource === 'vanilla' && manifest && !musicIncluded()) return 'not-installed';
     if (!musicAvailable()) return musicSource === 'custom' ? 'catalog-unavailable' : 'resources-unavailable';
     if (!connected) return 'disconnected';
     if (context?.state !== 'running') return 'browser-locked';
@@ -203,7 +206,7 @@ function cortiInstallWorldSound(socket) {
   };
   const state = () => ({ available: Boolean(AudioContextClass && (manifest || customCatalog)), unlocked: context?.state === 'running',
     evidence:{...audioEvidence,byCategory:{...audioEvidence.byCategory},missingEvents:[...missingEvents].map(([name,count])=>({name,count}))},
-    blockSoundsAvailable: Boolean(blockSounds),
+    blockSoundsAvailable: Boolean(blockSounds), musicIncluded: musicIncluded(),
     manifestEventCount: manifest?.events ? Object.keys(manifest.events).length : 0,
     soundEnabled: enabled, musicEnabled, musicSource, volumes: { ...volumes }, voices: voices.size, pendingLocalSounds: localTimers.size,
     customCatalogAvailable: Boolean(customCatalog), customTrackCount: customCatalog?.tracks.length ?? 0,
@@ -234,7 +237,7 @@ function cortiInstallWorldSound(socket) {
       button.setAttribute('aria-pressed', String(enabled));
     }
     if (musicButton) {
-      musicButton.textContent = !musicEnabled || musicSource === 'off' ? '音乐 关闭' : !bgmAvailable ? '音乐 资源未就绪'
+      musicButton.textContent = !musicEnabled || musicSource === 'off' ? '音乐 关闭' : snapshot.musicGate === 'not-installed' ? '音乐 未安装' : !bgmAvailable ? '音乐 资源未就绪'
         : !snapshot.unlocked ? '音乐 点击开启'
           : snapshot.musicGate === 'foreground-music' ? '音乐 暂候'
           : snapshot.musicGate === 'muted' ? '音乐 静音'
@@ -416,6 +419,7 @@ function cortiInstallWorldSound(socket) {
     const event = { ...raw, name };
     const category = cortiAudioCategory(event);
     const custom = local && category === 'music' && musicSource === 'custom' && name === 'music.custom';
+    if (!custom && manifest && !musicIncluded() && ['music', 'records'].includes(category)) return false;
     if ((!manifest && !custom) || (category === 'music' && (musicSource === 'off' || foreground.music
       || (musicSource === 'custom' && !custom)))) return false;
     if (!channelVolume(category) || !volumes.master) return false;
