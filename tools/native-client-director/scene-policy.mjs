@@ -63,6 +63,15 @@ export class SceneSelector{
     this.available=null;this.coverage=new Map();this.program=null;this.firstOpportunityAt=null;
   }
   setAvailable(names){this.available=names===null?null:new Set(names.filter(n=>this.names.includes(n)));}
+  /** Trusted native online roster; preserves coverage for the same identity, never inherits it after rename/reuse. */
+  setRoster(rows){
+    if(!Array.isArray(rows)||rows.length>256)return false;
+    const next=new Map(),ids=new Set(),labels=new Set();
+    for(const row of rows){if(!row||!/^[_A-Za-z0-9]{1,16}$/.test(row.name??'')||typeof row.uuid!=='string'||!row.uuid||labels.has(row.name.toLowerCase())||ids.has(row.uuid.toLowerCase()))return false;next.set(row.name,row.uuid);ids.add(row.uuid.toLowerCase());labels.add(row.name.toLowerCase());}
+    const old=this.rosterIdentities??new Map();
+    for(const name of this.names)if(!next.has(name)||old.has(name)&&old.get(name)!==next.get(name)){this.activities.delete(name);this.presence.delete(name);this.coverage.delete(name);}
+    this.rosterIdentities=next;this.names=[...next.keys()];if(this.available!==null)this.available=new Set([...this.available].filter(n=>next.has(n)));return true;
+  }
   remember(name,value){
     const activities=this.activities.get(name)??new Map(),previous=activities.get(value.kind);
     if(!previous||value.at>=previous.at)activities.set(value.kind,value);

@@ -76,3 +76,20 @@ verifies actual transformed hook methods without calling the mouse-grab operatio
 or injecting input. Normal diagnostics contain only dimensions, focus/capture
 state, counters, configuration revision and error categories. Reads do not create
 render frames. No screenshot, chat, model prompt or credential is recorded.
+
+## Window 0.1.1: visible titlebar and work-area fitting
+
+An explicit sizing revision also checks the native monitor work area and frame
+insets, even when the framebuffer already matches the requested dimensions.
+It fits the decorated window within the selected monitor, preserves aspect on
+clamping, and recovers off-screen titlebars. Already visible positions are kept.
+It applies once per configuration revision; subsequent user moves/resizes are
+not fought. Fullscreen and iconified windows defer rather than force a mode
+change. Negative-coordinate monitors, taskbars and high DPI are handled in
+logical window coordinates. No focus or system-input injection is used.
+
+Diagnostics distinguish requested sizing, effective drawable size, main render
+target, work area and frame border. A smaller actual window is not reported as
+1080p by upscaling a screenshot. Optional third-party world supersampling is a
+deployment choice, not a dependency of this independent mod. Both loaders pass
+30 source and finished-JAR policy checks (including eight geometry cases).

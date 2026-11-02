@@ -351,3 +351,20 @@ retag a past corpse as the current request's camera.
 An existing paused/unknown lease cannot be recovered by this mechanism; its
 original cause and manual controls remain intact. This is distinct from network
 reconnection and must not be reported as successful disconnect recovery.
+
+## Online-player discovery (Fabric 0.1.20 / NeoForge 0.1.27)
+
+The native profile may explicitly set `discoverOnlinePlayers: true` and optional
+`excludedTargets: ["ExcludedName"]`. The same authenticated connection supplies
+the online names/UUIDs; the observer is excluded by both UUID and login name.
+No new bot or player-list HTTP connection is created. Configured-only profiles
+remain unchanged. Diagnostics publish `targetDiscovery.mode = all_online` and
+a bounded (256) roster. Tab presence does not imply a loaded entity, coordinates,
+health, activity or a preview. Native requests verify the selected name and UUID;
+roster refresh never resets a pending request, manual stop or unknown outcome.
+
+The host can refresh `SceneSelector.setRoster(rows)`, preserving observed airtime
+for unchanged identities and discarding offline/reused identities. Ordinary
+players need no Agent event file. Actual native movement and bounded coverage
+reviews complement explicitly configured Agent sources; model menus remain at
+most 16 choices. Missing discovery support must stay explicitly unavailable.

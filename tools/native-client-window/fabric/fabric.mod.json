@@ -1,5 +1,5 @@
 {
- "schemaVersion":1,"id":"mcvisual_window","version":"0.1.0",
+ "schemaVersion":1,"id":"mcvisual_window","version":"0.1.1",
  "name":"MC Visual Background Window","environment":"client","license":"MIT",
  "description":"Opt-in free cursor, nonactivating window and unfocused rendering. No Agent, director, server plugin or network.",
  "entrypoints":{"client":["org.mcvisual.window.fabric.WindowMod"]},

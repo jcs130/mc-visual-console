@@ -4,6 +4,7 @@ export class SceneSelector {
  constructor(names:string[],options?:{minDwellMs?:number;maxDwellMs?:number;cinematicFraming?:boolean});
  readonly minDwellMs:number;readonly maxDwellMs:number;
  setAvailable(names:string[]|null):void;
+ setRoster(rows:Array<{name:string;uuid:string}>):boolean;
  observe(name:string,event:Record<string,any>,now?:number):void;
  observePosition(name:string,sample:{at:number;position:number[];scope:string;source?:string},now?:number):void;
  observeProgram(name:string,sample:{at:number;scope:string},now?:number):void;
