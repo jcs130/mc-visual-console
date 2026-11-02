@@ -44,7 +44,7 @@ trusted sources by UUID; they must not construct paths/URLs from client labels.
 The provider echoes the exact scope in a complete presentation frame:
 
 ```json
-{"schema":"mcvisual.content/v1","scope":{"instanceId":"client-instance","epoch":4,"server":"example:25565","recipientUuid":"11111111-1111-1111-1111-111111111111","subjectUuid":"22222222-2222-2222-2222-222222222222","entityId":42,"dimension":"minecraft:overworld"},"producer":"host-session","sequence":1,"issuedAt":1700000000000,"expiresAt":1700000003500,"panels":[{"id":"activity","title":"Agent · 当前行动","anchor":"bottom_left","width":220,"bottomInset":58,"rows":[{"label":"最近操作","text":"5秒前 · 已受理 · 任务#42","tone":"active"},{"label":"快决策 82%","text":"保持当前动作","tone":"info","progress":0.82}]}]}
+{"schema":"mcvisual.content/v1","scope":{"instanceId":"client-instance","epoch":4,"server":"example:25565","recipientUuid":"11111111-1111-1111-1111-111111111111","subjectUuid":"22222222-2222-2222-2222-222222222222","entityId":42,"dimension":"minecraft:overworld"},"producer":"host-session","sequence":1,"issuedAt":1700000000000,"expiresAt":1700000003500,"panels":[{"id":"activity","title":"Agent · 当前行动","anchor":"bottom_right","width":220,"bottomInset":58,"rows":[{"label":"最近操作","text":"5秒前 · 已受理 · 任务#42","tone":"active"},{"label":"快决策 82%","text":"保持当前动作","tone":"info","progress":0.82}]}]}
 ```
 
 Timestamps are example milliseconds and must be current when sent. Maximum TTL is

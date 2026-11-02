@@ -14,5 +14,5 @@ export function agentActivityPanels({name,records=[],phase=null,now=Date.now()}=
  const actions=safe.filter(r=>['tool','execution'].includes(r.kind));
  for(const r of actions.slice(-2))rows.push({label:r.kind==='execution'?'最近回执':'最近操作',text:activityText(age(r)+' · '+states[r.status]+' · '+r.title,150),tone:tone(r.status)});
  if(rows.length===0)rows.push({label:'数据',text:'等待宿主公开行为记录',tone:'muted'});
- return[{id:'agent-behavior',title:activityText((name||'Agent')+' · 决策与行动',72),anchor:'bottom_left',width:220,bottomInset:58,rows:rows.slice(0,5)}];
+ return[{id:'agent-behavior',title:activityText((name||'Agent')+' · 决策与行动',72),anchor:'bottom_right',width:220,bottomInset:58,rows:rows.slice(0,5)}];
 }
