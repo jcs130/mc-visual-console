@@ -31,7 +31,7 @@ test('explicit lively coverage becomes due after 5 seconds and never admits a st
  const choice=f.choose();assert.notEqual(choice.view,f.n.effectiveView);assert.ok(!choice.view.startsWith('drone_orbit_'));assert.equal(nativeScheduledCamera(choice,f.n,{now:f.now()}),true);
  assert.equal(nativeScheduledCamera(choice,f.n,{now:f.now(),deadline:true}),false);
  f.tick(2000);assert.equal(nativeScheduledCamera({...choice,sequence:{...choice.sequence,nativeSceneAt:f.n.spatial.at}},f.n,{now:f.now(),deadline:true}),true);
- for(const mutate of[n=>n.screenOpen=true,n=>n.manualDetachRequested=true,n=>n.spatial.floorSafe=false,n=>n.nativeWorldEpoch++,n=>n.requestId='other',n=>n.recordedAt=new Date(0).toISOString()]){
+ for(const mutate of[n=>n.screenOpen=true,n=>n.manualDetachRequested=true,n=>n.spatial.known=false,n=>n.nativeWorldEpoch++,n=>n.requestId='other',n=>n.recordedAt=new Date(0).toISOString()]){
   const n=structuredClone(f.n);mutate(n);assert.equal(nativeScheduledCamera(choice,n,{now:f.now(),deadline:true}),false);
  }
  const offered=nativeCameraCandidates(choice,f.n,{now:f.now()});assert.deepEqual(offered.find(c=>c.id==='proposal').motion,choice.motion);
@@ -193,4 +193,15 @@ test('stationary three-second authority permits continuous motion only, never a 
  ortho.tick(2000);assert.ok(ortho.choose({orthographic:true}),'ordinary composition remains available at five seconds');
  const staticOnly=fixture(true,'lively');staticOnly.n.offer.at=staticOnly.now();staticOnly.n.availableViews=['drone_front_left','drone_front','drone_side_right'];
  staticOnly.sequence.observe(staticOnly.n);staticOnly.tick(3000);assert.equal(staticOnly.choose(),null,'lack of finite recipes is not permission for a three-second cut');
+});
+
+test('water or airborne actors retain collision-checked composition cuts without admitting floor-dependent motion',()=>{
+ const f=fixture(true,'lively');f.n.spatial.floorSafe=false;f.n.availableViews.push('drone_follow','drone_low','drone_overview');
+ const choice=f.choose({orthographic:true,preferOrthographic:true}),menu=nativeCameraCandidates(choice,f.n,{now:f.now()});
+ assert.ok(menu.length>=3,'a camera rig does not need actor footing to choose another perspective');
+ assert.ok(menu.every(x=>!x.sequence.pathPreflightRequired&&!x.view.startsWith('ortho_')));
+ assert.ok(menu.every(x=>nativeScheduledCamera(x,f.n,{now:f.now()})));
+ const forged={...choice,view:'drone_orbit_left',motion:{schema:'mcvisual.camera-script/v1',speed:1,durationMs:4000,arcDegrees:15},sequence:{...choice.sequence,pathPreflightRequired:true}};
+ assert.equal(nativeScheduledCamera(forged,f.n,{now:f.now()}),false,'finite anchors still require confirmed footing');
+ assert.equal(nativeScheduledCamera({...choice,view:'ortho_overview'},f.n,{now:f.now()}),false,'floor-dependent orthographic policies stay closed');
 });

@@ -34,14 +34,14 @@ export function nativeScheduledCamera(choice,n,{now=Date.now(),deadline=false}={
  if(early&&(!Number.isFinite(c.stationarySince)||c.stationarySince>now-3000))return false;
  if(early&&!finite(choice.view))return false;
  const space=n.spatial,t=n.targets?.find(t=>t.uuid===n.targetUuid&&t.name===n.target);
- if(!t?.loaded||t.alive!==true||space?.known!==true||space.floorSafe!==true||space.targetUuid!==n.targetUuid
+ if(!t?.loaded||t.alive!==true||space?.known!==true||space.targetUuid!==n.targetUuid
   ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at)||!['open','room'].includes(space.layout))return false;
  if(n.shotExecution?.requestId===n.requestId&&finite(n.shotExecution.view)&&!['completed','blocked','cancelled'].includes(n.shotExecution.phase))return false;
  if(n.shotExecution?.requestId===n.requestId&&n.shotExecution.fallback===true&&n.shotExecution.view===choice.view)return false;
- if(choice.view.startsWith('ortho_')&&(n.orthographic?.ready!==true||n.orthographic.worldCutawaySupported!==false||n.orthographic.roomClip||space.orthographicVisibility<.8))return false;
+ if(choice.view.startsWith('ortho_')&&(space.floorSafe!==true||n.orthographic?.ready!==true||n.orthographic.worldCutawaySupported!==false||n.orthographic.roomClip||space.orthographicVisibility<.8))return false;
  if(finite(choice.view))return s.pathPreflightRequired===true&&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL&&n.cameraScript.preflightRequiredForFinite===true
   &&n.rigCancelSupported===true&&n.projection!=='orthographic'&&n.drone?.active===true&&fresh(n.drone.lastRenderedAt)
-  &&['open','room'].includes(space.layout)&&space.headroom>=.35&&space.spanX>=6&&space.spanZ>=6
+  &&space.floorSafe===true&&['open','room'].includes(space.layout)&&space.headroom>=.35&&space.spanX>=6&&space.spanZ>=6
   &&n.effectiveView?.startsWith('drone_')&&n.shotExecution?.fallback!==true
   &&choice.motion?.schema===CAMERA_SCRIPT_PROTOCOL&&choice.motion.speed===1&&choice.motion.durationMs===4000
   &&(!choice.view.startsWith('drone_orbit_')||choice.motion.arcDegrees===15);
@@ -111,7 +111,7 @@ export class NativeCameraSequence{
   if(now-c.since<this.intervalMs&&!earlyMotion){this.phase='holding_shot';return null;}
   const space=n.spatial,subject=n.targets?.find(t=>t.uuid===n.targetUuid&&t.name===n.target);
   if(!subject?.loaded||subject.alive!==true||space?.known!==true||space.targetUuid!==n.targetUuid
-    ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at,2000)||space.floorSafe!==true){this.phase='waiting_for_scene_evidence';return null;}
+    ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at,2000)||space.floorSafe!==true&&!(lively&&['open','room'].includes(space.layout))){this.phase='waiting_for_scene_evidence';return null;}
   const caps=new Set(n.availableViews);
   // A vertical shaft can have plenty of headroom but no horizontal camera boom.
   // Keep the measured native close view until geometry changes, rather than retrying every recipe.
@@ -122,11 +122,11 @@ export class NativeCameraSequence{
   }
   const travelling=a?.motion!=='stationary'&&fresh(a?.lastMotionAt,5000);
   const tight=['tunnel','layered'].includes(space.layout);
-  const orthoSafe=orthographic&&n.orthographic?.ready===true&&n.orthographic.worldCutawaySupported===false&&!n.orthographic.roomClip
+  const orthoSafe=space.floorSafe===true&&orthographic&&n.orthographic?.ready===true&&n.orthographic.worldCutawaySupported===false&&!n.orthographic.roomClip
     &&['open','room'].includes(space.layout)&&space.orthographicVisibility>=.8;
   const projectionAge=now-lastProjectionChangeAt,projectionHold=lively?5000:45000;
   if(lively&&!tight){
-   const pathReady=still&&['open','room'].includes(space.layout)&&space.headroom>=.35&&space.spanX>=6&&space.spanZ>=6
+   const pathReady=still&&space.floorSafe===true&&['open','room'].includes(space.layout)&&space.headroom>=.35&&space.spanX>=6&&space.spanZ>=6
     &&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL&&n.cameraScript.preflightRequiredForFinite===true&&n.rigCancelSupported===true
     &&n.projection!=='orthographic'&&n.drone?.active===true&&fresh(n.drone.lastRenderedAt,2000)
     &&n.effectiveView?.startsWith('drone_')&&n.shotExecution?.fallback!==true;

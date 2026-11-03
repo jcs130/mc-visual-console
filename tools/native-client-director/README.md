@@ -31,6 +31,13 @@ front cut need not fly through an obstructing roof to reach a clear endpoint.
 Only same-preset parameter changes and finite orbit/dolly scripts preserve the
 actual rig position. A fallback/stopped rig cannot provide that continuity.
 
+Lively perspective cuts remain available for a known, loaded water/airborne scene:
+the camera has no player-footing requirement, and its native collision/visibility
+checks still run. Finite trajectories and the current orthographic backend retain
+their verified-ground requirement. Unknown/stale geometry and manual/GUI gates
+are unchanged. The three-second stationary cue admits finite motion only; static
+composition still waits for its five-second cadence.
+
 ## 0.1.14: original OrthoCamera integration
 
 Explicit `orthographicEnabled: true` enables the adapter only when the original
