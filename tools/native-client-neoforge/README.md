@@ -5,6 +5,11 @@ It consumes the core's `agentmc_client_platform` companion and canonical client
 source translator. The existing Fabric builders and installed profiles stay
 independent. No Fabric loader, Connector, agent host or model loop is bundled.
 
+0.1.30 consumes the shared dimension-change render lifecycle repair: world
+replacement disables the old rig atomically, and the camera hook cannot call
+`next` on a stopped recipe or reuse its old world binding. Rendered attachment
+and a newly requested trajectory remain separate; no old finite path is replayed.
+
 Since 0.1.26, background rendering/free cursor belongs to the independent
 [Background Window](../native-client-window/README.md) mod, available for Fabric
 and NeoForge. This director no longer bundles its policy, runtime or window hooks.

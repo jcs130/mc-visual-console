@@ -22,6 +22,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
     private static final NativeOrthographic ORTHO=new NativeOrthographic();
     private static boolean droneEnabled,droneActive,worldTransitionActive,cinematicEnabled,autoCloseEnabled;
     private static String droneUuid,droneReason="disabled";
+    private static Object droneWorld;
     private static double droneDistance=7,droneHeight=3;
     private static String droneView="drone_follow";
     private static long droneRenderedAt;
@@ -193,6 +194,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         // A world object replacement is native evidence; coordinates/distance are not.
         if(client.field_1687!=null&&client.field_1687!=observedWorld){
             observedWorld=client.field_1687;nativeWorldEpoch++;
+            stopDrone("native_world_replacement");ORTHO.stop("native_world_replacement");
         }
         if(droneActive&&client.field_1690.method_31044()!=(CLOSE.firstPerson()?class_5498.field_26664:class_5498.field_26665)){
             manualDetachRequested=true;stopDrone("manual_perspective");
@@ -241,7 +243,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         observeRequestCamera(client,now);
         var action=policy.step(frame(client,policy.target()),now);
         worldTransitionActive="world_transition".equals(policy.phase());
-        if(worldTransitionActive){DRONE.reset();ORTHO.stop("native_world_replacement");droneReason="native_world_replacement";}
+        if(worldTransitionActive){stopDrone("native_world_replacement");ORTHO.stop("native_world_replacement");}
         else if(!"attached".equals(policy.phase())){stopDrone("native_"+policy.phase());ORTHO.stop("native_"+policy.phase());}
         if(action.command()!=null&&client.method_1562()!=null){
             client.method_1562().method_45730(action.command());
@@ -262,7 +264,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             else ORTHO.stop("perspective_requested");
             if(action.view().startsWith("drone_")&&droneEnabled){
                 droneView=action.view();DRONE.begin(policy.requestId(),droneView,System.nanoTime(),policy.motion());CLOSE.begin();
-                droneUuid=frame(client,policy.target()).cameraUuid();droneActive=true;droneReason="awaiting_render";
+                droneUuid=frame(client,policy.target()).cameraUuid();droneWorld=client.field_1687;droneActive=true;droneReason="awaiting_render";
             }
         }
         if("attached".equals(policy.phase())&&client.field_1755==null){
@@ -271,11 +273,11 @@ public final class NativeDirectorClient implements ClientModInitializer {
         }
         if(tick%20==0)diagnostics(client,true);
     }
-    private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneReason=reason;DRONE.reset();CLOSE.stop();}
+    private static void stopDrone(String reason){droneActive=false;droneUuid=null;droneWorld=null;droneReason=reason;DRONE.reset();CLOSE.stop();}
     private void perspectiveFallback(class_310 client,String reason){
         FrameBlend.begin(client,policy.requestId());client.field_1690.method_31043(class_5498.field_26665);
         if(droneEnabled){droneView="drone_eye";DRONE.begin(policy.requestId(),droneView,System.nanoTime());CLOSE.begin();
-            droneUuid=frame(client,policy.target()).cameraUuid();droneActive=true;droneReason=reason;}
+            droneUuid=frame(client,policy.target()).cameraUuid();droneWorld=client.field_1687;droneActive=true;droneReason=reason;}
     }
     private void readCancel(class_310 client,long now){
         try{
@@ -309,9 +311,13 @@ public final class NativeDirectorClient implements ClientModInitializer {
     }
     public static boolean orthographicProjecting(){return ORTHO.projecting();}
     public static boolean droneMayRender(class_1297 target){
-        if(worldTransitionActive){DRONE.reset();return false;}
-        if(!droneEnabled||!droneActive||target==null||!target.method_5667().toString().equals(droneUuid))return false;
+        if(worldTransitionActive){stopDrone("native_world_replacement");return false;}
+        if(!droneEnabled||!droneActive)return false;
         var client=class_310.method_1551();
+        // A new world can be rendered before the next client tick observes its replacement.
+        // Stop every part of the rig together; policy reattachment alone cannot revive an old finite path.
+        if(client.field_1687==null||droneWorld!=client.field_1687||!DRONE.renderable()){stopDrone("native_rig_world_or_lifecycle_changed");return false;}
+        if(target==null||!target.method_5667().toString().equals(droneUuid))return false;
         if(client.field_1724==null||!client.field_1724.method_7325()) {stopDrone("not_spectator");return false;}
         if(client.field_1690.method_31044()!=(CLOSE.firstPerson()?class_5498.field_26664:class_5498.field_26665)){stopDrone("manual_perspective");return false;}
         if(client.field_1755!=null){DRONE.suspend();return false;}

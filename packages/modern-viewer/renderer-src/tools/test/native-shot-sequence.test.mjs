@@ -157,3 +157,18 @@ test('orthographic progression honours projection dwell, preserves floors, and r
 test('sequence is explicitly enabled and stopped instances cannot revive',()=>{
  const f=fixture(false);assert.equal(f.choose(),null);const g=fixture();g.sequence.stop();g.tick(60000);assert.equal(g.choose(),null);assert.equal(g.sequence.stats().phase,'stopped');
 });
+
+test('a measured narrow shaft holds actual first person and resumes variety when real geometry opens',()=>{
+ const f=fixture(true,'lively');
+ f.n.effectiveView='first_person';f.n.closeView={firstPerson:true,reason:'boom_space_unavailable'};
+ f.n.shotExecution={requestId:f.n.requestId,view:'drone_low',phase:'holding',fallback:true};
+ Object.assign(f.n.spatial,{headroom:12,spanX:2,spanZ:2,orthographicVisibility:.6});
+ assert.equal(f.choose({orthographic:true}),null);
+ assert.equal(f.sequence.stats().phase,'holding_constrained_first_person');
+ assert.deepEqual(f.sequence.stats().eligibleViews,[]);
+ assert.ok(f.sequence.stats().excluded.every(x=>x.reason==='measured_camera_clearance_unavailable'));
+ f.tick(30000);assert.equal(f.choose({orthographic:true}),null,'elapsed idle time does not override measured collision');
+ Object.assign(f.n.spatial,{layout:'room',headroom:1.38,spanX:12,spanZ:15,orthographicVisibility:1});f.tick(1000);
+ const proposal=f.choose({orthographic:true});assert.ok(proposal?.sequence.alternatives.length>=4,'new native geometry permits genuinely different compositions again');
+ assert.ok(proposal.sequence.alternatives.every(x=>!x.view.startsWith('drone_orbit_')),'a fallen-back POV is not a finite path start');
+});

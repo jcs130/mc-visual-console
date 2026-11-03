@@ -58,6 +58,19 @@ public class CinematicRigCheck {
         for(var invalid:java.util.List.of(java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"speed",Double.NaN),java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"command","tp"),java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"durationMs",4000,"speed",1.5))){
             boolean rejected=false;try{CinematicRig.parameters("drone_orbit_left",invalid);}catch(IllegalArgumentException e){rejected=true;}check(rejected,"invalid or excessive script parameter rejected");}
         custom.reset();boolean noRevival=false;try{next(custom,20);}catch(IllegalStateException e){noRevival=true;}check(noRevival,"parameterized stopped rig cannot revive");
+        // Real client crash: a world replacement reset the recipe while its render-active flag survived.
+        // A render caller must decline this frame, leaving vanilla camera setup intact.
+        for(String view:new String[]{"drone_front_left","drone_low","drone_orbit_left","drone_push_in","drone_pull_out"}){
+            var lifecycle=rig(view);check(lifecycle.renderable(),"explicitly begun recipe may enter the native render hook: "+view);
+            next(lifecycle,0);lifecycle.reset();
+            for(int frame=0;frame<3;frame++){
+                if(lifecycle.renderable())next(lifecycle,1+frame*.05);
+                lifecycle.confirmRendered();
+            }
+            check(!lifecycle.renderable()&&"stopped".equals(lifecycle.status().get("phase")),"world-gap frames neither call stopped next nor revive the recipe: "+view);
+            lifecycle.begin("new-world-request","drone_front",3_000_000_000L);
+            check(lifecycle.renderable()&&next(lifecycle,2).z()>0,"only a fresh explicit camera request restores a valid recipe: "+view);
+        }
         System.out.println(checks+" cinematic-rig checks passed");
     }
 }

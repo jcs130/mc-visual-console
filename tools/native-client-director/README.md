@@ -4,6 +4,23 @@ This optional Fabric 1.21.1 module controls one existing, explicitly configured
 observer. It does not create a player, connect a Minecraft client, run a model,
 choose an agent's game goal, or expose arbitrary command execution.
 
+## Render lifecycle fix: Fabric 0.1.22 / NeoForge 0.1.30
+
+A real dimension change exposed a stopped-recipe crash: resetting the trajectory
+left its outer active flag set. World replacement now stops the rig, close-view
+state and world binding together. The render hook independently refuses a stale
+world or a stopped recipe, including replacement before the next client tick.
+Passive policy reattachment does not restart an old finite path; a new explicit
+camera request is required. The same source is built for both loaders. Lifecycle
+checks exercise five tracking/finite recipes through reset, repeated render
+frames and a fresh request. Build checks and actual live pixels are separate.
+
+Lively scene planning also distinguishes a vertically open shaft from usable
+camera space: a measured close-view fallback with both horizontal spans at most
+3.5 blocks holds first person until fresh geometry permits a boom. Host ordinary
+reframes must respect `holding_constrained_first_person`; elapsed idle time alone
+must not cause repeated collision probes. This does not lock the subject roster.
+
 ## 0.1.14: original OrthoCamera integration
 
 Explicit `orthographicEnabled: true` enables the adapter only when the original

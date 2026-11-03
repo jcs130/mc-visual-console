@@ -107,6 +107,13 @@ export class NativeCameraSequence{
   if(!subject?.loaded||subject.alive!==true||space?.known!==true||space.targetUuid!==n.targetUuid
     ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at,2000)||space.floorSafe!==true){this.phase='waiting_for_scene_evidence';return null;}
   const caps=new Set(n.availableViews);
+  // A vertical shaft can have plenty of headroom but no horizontal camera boom.
+  // Keep the measured native close view until geometry changes, rather than retrying every recipe.
+  if(lively&&c.view==='first_person'&&n.closeView?.firstPerson===true
+    &&Number.isFinite(space.spanX)&&Number.isFinite(space.spanZ)&&space.spanX<=3.5&&space.spanZ<=3.5){
+   this.eligible=[];this.excluded=repertoire.map(view=>({view,reason:'measured_camera_clearance_unavailable'}));
+   this.phase='holding_constrained_first_person';return null;
+  }
   const travelling=a?.motion!=='stationary'&&fresh(a?.lastMotionAt,5000);
   const tight=['tunnel','layered'].includes(space.layout);
   const orthoSafe=orthographic&&n.orthographic?.ready===true&&n.orthographic.worldCutawaySupported===false&&!n.orthographic.roomClip
