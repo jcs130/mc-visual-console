@@ -4,7 +4,7 @@ This optional Fabric 1.21.1 module controls one existing, explicitly configured
 observer. It does not create a player, connect a Minecraft client, run a model,
 choose an agent's game goal, or expose arbitrary command execution.
 
-## Render lifecycle fix: Fabric 0.1.22 / NeoForge 0.1.30
+## Render lifecycle fix: Fabric 0.1.22 / NeoForge 0.1.31
 
 A real dimension change exposed a stopped-recipe crash: resetting the trajectory
 left its outer active flag set. World replacement now stops the rig, close-view
@@ -14,6 +14,9 @@ Passive policy reattachment does not restart an old finite path; a new explicit
 camera request is required. The same source is built for both loaders. Lifecycle
 checks exercise five tracking/finite recipes through reset, repeated render
 frames and a fresh request. Build checks and actual live pixels are separate.
+NeoForge 0.1.30's first actual launch exposed a CRLF-sensitive build substitution;
+0.1.31 normalizes metadata and verifies all declarations and mixin classes from
+the finished JAR before reporting a successful build.
 
 Lively scene planning also distinguishes a vertically open shaft from usable
 camera space: a measured close-view fallback with both horizontal spans at most

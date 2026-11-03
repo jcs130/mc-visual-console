@@ -32,13 +32,28 @@ const mixins={required:true,minVersion:'0.8',compatibilityLevel:'JAVA_21',packag
 // A mixin package must not contain entrypoint or policy classes.
 // Use one separate config per component's exclusive mixin namespace.
 const configs=[];for(const part of['director','observer','neoforge']){const value={...mixins,package:'org.mcvisual.'+part+'.mixin',client:mixins.client.filter(n=>n.startsWith(part+'.')).map(n=>n.split('.').at(-1))},name='mcvisual-'+part+'-neoforge.mixins.json';await fs.writeFile(classes+'/'+name,JSON.stringify(value));configs.push(name);}
-await fs.mkdir(classes+'/META-INF',{recursive:true});let metadata=await fs.readFile(dir+'/neoforge.mods.toml','utf8');metadata=metadata.replace('[[mixins]]\nconfig="mcvisual-neoforge.mixins.json"',configs.map(n=>'[[mixins]]\nconfig="'+n+'"').join('\n'));await fs.writeFile(classes+'/META-INF/neoforge.mods.toml',metadata);
+await fs.mkdir(classes+'/META-INF',{recursive:true});let metadata=(await fs.readFile(dir+'/neoforge.mods.toml','utf8')).replace(/\r\n?/g,'\n');
+const mixinMarker='[[mixins]]\nconfig="mcvisual-neoforge.mixins.json"';
+if(metadata.split(mixinMarker).length!==2)throw Error('Expected exactly one native mixin placeholder');
+metadata=metadata.replace(mixinMarker,configs.map(n=>'[[mixins]]\nconfig="'+n+'"').join('\n'));
+if(metadata.includes('config="mcvisual-neoforge.mixins.json"'))throw Error('Unexpanded native mixin placeholder');
+await fs.writeFile(classes+'/META-INF/neoforge.mods.toml',metadata);
 await fs.cp(observer+'/assets',classes+'/assets',{recursive:true});
 await fs.copyFile(dir+'/LICENSE-SPECTATORPLUS',classes+'/META-INF/LICENSE-GPL-3.0');
 await fs.copyFile(path.resolve(dir,'../../LICENSE'),classes+'/META-INF/LICENSE-MIT');
 await fs.copyFile(dir+'/NOTICE.md',classes+'/META-INF/NOTICE.md');
-const artifact=out+'/mcvisual-native-0.1.30-neoforge.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF','-C',classes,'assets',...configs.flatMap(n=>['-C',classes,n])]);
+const artifact=out+'/mcvisual-native-0.1.31-neoforge.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF','-C',classes,'assets',...configs.flatMap(n=>['-C',classes,n])]);
+// Compiling classes alone cannot prove that the loader can find their mixin declarations.
+const packagedEntries=new Set(run('jar',['--list','--file',artifact]).split(/\r?\n/));
+const packagedAudit=work+'/package-audit';await fs.mkdir(packagedAudit);
+execFileSync(jarTool,['--extract','--file',artifact,'META-INF/neoforge.mods.toml',...configs],{cwd:packagedAudit,windowsHide:true});
+if(await fs.readFile(packagedAudit+'/META-INF/neoforge.mods.toml','utf8')!==metadata)throw Error('Packaged NeoForge metadata mismatch');
+for(const name of configs){
+ if(!metadata.includes('config="'+name+'"')||!packagedEntries.has(name))throw Error('Packaged mixin declaration missing: '+name);
+ const mixin=JSON.parse(await fs.readFile(packagedAudit+'/'+name,'utf8'));
+ for(const entry of mixin.client)if(!packagedEntries.has((mixin.package+'.'+entry).replaceAll('.','/')+'.class'))throw Error('Packaged mixin class missing: '+entry);
+}
 const consumer=work+'/consumer';await fs.mkdir(consumer);const tests=sources.filter(n=>n.endsWith('Check.java'));await fs.writeFile(work+'/consumer.args',['--release','21','-encoding','UTF-8','-proc:none','-classpath',artifact+path.delimiter+cp,'-d',consumer,...tests].map(s=>'"'+s.replaceAll('\\','/')+'"').join('\n'));run('javac',['@'+work+'/consumer.args']);
 const packaged=names.map(n=>run('java',['-cp',consumer+path.delimiter+artifact+path.delimiter+cp,n]).trim());if(JSON.stringify(checks)!==JSON.stringify(packaged))throw Error('Packaged consumer mismatch');
 for(const name of['build.mjs','neoforge.mods.toml','NOTICE.md','LICENSE-SPECTATORPLUS'])records.push({file:'tools/native-client-neoforge/'+name,sha256:sha(await fs.readFile(dir+'/'+name))});
-const report={schema:'mcvisual-neoforge-build/v1',at:new Date().toISOString(),artifact,sha256:sha(await fs.readFile(artifact)),platformSha256:platform.sha256,runtimeDependencies,mapping:mapper.report(),sources:records,checks,packaged,work,productionLoaded:false,gameConnections:0};await fs.writeFile(out+'/build-report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({artifact,sha256:report.sha256,checks,packaged}));
+const report={schema:'mcvisual-neoforge-build/v1',at:new Date().toISOString(),artifact,sha256:sha(await fs.readFile(artifact)),platformSha256:platform.sha256,runtimeDependencies,mapping:mapper.report(),sources:records,checks,packaged,packagedMetadataVerified:true,mixinConfigs:configs,work,productionLoaded:false,gameConnections:0};await fs.writeFile(out+'/build-report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({artifact,sha256:report.sha256,checks,packaged,packagedMetadataVerified:true}));
