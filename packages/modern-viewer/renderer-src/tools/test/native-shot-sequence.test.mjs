@@ -59,6 +59,16 @@ test('lively per-camera tempo does not permit faster subject switching or bypass
  f.tick(7000);assert.equal(pacing.check({name:'B',view:'first_person'},f.n).reason,'minimum_subject_hold');
  pacing.stop();assert.equal(pacing.check(f.choose(),f.n).reason,'stopped');
 });
+
+test('lively collision recovery remembers failed sides across actual requests and can return to safe orthographic',()=>{
+ const f=fixture(true,'lively');f.n.effectiveView='first_person';f.n.shotExecution={requestId:f.n.requestId,view:'drone_front_left',fallback:true,phase:'holding'};
+ const first=f.choose();assert.ok(first.sequence.unavailableViews.includes('drone_front_left'));
+ f.n.requestId='next';f.n.offer={id:'next',at:f.now()-10000,accepted:true};f.n.shotExecution={requestId:'next',view:'drone_follow',fallback:true,phase:'holding'};
+ const second=f.choose({orthographic:true,preferOrthographic:true});assert.ok(second.view.startsWith('ortho_'));
+ assert.ok(second.sequence.unavailableViews.includes('drone_front_left'));assert.ok(second.sequence.unavailableViews.includes('drone_follow'));
+ assert.ok(nativeCameraCandidates(second,f.n,{now:f.now()}).every(c=>!second.sequence.unavailableViews.includes(c.view)));
+ f.n.nativeWorldEpoch=2;f.n.spatial.nativeWorldEpoch=2;const nextWorld=f.choose();assert.ok(!nextWorld.sequence.unavailableViews.includes('drone_front_left'),'a different world discards the old blocked side');
+});
 test('advice and request acceptance cannot advance an actual shot or finish finite motion',()=>{
  const f=fixture(),p=f.choose();assert.deepEqual(f.choose(),p,'unapplied proposal does not advance sequence');
  Object.assign(f.n,{requestId:'arc',effectiveView:p.view,offer:{id:'arc',accepted:true,at:f.now()},shotExecution:{requestId:'arc',view:p.view,phase:'running'}});

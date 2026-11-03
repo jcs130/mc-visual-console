@@ -38,7 +38,7 @@ export class NativeCameraSequence{
   if(!['steady','lively'].includes(cadenceProfile))throw Error('INVALID_CAMERA_CADENCE_PROFILE');
   this.enabled=enabled===true;this.now=now;this.view=currentView;this.cadenceProfile=cadenceProfile;
   this.intervalMs=cadenceProfile==='lively'?5000:Math.max(16000,Math.min(45000,intervalMs));
-  this.current=null;this.blocked=new Map();this.stopped=false;this.phase=this.enabled?'waiting_for_native_frame':'disabled';
+  this.current=null;this.blocked=new Map();this.failedViews=new Map();this.stopped=false;this.phase=this.enabled?'waiting_for_native_frame':'disabled';
  }
  ready(n){const now=this.now(),fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000;
   return this.enabled&&!this.stopped&&n?.connected===true&&n.authenticated===true&&n.spectator===true&&n.phase==='attached'
@@ -48,13 +48,16 @@ export class NativeCameraSequence{
  observe(n){
   if(!this.ready(n))return;
   const now=this.now(),scope=n.connectionEpoch+':'+n.nativeWorldEpoch,view=this.view(n);
-  if(this.current?.scope!==scope){this.current=null;this.blocked.clear();}
+  if(this.current?.scope!==scope||this.current?.uuid!==n.targetUuid){this.current=null;this.blocked.clear();this.failedViews.clear();}
   if(this.current?.id!==n.requestId||this.current?.uuid!==n.targetUuid){
    const offered=n.offer?.id===n.requestId&&n.offer.accepted===true&&Number.isFinite(n.offer.at)&&n.offer.at<=now?n.offer.at:now;
    const continuation=this.cadenceProfile==='lively'&&this.current?.uuid===n.targetUuid&&finite(n.shotExecution?.view);
    this.current={scope,id:n.requestId,uuid:n.targetUuid,view,since:continuation?this.current.since:offered};
   }else this.current.view=view;
   const shot=n.shotExecution;
+  if(this.cadenceProfile==='lively'&&shot?.requestId===n.requestId&&shot.fallback===true&&!finite(shot.view)
+   &&this.failedViews.get(shot.view)?.requestId!==n.requestId)this.failedViews.set(shot.view,{requestId:n.requestId,until:now+20000});
+  for(const[view,value]of this.failedViews)if(value.until<=now)this.failedViews.delete(view);
   if(shot?.requestId===n.requestId&&finite(shot.view)&&['blocked','cancelled'].includes(shot.phase)&&!this.blocked.has(n.requestId)){
    this.blocked.set(n.requestId,now+60000);while(this.blocked.size>16)this.blocked.delete(this.blocked.keys().next().value);
   }
@@ -87,7 +90,7 @@ export class NativeCameraSequence{
    if(!lively&&projectionAge<45000&&45000-projectionAge<8000){this.phase='awaiting_projection_exit';return null;}
    candidates=projectionAge>=projectionHold?(lively?['drone_follow','drone_front_left','drone_eye']:['drone_front_left','drone_eye']):orthoSafe?rotate(orthographics,c.view):[];
   }
-  else if(still&&orthoSafe&&preferOrthographic&&projectionAge>=75000)candidates=orthographics;
+  else if((still||lively&&this.failedViews.size>0&&c.view==='first_person')&&orthoSafe&&preferOrthographic&&projectionAge>=(lively?10000:75000))candidates=orthographics;
   else candidates=earlyMotion?['drone_orbit_left','drone_orbit_right','drone_push_in','drone_follow']:
    rotate(lively?travelViews:still?perspectives:['drone_front_left','drone_side_right','drone_front_right','drone_side_left','drone_eye'],c.view);
   const pathReady=still&&space.layout==='open'&&space.headroom>=3.5&&space.spanX>=8&&space.spanZ>=8
@@ -97,7 +100,7 @@ export class NativeCameraSequence{
   const shot=n.shotExecution;
   const unavailable=shot?.requestId===n.requestId&&!finite(shot.view)&&shot.fallback===true?shot.view:null;
   for(const view of candidates){
-   if(!caps.has(view)||view===c.view||view===unavailable||view.startsWith('ortho_')&&!orthoSafe||finite(view)&&!pathReady)continue;
+   if(!caps.has(view)||view===c.view||view===unavailable||this.failedViews.has(view)||view.startsWith('ortho_')&&!orthoSafe||finite(view)&&!pathReady)continue;
    if(view.startsWith('ortho_')!==(n.projection==='orthographic')&&projectionAge<projectionHold)continue;
    const motion=finite(view)?{schema:CAMERA_SCRIPT_PROTOCOL,speed:lively?1:.75,durationMs:lively?4000:view.startsWith('drone_orbit_')?7500:6000,
       ...(view.startsWith('drone_orbit_')?{arcDegrees:lively?15:35}:{})}:
@@ -107,7 +110,7 @@ export class NativeCameraSequence{
    return{name:n.target,view,kind:travelling?'movement':'overview',at:now,reframe:true,reason:'native_scene_sequence',
     sequence:{schema:'mcvisual.shot-sequence/v1',previousView:c.view,shotAgeMs:now-c.since,subjectStationary:still,
       pathPreflightRequired:finite(view),nativeSceneAt:space.at,reviewRequired:!lively&&still&&now-c.since>=45000,
-      ...(lively?{cadence:{schema:NATIVE_CAMERA_CADENCE_PROTOCOL,scope:c.scope,subjectUuid:n.targetUuid,requestId:n.requestId,since:c.since,
+      ...(lively?{unavailableViews:[...this.failedViews.keys()],cadence:{schema:NATIVE_CAMERA_CADENCE_PROTOCOL,scope:c.scope,subjectUuid:n.targetUuid,requestId:n.requestId,since:c.since,
        cause:earlyMotion?'stationary_motion':'composition',stationarySince:still?a.stillSince:null,dueAt:c.since+(earlyMotion?3000:5000),deadlineAt:c.since+(earlyMotion?4000:7000)}}:{})},...(motion?{motion}:{})};
   }
   this.phase='holding_legal_view';return null;

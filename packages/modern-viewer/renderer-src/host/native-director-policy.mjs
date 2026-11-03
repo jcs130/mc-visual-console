@@ -47,6 +47,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
  const script=n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL;
  function add(id,view,profile){
   if((choice.sequence?.reviewRequired===true||choice.sequence?.cadence)&&same&&view===actualView)return;
+  if(same&&choice.sequence?.unavailableViews?.includes(view))return;
   if(view.startsWith('ortho_')&&nativeSafeOrthographic(n)!==true)return;
   const finite=view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view);
   if(same&&!finite&&n.shotExecution?.requestId===n.requestId&&n.shotExecution.view===view&&n.shotExecution.fallback===true)return;

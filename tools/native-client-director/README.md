@@ -422,6 +422,12 @@ record rule execution separately from model advice and cancel abandoned inferenc
 This does not speed up subject switching, bypass GUI/combat/manual/unknown states,
 finish a running finite path, or establish unseen geometry as clear.
 
+The lively sequence retains ordinary failed sides for20 seconds across requests,
+clears that evidence on actor/world changes, and can use verified orthographic fallback.
+Hosts should use a short bounded pause after a known scoped camera rejection (the live
+consumer uses2 seconds), rather than the old30-second error delay. Unknown or manual
+outcomes remain stopped; old camera requests are never replayed.
+
 After three observed stationary seconds, a small 15-degree/four-second native-preflight
 motion or a bounded orthographic adjustment may start. Lively same-subject operations
 have a 12/minute ceiling and separate ten-second projection hold; subject dwell and
