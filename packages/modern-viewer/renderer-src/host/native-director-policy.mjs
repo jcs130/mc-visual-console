@@ -1,6 +1,7 @@
 import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts,validateCameraScript} from './camera-script.mjs';
 import {validateChoiceProbabilities} from './systemone-decisions.mjs';
-export {NativeCameraSequence} from './native-shot-sequence.mjs';
+import {nativeScheduledCamera} from './native-shot-sequence.mjs';
+export {NativeCameraSequence,nativeScheduledCamera,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
 export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
 
 /** One current image plus real all-actor activity/airtime. Other cameras are explicitly unobserved. */
@@ -45,7 +46,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
  const actualView=n.projection==='orthographic'&&n.orthographic?.active===true?n.projectionProfile:n.effectiveView;
  const script=n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL;
  function add(id,view,profile){
-  if(choice.sequence?.reviewRequired===true&&same&&view===actualView)return;
+  if((choice.sequence?.reviewRequired===true||choice.sequence?.cadence)&&same&&view===actualView)return;
   if(view.startsWith('ortho_')&&nativeSafeOrthographic(n)!==true)return;
   const finite=view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view);
   if(same&&!finite&&n.shotExecution?.requestId===n.requestId&&n.shotExecution.view===view&&n.shotExecution.fallback===true)return;
@@ -53,7 +54,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
   if(finite&&(!same||view!==choice.view||profile||choice.sequence?.schema!=='mcvisual.shot-sequence/v1'
     ||choice.sequence.pathPreflightRequired!==true||!script||n.cameraScript.preflightRequiredForFinite!==true||n.rigCancelSupported!==true))return;
   const key=view+':'+(profile??'');if(seen.has(key))return;seen.add(key);
-  const motion=finite?validateCameraScript(choice.motion,view):script&&view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:profile==='slow'?.7:1,
+  const motion=finite||!profile&&view===choice.view&&choice.motion?validateCameraScript(choice.motion,view):script&&view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:profile==='slow'?.7:1,
     ...(['drone_follow','drone_front_left','drone_front'].includes(view)?{height:profile==='slow'?1.8:1,distance:profile==='slow'?6.5:5.5}:{})}:undefined;
   const entry={...choice,id,view};if(motion)entry.motion=motion;else delete entry.motion;out.push(entry);
  }
@@ -63,6 +64,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
   if(['interaction','combat'].includes(choice.kind)||['tunnel','layered'].includes(n.spatial?.layout))add('eye_action','first_person');
   add('stable_eye','drone_eye');
   if(choice.kind==='movement')add('lead','drone_front_left');
+  if(choice.sequence?.cadence){add('rear_tracking','drone_follow');add('side_tracking','drone_side_right');add('high_context','drone_overview');}
   if(choice.kind==='conversation')add('front','drone_front');
   const c=n.spatial;
   if(n.orthographic?.ready&&c?.known===true&&c.targetUuid===candidate.uuid&&c.nativeWorldEpoch===n.nativeWorldEpoch
@@ -102,7 +104,7 @@ export function selectCameraBallot(options,votes,previous){
 
 /** One pacing gate, advanced ONLY by actual rendered native observations, never by accepted advice. */
 export class NativeCameraPacing{
- constructor({now=Date.now,currentView}={}){if(typeof currentView!=='function')throw Error('EXPLICIT_NATIVE_VIEW_REQUIRED');this.view=currentView;this.now=now;this.binding=null;this.current=null;this.history=[];this.left=new Map();this.stopped=false;}
+ constructor({now=Date.now,currentView,cadenceProfile='steady'}={}){if(typeof currentView!=='function')throw Error('EXPLICIT_NATIVE_VIEW_REQUIRED');if(!['steady','lively'].includes(cadenceProfile))throw Error('INVALID_CAMERA_CADENCE_PROFILE');this.cadenceProfile=cadenceProfile;this.view=currentView;this.now=now;this.binding=null;this.current=null;this.history=[];this.left=new Map();this.stopped=false;}
  observe(n){
   if(this.stopped||n?.phase!=='attached'||!n.targetUuid||n.cameraUuid!==n.targetUuid||n.transition?.active||n.manualDetachRequested
     ||!Number.isFinite(n.renderedAt)||n.renderedAt>this.now()+1000||this.now()-n.renderedAt>3000)return;
@@ -137,9 +139,13 @@ export class NativeCameraPacing{
   if(!c||!subject)return{allow:false,reason:'awaiting_render_binding'};
   const projection=choice.view.startsWith('ortho_')?'orthographic':'perspective',cross=subject!==c.uuid;
   this.history=this.history.filter(h=>now-h.at<60000);
-  if(now-c.shotAt<12000)return{allow:false,reason:'minimum_shot_12s'};
-  if(this.history.length>=4)return{allow:false,reason:'cut_budget_4_per_minute'};
-  if(!cross&&projection!==c.projection&&now-c.projectionAt<45000)return{allow:false,reason:'projection_hold_45s'};
+  const scheduled=this.cadenceProfile==='lively'&&!cross&&nativeScheduledCamera(choice,n,{now});
+  const current=activity.find(a=>a.name===n.target),fresh=t=>Number.isFinite(t)&&t<=now&&now-t<8000;
+  if(scheduled&&(fresh(current?.lastCombatAt)||Number.isFinite(current?.lastInteractionAt)&&now-current.lastInteractionAt>=0&&now-current.lastInteractionAt<12000))return{allow:false,reason:'protect_live_action'};
+  const minimum=scheduled?(choice.sequence.cadence.cause==='stationary_motion'?3000:5000):12000;
+  if(now-c.shotAt<minimum)return{allow:false,reason:scheduled?'minimum_scheduled_shot':'minimum_shot_12s'};
+  if(this.history.length>=(this.cadenceProfile==='lively'?12:4))return{allow:false,reason:this.cadenceProfile==='lively'?'cut_budget_12_per_minute':'cut_budget_4_per_minute'};
+  if(!cross&&projection!==c.projection&&now-c.projectionAt<(scheduled?10000:45000))return{allow:false,reason:scheduled?'projection_hold_10s':'projection_hold_45s'};
   if(cross){
    const current=activity.find(a=>a.name===n.target),engaged=Number.isFinite(current?.lastCombatAt)&&now-current.lastCombatAt<8000;
    if(engaged)return{allow:false,reason:'protect_live_combat'};

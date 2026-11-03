@@ -412,6 +412,24 @@ matching all-online/bound-player/configured mode. SDK and MCP reject unrelated
 UUIDs or ineligible server-wide targets before writing a native request.
 # Opt-in native shot progression
 
+Hosts may explicitly choose `cadenceProfile:'lively'` on both `NativeCameraSequence`
+and `NativeCameraPacing`. The steady default below is unchanged. The lively sequence
+prepares a new same-subject composition after five seconds and supplies a scoped
+`mcvisual.native-camera-cadence/v1` deadline at seven seconds, leaving time for native
+transition and settling within a 5–10 second shot. A host can honour that explicit
+schedule with native-checked rules when a model is slow or keeps voting KEEP; it must
+record rule execution separately from model advice and cancel abandoned inference.
+This does not speed up subject switching, bypass GUI/combat/manual/unknown states,
+finish a running finite path, or establish unseen geometry as clear.
+
+After three observed stationary seconds, a small 15-degree/four-second native-preflight
+motion or a bounded orthographic adjustment may start. Lively same-subject operations
+have a 12/minute ceiling and separate ten-second projection hold; subject dwell and
+two-subject/minute limits remain. Tracking alternates rear, side, lead and context views;
+ordinary script speed/height/distance survive model candidate construction. The public
+`nativeScheduledCamera` helper validates account-camera binding, operation, world, clocks,
+actual geometry and finite-motion capability before a scheduled rule fallback.
+
 The shared `NativeCameraSequence` export supplements subject selection with display-only
 shot progression. Enable it explicitly in the host; default cadence is 22 seconds with
 the existing cut budget and 45-second projection dwell still authoritative. It uses
