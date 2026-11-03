@@ -1,5 +1,22 @@
 # Native spectator director companion
 
+## Stopped rig after a world replacement; selector supervision
+
+When a world replacement positively restores the same actor, an inactive stopped
+trajectory is a rejected shot, not an indefinitely pending one. This requires the
+fresh exact request, lease, world, current camera life, accepted offer and explicit
+world-reset reason. Manual/unknown/cancelled native states remain terminal. The
+host may select a new request, never restart the old finite path or claim it ended.
+
+`planNativeDirectorResume` is a pure public policy with
+`mcvisual.native-director-resume/v1` output. An explicitly enabled process adapter
+can resume a dead selector only after a fresh authenticated NEW native connection
+of the same server/account, with confirmed self-camera or roster-bound attachment.
+Old unknown status must be archived; a new lease is required. Same-connection
+unknowns, manual stop, stale scope and closed owner never revive the selector.
+Recovery is limited to four attempts per ten minutes, ten seconds apart. This
+policy has no process, network, account, host-persona or model side effects.
+
 This optional Fabric 1.21.1 module controls one existing, explicitly configured
 observer. It does not create a player, connect a Minecraft client, run a model,
 choose an agent's game goal, or expose arbitrary command execution.

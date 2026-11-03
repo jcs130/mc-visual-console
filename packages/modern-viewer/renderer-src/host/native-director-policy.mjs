@@ -3,6 +3,32 @@ import {validateChoiceProbabilities} from './systemone-decisions.mjs';
 import {nativeScheduledCamera} from './native-shot-sequence.mjs';
 export {NativeCameraSequence,nativeScheduledCamera,nativeCameraFamily,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
 export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
+export const NATIVE_DIRECTOR_RESUME_PROTOCOL='mcvisual.native-director-resume/v1';
+
+/** Pure, camera-only supervision. A stopped selector is resumed only on a proven NEW native connection. */
+export function planNativeDirectorResume({enabled=false,observerAlive=false,selectorAlive=false,expectedServer,expectedObserverUuid,previousEpoch,native:n,selector:s,now=Date.now(),lastResumeAt=0,recentResumes=0}={}){
+ const result=(action,reason)=>({schema:NATIVE_DIRECTOR_RESUME_PROTOCOL,action,reason,replayPreviousRequest:false});
+ if(!enabled)return result('hold','supervision_disabled');
+ if(!observerAlive)return result('stop','observer_closed');
+ if(n?.manualDetachRequested===true||n?.phase==='paused'||s?.stopRequested===true
+   ||['director_stopped','manual_or_native_detach','connection_changed_manual_resume','paused_native_paused','native_paused_requires_review','native_offer_refused_manual_override'].includes(s?.phase))return result('hold','manual_stop_retained');
+ if(selectorAlive)return result('keep','selector_running');
+ const at=Date.parse(n?.recordedAt);
+ if(!Number.isFinite(at)||at>now||now-at>3000||n?.connected!==true||n.authenticated!==true||n.spectator!==true)return result('hold','await_fresh_authenticated_connection');
+ if(!expectedServer||!expectedObserverUuid||n.server!==expectedServer||n.observerUuid!==expectedObserverUuid)return result('hold','observer_scope_changed');
+ const epoch=n.connectionEpoch;
+ if(typeof previousEpoch!=='string'||!previousEpoch||typeof epoch!=='string'||!epoch||epoch.length>128)return result('hold','connection_provenance_missing');
+ if(epoch===previousEpoch)return result('hold','same_connection_outcome_retained');
+ if(n.transition?.active===true)return result('hold','new_camera_transition_pending');
+ const self=n.phase==='idle'&&n.cameraUuid===n.observerUuid&&n.requestId==null&&n.activeLease==null;
+ const fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000,life=n.cameraLife;
+ const attached=n.phase==='attached'&&n.targetUuid&&n.targetUuid!==n.observerUuid&&n.cameraUuid===n.targetUuid
+   &&fresh(n.renderedAt)&&life?.requestId===n.requestId&&life.uuid===n.targetUuid&&life.nativeWorldEpoch===n.nativeWorldEpoch&&life.dead===false&&fresh(life.observedAttachedAt)
+   &&Array.isArray(n.targets)&&n.targets.some(t=>t.name===n.target&&t.uuid===n.targetUuid&&t.spectator===false);
+ if(!self&&!attached)return result('hold','new_camera_state_unconfirmed');
+ if(recentResumes>=4||lastResumeAt&&now-lastResumeAt<10000)return result('hold','resume_rate_limited');
+ return{...result('start','new_native_connection_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true};
+}
 
 /** One current image plus real all-actor activity/airtime. Other cameras are explicitly unobserved. */
 export function buildNativeSubjectDecision(native,rows,{forceReview=false,eligibleNames,now=Date.now()}={}){

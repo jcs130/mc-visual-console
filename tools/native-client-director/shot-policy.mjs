@@ -99,6 +99,14 @@ export function nativeShotReceipt(native,request,now=Date.now(),{maxAgeMs=3000}=
   const shot=native.shotExecution,recipe=NATIVE_CAMERA_RECIPES[request.view];
   if(!recipe||shot?.requestId!==request.id||shot.view!==request.view)return{kind:'waiting',reason:'shot_binding_pending'};
   const adaptive=['drone_follow','drone_eye','drone_overview'].includes(request.view);
+  // A passive world reattachment restores the actor, not the old trajectory.
+  // Its exact stopped rig is a failed shot, so the host can select a NEW request.
+  const life=native.cameraLife;
+  if(shot.phase==='stopped'&&native.drone?.active===false&&['native_world_replacement','native_rig_world_or_lifecycle_changed'].includes(native.drone.reason)
+    &&native.connected===true&&native.authenticated===true&&native.spectator===true&&native.manualDetachRequested!==true
+    &&native.offer?.id===request.id&&native.offer.lease===request.lease&&native.offer.accepted===true
+    &&life?.requestId===request.id&&life.uuid===request.targetUuid&&life.nativeWorldEpoch===native.nativeWorldEpoch&&life.dead===false
+    &&fresh(life.observedAttachedAt)&&fresh(Date.parse(native.recordedAt)))return{kind:'rejected',reason:'native_rig_stopped_after_world_replacement'};
   if(['blocked','cancelled'].includes(shot.phase)||shot.fallback===true&&!adaptive)return{kind:'rejected',reason:shot.reason??'requested_shot_degraded'};
   if(native.drone?.active!==true||!fresh(native.drone.lastRenderedAt))
     return{kind:'waiting',reason:'native_rig_frame_pending'};

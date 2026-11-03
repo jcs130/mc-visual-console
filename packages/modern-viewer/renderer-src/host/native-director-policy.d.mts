@@ -2,6 +2,8 @@ import type {CameraScript} from './camera-script.mjs';
 export {NativeCameraSequence,nativeScheduledCamera,nativeCameraFamily,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
 import type {SceneSubjectCandidate} from '../../../../tools/native-client-director/scene-policy.mjs';
 export const SUBJECT_CHOICE_PROTOCOL:'mcvisual.subject-choice/v1';
+export const NATIVE_DIRECTOR_RESUME_PROTOCOL:'mcvisual.native-director-resume/v1';
+export function planNativeDirectorResume(options?:{enabled?:boolean;observerAlive?:boolean;selectorAlive?:boolean;expectedServer?:string;expectedObserverUuid?:string;previousEpoch?:string|null;native?:Record<string,any>|null;selector?:Record<string,any>|null;now?:number;lastResumeAt?:number;recentResumes?:number}):{schema:typeof NATIVE_DIRECTOR_RESUME_PROTOCOL;action:'hold'|'stop'|'keep'|'start';reason:string;replayPreviousRequest:false;connectionEpoch?:string;newLeaseRequired?:boolean;archivePreviousStatus?:boolean};
 export interface NativeSubjectDecision {schema:typeof SUBJECT_CHOICE_PROTOCOL;forceReview:boolean;options:Array<Partial<SceneSubjectCandidate>&{id:string;name:string;uuid:string;view?:string}>;request:{state:unknown;questions:Record<string,{type:'choice';instructions:string;criteria:Record<string,string>}>}}
 export function buildNativeSubjectDecision(native:Record<string,any>,rows:SceneSubjectCandidate[],options?:{forceReview?:boolean;eligibleNames?:string[];now?:number}):NativeSubjectDecision|null;
 export function selectNativeSubject(menu:NativeSubjectDecision,answer:unknown):{kind:'keep'|'use'|'rules';choice?:NativeSubjectDecision['options'][number];source?:'probabilities'|'hard_choices';margin?:number;entropy?:number;reason?:string};
