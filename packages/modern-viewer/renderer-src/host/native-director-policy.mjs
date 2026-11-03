@@ -113,6 +113,10 @@ export class NativeCameraPacing{
   if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();}
   const signature=[n.requestId,n.targetUuid,this.view(n)].join(':'),at=this.now();
   if(this.current?.signature===signature)return;
+  if(this.cadenceProfile==='lively'&&this.current?.uuid===n.targetUuid&&this.current.view===this.view(n)
+   &&n.shotExecution?.requestId===n.requestId&&n.shotExecution.fallback===true){
+   this.current.signature=signature;this.current.requestId=n.requestId;return;
+  }
   if(this.current?.requestId===n.requestId&&this.current.uuid===n.targetUuid){
    // Collision/close-view recovery is the same camera operation, not another editorial cut.
    const projection=n.projection??'perspective';if(this.current.projection!==projection)this.current.projectionAt=at;

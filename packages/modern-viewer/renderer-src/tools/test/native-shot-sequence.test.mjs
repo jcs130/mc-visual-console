@@ -60,6 +60,17 @@ test('lively per-camera tempo does not permit faster subject switching or bypass
  pacing.stop();assert.equal(pacing.check(f.choose(),f.n).reason,'stopped');
 });
 
+test('one stationary cue is consumed by actual motion, not repeated as a three-second camera cut on every shot',()=>{
+ const f=fixture(true,'lively');f.n.offer.at=f.now();f.activity[0].stillSince=f.now();f.tick(3000);const first=f.choose();
+ f.n.requestId='arc';f.n.effectiveView=first.view;f.n.offer={id:'arc',accepted:true,at:f.now()};f.n.shotExecution={requestId:'arc',view:first.view,phase:'completed'};
+ f.tick(4000);assert.equal(f.choose().sequence.cadence.cause,'composition');
+ f.n.requestId='new-frame';f.n.effectiveView='drone_front';f.n.offer={id:'new-frame',accepted:true,at:f.now()};f.n.shotExecution={requestId:'new-frame',view:'drone_front',phase:'holding'};
+ f.sequence.observe(f.n);f.tick(3000);assert.equal(f.choose(),null);f.tick(2000);assert.equal(f.choose().sequence.cadence.cause,'composition');
+ const pacing=new NativeCameraPacing({cadenceProfile:'lively',now:f.now,currentView:n=>n.effectiveView});pacing.observe(f.n);const at=pacing.current.shotAt;
+ f.n.requestId='failed-no-cut';f.n.shotExecution={requestId:f.n.requestId,view:'drone_side_left',phase:'holding',fallback:true};f.tick(1000);pacing.observe(f.n);
+ assert.equal(pacing.history.length,0,'a rejected pose that leaves the same actual frame is not an editorial cut');assert.equal(pacing.current.shotAt,at);
+});
+
 test('lively collision recovery remembers failed sides across actual requests and can return to safe orthographic',()=>{
  const f=fixture(true,'lively');f.n.effectiveView='first_person';f.n.shotExecution={requestId:f.n.requestId,view:'drone_front_left',fallback:true,phase:'holding'};
  const first=f.choose();assert.ok(first.sequence.unavailableViews.includes('drone_front_left'));

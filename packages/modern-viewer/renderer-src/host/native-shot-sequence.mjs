@@ -38,7 +38,7 @@ export class NativeCameraSequence{
   if(!['steady','lively'].includes(cadenceProfile))throw Error('INVALID_CAMERA_CADENCE_PROFILE');
   this.enabled=enabled===true;this.now=now;this.view=currentView;this.cadenceProfile=cadenceProfile;
   this.intervalMs=cadenceProfile==='lively'?5000:Math.max(16000,Math.min(45000,intervalMs));
-  this.current=null;this.blocked=new Map();this.failedViews=new Map();this.stopped=false;this.phase=this.enabled?'waiting_for_native_frame':'disabled';
+  this.current=null;this.cue=null;this.cueOffer=null;this.blocked=new Map();this.failedViews=new Map();this.stopped=false;this.phase=this.enabled?'waiting_for_native_frame':'disabled';
  }
  ready(n){const now=this.now(),fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000;
   return this.enabled&&!this.stopped&&n?.connected===true&&n.authenticated===true&&n.spectator===true&&n.phase==='attached'
@@ -48,7 +48,12 @@ export class NativeCameraSequence{
  observe(n){
   if(!this.ready(n))return;
   const now=this.now(),scope=n.connectionEpoch+':'+n.nativeWorldEpoch,view=this.view(n);
-  if(this.current?.scope!==scope||this.current?.uuid!==n.targetUuid){this.current=null;this.blocked.clear();this.failedViews.clear();}
+  if(this.current?.scope!==scope||this.current?.uuid!==n.targetUuid){this.current=null;this.cue=null;this.cueOffer=null;this.blocked.clear();this.failedViews.clear();}
+  const cue=this.cueOffer;
+  if(cue&&cue.scope===scope&&cue.uuid===n.targetUuid&&cue.parent!==n.requestId&&n.shotExecution?.requestId===n.requestId
+   &&n.shotExecution.fallback!==true&&['running','holding','completed','transitioning'].includes(n.shotExecution.phase)){
+   this.cue={scope,uuid:n.targetUuid,stationarySince:cue.stationarySince};this.cueOffer=null;
+  }
   if(this.current?.id!==n.requestId||this.current?.uuid!==n.targetUuid){
    const offered=n.offer?.id===n.requestId&&n.offer.accepted===true&&Number.isFinite(n.offer.at)&&n.offer.at<=now?n.offer.at:now;
    const continuation=this.cadenceProfile==='lively'&&this.current?.uuid===n.targetUuid&&finite(n.shotExecution?.view);
@@ -73,7 +78,7 @@ export class NativeCameraSequence{
   const lively=this.cadenceProfile==='lively';
   const still=lively?fresh(a?.positionAt,3000)&&Number.isFinite(a?.stillSince)&&now-a.stillSince>=3000:
    a?.motion==='stationary'&&fresh(a.positionAt,15000)&&Number.isFinite(a.stillSince)&&now-a.stillSince>=15000;
-  const earlyMotion=lively&&still&&now-c.since>=3000&&now-c.since<5000;
+  const earlyMotion=lively&&still&&this.cue?.stationarySince!==a.stillSince&&now-c.since>=3000&&now-c.since<5000;
   if(now-c.since<this.intervalMs&&!earlyMotion){this.phase='holding_shot';return null;}
   const space=n.spatial,subject=n.targets?.find(t=>t.uuid===n.targetUuid&&t.name===n.target);
   if(!subject?.loaded||subject.alive!==true||space?.known!==true||space.targetUuid!==n.targetUuid
@@ -107,6 +112,7 @@ export class NativeCameraSequence{
     view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:lively?1.15:.75,
      ...(lively?{height:view==='drone_overview'?5.2:view==='drone_follow'?2.2:1.8,distance:view==='drone_overview'?7.5:5.5}:{})}:undefined;
    this.phase='proposing_sequence';
+   if(earlyMotion)this.cueOffer={scope:c.scope,uuid:n.targetUuid,parent:n.requestId,stationarySince:a.stillSince};
    return{name:n.target,view,kind:travelling?'movement':'overview',at:now,reframe:true,reason:'native_scene_sequence',
     sequence:{schema:'mcvisual.shot-sequence/v1',previousView:c.view,shotAgeMs:now-c.since,subjectStationary:still,
       pathPreflightRequired:finite(view),nativeSceneAt:space.at,reviewRequired:!lively&&still&&now-c.since>=45000,
