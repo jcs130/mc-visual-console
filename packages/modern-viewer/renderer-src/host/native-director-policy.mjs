@@ -150,7 +150,7 @@ export class NativeCameraPacing{
   const minimum=scheduled?(choice.sequence.cadence.cause==='stationary_motion'?3000:5000):12000;
   if(now-c.shotAt<minimum)return{allow:false,reason:scheduled?'minimum_scheduled_shot':'minimum_shot_12s'};
   if(this.history.length>=(this.cadenceProfile==='lively'?12:4))return{allow:false,reason:this.cadenceProfile==='lively'?'cut_budget_12_per_minute':'cut_budget_4_per_minute'};
-  if(!cross&&projection!==c.projection&&now-c.projectionAt<(scheduled?10000:45000))return{allow:false,reason:scheduled?'projection_hold_10s':'projection_hold_45s'};
+  if(!cross&&projection!==c.projection&&now-c.projectionAt<(scheduled?5000:45000))return{allow:false,reason:scheduled?'projection_hold_5s':'projection_hold_45s'};
   if(cross){
    const current=activity.find(a=>a.name===n.target),engaged=Number.isFinite(current?.lastCombatAt)&&now-current.lastCombatAt<8000;
    if(engaged)return{allow:false,reason:'protect_live_combat'};

@@ -56,7 +56,8 @@ export class NativeCameraSequence{
   }
   if(this.current?.id!==n.requestId||this.current?.uuid!==n.targetUuid){
    const offered=n.offer?.id===n.requestId&&n.offer.accepted===true&&Number.isFinite(n.offer.at)&&n.offer.at<=now?n.offer.at:now;
-   const continuation=this.cadenceProfile==='lively'&&this.current?.uuid===n.targetUuid&&finite(n.shotExecution?.view);
+   const continuation=this.cadenceProfile==='lively'&&this.current?.uuid===n.targetUuid
+    &&(finite(n.shotExecution?.view)||n.shotExecution?.fallback===true&&this.current.view===view);
    this.current={scope,id:n.requestId,uuid:n.targetUuid,view,since:continuation?this.current.since:offered};
   }else this.current.view=view;
   const shot=n.shotExecution;
@@ -88,14 +89,14 @@ export class NativeCameraSequence{
   const tight=['tunnel','layered'].includes(space.layout);
   const orthoSafe=orthographic&&n.orthographic?.ready===true&&n.orthographic.worldCutawaySupported===false&&!n.orthographic.roomClip
     &&['open','room'].includes(space.layout)&&space.orthographicVisibility>=.8;
-  const projectionAge=now-lastProjectionChangeAt,projectionHold=lively?10000:45000;
+  const projectionAge=now-lastProjectionChangeAt,projectionHold=lively?5000:45000;
   let candidates;
   if(tight)candidates=['first_person','drone_eye'];
   else if(n.projection==='orthographic'){
    if(!lively&&projectionAge<45000&&45000-projectionAge<8000){this.phase='awaiting_projection_exit';return null;}
    candidates=projectionAge>=projectionHold?(lively?['drone_follow','drone_front_left','drone_eye']:['drone_front_left','drone_eye']):orthoSafe?rotate(orthographics,c.view):[];
   }
-  else if((still||lively&&this.failedViews.size>0&&c.view==='first_person')&&orthoSafe&&preferOrthographic&&projectionAge>=(lively?10000:75000))candidates=orthographics;
+  else if((still||lively&&this.failedViews.size>0&&c.view==='first_person')&&orthoSafe&&preferOrthographic&&projectionAge>=(lively?5000:75000))candidates=orthographics;
   else candidates=earlyMotion?['drone_orbit_left','drone_orbit_right','drone_push_in','drone_follow']:
    rotate(lively?travelViews:still?perspectives:['drone_front_left','drone_side_right','drone_front_right','drone_side_left','drone_eye'],c.view);
   const pathReady=still&&space.layout==='open'&&space.headroom>=3.5&&space.spanX>=8&&space.spanZ>=8

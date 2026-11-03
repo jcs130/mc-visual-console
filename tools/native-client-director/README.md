@@ -430,7 +430,7 @@ outcomes remain stopped; old camera requests are never replayed.
 
 After three observed stationary seconds, a small 15-degree/four-second native-preflight
 motion or a bounded orthographic adjustment may start. Lively same-subject operations
-have a 12/minute ceiling and separate ten-second projection hold; subject dwell and
+have a 12/minute ceiling and separate five-second projection hold; subject dwell and
 two-subject/minute limits remain. Tracking alternates rear, side, lead and context views;
 ordinary script speed/height/distance survive model candidate construction. The public
 `nativeScheduledCamera` helper validates account-camera binding, operation, world, clocks,
