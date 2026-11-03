@@ -412,6 +412,21 @@ matching all-online/bound-player/configured mode. SDK and MCP reject unrelated
 UUIDs or ineligible server-wide targets before writing a native request.
 # Opt-in native shot progression
 
+Lively coverage uses an executed-view repertoire rather than toggling projection.
+Rear, front, side, low, high, orthographic, orbit, push and pull families compete only
+when advertised and currently eligible. Two recent rendered families are avoided where
+other legal families exist; underused families keep model bias from starving the rest.
+Up to eight different proposals enter the same model menu and scheduled-rule fallback.
+No accepted proposal advances this coverage; only bound rendered native outcomes do.
+
+Recipe heights are relative to the actor's eye. Ceiling clearance constrains ordinary
+views, and low-angle keeps negative height. A low room cannot claim a high-angle view;
+it can still offer front/side/low and bounded finite motion from an actual safe rig.
+Room trajectories must pass the existing full native path/collision preflight; this
+does not remove roof blocks, change world clipping, or disable close-view protection.
+`NativeCameraSequence.stats()` reports actual rendered coverage, eligible proposals and
+exclusion reasons independently. The number of installed recipes is not visual acceptance.
+
 Hosts may explicitly choose `cadenceProfile:'lively'` on both `NativeCameraSequence`
 and `NativeCameraPacing`. The steady default below is unchanged. The lively sequence
 prepares a new same-subject composition after five seconds and supplies a scoped

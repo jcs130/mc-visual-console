@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {NativeCameraSequence,NativeCameraPacing,nativeCameraCandidates,nativeScheduledCamera} from '../../host/native-director-policy.mjs';
+import {NativeCameraSequence,NativeCameraPacing,nativeCameraCandidates,nativeScheduledCamera,nativeCameraFamily} from '../../host/native-director-policy.mjs';
 import {validateCameraScript} from '../../host/camera-script.mjs';
 function fixture(enabled=true,cadenceProfile='steady'){
  let time=100000;const now=()=>time;
@@ -75,10 +75,41 @@ test('lively collision recovery remembers failed sides across actual requests an
  const f=fixture(true,'lively');f.n.effectiveView='first_person';f.n.shotExecution={requestId:f.n.requestId,view:'drone_front_left',fallback:true,phase:'holding'};
  const first=f.choose();assert.ok(first.sequence.unavailableViews.includes('drone_front_left'));
  f.n.requestId='next';f.n.offer={id:'next',at:f.now()-10000,accepted:true};f.n.shotExecution={requestId:'next',view:'drone_follow',fallback:true,phase:'holding'};
- const second=f.choose({orthographic:true,preferOrthographic:true,lastProjectionChangeAt:f.now()-6000});assert.ok(second.view.startsWith('ortho_'));
+ const second=f.choose({orthographic:true,preferOrthographic:true,lastProjectionChangeAt:f.now()-6000});assert.ok(second.sequence.alternatives.some(x=>x.view.startsWith('ortho_')));
  assert.ok(second.sequence.unavailableViews.includes('drone_front_left'));assert.ok(second.sequence.unavailableViews.includes('drone_follow'));
  assert.ok(nativeCameraCandidates(second,f.n,{now:f.now()}).every(c=>!second.sequence.unavailableViews.includes(c.view)));
  f.n.nativeWorldEpoch=2;f.n.spatial.nativeWorldEpoch=2;const nextWorld=f.choose();assert.ok(!nextWorld.sequence.unavailableViews.includes('drone_front_left'),'a different world discards the old blocked side');
+});
+
+test('long stationary room coverage cannot collapse into rear/orthographic even with a biased model selector',()=>{
+ const f=fixture(true,'lively');f.n.spatial.layout='room';f.n.spatial.headroom=1.38;
+ f.n.availableViews.push('drone_follow','drone_low','drone_overview','ortho_top');
+ const shown=[],families=[],options={orthographic:true,preferOrthographic:true,lastProjectionChangeAt:0};
+ for(let i=0;i<36;i++){
+  f.tick(8000);const p=f.choose(options);assert.ok(p,'room retains safe alternative framing');
+  const menu=nativeCameraCandidates(p,f.n,{now:f.now()});assert.ok(menu.length>0);assert.ok(menu.every(c=>c.view!=='drone_overview'),'low ceilings cannot be labelled high-angle');
+  const selected=menu.find(c=>c.view==='drone_follow')??menu.find(c=>c.view.startsWith('ortho_'))??menu[0];
+  const oldProjection=f.n.projection;f.n.requestId='render'+i;f.n.effectiveView=selected.view;f.n.offer={id:f.n.requestId,at:f.now(),accepted:true};
+  f.n.projection=selected.view.startsWith('ortho_')?'orthographic':'perspective';f.n.projectionProfile=selected.view;f.n.orthographic.active=f.n.projection==='orthographic';
+  if(f.n.projection!==oldProjection)options.lastProjectionChangeAt=f.now();f.n.drone.active=f.n.projection!=='orthographic';
+  f.n.shotExecution={requestId:f.n.requestId,view:selected.view,phase:selected.sequence.pathPreflightRequired?'completed':'holding',fallback:false};
+  f.sequence.observe(f.n);shown.push(selected.view);families.push(nativeCameraFamily(selected.view));
+ }
+ assert.ok(new Set(shown).size>=10,JSON.stringify(shown));
+ for(const family of['front','side','low','orbit','push','pull','orthographic','rear'])assert.ok(families.includes(family),family+' was starved');
+ assert.ok(!families.some((x,i)=>i>2&&x===families[i-2]&&x===families[i-4]),'no two-family loop');
+});
+
+test('coverage credits actual rendered results only, and bounded alternatives preserve all native path barriers',()=>{
+ const f=fixture(true,'lively');f.n.spatial.layout='room';f.n.spatial.headroom=1.38;f.n.availableViews.push('drone_follow','drone_low','drone_overview');
+ const choice=f.choose({orthographic:true,preferOrthographic:true});const before=f.sequence.stats().coverage.renderedViews;
+ for(let i=0;i<20;i++)f.choose({orthographic:true,preferOrthographic:true});assert.deepEqual(f.sequence.stats().coverage.renderedViews,before);
+ const menu=nativeCameraCandidates(choice,f.n,{now:f.now()});assert.ok(new Set(menu.map(c=>nativeCameraFamily(c.view))).size>=5);
+ for(const c of menu){if(c.motion)assert.deepEqual(c.motion,validateCameraScript(c.motion,c.view));if(c.sequence.pathPreflightRequired)assert.equal(nativeScheduledCamera(c,f.n,{now:f.now()}),true);}
+ assert.ok(menu.find(c=>c.view==='drone_low')?.motion.height<0,'low-angle remains below actor eye height');
+ const foreign=structuredClone(choice);foreign.sequence.cadence.scope='other';assert.deepEqual(nativeCameraCandidates(foreign,f.n,{now:f.now()}),[]);
+ Object.assign(f.n,{requestId:'rejected',effectiveView:'first_person',shotExecution:{requestId:'rejected',view:'drone_side_right',phase:'holding',fallback:true}});
+ f.sequence.observe(f.n);const coverage=f.sequence.stats().coverage.renderedViews;assert.ok(coverage.includes('first_person'));assert.ok(!coverage.includes('drone_side_right'));
 });
 test('advice and request acceptance cannot advance an actual shot or finish finite motion',()=>{
  const f=fixture(),p=f.choose();assert.deepEqual(f.choose(),p,'unapplied proposal does not advance sequence');

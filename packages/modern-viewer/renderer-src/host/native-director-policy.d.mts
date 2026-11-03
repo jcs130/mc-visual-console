@@ -1,12 +1,12 @@
 import type {CameraScript} from './camera-script.mjs';
-export {NativeCameraSequence,nativeScheduledCamera,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
+export {NativeCameraSequence,nativeScheduledCamera,nativeCameraFamily,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
 import type {SceneSubjectCandidate} from '../../../../tools/native-client-director/scene-policy.mjs';
 export const SUBJECT_CHOICE_PROTOCOL:'mcvisual.subject-choice/v1';
 export interface NativeSubjectDecision {schema:typeof SUBJECT_CHOICE_PROTOCOL;forceReview:boolean;options:Array<Partial<SceneSubjectCandidate>&{id:string;name:string;uuid:string;view?:string}>;request:{state:unknown;questions:Record<string,{type:'choice';instructions:string;criteria:Record<string,string>}>}}
 export function buildNativeSubjectDecision(native:Record<string,any>,rows:SceneSubjectCandidate[],options?:{forceReview?:boolean;eligibleNames?:string[];now?:number}):NativeSubjectDecision|null;
 export function selectNativeSubject(menu:NativeSubjectDecision,answer:unknown):{kind:'keep'|'use'|'rules';choice?:NativeSubjectDecision['options'][number];source?:'probabilities'|'hard_choices';margin?:number;entropy?:number;reason?:string};
 export interface NativeCameraCadence {schema:'mcvisual.native-camera-cadence/v1';scope:string;subjectUuid:string;requestId:string;since:number;cause:'composition'|'stationary_motion';stationarySince?:number|null;dueAt:number;deadlineAt:number}
-export interface NativeCameraSequenceEvidence {schema:'mcvisual.shot-sequence/v1';previousView?:string;shotAgeMs?:number;subjectStationary?:boolean;pathPreflightRequired?:boolean;nativeSceneAt?:number;reviewRequired?:boolean;cadence?:NativeCameraCadence;unavailableViews?:string[]}
+export interface NativeCameraSequenceEvidence {schema:'mcvisual.shot-sequence/v1';previousView?:string;shotAgeMs?:number;subjectStationary?:boolean;pathPreflightRequired?:boolean;nativeSceneAt?:number;reviewRequired?:boolean;cadence?:NativeCameraCadence;unavailableViews?:string[];recentFamilies?:string[];alternatives?:Array<{view:string;motion?:CameraScript;pathPreflightRequired:boolean}>}
 export interface NativeCameraChoice {name:string;view:string;kind:string;at?:number;id?:string;motion?:CameraScript;sequence?:NativeCameraSequenceEvidence;[key:string]:unknown}
 export function nativeCameraCandidates(choice:NativeCameraChoice,native:Record<string,any>,options?:{now?:number}):Array<NativeCameraChoice&{id:string}>;
 export interface BallotSelection {kind:'keep'|'use';reason?:string;choice?:NativeCameraChoice;scores?:Record<string,number>;entropy?:number;margin?:number;source?:'probabilities'|'hard_choices'}

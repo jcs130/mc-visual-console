@@ -1,7 +1,7 @@
 import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts,validateCameraScript} from './camera-script.mjs';
 import {validateChoiceProbabilities} from './systemone-decisions.mjs';
 import {nativeScheduledCamera} from './native-shot-sequence.mjs';
-export {NativeCameraSequence,nativeScheduledCamera,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
+export {NativeCameraSequence,nativeScheduledCamera,nativeCameraFamily,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
 export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
 
 /** One current image plus real all-actor activity/airtime. Other cameras are explicitly unobserved. */
@@ -45,6 +45,17 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
  const out=[],seen=new Set(),same=candidate.uuid===n.targetUuid;
  const actualView=n.projection==='orthographic'&&n.orthographic?.active===true?n.projectionProfile:n.effectiveView;
  const script=n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL;
+ if(same&&Array.isArray(choice.sequence?.alternatives)){
+  if(choice.sequence.alternatives.length>8||!nativeScheduledCamera(choice,n,{now}))return[];
+  const result=[],views=new Set();for(const a of choice.sequence.alternatives){
+   if(typeof a?.view!=='string'||a.view===actualView||views.has(a.view)||choice.sequence.unavailableViews?.includes(a.view))continue;
+   const c={...choice,view:a.view,sequence:{...choice.sequence,pathPreflightRequired:a.pathPreflightRequired}};
+   delete c.motion;if(a.motion)c.motion=validateCameraScript(a.motion,a.view);
+   if(!nativeScheduledCamera(c,n,{now}))continue;
+   result.push({...c,id:result.length?'view'+result.length:'proposal'});views.add(a.view);
+  }
+  return result;
+ }
  function add(id,view,profile){
   if((choice.sequence?.reviewRequired===true||choice.sequence?.cadence)&&same&&view===actualView)return;
   if(same&&choice.sequence?.unavailableViews?.includes(view))return;
