@@ -40,10 +40,12 @@ test('quiet shot deadline asks the real model to reframe the current actor witho
 });
 
 test('explicit five-second scheduling reaches model questions only with matching actual operation and cadence proof',async()=>{
- const f=reviewed();f.observation.cameraReview.cadence={schema:'mcvisual.native-camera-cadence/v1',scope:'world',subjectUuid:'A',requestId:'initial',since:0,cause:'composition',dueAt:5000,deadlineAt:7000};
- f.program.appliedAt=45000;assert.equal(f.packet().cameraReview,undefined,'an old cadence cannot shorten a newly applied shot');
+ const f=fixture();f.tick(5000);f.observation.shots[0].shotId='front';
+ f.observation.subjects[0].viewContext={layout:'open',floorSafe:true,at:f.now(),provenance:'native',evidenceId:'spaceA'};
+ f.observation.cameraReview={schema:CAMERA_REVIEW_PROTOCOL,required:true,at:f.now(),subjectUuid:'A',currentRequestId:'initial',cadence:{schema:'mcvisual.native-camera-cadence/v1',scope:'world',subjectUuid:'A',requestId:'initial',since:0,cause:'composition',dueAt:5000,deadlineAt:7000}};
+ f.program.appliedAt=4000;assert.equal(f.packet().cameraReview,undefined,'an old cadence cannot shorten a newly applied shot');
  f.program.appliedAt=0;const p=f.packet();assert.equal(p.cameraReview.reason,'operator_camera_cadence');
- f.observation.cameraReview.cadence.scope='foreign';f.program.appliedAt=45000;assert.equal(f.packet().cameraReview,undefined);
+ f.observation.cameraReview.cadence.scope='foreign';assert.equal(f.packet().cameraReview,undefined);
 });
 test('review cannot bypass recent action, manual lock, unknown geometry, identity or actual shot dwell',()=>{
  for(const change of[f=>f.program.appliedAt=40000,f=>f.observation.manualLocked=true,f=>f.observation.cameraReview.currentRequestId='foreign',
