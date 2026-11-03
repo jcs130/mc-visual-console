@@ -172,3 +172,14 @@ test('a measured narrow shaft holds actual first person and resumes variety when
  const proposal=f.choose({orthographic:true});assert.ok(proposal?.sequence.alternatives.length>=4,'new native geometry permits genuinely different compositions again');
  assert.ok(proposal.sequence.alternatives.every(x=>!x.view.startsWith('drone_orbit_')),'a fallen-back POV is not a finite path start');
 });
+
+test('rejected unseen families do not starve other compositions or count as rendered coverage',()=>{
+ const f=fixture(true,'lively');f.n.availableViews.push('drone_low','drone_follow','drone_overview');
+ for(const[id,view]of[['failed-front','drone_front'],['failed-low','drone_low']]){
+  f.tick(8000);Object.assign(f.n,{requestId:id,effectiveView:'first_person',offer:{id,accepted:true,at:f.now()-8000},shotExecution:{requestId:id,view,phase:'holding',fallback:true}});f.sequence.observe(f.n);
+ }
+ const choice=f.choose({orthographic:true,preferOrthographic:true}),menu=nativeCameraCandidates(choice,f.n,{now:f.now()});
+ assert.ok(menu.length>=2);assert.ok(menu.every(c=>!['front','low'].includes(nativeCameraFamily(c.view))),'model bias cannot keep requesting the same rejected families while other families are legal');
+ const stats=f.sequence.stats();assert.ok(stats.attempts.every(x=>x.failed));assert.ok(!stats.coverage.renderedViews.includes('drone_front'));assert.ok(!stats.coverage.renderedViews.includes('drone_low'));
+ const attempts=structuredClone(stats.attempts);for(let i=0;i<20;i++)f.choose({orthographic:true});assert.deepEqual(f.sequence.stats().attempts,attempts,'unapplied menus are not native attempts');
+});

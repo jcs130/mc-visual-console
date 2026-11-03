@@ -6,6 +6,6 @@ export class NativeCameraSequence {
  constructor(options:{enabled?:boolean;now?:()=>number;currentView:(native:any)=>string;intervalMs?:number;cadenceProfile?:'steady'|'lively'});
  observe(native:Record<string,any>):void;
  choose(native:Record<string,any>,options?:{activity?:Array<Record<string,any>>;lastProjectionChangeAt?:number;orthographic?:boolean;preferOrthographic?:boolean}):NativeCameraChoice|null;
- stats():{enabled:boolean;phase:string;intervalMs:number;cadenceProfile:'steady'|'lively';actualView:string|null;stopped:boolean;coverage:{renderedViews:string[];recent:Array<{view:string;family:string;at:number}>};eligibleViews:string[];excluded:Array<{view:string;reason:string}>};
+ stats():{enabled:boolean;phase:string;intervalMs:number;cadenceProfile:'steady'|'lively';actualView:string|null;stopped:boolean;coverage:{renderedViews:string[];recent:Array<{view:string;family:string;at:number}>};attempts:Array<{view:string;family:string;at:number;failed:boolean}>;eligibleViews:string[];excluded:Array<{view:string;reason:string}>};
  stop():void;
 }

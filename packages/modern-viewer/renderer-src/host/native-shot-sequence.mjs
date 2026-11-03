@@ -54,7 +54,7 @@ export class NativeCameraSequence{
   if(!['steady','lively'].includes(cadenceProfile))throw Error('INVALID_CAMERA_CADENCE_PROFILE');
   this.enabled=enabled===true;this.now=now;this.view=currentView;this.cadenceProfile=cadenceProfile;
   this.intervalMs=cadenceProfile==='lively'?5000:Math.max(16000,Math.min(45000,intervalMs));
-  this.current=null;this.cue=null;this.cueOffer=null;this.coverage=[];this.eligible=[];this.excluded=[];this.blocked=new Map();this.failedViews=new Map();this.stopped=false;this.phase=this.enabled?'waiting_for_native_frame':'disabled';
+  this.current=null;this.cue=null;this.cueOffer=null;this.coverage=[];this.attempts=[];this.eligible=[];this.excluded=[];this.blocked=new Map();this.failedViews=new Map();this.stopped=false;this.phase=this.enabled?'waiting_for_native_frame':'disabled';
  }
  ready(n){const now=this.now(),fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000;
   return this.enabled&&!this.stopped&&n?.connected===true&&n.authenticated===true&&n.spectator===true&&n.phase==='attached'
@@ -64,7 +64,7 @@ export class NativeCameraSequence{
  observe(n){
   if(!this.ready(n))return;
   const now=this.now(),scope=n.connectionEpoch+':'+n.nativeWorldEpoch,view=this.view(n);
-  if(this.current?.scope!==scope||this.current?.uuid!==n.targetUuid){this.current=null;this.cue=null;this.cueOffer=null;this.coverage=[];this.blocked.clear();this.failedViews.clear();}
+  if(this.current?.scope!==scope||this.current?.uuid!==n.targetUuid){this.current=null;this.cue=null;this.cueOffer=null;this.coverage=[];this.attempts=[];this.blocked.clear();this.failedViews.clear();}
   const cue=this.cueOffer;
   if(cue&&cue.scope===scope&&cue.uuid===n.targetUuid&&cue.parent!==n.requestId&&n.shotExecution?.requestId===n.requestId
    &&n.shotExecution.fallback!==true&&['running','holding','completed','transitioning'].includes(n.shotExecution.phase)){
@@ -77,6 +77,11 @@ export class NativeCameraSequence{
    this.current={scope,id:n.requestId,uuid:n.targetUuid,view,since:continuation?this.current.since:offered};
   }else this.current.view=view;
   const shot=n.shotExecution;
+  if(shot?.requestId===n.requestId&&n.offer?.id===n.requestId&&n.offer.accepted===true&&n.availableViews?.includes(shot.view)){
+   let attempt=this.attempts.find(x=>x.id===n.requestId);
+   if(!attempt){attempt={id:n.requestId,view:shot.view,family:nativeCameraFamily(shot.view),at:now,failed:false};this.attempts.push(attempt);while(this.attempts.length>40)this.attempts.shift();}
+   if(shot.fallback===true||['blocked','cancelled'].includes(shot.phase))attempt.failed=true;
+  }
   const rendered=shot?.requestId===n.requestId&&['holding','completed'].includes(shot.phase)
    ||!view.startsWith('drone_')&&!view.startsWith('ortho_')&&n.renderedAt>=(n.offer?.at??0);
   const key=n.requestId+':'+view;
@@ -136,11 +141,14 @@ export class NativeCameraSequence{
     if(reason)this.excluded.push({view,reason});return !reason;
    });
    const recent=new Set(this.coverage.slice(-2).map(x=>x.family));recent.add(nativeCameraFamily(c.view));
+   // A rejected unseen family must not stay permanently highest priority simply because it never rendered.
+   for(const failed of this.attempts.filter(x=>x.failed).slice(-2))recent.add(failed.family);
    const varied=pool.filter(view=>!recent.has(nativeCameraFamily(view)));if(varied.length)pool=varied;
    const count=family=>this.coverage.filter(x=>x.family===family).length;
    if(pool.length){const minimum=Math.min(...pool.map(v=>count(nativeCameraFamily(v))));pool=pool.filter(v=>count(nativeCameraFamily(v))<=minimum+1);}
    const last=view=>this.coverage.findLastIndex(x=>x.view===view),lastFamily=view=>this.coverage.findLastIndex(x=>x.family===nativeCameraFamily(view));
-   pool.sort((a,b)=>lastFamily(a)-lastFamily(b)||last(a)-last(b)||repertoire.indexOf(a)-repertoire.indexOf(b));
+   const tried=view=>this.attempts.findLast(x=>x.family===nativeCameraFamily(view))?.at??0;
+   pool.sort((a,b)=>lastFamily(a)-lastFamily(b)||tried(a)-tried(b)||last(a)-last(b)||repertoire.indexOf(a)-repertoire.indexOf(b));
    if(earlyMotion&&pathReady){const moves=pool.filter(finite).sort((a,b)=>Number(!a.startsWith('drone_orbit_'))-Number(!b.startsWith('drone_orbit_')));if(moves.length)pool=[...moves,...pool.filter(v=>!finite(v))];}
    const distinct=[],rest=[],families=new Set();for(const view of pool){const family=nativeCameraFamily(view);if(!families.has(family)){distinct.push(view);families.add(family);}else rest.push(view);}
    const ordered=[...distinct,...rest].slice(0,8);this.eligible=[...ordered];
@@ -186,7 +194,7 @@ export class NativeCameraSequence{
   this.phase='holding_legal_view';return null;
  }
  stats(){return{enabled:this.enabled,phase:this.stopped?'stopped':this.phase,intervalMs:this.intervalMs,cadenceProfile:this.cadenceProfile,actualView:this.current?.view??null,stopped:this.stopped,
-  coverage:{renderedViews:[...new Set(this.coverage.map(x=>x.view))],recent:this.coverage.slice(-8).map(({key,...x})=>x)},eligibleViews:this.eligible,excluded:this.excluded};}
+  coverage:{renderedViews:[...new Set(this.coverage.map(x=>x.view))],recent:this.coverage.slice(-8).map(({key,...x})=>x)},attempts:this.attempts.slice(-8).map(({id,...x})=>x),eligibleViews:this.eligible,excluded:this.excluded};}
  stop(){this.stopped=true;this.phase='stopped';}
 }
 function rotate(views,current){const i=views.indexOf(current);return i<0?[...views]:[...views.slice(i+1),...views.slice(0,i+1)];}

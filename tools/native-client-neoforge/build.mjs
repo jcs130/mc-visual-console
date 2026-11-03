@@ -42,7 +42,9 @@ await fs.cp(observer+'/assets',classes+'/assets',{recursive:true});
 await fs.copyFile(dir+'/LICENSE-SPECTATORPLUS',classes+'/META-INF/LICENSE-GPL-3.0');
 await fs.copyFile(path.resolve(dir,'../../LICENSE'),classes+'/META-INF/LICENSE-MIT');
 await fs.copyFile(dir+'/NOTICE.md',classes+'/META-INF/NOTICE.md');
-const artifact=out+'/mcvisual-native-0.1.31-neoforge.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF','-C',classes,'assets',...configs.flatMap(n=>['-C',classes,n])]);
+const nativeVersion=/modId="mcvisual_native_director"\nversion="([0-9]+\.[0-9]+\.[0-9]+)"/.exec(metadata)?.[1];
+if(!nativeVersion)throw Error('Native director package version missing');
+const artifact=out+'/mcvisual-native-'+nativeVersion+'-neoforge.jar';run('jar',['--create','--file',artifact,'-C',classes,'org','-C',classes,'META-INF','-C',classes,'assets',...configs.flatMap(n=>['-C',classes,n])]);
 // Compiling classes alone cannot prove that the loader can find their mixin declarations.
 const packagedEntries=new Set(run('jar',['--list','--file',artifact]).split(/\r?\n/));
 const packagedAudit=work+'/package-audit';await fs.mkdir(packagedAudit);

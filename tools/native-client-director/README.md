@@ -24,6 +24,13 @@ camera space: a measured close-view fallback with both horizontal spans at most
 reframes must respect `holding_constrained_first_person`; elapsed idle time alone
 must not cause repeated collision probes. This does not lock the subject roster.
 
+Fabric 0.1.23 / NeoForge 0.1.32 distinguishes composition cuts from continuous
+trajectories. Different tracking presets capture the previous image and begin at
+the newly collision-checked preset, under the existing frame dissolve. A side-to-
+front cut need not fly through an obstructing roof to reach a clear endpoint.
+Only same-preset parameter changes and finite orbit/dolly scripts preserve the
+actual rig position. A fallback/stopped rig cannot provide that continuity.
+
 ## 0.1.14: original OrthoCamera integration
 
 Explicit `orthographicEnabled: true` enables the adapter only when the original

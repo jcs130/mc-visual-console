@@ -49,6 +49,8 @@ public final class CinematicRig {
     public void reset(){tracking.reset();identity=null;initialized=false;previous=0;phase="stopped";reason="stopped";lastPose=null;fallback=false;}
     /** The native render hook must leave the vanilla camera intact after reset, never restart a recipe. */
     public boolean renderable(){return !"stopped".equals(phase);}
+    /** Finite moves start at the real rig; different static compositions are dissolved cuts. */
+    public boolean preservePosition(String selected){return renderable()&&!fallback&&VIEWS.contains(selected)&&(finiteShot(selected)||Objects.equals(view,selected));}
     public void closeFallback(){fallback=true;if(finiteShot(view))abort("close_view_fallback");}
     public void suspend(){abort("native_screen_opened");fallback=true;tracking.reset();initialized=false;}
     public void abort(String why){if(finiteShot(view)&&!Set.of("completed","blocked","cancelled","stopped").contains(phase)){phase="blocked";reason=why;}}

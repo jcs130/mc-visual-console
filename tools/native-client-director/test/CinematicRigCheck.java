@@ -58,6 +58,14 @@ public class CinematicRigCheck {
         for(var invalid:java.util.List.of(java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"speed",Double.NaN),java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"command","tp"),java.util.Map.<String,Object>of("schema",CinematicRig.SCRIPT_PROTOCOL,"durationMs",4000,"speed",1.5))){
             boolean rejected=false;try{CinematicRig.parameters("drone_orbit_left",invalid);}catch(IllegalArgumentException e){rejected=true;}check(rejected,"invalid or excessive script parameter rejected");}
         custom.reset();boolean noRevival=false;try{next(custom,20);}catch(IllegalStateException e){noRevival=true;}check(noRevival,"parameterized stopped rig cannot revive");
+        var cuts=rig("drone_side_right");next(cuts,0);
+        check(cuts.preservePosition("drone_side_right"),"same-preset parameter adjustment retains the live rig");
+        for(String selected:new String[]{"drone_front","drone_front_left","drone_low","drone_follow","drone_overview"})
+            check(!cuts.preservePosition(selected),"different static compositions use a dissolved cut rather than an obstructed interstitial flight: "+selected);
+        for(String selected:new String[]{"drone_orbit_left","drone_orbit_right","drone_push_in","drone_pull_out"})
+            check(cuts.preservePosition(selected),"finite trajectory starts at the actual rig position: "+selected);
+        cuts.closeFallback();check(!cuts.preservePosition("drone_side_right")&&!cuts.preservePosition("drone_orbit_left"),"a fallen-back rig is never silently reused as the requested start");
+        cuts.reset();check(!cuts.preservePosition("drone_side_right"),"a stopped rig cannot be kept by a view label");
         // Real client crash: a world replacement reset the recipe while its render-active flag survived.
         // A render caller must decline this frame, leaving vanilla camera setup intact.
         for(String view:new String[]{"drone_front_left","drone_low","drone_orbit_left","drone_push_in","drone_pull_out"}){

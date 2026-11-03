@@ -231,7 +231,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
                             throw new IllegalArgumentException("orthographic_backend_unavailable");
                         if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch)){
                             manualDetachRequested=false;
-                            boolean sameRig=droneActive&&request.view().startsWith("drone_")
+                            boolean sameRig=droneActive&&droneWorld==client.field_1687&&DRONE.preservePosition(request.view())
                                 &&Objects.equals(droneUuid,frame(client,request.target()).targetUuid());
                             if(!sameRig)FrameBlend.begin(client,request.id());
                         }
@@ -251,7 +251,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
         }
         if(action.view()!=null){
             boolean orthographic=OrthographicRig.supportsView(action.view());
-            boolean preserveRig=droneActive&&action.view().startsWith("drone_")
+            boolean preserveRig=droneActive&&droneWorld==client.field_1687&&DRONE.preservePosition(action.view())
                 &&Objects.equals(droneUuid,frame(client,policy.target()).cameraUuid());
             if(!preserveRig)stopDrone("normal_perspective");
             class_5498 view=switch(action.view()){
