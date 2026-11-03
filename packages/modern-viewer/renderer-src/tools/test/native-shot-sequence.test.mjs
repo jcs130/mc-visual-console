@@ -183,3 +183,14 @@ test('rejected unseen families do not starve other compositions or count as rend
  const stats=f.sequence.stats();assert.ok(stats.attempts.every(x=>x.failed));assert.ok(!stats.coverage.renderedViews.includes('drone_front'));assert.ok(!stats.coverage.renderedViews.includes('drone_low'));
  const attempts=structuredClone(stats.attempts);for(let i=0;i<20;i++)f.choose({orthographic:true});assert.deepEqual(f.sequence.stats().attempts,attempts,'unapplied menus are not native attempts');
 });
+
+test('stationary three-second authority permits continuous motion only, never a premature static cut',()=>{
+ const f=fixture(true,'lively');f.n.offer.at=f.now();f.sequence.observe(f.n);f.tick(3000);
+ const motion=f.choose();assert.ok(motion.sequence.alternatives.every(x=>x.pathPreflightRequired));
+ assert.equal(nativeScheduledCamera({...motion,view:'drone_front'},f.n,{now:f.now()}),false,'a static view cannot reuse motion-only timing authority');
+ const ortho=fixture(true,'lively');Object.assign(ortho.n,{projection:'orthographic',effectiveView:'ortho_overview'});ortho.n.offer.at=ortho.now();ortho.n.drone.active=false;
+ ortho.sequence.observe(ortho.n);ortho.tick(3000);assert.equal(ortho.choose({orthographic:true}),null,'orthographic cannot start a finite perspective trajectory');
+ ortho.tick(2000);assert.ok(ortho.choose({orthographic:true}),'ordinary composition remains available at five seconds');
+ const staticOnly=fixture(true,'lively');staticOnly.n.offer.at=staticOnly.now();staticOnly.n.availableViews=['drone_front_left','drone_front','drone_side_right'];
+ staticOnly.sequence.observe(staticOnly.n);staticOnly.tick(3000);assert.equal(staticOnly.choose(),null,'lack of finite recipes is not permission for a three-second cut');
+});

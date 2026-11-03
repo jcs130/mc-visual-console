@@ -32,6 +32,7 @@ export function nativeScheduledCamera(choice,n,{now=Date.now(),deadline=false}={
  const age=now-c.since,early=c.cause==='stationary_motion',due=early?3000:5000,limit=early?4000:7000;
  if(age<due||c.dueAt!==c.since+due||c.deadlineAt!==c.since+limit||deadline&&now<c.deadlineAt)return false;
  if(early&&(!Number.isFinite(c.stationarySince)||c.stationarySince>now-3000))return false;
+ if(early&&!finite(choice.view))return false;
  const space=n.spatial,t=n.targets?.find(t=>t.uuid===n.targetUuid&&t.name===n.target);
  if(!t?.loaded||t.alive!==true||space?.known!==true||space.floorSafe!==true||space.targetUuid!==n.targetUuid
   ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at)||!['open','room'].includes(space.layout))return false;
@@ -130,6 +131,7 @@ export class NativeCameraSequence{
     &&n.projection!=='orthographic'&&n.drone?.active===true&&fresh(n.drone.lastRenderedAt,2000)
     &&n.effectiveView?.startsWith('drone_')&&n.shotExecution?.fallback!==true;
    const currentShot=n.shotExecution,failed=currentShot?.requestId===n.requestId&&currentShot.fallback===true?currentShot.view:null;
+   if(earlyMotion&&!pathReady){this.phase='holding_shot';return null;}
    this.excluded=[];
    let pool=repertoire.filter(view=>{
     const reason=!caps.has(view)?'not_advertised':view===c.view?'current_view':this.failedViews.has(view)||failed===view?'recent_native_fallback':
@@ -149,7 +151,7 @@ export class NativeCameraSequence{
    const last=view=>this.coverage.findLastIndex(x=>x.view===view),lastFamily=view=>this.coverage.findLastIndex(x=>x.family===nativeCameraFamily(view));
    const tried=view=>this.attempts.findLast(x=>x.family===nativeCameraFamily(view))?.at??0;
    pool.sort((a,b)=>lastFamily(a)-lastFamily(b)||tried(a)-tried(b)||last(a)-last(b)||repertoire.indexOf(a)-repertoire.indexOf(b));
-   if(earlyMotion&&pathReady){const moves=pool.filter(finite).sort((a,b)=>Number(!a.startsWith('drone_orbit_'))-Number(!b.startsWith('drone_orbit_')));if(moves.length)pool=[...moves,...pool.filter(v=>!finite(v))];}
+   if(earlyMotion){const moves=pool.filter(finite).sort((a,b)=>Number(!a.startsWith('drone_orbit_'))-Number(!b.startsWith('drone_orbit_')));if(!moves.length){this.phase='holding_shot';return null;}pool=moves;}
    const distinct=[],rest=[],families=new Set();for(const view of pool){const family=nativeCameraFamily(view);if(!families.has(family)){distinct.push(view);families.add(family);}else rest.push(view);}
    const ordered=[...distinct,...rest].slice(0,8);this.eligible=[...ordered];
    if(!ordered.length){this.phase='holding_legal_view';return null;}
