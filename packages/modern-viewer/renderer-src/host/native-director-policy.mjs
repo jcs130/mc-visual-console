@@ -35,18 +35,26 @@ export function buildNativeSubjectDecision(native,rows,{forceReview=false,eligib
  if(!native||!Array.isArray(rows)||rows.length>256||!Array.isArray(native.targets)||native.targets.length>256)return null;
  const targets=new Map((native.targets??[]).filter(t=>t.uuid&&t.alive!==false).map(t=>[t.name,t]));
  const allowed=Array.isArray(eligibleNames)?new Set(eligibleNames):null;
- const eligible=rows.filter(r=>targets.has(r.name)&&r.name!==native.target&&(!allowed||allowed.has(r.name))).slice(0,15);
- if(!eligible.length||!native.availableViews?.includes('first_person'))return null;
- const options=[...(!forceReview?[{id:'keep',name:native.target,uuid:native.targetUuid}]:[]),
-  ...eligible.map((r,i)=>({...r,id:'subject'+i,uuid:targets.get(r.name).uuid,view:'first_person'}))];
  const current=rows.find(r=>r.name===native.target);
+ // A host may already have filtered the rows to the highest activity tier.
+ // Do not silently reinsert an idle/lower-priority KEEP into that model menu.
+ const priority=r=>{const age=now-r?.at,horizon=r?.kind==='combat'?12000:r?.kind==='interaction'?15000:r?.kind==='conversation'?45000:20000;
+  return Number.isInteger(r?.priority)&&r.priority>=0&&r.priority<=3&&Number.isFinite(age)&&age>=0&&age<=horizon?r.priority:0;};
+ const highest=Math.max(0,...rows.filter(r=>targets.has(r.name)&&(!allowed||allowed.has(r.name))).map(priority));
+ const priorityReview=highest>priority(current);
+ const reviewRequired=forceReview||priorityReview;
+ const eligible=rows.filter(r=>targets.has(r.name)&&r.name!==native.target&&(!allowed||allowed.has(r.name))
+   &&(!priorityReview||priority(r)===highest)).slice(0,15);
+ if(!eligible.length||!native.availableViews?.includes('first_person'))return null;
+ const options=[...(!reviewRequired?[{id:'keep',name:native.target,uuid:native.targetUuid}]:[]),
+  ...eligible.map((r,i)=>({...r,id:'subject'+i,uuid:targets.get(r.name).uuid,view:'first_person'}))];
  const state={schema:SUBJECT_CHOICE_PROTOCOL,current:native.target,currentDwellMs:current?.dwellMs??0,
-  reason:forceReview?'ordinary_scene_coverage_deadline':'compare_live_activity',
+  reason:priorityReview?'fresh_activity_priority':forceReview?'ordinary_scene_coverage_deadline':'compare_live_activity',
   imageEvidence:'Only the CURRENT subject is pictured. Other subjects have no preview. Judge their real activity and coverage facts, not an invented picture.',
   subjects:options.map(o=>({id:o.id,name:o.name,activity:o.kind??current?.kind??'unknown',
    activityAgeMs:Number.isFinite(o.at)?Math.max(0,now-o.at):null,motion:o.motionState??current?.motionState??'unknown',
    waitingMs:o.waitingMs??0,airtimeMs:o.airtimeMs??0,visits:o.visits??0,loaded:targets.get(o.name)?.loaded===true}))};
- return{schema:SUBJECT_CHOICE_PROTOCOL,forceReview,options,request:{state,questions:{subject:{type:'choice',
+ return{schema:SUBJECT_CHOICE_PROTOCOL,forceReview:reviewRequired,options,request:{state,questions:{subject:{type:'choice',
   instructions:'选择下一段直播应观察的人。优先真实战斗、成功操作和新进展；普通发言不能永久占镜。结合等待时间、累计出镜和当前主体驻留。没有其他人的截图不等于对方没有价值。当前有关键战斗时可保持；ordinary_scene_coverage_deadline 表示普通镜头已到覆盖期限，候选只含其他可观战角色，选最值得了解近况的一位。切换先用真实第一人称确认现场，再安排构图。只选给定 ID。',
   criteria:Object.fromEntries(options.map(o=>[o.id,o.id==='keep'?'继续当前主体':'观察 '+o.name+' 的真实近况']))}}}};
 }

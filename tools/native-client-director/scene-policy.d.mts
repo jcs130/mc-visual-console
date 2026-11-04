@@ -14,4 +14,4 @@ export class SceneSelector {
 }
 export function belongsToActor(name:string,event:Record<string,any>):boolean;
 export function eventActor(sourceName:string,event:Record<string,any>,allowed:string[]):string|null;
-export function classifyEvent(event:Record<string,any>,now?:number):{at:number;score:number;kind:string}|null;
+export function classifyEvent(event:Record<string,any>,now?:number):{at:number;score:number;kind:string;source?:string}|null;

@@ -31,16 +31,28 @@ export function classifyEvent(event,now=Date.now()){
   const text=String(event.text??'').slice(0,1800);
   if(/\.combat$/.test(event.type??'')||(/\.reflex$/.test(event.type??'')||/^\[反射\]/.test(text))&&/攻击|战斗|受击|格挡|撤退|击杀|敌人/.test(text))
     return {at,score:/death|死亡|只剩/.test(text)?10:8,kind:'combat'};
+  // The owned body publishes this live combat heartbeat every six seconds.
+  // It is not the terminal report (which may arrive after the whole fight).
+  // Keep the legacy grammar narrow: speech, intentions and nearby foes alone
+  // never become combat evidence, even when they quote the same words.
+  if(/\.event$/.test(event.type??'')&&/^\[Minecraft\] 还在打:[1-9]\d* 只在附近\(最近的是[^\r\n)]{1,100}\),刀 \d+ 次命中 \d+ 次,箭 \d+ 支命中 \d+ 次,手里是[^\r\n]{1,100},生命 \d+(?:\.\d+)?\/\d+(?:\.\d+)?。?$/.test(text))
+    return {at,score:8,kind:'combat',source:'owned-body-combat-progress'};
   const execution=event.execution;
   if(execution?.terminal===true){
-    const steps=execution.evidence?.steps??[];
+    const steps=(Array.isArray(execution.evidence?.steps)?execution.evidence.steps:[]).filter(s=>s?.outcome==='ok'
+      &&!['unchanged','unknown','unavailable'].includes(s.observedEffect?.status));
     if(steps.some(s=>s.outcome==='ok'&&s.observedEffect?.skill==='attack'))return {at,score:8,kind:'combat'};
+    // Measured effects cover equip/eat/use/harvest/etc. without coupling this
+    // display adapter to a growing list of game skills. No-op/admission isn't activity.
+    if(steps.some(s=>['target','inventory','window'].some(k=>s.observedEffect?.changed?.[k]===true)))
+      return {at,score:5,kind:'interaction',source:'executed-observed-effect'};
     if(steps.some(s=>s.outcome==='ok'&&['craft','smelt','build','take','stow','give'].includes(s.observedEffect?.skill)))
       return {at,score:5,kind:'interaction'};
-    if(steps.some(s=>s.outcome==='ok'&&['goto','goto_player','tunnel'].includes(s.observedEffect?.skill))){
-      const moved=steps.some(s=>s.observedEffect?.changed?.position===true);
-      if(moved)return {at,score:3,kind:'movement'};
-    }
+    if(steps.some(s=>s.observedEffect?.changed?.position===true))
+      return {at,score:3,kind:'movement',source:'executed-position-change'};
+    // Structured evidence is authoritative. Do not reinterpret an explicit
+    // unchanged/unknown result as success via its human-readable task summary.
+    if(Array.isArray(execution.evidence?.steps))return null;
   }
   // Original Cortico has text receipts. A chat/plan/preview is not a body event.
   if(/\.task$/.test(event.type??'')){
@@ -193,6 +205,10 @@ export class SceneSelector{
       if(!this.cinematicFraming||!currentView||view===currentView||now-currentSince<10000)return null;
       return {...best,view,reframe:true};
     }
+    const priority=subjects.find(s=>s.name===best.name)?.priority??0;
+    if(current&&best.name!==current&&priority>(active?.priority??0))
+      return {...best,view,reason:'fresh_activity_priority',forceSubjectReview:true,
+        subjectPool:subjects.filter(s=>s.priority===priority&&s.name!==current).map(s=>s.name)};
     return {...best,view,reason:best.kind==='conversation'?'recent_speaker':'fresh_physical_activity'};
   }
 }

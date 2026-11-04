@@ -2,6 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {classifyEvent,SceneSelector,belongsToActor,eventActor} from './scene-policy.mjs';
 const now=100_000,combat=t=>({ts:new Date(t).toISOString(),type:'minecraft.combat',text:'native combat clear'});
+
+test('offscreen live combat heartbeats stay visible between terminal reports',()=>{
+ const p=new SceneSelector(['Idle','Fighter']);p.setAvailable(['Idle','Fighter']);
+ const text='[Minecraft] 还在打:2 只在附近(最近的是流浪者),刀 3 次命中 3 次,箭 0 支命中 0 次,手里是钻石剑,生命 51/20。';
+ for(let t=now;t<=now+30000;t+=6000){
+  const event={type:'mymc.event',ts:new Date(t).toISOString(),text};p.observe('Fighter',event,t);
+  const c=p.choose('Idle',now-40000,t);assert.equal(c.name,'Fighter');assert.equal(c.kind,'combat');
+  assert.equal(c.forceSubjectReview,true);assert.deepEqual(c.subjectPool,['Fighter']);
+  assert.equal(p.subjectCandidates('Fighter',now,t+5000)[0].protected,true);
+ }
+ assert.equal(p.choose('Idle',0,now+50000),null,'old fight cannot pin the program forever');
+ for(const e of [{type:'mymc.chat',text},{type:'mymc.event',text:'[MC] Idle: '+text},
+   {type:'mymc.event',text:'[Minecraft] 打算去打:2 只在附近'},
+   {type:'mymc.event',text:text.replace('还在打:2','还在打:0')},
+   {type:'qq.event',text}])assert.equal(classifyEvent({...e,ts:new Date(now).toISOString()},now),null);
+});
+
+test('measured equip, food and container effects are activity; failed and no-op receipts are not',()=>{
+ const make=(skill,changed,status='changed',outcome='ok')=>({type:'mymc.task',ts:new Date(now).toISOString(),
+  execution:{terminal:true,goalCompleted:false,evidence:{steps:[{outcome,observedEffect:{skill,status,changed}}]}}});
+ for(const skill of ['equip','eat','use','harvest','custom_mod_action'])
+  assert.equal(classifyEvent(make(skill,{inventory:true}),now).kind,'interaction');
+ assert.equal(classifyEvent(make('use',{position:true}),now).kind,'movement');
+ assert.equal(classifyEvent(make('use',{window:true}),now).kind,'interaction');
+ for(const status of ['unchanged','unknown','unavailable']){
+  const e=make('craft',{inventory:false},status);e.text='第 1 步 {"skill":"craft"} 用时 1s: 合成了';
+  assert.equal(classifyEvent(e,now),null,'structured result wins over summary');
+ }
+ assert.equal(classifyEvent(make('eat',{inventory:true},'changed','fail'),now),null);
+ const admitted=make('equip',{inventory:true});admitted.execution.terminal=false;assert.equal(classifyEvent(admitted,now),null);
+ const p=new SceneSelector(['Idle','Worker']);p.setAvailable(['Idle','Worker']);p.observe('Worker',make('equip',{inventory:true}),now);
+ const choice=p.choose('Idle',now-40000,now);assert.equal(choice.name,'Worker');assert.equal(choice.forceSubjectReview,true);
+});
 test('native online roster admits ordinary players and removes stale identities without inheriting airtime',()=>{
   const p=new SceneSelector(['Agent']);
   assert.equal(p.setRoster([{name:'Bob',uuid:'bob-old'},{name:'Alice',uuid:'alice'}]),true);
