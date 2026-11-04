@@ -1,4 +1,4 @@
-import { AgentActivityHistory } from './agent-activity.js';
+import { AgentActivityHistory, normalizeAgentActivity } from './agent-activity.js';
 import { AGENT_DECISION_COLORS, AGENT_DECISION_LABELS } from './agent-visual-protocol.js';
 const stateLabels = { started: '开始', accepted: '已受理', running: '执行中', completed: '完成', failed: '失败', cancelled: '取消', unknown: '未确认' };
 const kindLabels = { reasoning: '思考', message: '回应', tool: '工具调用', execution: '执行终态', decision: '快决策', phase: '当前状态' };
@@ -11,6 +11,9 @@ export function installAgentActivity({ socket, document, window, visible = () =>
   const live = make('span', header, 'agent-activity-live', '等待宿主记录'); live.setAttribute('aria-live', 'polite');
   const publicCard = make('div', panel, 'agent-activity-preview'); publicCard.hidden = true; publicCard.setAttribute('aria-live', 'polite');
   const publicTopic = make('strong', publicCard), publicText = make('div', publicCard);
+  const currentCard = make('div', panel, 'agent-current-status');
+  const brain = make('div', currentCard), body = make('div', currentCard);
+  let currentPhase = null, currentBody = null;
   const details = make('details', panel, 'agent-activity-timeline');
   const summary = make('summary', details, '', '展开决策记录');
   const hint = make('p', details, 'agent-activity-hint', '显示模型返回的思考和真实调用；“已受理”不等于游戏动作完成。');
@@ -36,6 +39,11 @@ export function installAgentActivity({ socket, document, window, visible = () =>
   }
   function refreshPublicCard() {
     panel.hidden = !visible('agentActivity');
+    currentCard.hidden = !connected;
+    const elapsed = row => ` · ${Math.max(0, Math.floor((now() - Date.parse(row.at)) / 1000))} 秒`;
+    brain.textContent = currentPhase ? `思考：${currentPhase.title}${elapsed(currentPhase)}` : '思考：等待宿主状态';
+    const freshBody = currentBody && Date.parse(currentBody.result?.expiresAt) > now();
+    body.textContent = freshBody ? `${currentBody.title}${elapsed(currentBody)}${currentBody.text ? ` · ${currentBody.text}` : ''}` : '身体：等待新鲜状态';
     publicCard.hidden = !connected || !progress || !Number.isFinite(Date.parse(progress.result.expiresAt))
       || Date.parse(progress.result.expiresAt) <= now();
     if (!publicCard.hidden) { publicTopic.textContent = progress.title; publicText.textContent = progress.text || ''; }
@@ -57,8 +65,13 @@ export function installAgentActivity({ socket, document, window, visible = () =>
   on('agentActivity', frame => {
     if (frame?.schema !== 'agent-activity-frame/v1' || !Array.isArray(frame.records)) return;
     connected = frame.available !== false;
-    if (frame.reset) history.clear();
-    for (const row of frame.records.slice(-80)) history.put(row);
+    if (frame.reset) { history.clear(); currentPhase = null; currentBody = null; }
+    for (const row of frame.records.slice(-80)) {
+      history.put(row);
+      const accepted = normalizeAgentActivity(row);
+      if (accepted?.id === 'current-phase' && accepted.kind === 'phase') currentPhase = accepted;
+      if (accepted?.id === 'current-body' && accepted.result?.schema === 'body-status/v1') currentBody = accepted;
+    }
     schedule();
   });
   on('disconnect', () => { connected = false; schedule(); });

@@ -3,9 +3,12 @@ const states={started:'开始',accepted:'已受理',running:'执行中',complete
 const tone=s=>s==='failed'?'error':s==='completed'?'success':s==='unknown'?'warning':['accepted','running','started'].includes(s)?'active':'muted';
 /** Public records only. No reasoning transcripts, prompts, inferred success or added model calls. */
 export function agentActivityPanels({name,records=[],phase=null,now=Date.now()}={}){
- const rows=[],safe=records.slice(-80).map(normalizeAgentActivity).filter(r=>r&&r.kind!=='reasoning'&&Date.parse(r.at)<=now+1000&&now-Date.parse(r.at)<120000).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+ const rows=[],safe=records.slice(-80).map(normalizeAgentActivity).filter(r=>r&&r.kind!=='reasoning'&&Date.parse(r.at)<=now+1000
+  && (now-Date.parse(r.at)<120000 || r.id==='current-body'&&r.result?.schema==='body-status/v1'&&Date.parse(r.result.expiresAt)>now)).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
  const age=r=>Math.max(0,Math.floor((now-Date.parse(r.at))/1000))+'秒前';
  if(phase&&typeof phase.text==='string')rows.push({label:'调度',text:activityText(phase.text,100),tone:phase.paused?'muted':'info'});
+ const body=safe.findLast(r=>r.id==='current-body'&&r.kind==='phase'&&r.result?.schema==='body-status/v1'&&Date.parse(r.result.expiresAt)>now);
+ if(body)rows.push({label:'身体',text:activityText(body.title.replace(/^身体：/,'')+' · 已持续'+Math.max(0,Math.floor((now-Date.parse(body.at))/1000))+'秒'+(body.text?' · '+body.text:''),180),tone:body.status==='running'?'active':'muted'});
  const progress=safe.findLast(r=>r.kind==='phase'&&r.session==='audience-progress'&&r.result?.schema==='audience-progress/v1'&&Date.parse(r.result.expiresAt)>now);
  if(progress)rows.push({label:'当前',text:activityText(progress.text||progress.title,150),tone:'info'});
  const decision=safe.findLast(r=>r.kind==='decision');

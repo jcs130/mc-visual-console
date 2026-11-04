@@ -1,10 +1,18 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {createServer} from 'node:http';import {once} from 'node:events';import {createRequire} from 'node:module';
 import {createClientContentStream,normalizeContentScope,normalizeContentPanels} from '../../host/client-content-stream.mjs';
 import {agentActivityPanels} from '../../host/agent-content.mjs';
-import {corticoContentRecords} from '../../../../../hosts/cortico/content-records.mjs';
+import {corticoContentRecords,corticoContentPhase} from '../../../../../hosts/cortico/content-records.mjs';
 const {WebSocket,WebSocketServer}=createRequire(import.meta.url)(process.env.MCVISUAL_TEST_WS_MODULE||'ws');
 const scope={instanceId:'fixture',epoch:1,server:'offline',recipientUuid:'11111111-1111-1111-1111-111111111111',subjectUuid:'22222222-2222-2222-2222-222222222222',entityId:5,dimension:'minecraft:overworld'};
 const panel=title=>[{id:'fixture',title,anchor:'bottom_left',width:180,bottomInset:40,rows:[{label:'动作',text:'测试',tone:'info'}]}];
+test('native HUD shows actual model wait and current body independently, without stale action claims',()=>{
+ const now=Date.now(),ts=new Date(now).toISOString(),at=new Date(now-180000).toISOString();
+ const records=corticoContentRecords([{ts,area:'worlds.mymc',run:'fixture',event:'body-status',data:{id:'current-body',kind:'phase',status:'unknown',at,title:'身体：空闲，等待任务',result:{schema:'body-status/v1',expiresAt:new Date(now+6000).toISOString()}}}],{now});
+ const phase=corticoContentPhase({loop:{phase:{state:'model',round:6,enteredAt:new Date(now-33000).toISOString()}}},{now});
+ const p=agentActivityPanels({name:'Agent',records,phase,now});
+ assert.match(p[0].rows[0].text,/33秒/);assert.match(p[0].rows[1].text,/空闲.*180秒/);
+ assert.equal(agentActivityPanels({records,now:now+7000})[0].rows.some(r=>r.label==='身体'),false);
+});
 const subscription=(s=scope,sequence=1)=>({schema:'mcvisual.subscribe/v1',sequence,scope:s,subjectName:'Agent',capabilities:['panels/v1']});
 async function fixture(getPanels,authorizeScope){
  const http=createServer((req,res)=>res.writeHead(404).end());const stream=createClientContentStream({WebSocketServer,server:http,getPanels,authorizeScope,intervalMs:250});
