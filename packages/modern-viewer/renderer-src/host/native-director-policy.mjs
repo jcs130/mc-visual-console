@@ -147,8 +147,10 @@ export class NativeCameraPacing{
   if(this.stopped||n?.phase!=='attached'||!n.targetUuid||n.cameraUuid!==n.targetUuid||n.transition?.active||n.manualDetachRequested
     ||!Number.isFinite(n.renderedAt)||n.renderedAt>this.now()+1000||this.now()-n.renderedAt>3000)return;
   const binding=n.connectionEpoch+':'+n.nativeWorldEpoch;
-  if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();}
+  if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();this.endpoint=null;}
   const signature=[n.requestId,n.targetUuid,this.view(n)].join(':'),at=this.now();
+  if(n.shotExecution?.requestId===n.requestId&&n.shotExecution.phase==='completed'&&n.shotExecution.fallback!==true
+    &&n.shotExecution.view===this.view(n)&&this.endpoint?.requestId!==n.requestId)this.endpoint={requestId:n.requestId,at};
   if(this.current?.signature===signature)return;
   if(this.cadenceProfile==='lively'&&this.current?.uuid===n.targetUuid&&this.current.view===this.view(n)
    &&n.shotExecution?.requestId===n.requestId&&n.shotExecution.fallback===true){
@@ -182,6 +184,8 @@ export class NativeCameraPacing{
   const projection=choice.view.startsWith('ortho_')?'orthographic':'perspective',cross=subject!==c.uuid;
   this.history=this.history.filter(h=>now-h.at<60000);
   const scheduled=this.cadenceProfile==='lively'&&!cross&&nativeScheduledCamera(choice,n,{now});
+  if(scheduled&&this.endpoint?.requestId===n.requestId&&now-this.endpoint.at<1200)
+   return{allow:false,reason:'hold_rendered_motion_endpoint'};
   const current=activity.find(a=>a.name===n.target),fresh=t=>Number.isFinite(t)&&t<=now&&now-t<8000;
   if(scheduled&&(fresh(current?.lastCombatAt)||Number.isFinite(current?.lastInteractionAt)&&now-current.lastInteractionAt>=0&&now-current.lastInteractionAt<12000))return{allow:false,reason:'protect_live_action'};
   const minimum=scheduled?(choice.sequence.cadence.cause==='stationary_motion'?3000:5000):12000;
