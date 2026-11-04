@@ -71,3 +71,14 @@ test('public live and replay keep only recent operation types and timestamps',t=
  send({type:'presentation',epoch:1,presentation:{...presentation,gameOperations:[]}});
  assert.deepEqual(guest.values.at(-1).presentation.gameOperations,[]);
 });
+
+test('public stash preserves the real window shape while excluding all inventory, cursor and arbitrary metadata',()=>{
+ const nativeMenu={source:'paper_personal_stash',playerUuid:uuid,menuType:'minecraft:generic_9x6',windowId:7,stateId:3,stashPage:2,
+  title:secret,carried:item,slots:[{slot:0,item}],secret};
+ const out=publicSpectatorEvent({type:'presentation',presentation:{...presentation,nativeMenu}}).presentation.nativeMenu;
+ assert.equal(out.windowId,7);assert.equal(out.stashPage,2);assert.equal(out.title,'个人试炼箱 · 2/10');assert.equal(out.contentsHidden,true);
+ assert.deepEqual(out.slots,Array.from({length:90},(_,slot)=>({slot,item:null})));assert.ok(!JSON.stringify(out).includes(secret));
+ for(const bad of [{playerUuid:'other'},{stashPage:11},{source:'native'},{menuType:'minecraft:generic_9x3'}]){
+  assert.equal(publicSpectatorEvent({type:'presentation',presentation:{...presentation,nativeMenu:{...nativeMenu,...bad}}}).presentation.nativeMenu,null);
+ }
+});
