@@ -24,6 +24,13 @@ public class DirectorPolicyCheck {
     }
     public static void main(String[] args){
         var p=policy();long t=100_000;
+        var gui=worldPolicy("gui-old",t);
+        check(!gui.offer(r("gui-new","Alice","first_person",t+100),w(1,"uuid-a"),t+100,null,false,true),"GUI refuses immediately without admission");
+        check("native_screen_open".equals(gui.offerReceipt().reason())&&gui.offerReceipt().neverAdmitted(),"explicit GUI non-admission proof");
+        check("gui-old".equals(gui.requestId())&&"attached".equals(gui.phase())&&gui.commands()==0,"GUI refusal preserves previous camera and terminal reason");
+        check(!gui.offer(r("gui-old","Alice","first_person",t),w(1,"uuid-a"),t+6000,null,false,true),"expired duplicate refused");
+        check(!gui.offerReceipt().neverAdmitted(),"expiry does not falsely prove a previously executed id was never admitted");
+        check(gui.offer(r("gui-fresh","Alice","first_person",t+7000),w(1,"uuid-a"),t+7000,null,false,false),"new id after menu closes");
         var drone=policy();check(drone.offer(r("drone","Alice","drone_follow",t),f(true,true,true,"uuid-a"),t),"explicit drone request admitted");
         check("drone_follow".equals(drone.step(f(true,true,true,"uuid-a"),t).view()),"drone requires native UUID attachment");
         var overview=policy();check(overview.offer(r("overview","Alice","drone_overview",t),f(true,true,true,"uuid-a"),t),"explicit overhead view admitted");
@@ -171,7 +178,10 @@ public class DirectorPolicyCheck {
         var deathAction=death.step(life(1,"observer","uuid-a",31,true,false),t+100);
         check("stopped".equals(death.phase())&&"target_died".equals(death.reason()),"exact attached native entity death is a known loss");
         check(deathAction.command()==null&&deathAction.view()==null&&death.commands()==0,"death classification does not replay commands or change view");
+        death.step(w(1,"observer"),t+5000);
+        check(death.terminalCameraLife()!=null&&death.terminalCameraLife().dead(),"terminal death evidence survives corpse removal");
         check(death.offer(r("after-death","Bob","drone_follow",t+20000),life(1,"observer","uuid-b",32,false,false),t+20000),"fresh request can select another target after native death");
+        check(death.terminalCameraLife()==null,"new camera admission clears only the old terminal death receipt");
         var during=lifePolicy("manual-and-death",t);
         during.step(life(1,"observer","uuid-a",31,true,true),t+100);
         check("paused".equals(during.phase())&&"manual_detach_input".equals(during.reason()),"native manual input wins simultaneous death");

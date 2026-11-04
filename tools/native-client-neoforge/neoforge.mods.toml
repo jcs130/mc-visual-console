@@ -3,12 +3,12 @@ loaderVersion="[4,)"
 license="GPL-3.0-only; shared policies MIT"
 [[mods]]
 modId="mcvisual_native_director"
-version="0.1.33"
+version="0.1.35"
 displayName="MC Visual Native Director"
 description="Native NeoForge camera, transition and explicit decision service adapter."
 [[mods]]
 modId="mcvisual_native_observer"
-version="0.1.8"
+version="0.1.10"
 displayName="MC Visual Native Observer"
 description="Scoped target HUD and original inventory display."
 [[dependencies.mcvisual_native_director]]

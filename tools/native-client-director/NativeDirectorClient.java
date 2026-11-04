@@ -211,7 +211,6 @@ public final class NativeDirectorClient implements ClientModInitializer {
         }
         NativeVisionCapture.poll(visionScope(client),now);
         if(!"attached".equals(policy.phase())||manualDetachRequested)NativeVisionCapture.invalidate();
-        if(client.field_1755!=null){if(++tick%20==0)diagnostics(client,true);return;}
         if(++tick%10==0){
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-director-request.json");
             try{
@@ -229,17 +228,19 @@ public final class NativeDirectorClient implements ClientModInitializer {
                             throw new IllegalArgumentException("cinematic_rig_not_explicitly_enabled");
                         if(request!=null&&OrthographicRig.supportsView(request.view())&&!ORTHO.ready())
                             throw new IllegalArgumentException("orthographic_backend_unavailable");
-                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch)){
+                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch,client.field_1755!=null)){
                             manualDetachRequested=false;
                             boolean sameRig=droneActive&&droneWorld==client.field_1687&&DRONE.preservePosition(request.view())
                                 &&Objects.equals(droneUuid,frame(client,request.target()).targetUuid());
                             if(!sameRig)FrameBlend.begin(client,request.id());
                         }
                         requestProblem=null;
+                        diagnostics(client,true);
                     }
                 }
             }catch(Exception failure){requestProblem=failure.getClass().getSimpleName();}
         }
+        if(client.field_1755!=null){if(tick%20==0)diagnostics(client,true);return;}
         observeRequestCamera(client,now);
         var action=policy.step(frame(client,policy.target()),now);
         worldTransitionActive="world_transition".equals(policy.phase());
@@ -361,7 +362,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("server",f.server());data.put("observer",f.observer());
             data.put("observerUuid",f.observerUuid());data.put("offer",policy.offerReceipt());
             data.put("nativeWorldEpoch",nativeWorldEpoch);data.put("detachObservation",policy.detachObservation());
-            data.put("cameraLife",f.cameraLife());data.put("manualDetachRequested",f.manualDetachRequested());
+            data.put("cameraLife",f.cameraLife());data.put("terminalCameraLife",policy.terminalCameraLife());data.put("manualDetachRequested",f.manualDetachRequested());
             data.put("observerBodyHidden",hideObserverBody(client.field_1724));
             // Tab presence is not position. Unloaded/other-world players have no invented coordinates.
             List<Map<String,Object>> targets=new ArrayList<>();long sampledAt=System.currentTimeMillis();
