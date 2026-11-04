@@ -6,6 +6,24 @@ import { installAgentActivity } from '../../src/modern-viewer/agent-activity-ui.
 import { createViewerAgentBridge, createViewerAgentHub, publishAgentActivity } from '../../host/viewer-agent.mjs';
 import { Document, Element } from './fixtures/native-console-dom.mjs';
 const row = (id, extra = {}) => ({ id, at: '2026-10-17T17:00:00Z', source: 'system2', kind: 'tool', title: '整理背包', status: 'started', ...extra });
+
+test('current model and body states remain visible outside collapsed history, with elapsed time and fresh body expiry',()=>{
+ const document=new Document(),window=new Element('window',document);let now=Date.now(),tick;
+ Object.assign(window,{setTimeout:()=>1,clearTimeout(){},setInterval:f=>{tick=f;return 2;},clearInterval(){}});
+ const socket=new EventEmitter(),ui=installAgentActivity({socket,document,window,now:()=>now});
+ const send=(records,reset=false)=>{socket.emit('agentActivity',{schema:'agent-activity-frame/v1',records,available:true,reset});ui.render();};
+ send([row('current-phase',{kind:'phase',title:'模型推理中',at:new Date(now).toISOString()}),
+  row('current-body',{kind:'phase',title:'身体：攻击溺尸',at:new Date(now).toISOString(),result:{schema:'body-status/v1',expiresAt:new Date(now+6000).toISOString()}})]);
+ const card=document.querySelector('.agent-current-status');
+ assert.equal(card.hidden,false);assert.match(card.textContent,/模型推理中/);assert.match(card.textContent,/攻击溺尸/);
+ assert.ok(!document.querySelector('.agent-activity-timeline').open);
+ now+=4000;tick();assert.match(card.textContent,/4 秒/);
+ send(Array.from({length:80},(_,i)=>row('event-'+i)));
+ assert.match(card.textContent,/模型推理中/,'a long request outlives bounded history');
+ now+=3000;tick();assert.match(card.textContent,/身体：等待新鲜状态/);
+ socket.emit('disconnect');tick();assert.equal(card.hidden,true);
+ send([],true);assert.match(card.textContent,/等待宿主状态/);ui.dispose();
+});
 test('bounded records redact structured secrets and authentication commands without changing tool identities', () => {
   const r = normalizeAgentActivity(row('call-1', { arguments: { api_key: 'private', headers: { Authorization: 'private' }, steps: [{ text: '/login password' }] }, text: '[console|PIN:1234] Bearer private-value' }));
   assert.equal(r.arguments.api_key, '[已隐藏]'); assert.equal(r.arguments.headers, '[已隐藏]');

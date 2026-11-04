@@ -8,7 +8,9 @@ export function corticoContentRecords(logs,{now=Date.now()}={}){
  for(const e of Array.isArray(logs)?logs:[]){
   const at=Date.parse(e.ts);if(!Number.isFinite(at)||at>now+1000||now-at>120000||!/^worlds\.(?:minecraft|mymc)$/.test(e.area??''))continue;
   const d=e.data??{},id='log:'+e.run+':'+e.seq,base={id,at:e.ts,run:e.run,source:'unknown'};
-  if(e.event==='host.combat.result'){
+  if(e.event==='body-status'&&d.id==='current-body'&&d.result?.schema==='body-status/v1'){
+   records.set('current-body',{...d,run:e.run});
+  }else if(e.event==='host.combat.result'){
    const applied=d.application?.dispatched===true,kept=d.application?.keptCurrent===true;
    const title=skills[d.candidate?.kind]??(d.choice==='keep'?'保持当前动作':'战斗选择');
    const displayStatus=applied?'已下发，完成另验':kept?'保持当前':d.outcome==='scene-changed'?'场景已变，未采用':d.outcome==='fallback'?'使用规则回退':'未确认执行';
@@ -27,8 +29,9 @@ export function corticoContentRecords(logs,{now=Date.now()}={}){
  }
  return[...records.values()].slice(-40);
 }
-export function corticoContentPhase(status){
+export function corticoContentPhase(status,{now=Date.now()}={}){
  const p=status?.loop?.phase;if(!p)return null;
  const labels={idle:'观察等待',thinking:'模型选择中',model:'模型选择中',llm:'模型选择中',acting:'工具执行中',tools:'工具执行中',tool:'工具执行中',waiting:'等待事件',paused:'已暂停'};
- return{text:status.loop.paused?'已暂停':(labels[p.state]??'宿主运行中')+(Number.isInteger(p.round)?' · 第'+p.round+'轮':''),paused:status.loop.paused===true};
+ const at=Date.parse(p.enteredAt),elapsed=Number.isFinite(at)&&at<=now?' · 已持续'+Math.floor((now-at)/1000)+'秒':'';
+ return{text:status.loop.paused?'已暂停':(labels[p.state]??'宿主运行中')+(Number.isInteger(p.round)?' · 第'+p.round+'轮':'')+elapsed,paused:status.loop.paused===true};
 }
