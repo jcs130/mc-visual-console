@@ -54,3 +54,20 @@ test('late guest receives changed inventory before a thin movement frame, withou
  assert.equal(late.values.at(-2).presentation.inventory.selectedHotbarSlot,5);
  assert.equal(late.values.at(-1).type,'frame');assert.ok(!('presentation' in late.values.at(-1)));
 });
+
+test('public live and replay keep only recent operation types and timestamps',t=>{
+ let upstream;const hub=new SpectatorFanout({playerUuid:uuid,projectPublic:publicSpectatorEvent,open:s=>{upstream=s;}});t.after(()=>hub.close());
+ const guest=response();hub.subscribe({},guest,{scope:'scene'});
+ const send=value=>upstream.write(Buffer.from('data: '+JSON.stringify(value)+'\n\n'));
+ send({type:'identity',playerUuid:uuid});send(snapshot);
+ const gameOperations=[{kind:'stash_deposit_request',at:1200,command:secret,slot:33},
+  {kind:'login',at:1201,password:secret},{kind:'constructor',at:1202},{kind:'attack',at:secret}];
+ send({type:'presentation',epoch:1,presentation:{...presentation,gameOperations}});
+ const late=response();hub.subscribe({},late,{scope:'scene'});
+ for(const client of [guest,late]){
+  assert.deepEqual(client.values.at(-1).presentation.gameOperations,[{kind:'stash_deposit_request',at:1200}]);
+  assert.doesNotMatch(JSON.stringify(client.values),new RegExp(secret));
+ }
+ send({type:'presentation',epoch:1,presentation:{...presentation,gameOperations:[]}});
+ assert.deepEqual(guest.values.at(-1).presentation.gameOperations,[]);
+});

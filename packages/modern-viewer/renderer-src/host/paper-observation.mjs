@@ -3,6 +3,7 @@ import { prepareNativeWorldPreviewHost } from '../tools/native-world-preview-hos
 import { vanillaWireItem } from './vanilla-activity.mjs';
 import { paperObservedLocomotion } from './paper-observed-motion.mjs';
 import { projectNativeRpgSkills } from '../src/native-viewer/native-rpg-state.js';
+import { projectGameOperations } from '../src/native-viewer/native-game-operations.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const PAPER_OBSERVATION_MODE = 'paper_server_observation';
@@ -98,7 +99,8 @@ export class PaperObservedPlayer extends EventEmitter {
     // Keep the existing low-frequency HUD/inventory path; only actual changes
     // bypass it. Faster pose delivery must not resend 46 SNBT slots at 20Hz.
     const rpgChanged=JSON.stringify(p.viewerState??null)!==JSON.stringify(previous?.viewerState??null);
-    const urgent=changed||inventoryChanged||rpgChanged||['selectedHotbarSlot','health','maxHealth','armor','food','airSupply','maxAirSupply','experienceLevel','experienceProgress']
+    const operationsChanged=JSON.stringify(p.gameOperations??[])!==JSON.stringify(previous?.gameOperations??[]);
+    const urgent=changed||inventoryChanged||rpgChanged||operationsChanged||['selectedHotbarSlot','health','maxHealth','armor','food','airSupply','maxAirSupply','experienceLevel','experienceProgress']
       .some(key=>p[key]!==previous?.[key]);
     // Motion/hand state already has its own 20 Hz lane. Repeating 46 SNBT slots
     // for every movement tick wastes bandwidth for every spectator.
@@ -137,6 +139,7 @@ export class PaperObservedPlayer extends EventEmitter {
       inventory: this.scope === 'owner' && rows ? { playerUuid: this.uuid, windowId: 0, selectedHotbarSlot: p.selectedHotbarSlot,
         inventoryStart: 9, hotbarStart: 36, offhandSlot: 45, slots: rows, carried: null } : null,
       nativeMenu: null, skills: projectNativeRpgSkills(p.viewerState, this.uuid),
+      gameOperations: projectGameOperations(p.gameOperations),
       renderRegistries: p.renderRegistries?.source === 'server_builtin_registries' ? p.renderRegistries : null,
       nativeState: { available: true, source: PAPER_OBSERVATION_MODE } };
   }
