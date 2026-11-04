@@ -120,6 +120,18 @@ draw rectangles/times. It is diagnostic metadata, not a content input or archive
 No prompts, widget text, auth headers or bearer values are written there. Real
 runtime results, backups and captures belong in the deployment's private audit.
 
+For a separately launched local provider, `owner.mjs` offers an optional
+`createContentOwner` lifecycle adapter. Supply the explicitly selected client PID,
+its fresh native window diagnostic reader, a process-alive check, an optional
+enabled-config reader, and the provider's close callback. Call `tick()` from the
+deployment's own timer. Exited/replaced owners, stale/future/unreadable evidence,
+or explicit disable close the stream once; a late pending read cannot revive it.
+The adapter neither starts/reconnects Minecraft nor creates any timer or network
+request. Disconnected worlds may remain open while their client process is valid.
+Deployment launchers must explicitly ensure their configured content provider
+alongside the client; installing the JAR alone does not start the data source.
+Check with `node --test tools/native-client-content/owner.test.mjs`.
+
 The standalone 0.2.0 packages were separately loaded on disconnected Fabric and
 NeoForge title screens with the independent window mod and original loader/API
 dependencies, without a director, core companion or Agent framework. This checks
