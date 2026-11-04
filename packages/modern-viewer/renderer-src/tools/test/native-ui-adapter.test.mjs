@@ -766,6 +766,23 @@ test('real chests use two original PNG blits with variable height instead of a g
   h.ui.dispose()
 })
 
+test('personal stash uses the native double chest, hides guest slots and follows live close', async () => {
+  const h=harness();await h.ui.setAssets(containerReader())
+  const menu=containerMenu('minecraft:generic_9x6',90,{source:'paper_personal_stash',title:'个人试炼箱 · 2/10',contentsHidden:true})
+  const update=nativeMenu=>h.ui.update({epoch:1,presentation:presentation({nativeMenu})})
+  update(menu)
+  const panel=h.document.querySelector('.native-menu-chest'),root=h.document.getElementById('corti-menu')
+  assert.equal(panel.dataset.nativeGuiSource,NATIVE_CHEST_GUI.path)
+  assert.equal(panel.querySelectorAll('.corti-menu-slot').length,0)
+  assert.match(root.textContent,/个人试炼箱 · 2\/10.*物品已隐藏/)
+  update(null)
+  assert.equal(root.hidden,true)
+  update({...menu,contentsHidden:false})
+  assert.equal(root.hidden,false)
+  assert.equal(h.document.querySelector('.native-menu-chest').querySelectorAll('.corti-menu-slot').length,90)
+  h.ui.dispose()
+})
+
 test('furnace/smoker/blast layouts are the original 39 slots and actual data values use Java float32/ceil crop rules', () => {
   for (const type of Object.keys(NATIVE_FURNACE_GUIS)) {
     const menu = containerMenu(type,39), layout = nativeFurnaceMenuLayout(menu, UUID)

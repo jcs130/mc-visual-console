@@ -10,6 +10,24 @@ const view=(patch={})=>({epoch:1,presentation:{playerUuid,available:true,activit
   recipes:[{output:{name:'minecraft:stick',count:4},missing:[{name:'minecraft:oak_planks',count:1}],requiresTable:false,craftable:false}],
   merchant:null,server:{sidebar:{title:'<script>任务</script>',rows:[{text:'收集原木',value:2}]},players:[]},entities:[],...patch}}})
 
+test('public Paper operations appear in the closed heading without any native menu or Agent playback',()=>{
+  const document=shell(),ui=createNativeActivityUi({document})
+  ui.setIdentity({confirmed:true,playerUuid,entityId:7})
+  const state={epoch:1,presentation:{playerUuid,available:true,gameOperations:[
+    {kind:'inventory_query',at:1000},{kind:'stash_deposit_request',at:1100,command:'secret argument'},
+    {kind:'unrecognized',at:1200}]}}
+  ui.update(state)
+  assert.equal(ui.root.querySelector('summary').textContent,'游戏过程 · 请求存入个人箱')
+  assert.match(ui.root.textContent,/查看背包/)
+  assert.match(ui.root.textContent,/命令请求，结果未核实/)
+  assert.doesNotMatch(ui.root.textContent,/secret argument|unrecognized/)
+  ui.update({...state,presentation:{...state.presentation,gameOperations:[]}})
+  assert.equal(ui.root.querySelector('summary').textContent,'游戏过程')
+  ui.update(state);ui.setIdentity({confirmed:true,playerUuid:'other',entityId:9})
+  assert.doesNotMatch(ui.root.textContent,/请求存入个人箱/)
+  ui.dispose()
+})
+
 test('live inspector renders operations, item changes, recipe deficits and safe received server text',()=>{
   const document=shell(),ui=createNativeActivityUi({document,itemName:item=>item.name})
   ui.setIdentity({confirmed:true,playerUuid,entityId:7});ui.update(view())

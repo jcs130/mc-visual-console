@@ -1096,6 +1096,13 @@ test('actual own-player metadata survives the injected presentation boundary onl
  for(const [key,value]of Object.entries(fields))assert.equal(self[key],value,key)
 })
 
+test('host carries operation-only observations through the same-player presentation boundary',t=>{
+ const gameOperations=[{kind:'stash_deposit_request',at:1200}]
+ const {host,bot}=attachment(t,{getPresentationState:()=>({schemaVersion:1,playerUuid:bot._client.uuid,gameOperations})})
+ playerEntity(bot)
+ assert.deepEqual(host.status().presentation.gameOperations,gameOperations)
+})
+
 
 test('actual publisher keeps current frame and HUD samples during held and retired terrain scans',async()=>{
  const {nativeTerrainSignature}=await import('../native-occlusion.mjs')

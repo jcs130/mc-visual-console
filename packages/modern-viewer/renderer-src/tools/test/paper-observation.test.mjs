@@ -12,6 +12,31 @@ function receipt(){return{available:true,uuid,generation:world,configurationPack
  gameTime:100,dayTime:6000,selectedHotbarSlot:0,mainArm:'right',health:20,maxHealth:20,usingItem:false,attackAnim:0,
  inventory:Array.from({length:46},(_,slot)=>({slot,item:slot===36?{name:'minecraft:diamond_sword',count:1,snbt:'{id:"minecraft:diamond_sword",count:1}'}:slot===9?{name:'minecraft:paper',count:1,snbt:'{private:"bag_only_secret"}'}:null}))}};}
 function observer(scope='owner'){return new PaperObservedPlayer({playerUuid:uuid,name:'ObservedAgent',registry:{},registrySha256:hash,decodePacket:bytes=>JSON.parse(bytes),scope});}
+test('personal stash opens, synchronizes a changed slot, and closes without changing the world',()=>{
+ const o=observer(),guest=observer('scene'),r=receipt();let sent=0;o.events.on('presentation',()=>sent++);
+ o.ingest(r);guest.ingest(r);const count=sent;
+ const item={name:'minecraft:diamond',count:2,snbt:'{id:"minecraft:diamond",count:2}'};
+ r.player.personalStash={windowId:4,stateId:1,page:2,slots:[{slot:10,item}]};o.ingest(r);guest.ingest(r);
+ const menu=o.presentation().nativeMenu;
+ assert.equal(menu.title,'个人试炼箱 · 2/10');assert.equal(menu.slots.length,90);
+ assert.deepEqual(menu.slots[10].item,item);assert.equal(menu.slots[81].item.name,'minecraft:diamond_sword');
+ assert.equal(guest.presentation().nativeMenu.contentsHidden,true);
+ assert.ok(guest.presentation().nativeMenu.slots.every(row=>row.item===null));
+ r.player.personalStash.slots[0].item={...item,count:1};o.ingest(r);
+ assert.equal(o.presentation().nativeMenu.slots[10].item.count,1);
+ delete r.player.personalStash;o.ingest(r);assert.equal(o.presentation().nativeMenu,null);assert.equal(sent,count+3);
+ o.close();guest.close();
+});
+test('a CLI operation changes the Paper presentation with no movement or inventory change',()=>{
+ const o=observer('scene'),r=receipt();let sent=0;o.events.on('presentation',()=>sent++);
+ o.ingest(r);const count=sent;
+ r.player.gameOperations=[{kind:'stash_deposit_request',at:1000,slot:33},{kind:'login',at:1001}];
+ o.ingest(r);assert.equal(sent,count+1);
+ assert.deepEqual(o.presentation().gameOperations,[{kind:'stash_deposit_request',at:1000}]);
+ assert.equal(o.presentation().nativeMenu,null);
+ o.ingest(r);assert.equal(sent,count+1);
+ r.player.gameOperations=[];o.ingest(r);assert.equal(sent,count+2);assert.deepEqual(o.presentation().gameOperations,[]);o.close();
+});
 test('RPG snapshots follow the observed identity, push class-only changes and clear missing data',()=>{
  const o=observer(),r=receipt();let sent=0;o.events.on('presentation',()=>sent++);
  r.player.experienceLevel=91;r.player.viewerState={schemaVersion:1,playerUuid:uuid,mana:{current:4,max:20},skills:[],abilities:[],rpg:{available:true,backend:'vortex',combat:'ranger',className:'游侠',level:4,xp:100,nextLevelXp:300,skillPoints:2}};
