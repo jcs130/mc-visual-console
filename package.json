@@ -63,6 +63,10 @@
       "types": "./tools/native-client-director/scene-policy.d.mts",
       "default": "./tools/native-client-director/scene-policy.mjs"
     },
+    "./broadcast-selection": {
+      "types": "./tools/native-client-director/target-selection.d.mts",
+      "default": "./tools/native-client-director/target-selection.mjs"
+    },
     "./client-content": {
       "types": "./packages/modern-viewer/renderer-src/host/client-content-stream.d.mts",
       "default": "./packages/modern-viewer/renderer-src/host/client-content-stream.mjs"
@@ -97,6 +101,8 @@
     "packages/modern-viewer/asset-packs/vanilla-1.21.1",
     "tools/native-client-director/scene-policy.mjs",
     "tools/native-client-director/scene-policy.d.mts",
+    "tools/native-client-director/target-selection.mjs",
+    "tools/native-client-director/target-selection.d.mts",
     "tools/native-client-content",
     "tools/native-client-window",
     "tools/native-client-shared",

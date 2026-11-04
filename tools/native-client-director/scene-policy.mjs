@@ -108,7 +108,7 @@ export class SceneSelector{
         const age=now-e.at,horizon=e.kind==='combat'?12000:e.kind==='interaction'?15000:e.kind==='conversation'?45000:20000;
         return{...e,score:e.kind==='movement'&&this.stationary(name,now)||age<0||age>horizon?0:e.score*Math.exp(-age/(e.kind==='conversation'?30000:12000))};
       }).filter(e=>e.score>=.15);
-      const physical=scored.filter(e=>e.kind!=='conversation').sort((a,b)=>b.score-a.score),speech=scored.filter(e=>e.kind==='conversation').sort((a,b)=>b.at-a.at);
+      const physical=scored.filter(e=>e.kind!=='conversation').sort((a,b)=>Number(b.kind==='combat')-Number(a.kind==='combat')||b.score-a.score),speech=scored.filter(e=>e.kind==='conversation').sort((a,b)=>b.at-a.at);
       const best=physical[0]??speech[0],c=this.coverage.get(name),p=this.presence.get(name),waitingMs=Math.max(0,now-(c?.lastShownAt??this.firstOpportunityAt));
       const priority=best?.kind==='combat'?3:physical.length?2:speech.length?1:0;
       return{name,score:best?.score??0,kind:best?.kind??'coverage',at:best?.at??p?.at??now,priority,
@@ -143,7 +143,9 @@ export class SceneSelector{
     // Re-evaluate ordinary scenes at the real subject deadline, even when the same actor keeps talking.
     // A fight remains protected by fresh action evidence; this is not unconditional round-robin.
     if(current&&this.available!==null&&!active?.protected){
-      const others=subjects.filter(s=>s.name!==current),waitLimit=this.maxDwellMs*Math.max(2,subjects.length-1),
+      // Airtime is a tie-breaker between actual scenes, never evidence that an
+      // idle/unknown online player deserves a cut away from the current scene.
+      const others=subjects.filter(s=>s.name!==current&&s.priority>0&&s.priority>=(active?.priority??0)),waitLimit=this.maxDwellMs*Math.max(2,subjects.length-1),
         urgent=others.filter(s=>s.protected),starved=others.filter(s=>s.waitingMs>=waitLimit).sort((a,b)=>b.waitingMs-a.waitingMs||b.priority-a.priority);
       const overdue=starved.length>0&&!urgent.length&&now-currentSince>=this.minDwellMs;
       if(overdue||now-currentSince>=this.maxDwellMs){
@@ -161,7 +163,7 @@ export class SceneSelector{
         return {name,score:!staleMovement&&age>=0&&age<=horizon?e.score*Math.exp(-age/(e.kind==='conversation'?30000:12000)):0,kind:e.kind,at:e.at};
       });
     }).filter(s=>s.score>=0.15);
-    const physical=scored.filter(s=>s.kind!=='conversation').sort((a,b)=>b.score-a.score);
+    const physical=scored.filter(s=>s.kind!=='conversation').sort((a,b)=>Number(b.kind==='combat')-Number(a.kind==='combat')||b.score-a.score);
     // Recency, not message volume, selects the speaker when no real action is fresh.
     const speakers=scored.filter(s=>s.kind==='conversation').sort((a,b)=>b.at-a.at);
     const best=physical[0]??speakers[0];
