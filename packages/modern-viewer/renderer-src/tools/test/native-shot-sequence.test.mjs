@@ -243,3 +243,31 @@ test('completed motion holds its real endpoint before either scheduler or pacing
  const lateObserver=new NativeCameraPacing({cadenceProfile:'lively',now:f.now,currentView:n=>n.effectiveView});
  assert.equal(lateObserver.check(next,f.n,{activity:f.activity}).reason,'hold_rendered_motion_endpoint');
 });
+
+test('a native-obstructed broad arc can offer a smaller independently checked arc after cooldown',()=>{
+ const f=fixture(true,'lively');f.n.availableViews=['drone_front_left','drone_orbit_left'];
+ Object.assign(f.n.shotExecution,{view:'drone_orbit_left',phase:'blocked',reason:'native_path_blocked',arcDegrees:60});
+ assert.equal(f.choose(),null);f.tick(11999);assert.equal(f.choose(),null);f.tick(1);
+ const smaller=f.choose();assert.equal(smaller.motion.arcDegrees,45);assert.equal(smaller.motion.durationMs,5500);
+ assert.equal(nativeScheduledCamera(smaller,f.n,{now:f.now()}),true);
+ assert.deepEqual(nativeCameraCandidates(smaller,f.n,{now:f.now()})[0].motion,smaller.motion);
+ assert.deepEqual(f.sequence.stats().coverage.renderedViews,[],'failed movement is never successful coverage');
+ f.n.requestId='second';f.n.offer={id:'second',accepted:true,at:f.now()-5000};
+ f.n.shotExecution={requestId:'second',view:'drone_orbit_left',phase:'blocked',reason:'native_path_blocked',arcDegrees:45};
+ assert.equal(f.choose(),null);f.tick(12000);assert.equal(f.choose().motion.arcDegrees,30);
+ f.n.requestId='third';f.n.offer={id:'third',accepted:true,at:f.now()-5000};
+ f.n.shotExecution={requestId:'third',view:'drone_orbit_left',phase:'blocked',reason:'native_path_blocked',arcDegrees:30};
+ assert.equal(f.choose(),null);f.tick(59999);assert.equal(f.choose(),null);f.tick(1);
+ assert.equal(f.choose().motion.arcDegrees,60,'expiry requires fresh geometry and full native preflight again');
+});
+
+test('adaptive finite scripts remain bounded by current geometry and exact supported timings',()=>{
+ const f=fixture(true,'lively');f.n.spatial.spanX=9;
+ f.n.availableViews=['drone_front_left','drone_orbit_left'];const p=f.choose();
+ for(const motion of[{...p.motion,arcDegrees:60,durationMs:6000},{...p.motion,arcDegrees:90},
+   {...p.motion,arcDegrees:30,durationMs:5500},{...p.motion,arcDegrees:30,durationMs:5000,unexpected:true}]){
+  assert.equal(nativeScheduledCamera({...p,motion},f.n,{now:f.now()}),false);
+ }
+ f.n.shotExecution={requestId:f.n.requestId,view:'drone_orbit_left',phase:'blocked',reason:'subject_left_verified_arc',arcDegrees:60};
+ assert.equal(f.choose(),null);f.tick(12000);assert.equal(f.choose(),null,'moving subject failure does not authorize a smaller stationary arc');
+});

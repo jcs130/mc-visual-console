@@ -494,8 +494,14 @@ Hosts should use a short bounded pause after a known scoped camera rejection (th
 consumer uses2 seconds), rather than the old30-second error delay. Unknown or manual
 outcomes remain stopped; old camera requests are never replayed.
 
-After three observed stationary seconds, a small 15-degree/four-second native-preflight
-motion or a bounded orthographic adjustment may start. Lively same-subject operations
+After three observed stationary seconds, a native-preflight finite motion may start.
+Measured narrow/medium/broad space selects 30/45/60-degree arcs over 5/5.5/6 seconds.
+Dollies run for five seconds along the existing viewing line, with at least one block
+of radial travel. Native rendered endpoints hold for 1.2 seconds before the next shot.
+A future-path rejection keeps its still-safe starting composition, while current-frame
+collision still falls back. A blocked broad arc may propose the next smaller tier after
+12 seconds; a blocked 30-degree arc keeps the full one-minute backoff. Each new ID still
+requires fresh complete native preflight. Lively same-subject operations
 have a 12/minute ceiling and separate five-second projection hold; subject dwell and
 two-subject/minute limits remain. Tracking alternates rear, side, lead and context views;
 ordinary script speed/height/distance survive model candidate construction. The public
