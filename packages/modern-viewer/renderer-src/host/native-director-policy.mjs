@@ -5,7 +5,30 @@ export {NativeCameraSequence,nativeScheduledCamera,nativeCameraFamily,NATIVE_CAM
 export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
 export const NATIVE_DIRECTOR_RESUME_PROTOCOL='mcvisual.native-director-resume/v1';
 
-/** Pure, camera-only supervision. A stopped selector is resumed only on a proven NEW native connection. */
+/** An immutable late rejection can settle an old timeout. It cannot settle an admitted operation. */
+function lateNonAdmission(n,s,now){
+ const r=s?.pending,o=n.offer,stoppedAt=Date.parse(s?.at);
+ if(s?.running!==false||s.phase!=='unknown_request_receipt'||!r||!o||!Number.isFinite(stoppedAt)||stoppedAt>now
+  ||o.accepted!==false||!['expired_request','native_screen_open'].includes(o.reason)||o.neverAdmitted===false
+  ||o.reason==='native_screen_open'&&o.neverAdmitted!==true
+  ||o.id!==r.id||o.lease!==r.lease||o.target!==r.target||r.connectionEpoch!==n.connectionEpoch
+  ||!Number.isSafeInteger(r.nativeWorldEpoch)||r.nativeWorldEpoch<1||r.nativeWorldEpoch!==n.nativeWorldEpoch
+  ||!Number.isFinite(r.issuedAt)||!Number.isFinite(r.expiresAt)||r.expiresAt<=r.issuedAt||r.expiresAt-r.issuedAt>10000
+  ||!Number.isFinite(o.at)||o.at<r.issuedAt||o.at>now||o.reason==='expired_request'&&o.at<r.expiresAt
+  ||stoppedAt<r.issuedAt||!r.previousNativeRequestId||!r.previousCameraUuid
+  ||r.id===n.requestId||n.requestId!==r.previousNativeRequestId||n.activeLease!==r.lease)return null;
+ const attached=n.phase==='attached'&&n.cameraUuid===r.previousCameraUuid&&n.targetUuid===n.cameraUuid;
+ const life=n.terminalCameraLife??n.cameraLife;
+ const dead=n.phase==='stopped'&&n.reason==='target_died'&&n.cameraUuid===n.observerUuid
+  &&life?.dead===true&&life.requestId===r.previousNativeRequestId&&life.uuid===r.previousCameraUuid
+  &&life.nativeWorldEpoch===n.nativeWorldEpoch&&Number.isSafeInteger(life.entityId)&&life.entityId>=0
+  &&Number.isFinite(life.observedAttachedAt)&&life.observedAttachedAt<=now;
+ if(!attached&&!dead)return null;
+ return{requestId:r.id,lease:r.lease,outcome:'not_admitted',receiptAt:o.at,reason:o.reason,
+  previousRequestId:r.previousNativeRequestId,previousTarget:n.target,previousTargetUuid:r.previousCameraUuid,
+  previousTargetDied:dead,completionVerified:false};
+}
+/** Camera-only supervision: new connection, or positively reconciled late non-admission. No replay. */
 export function planNativeDirectorResume({enabled=false,observerAlive=false,selectorAlive=false,expectedServer,expectedObserverUuid,previousEpoch,native:n,selector:s,now=Date.now(),lastResumeAt=0,recentResumes=0}={}){
  const result=(action,reason)=>({schema:NATIVE_DIRECTOR_RESUME_PROTOCOL,action,reason,replayPreviousRequest:false});
  if(!enabled)return result('hold','supervision_disabled');
@@ -18,7 +41,13 @@ export function planNativeDirectorResume({enabled=false,observerAlive=false,sele
  if(!expectedServer||!expectedObserverUuid||n.server!==expectedServer||n.observerUuid!==expectedObserverUuid)return result('hold','observer_scope_changed');
  const epoch=n.connectionEpoch;
  if(typeof previousEpoch!=='string'||!previousEpoch||typeof epoch!=='string'||!epoch||epoch.length>128)return result('hold','connection_provenance_missing');
- if(epoch===previousEpoch)return result('hold','same_connection_outcome_retained');
+ if(epoch===previousEpoch){
+  if(n.transition?.active===true)return result('hold','same_connection_outcome_retained');
+  const reconciliation=lateNonAdmission(n,s,now);
+  if(!reconciliation)return result('hold','same_connection_outcome_retained');
+  if(recentResumes>=4||lastResumeAt&&now-lastResumeAt<10000)return result('hold','resume_rate_limited');
+  return{...result('start','late_offer_non_admission_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true,reconciliation};
+ }
  if(n.transition?.active===true)return result('hold','new_camera_transition_pending');
  const self=n.phase==='idle'&&n.cameraUuid===n.observerUuid&&n.requestId==null&&n.activeLease==null;
  const fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000,life=n.cameraLife;
@@ -155,8 +184,10 @@ export class NativeCameraPacing{
   if(this.stopped||n?.phase!=='attached'||!n.targetUuid||n.cameraUuid!==n.targetUuid||n.transition?.active||n.manualDetachRequested
     ||!Number.isFinite(n.renderedAt)||n.renderedAt>this.now()+1000||this.now()-n.renderedAt>3000)return;
   const binding=n.connectionEpoch+':'+n.nativeWorldEpoch;
-  if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();}
+  if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();this.endpoint=null;}
   const signature=[n.requestId,n.targetUuid,this.view(n)].join(':'),at=this.now();
+  if(n.shotExecution?.requestId===n.requestId&&n.shotExecution.phase==='completed'&&n.shotExecution.fallback!==true
+    &&n.shotExecution.view===this.view(n)&&this.endpoint?.requestId!==n.requestId)this.endpoint={requestId:n.requestId,at};
   if(this.current?.signature===signature)return;
   if(this.cadenceProfile==='lively'&&this.current?.uuid===n.targetUuid&&this.current.view===this.view(n)
    &&n.shotExecution?.requestId===n.requestId&&n.shotExecution.fallback===true){
@@ -190,6 +221,8 @@ export class NativeCameraPacing{
   const projection=choice.view.startsWith('ortho_')?'orthographic':'perspective',cross=subject!==c.uuid;
   this.history=this.history.filter(h=>now-h.at<60000);
   const scheduled=this.cadenceProfile==='lively'&&!cross&&nativeScheduledCamera(choice,n,{now});
+  if(scheduled&&this.endpoint?.requestId===n.requestId&&now-this.endpoint.at<1200)
+   return{allow:false,reason:'hold_rendered_motion_endpoint'};
   const current=activity.find(a=>a.name===n.target),fresh=t=>Number.isFinite(t)&&t<=now&&now-t<8000;
   if(scheduled&&(fresh(current?.lastCombatAt)||Number.isFinite(current?.lastInteractionAt)&&now-current.lastInteractionAt>=0&&now-current.lastInteractionAt<12000))return{allow:false,reason:'protect_live_action'};
   const minimum=scheduled?(choice.sequence.cadence.cause==='stationary_motion'?3000:5000):12000;

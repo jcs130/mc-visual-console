@@ -1,6 +1,30 @@
 import test from'node:test';import assert from'node:assert/strict';import{planNativeDirectorResume as plan}from'../../host/native-director-policy.mjs';
 const fixture=()=>({enabled:true,observerAlive:true,selectorAlive:false,expectedServer:'fixture:1',expectedObserverUuid:'observer',previousEpoch:'old',now:100000,
  native:{recordedAt:new Date(100000).toISOString(),connected:true,authenticated:true,spectator:true,server:'fixture:1',observerUuid:'observer',cameraUuid:'observer',phase:'idle',connectionEpoch:'new',requestId:null,activeLease:null},selector:{phase:'unknown_request_receipt'}});
+function lateFixture(){const f=fixture();f.previousEpoch='new';
+ Object.assign(f.native,{phase:'attached',requestId:'previous',activeLease:'lease',cameraUuid:'alice',targetUuid:'alice',target:'Alice',nativeWorldEpoch:1,
+  offer:{id:'late',lease:'lease',target:'Alice',accepted:false,reason:'expired_request',at:50000}});
+ f.selector={running:false,phase:'unknown_request_receipt',at:new Date(40000).toISOString(),pending:{id:'late',lease:'lease',target:'Alice',issuedAt:10000,expiresAt:20000,
+  connectionEpoch:'new',nativeWorldEpoch:1,previousNativeRequestId:'previous',previousCameraUuid:'alice'}};return f;}
+test('late terminal refusal resolves the recorded timeout even when the offer is old; never replays it',()=>{
+ const f=lateFixture(),p=plan(f);assert.equal(p.action,'start');assert.equal(p.reconciliation.outcome,'not_admitted');assert.equal(p.reconciliation.completionVerified,false);
+ assert.equal(p.newLeaseRequired,true);assert.equal(p.archivePreviousStatus,true);assert.equal(p.replayPreviousRequest,false);
+ Object.assign(f.native,{phase:'stopped',reason:'target_died',cameraUuid:'observer',cameraLife:{uuid:'alice',requestId:'previous',nativeWorldEpoch:1,entityId:31,dead:true,observedAttachedAt:60000}});
+ assert.equal(plan(f).reconciliation.previousTargetDied,true);
+ assert.equal(plan({...f,lastResumeAt:95000}).action,'hold');assert.equal(plan({...f,recentResumes:4}).action,'hold');
+ for(const patch of[{uuid:'other'},{requestId:'late'},{nativeWorldEpoch:2},{dead:false},{entityId:-1}]){const x=structuredClone(f);Object.assign(x.native.cameraLife,patch);assert.equal(plan(x).action,'hold');}
+ f.native.terminalCameraLife=f.native.cameraLife;delete f.native.cameraLife;assert.equal(plan(f).reconciliation.previousTargetDied,true,'native terminal death remains valid after entity removal');
+});
+test('a refusal cannot revive manual stop, accepted requests, unknown cameras or changed identity/world',()=>{
+ for(const patch of[{accepted:true},{neverAdmitted:false},{reason:'already_seen'},{reason:'native_screen_open'},{id:'other'},{lease:'other'},{target:'Bob'},{at:15000},{at:100001}]){
+  const f=lateFixture();Object.assign(f.native.offer,patch);assert.equal(plan(f).action,'hold',JSON.stringify(patch));}
+ for(const patch of[{requestId:'late'},{requestId:'other'},{activeLease:'other'},{nativeWorldEpoch:2},{cameraUuid:'other'},{phase:'unknown'},{phase:'cancelled'},
+  {manualDetachRequested:true},{recordedAt:new Date(90000).toISOString()},{server:'other'},{transition:{active:true}}]){
+  const f=lateFixture();Object.assign(f.native,patch);assert.equal(plan(f).action,'hold',JSON.stringify(patch));}
+ for(const patch of[{stopRequested:true},{running:true},{phase:'director_stopped'},{at:new Date(5000).toISOString()}]){
+  const f=lateFixture();Object.assign(f.selector,patch);assert.equal(plan(f).action,'hold');}
+ const f=lateFixture();Object.assign(f.native.offer,{reason:'native_screen_open',neverAdmitted:true,at:15000});assert.equal(plan(f).action,'start');
+});
 test('a dead selector resumes only after a fresh new native connection, preserving the old unknown outcome',()=>{
  const f=fixture(),before=structuredClone(f),p=plan(f);assert.equal(p.action,'start');assert.equal(p.newLeaseRequired,true);assert.equal(p.replayPreviousRequest,false);assert.equal(p.archivePreviousStatus,true);assert.deepEqual(f,before);
  assert.equal(plan({...f,selectorAlive:true}).action,'keep');assert.equal(plan({...f,native:{...f.native,connectionEpoch:'old'}}).action,'hold');
