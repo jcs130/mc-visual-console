@@ -1,5 +1,22 @@
 # Native spectator director companion
 
+## Fresh activity outside the current camera
+
+An actor being outside the observer's loaded chunks is unknown visibility, not
+inactivity. The owned event adapter recognizes the core's six-second live combat
+heartbeat and measured successful inventory/target/window/position changes,
+including equipment, food and container operations. It does not promote task
+admission, failed/unchanged effects, plans, chat quotations or old receipts.
+Structured effect evidence takes precedence over the task's text summary.
+
+After normal native/subject pacing permits a switch, a strictly higher fresh
+activity tier requires subject review. The model menu cannot reinsert a lower-tier
+KEEP; one eligible subject is a labelled rule choice, multiple equal-tier subjects
+can still be compared by the model. Unknown offscreen geometry is entered through
+first person and then verified natively. Manual pinning, combat protection,
+render receipts, cancellation and minimum switch/cut budgets remain independent.
+This is display selection only and contains no gameplay or model loop.
+
 ## Stopped rig after a world replacement; selector supervision
 
 When a world replacement positively restores the same actor, an inactive stopped
