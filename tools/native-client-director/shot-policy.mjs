@@ -78,6 +78,7 @@ export function nativeShotReceipt(native,request,now=Date.now(),{maxAgeMs=3000}=
   if(native.phase==='cancelled')return{kind:'cancelled',reason:native.reason};
   if(native.phase!=='attached'||native.targetUuid!==request.targetUuid||native.cameraUuid!==request.targetUuid)
     return{kind:'waiting',reason:'actor_attachment_pending'};
+  if(native.viewDeferred===true)return{kind:'waiting',reason:'native_gui_view_deferred'};
   const fresh=at=>Number.isFinite(at)&&at>=request.issuedAt&&at<=now&&now-at<=maxAgeMs;
   const rendered=fresh(native.renderedAt);
   if(!rendered||native.transition?.active===true)return{kind:'waiting',reason:'program_frame_pending'};

@@ -240,7 +240,12 @@ public final class NativeDirectorClient implements ClientModInitializer {
                 }
             }catch(Exception failure){requestProblem=failure.getClass().getSimpleName();}
         }
-        if(client.field_1755!=null){if(tick%20==0)diagnostics(client,true);return;}
+        if(client.field_1755!=null){
+            // GUI blocks commands and camera movement, not native readback.
+            observeRequestCamera(client,now);
+            policy.observeGuiAttachment(frame(client,policy.target()),now);
+            if(tick%20==0)diagnostics(client,true);return;
+        }
         observeRequestCamera(client,now);
         var action=policy.step(frame(client,policy.target()),now);
         worldTransitionActive="world_transition".equals(policy.phase());
@@ -357,7 +362,7 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());
             data.put("connectionEpoch",connectionEpoch);data.put("connectionBoundRequests",requireConnectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());
-            data.put("activeLease",policy.activeLease());data.put("cancelReceipt",cancelReceipt);data.put("rigCancelSupported",true);data.put("renderedAt",lastRenderedAt);
+            data.put("activeLease",policy.activeLease());data.put("viewDeferred",policy.viewDeferred());data.put("cancelReceipt",cancelReceipt);data.put("rigCancelSupported",true);data.put("renderedAt",lastRenderedAt);
             var f=frame(client,policy.target());data.put("targetUuid",f.targetUuid());data.put("cameraUuid",f.cameraUuid());
             data.put("server",f.server());data.put("observer",f.observer());
             data.put("observerUuid",f.observerUuid());data.put("offer",policy.offerReceipt());

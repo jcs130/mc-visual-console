@@ -52,6 +52,7 @@ public final class DirectorPolicy {
     private DetachObservation detachObservation;
     private PositionFailure positionFailure;
     private String requestObserverUuid;
+    private boolean viewDeferred;
     private static final long WORLD_SETTLE_MS=3000;
     private int commands;
     public DirectorPolicy(Config config){this(config,false);}
@@ -92,6 +93,32 @@ public final class DirectorPolicy {
     /** Immutable terminal evidence survives native corpse/entity removal; never a current alive reading. */
     public CameraLife terminalCameraLife(){return "stopped".equals(phase)&&"target_died".equals(reason)?deadAttachment:null;}
     public PositionFailure positionFailure(){return positionFailure;}
+    public boolean viewDeferred(){return viewDeferred;}
+    /** Read-only acknowledgement while a real GUI blocks camera commands/presentation. */
+    public boolean observeGuiAttachment(Frame f,long now){
+        if(request==null||!Set.of("ready","mode","position","attach","detach","attached").contains(phase)
+                ||!scoped(f)||!f.authenticated()||!f.spectator()||f.manualDetachRequested()
+                ||requestObserverUuid==null||!requestObserverUuid.equals(f.observerUuid())
+                ||!Objects.equals(expectedUuid,f.targetUuid())||!attached(f)||f.nativeWorldEpoch()<1
+                ||f.nativeWorldEpoch()<nativeWorldEpoch)return false;
+        var life=f.cameraLife();
+        if(life==null||life.dead()||life.entityId()<0||!Objects.equals(life.requestId(),request.id())
+                ||!Objects.equals(life.uuid(),expectedUuid)||life.nativeWorldEpoch()!=f.nativeWorldEpoch()
+                ||life.observedAttachedAt()<request.issuedAt()||life.observedAttachedAt()>now
+                ||now-life.observedAttachedAt()>3000)return false;
+        if(!"attached".equals(phase))confirmAttachment(f,now);
+        else rememberAttachedLife(f);
+        return true;
+    }
+    private void confirmAttachment(Frame f,long now){
+        phase="attached";reason="native_camera_confirmed";lastSwitchAt=now;
+        nativeWorldEpoch=f.nativeWorldEpoch();attachedObserverUuid=f.observerUuid();worldChangedAt=-1;
+        rememberAttachedLife(f);viewDeferred=true;
+    }
+    private Action deferredView(){
+        if(!viewDeferred)return Action.none();
+        viewDeferred=false;return new Action(null,request.view());
+    }
     public static boolean hideObserverBody(boolean scoped,boolean spectator,boolean self){
         return scoped&&spectator&&self;
     }
@@ -205,7 +232,7 @@ public final class DirectorPolicy {
         if(request!=null&&!request.target().equalsIgnoreCase(r.target())
             &&now-lastSwitchAt<Math.max(10_000,config.minSwitchMs()))return refuse("switch_cooldown");
         seen.add(r.id());while(seen.size()>32)seen.remove(seen.iterator().next());
-        request=r;expectedUuid=f.targetUuid();requestObserverUuid=f.observerUuid();positionFailure=null;commands=0;phase="ready";reason="accepted";phaseAt=now;
+        request=r;expectedUuid=f.targetUuid();requestObserverUuid=f.observerUuid();positionFailure=null;viewDeferred=false;commands=0;phase="ready";reason="accepted";phaseAt=now;
         nativeWorldEpoch=f.nativeWorldEpoch();worldChangedAt=-1;attachedObserverUuid=null;attachedEntityId=null;attachedEntityWorldEpoch=0;deadAttachment=null;detachObservation=null;
         return true;
     }
@@ -275,24 +302,12 @@ public final class DirectorPolicy {
         if(!Objects.equals(expectedUuid,f.targetUuid())){phase="stopped";reason="target_identity_lost";return Action.none();}
         if("attached".equals(phase)){
             if(!attached(f))pause(f,now,"manual_or_native_detach");
-            else rememberAttachedLife(f);
+            else {rememberAttachedLife(f);return deferredView();}
             return Action.none();
         }
         if(!pending())return Action.none();
-        if(now-phaseAt>8000){
-            // Positioning never sent a target attachment command. Once this
-            // request stops, its state machine cannot attach a late respawn.
-            // Preserve the unconfirmed teleport, but publish the known self
-            // camera so the host may choose another subject under a NEW id.
-            if("position".equals(phase)&&f.spectator()&&!f.manualDetachRequested()
-                    &&requestObserverUuid!=null&&requestObserverUuid.equals(f.observerUuid())
-                    &&cameraSelf(f)&&f.nativeWorldEpoch()>0){
-                positionFailure=new PositionFailure(request.id(),request.lease(),expectedUuid,
-                    f.observerUuid(),f.cameraUuid(),f.nativeWorldEpoch(),now,commands);
-                phase="stopped";reason="target_position_unconfirmed";observeDetach(f,now);
-            }else{phase="unknown";reason="native_attachment_timeout";}
-            return Action.none();
-        }
+        // A GUI can postpone this tick. Actual attachment wins over elapsed time;
+        // terminal unknown/manual states above still never revive.
         if(attached(f)){
             var life=f.cameraLife();
             if(life!=null&&life.dead()&&Objects.equals(expectedUuid,life.uuid())&&life.entityId()>=0
@@ -303,10 +318,17 @@ public final class DirectorPolicy {
                 phase="target_death_transition";reason="target_dead_at_attachment";phaseAt=now;commands++;
                 return new Action("minecraft:spectate",null);
             }
-            phase="attached";reason="native_camera_confirmed";lastSwitchAt=now;
-            nativeWorldEpoch=f.nativeWorldEpoch();attachedObserverUuid=f.observerUuid();worldChangedAt=-1;
-            rememberAttachedLife(f);
-            return new Action(null,request.view());
+            confirmAttachment(f,now);return deferredView();
+        }
+        if(now-phaseAt>8000){
+            if("position".equals(phase)&&f.spectator()&&!f.manualDetachRequested()
+                    &&requestObserverUuid!=null&&requestObserverUuid.equals(f.observerUuid())
+                    &&cameraSelf(f)&&f.nativeWorldEpoch()>0){
+                positionFailure=new PositionFailure(request.id(),request.lease(),expectedUuid,
+                    f.observerUuid(),f.cameraUuid(),f.nativeWorldEpoch(),now,commands);
+                phase="stopped";reason="target_position_unconfirmed";observeDetach(f,now);
+            }else{phase="unknown";reason="native_attachment_timeout";}
+            return Action.none();
         }
         if(!f.spectator()){
             if("ready".equals(phase)){phase="mode";phaseAt=now;commands++;return new Action("minecraft:gamemode spectator",null);}

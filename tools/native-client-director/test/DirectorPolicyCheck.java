@@ -299,6 +299,27 @@ public class DirectorPolicyCheck {
         check("ortho_top".equals(DirectorPolicy.effectiveView("FIRST_PERSON",true,"ortho_top",false,false,"drone_follow")),"active orthographic projection reports its current view");
         check("drone_side_left".equals(DirectorPolicy.effectiveView("THIRD_PERSON_BACK",false,null,false,true,"drone_side_left")),"active drone reports its current view");
         check(DirectorPolicy.effectiveView(null,false,null,false,false,"drone_follow")==null,"unknown native perspective cannot borrow a stopped rig label");
+        var guiPending=policy();guiPending.offer(r("guiPending","Alice","drone_follow",t),w(1,"observer"),t);
+        check("minecraft:spectate Alice".equals(guiPending.step(w(1,"observer"),t).command()),"GUI fixture sends attachment once");
+        var guiLife=new DirectorPolicy.CameraLife("uuid-a",31,1,false,"guiPending",t+40000);
+        var guiFrame=new DirectorPolicy.Frame("fixture:1","observer",true,true,"uuid-a",true,"uuid-a","observer",1,guiLife,false);
+        check(guiPending.observeGuiAttachment(guiFrame,t+40000),"GUI readback settles actual attachment after original timeout");
+        check("attached".equals(guiPending.phase())&&guiPending.viewDeferred()&&guiPending.commands()==1,"GUI acknowledgement sends nothing and defers presentation");
+        check(guiPending.observeGuiAttachment(guiFrame,t+40001)&&guiPending.commands()==1,"repeated GUI readback never replays commands");
+        var applied=guiPending.step(guiFrame,t+45000);
+        check(applied.command()==null&&"drone_follow".equals(applied.view())&&!guiPending.viewDeferred(),"closing GUI applies only deferred presentation");
+        check(guiPending.step(guiFrame,t+45001).view()==null&&guiPending.commands()==1,"deferred view applied once");
+        var guiDelayed=policy();guiDelayed.offer(r("guiDelayed","Alice","first_person",t),w(1,"observer"),t);guiDelayed.step(w(1,"observer"),t);
+        check("first_person".equals(guiDelayed.step(w(1,"uuid-a"),t+40000).view())&&"attached".equals(guiDelayed.phase()),"observed UUID wins over elapsed time after blocked native ticks");
+        for(String invalid:List.of("manual","auth","observer","target","dead","stale","request","world","camera")){
+            var g=policy();g.offer(r("guiPending","Alice","drone_follow",t),w(1,"observer"),t);g.step(w(1,"observer"),t);
+            var l=new DirectorPolicy.CameraLife("uuid-a",31,invalid.equals("world")?2:1,invalid.equals("dead"),invalid.equals("request")?"other":"guiPending",invalid.equals("stale")?t:t+40000);
+            var fgui=new DirectorPolicy.Frame("fixture:1","observer",!invalid.equals("auth"),true,invalid.equals("target")?"other":"uuid-a",true,invalid.equals("camera")?"observer":"uuid-a",invalid.equals("observer")?"other":"observer",1,l,invalid.equals("manual"));
+            check(!g.observeGuiAttachment(fgui,t+40000)&&g.commands()==1,"GUI does not settle invalid "+invalid);
+        }
+        var timedOut=policy();timedOut.offer(r("guiPending","Alice","drone_follow",t),w(1,"observer"),t);timedOut.step(w(1,"observer"),t);timedOut.step(w(1,"observer"),t+9000);
+        check(!timedOut.observeGuiAttachment(guiFrame,t+40000)&&"unknown".equals(timedOut.phase()),"already unknown cannot revive through GUI evidence");
+        check(!cancel.observeGuiAttachment(guiFrame,t+40000)&&"cancelled".equals(cancel.phase()),"cancelled rig stays cancelled");
         System.out.println("Native director policy: "+checks+" checks passed");
     }
 }

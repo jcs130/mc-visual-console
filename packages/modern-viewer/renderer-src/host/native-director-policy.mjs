@@ -28,7 +28,33 @@ function lateNonAdmission(n,s,now){
   previousRequestId:r.previousNativeRequestId,previousTarget:n.target,previousTargetUuid:r.previousCameraUuid,
   previousTargetDied:dead,completionVerified:false};
 }
-/** Camera-only supervision: new connection, or positively reconciled late non-admission. No replay. */
+function boundNativeCamera(n,r,now){
+ const fresh=t=>Number.isFinite(t)&&t>=r?.issuedAt&&t<=now&&now-t<=3000,life=n?.cameraLife;
+ return !!(r?.id&&r.lease&&r.targetUuid&&Number.isFinite(r.issuedAt)&&n?.connected===true&&n.authenticated===true
+  &&n.spectator===true&&n.manualDetachRequested!==true&&n.phase==='attached'&&n.connectionEpoch===r.connectionEpoch
+  &&n.requestId===r.id&&n.activeLease===r.lease&&n.target===r.target&&n.targetUuid===r.targetUuid&&n.cameraUuid===r.targetUuid
+  &&Number.isSafeInteger(r.nativeWorldEpoch)&&r.nativeWorldEpoch>0&&Number.isSafeInteger(n.nativeWorldEpoch)&&n.nativeWorldEpoch>=r.nativeWorldEpoch
+  &&n.offer?.id===r.id&&n.offer.lease===r.lease&&n.offer.target===r.target&&n.offer.accepted===true
+  &&life?.requestId===r.id&&life.uuid===r.targetUuid&&life.nativeWorldEpoch===n.nativeWorldEpoch&&life.dead===false
+  &&Number.isSafeInteger(life.entityId)&&life.entityId>=0&&fresh(life.observedAttachedAt)&&fresh(Date.parse(n.recordedAt)));
+}
+/** GUI deferral is readback, not completion or permission to send another request. */
+export function nativeGuiAttachmentPending(native,request,{expectedObserverUuid,now=Date.now()}={}){
+ return !!expectedObserverUuid&&native?.observerUuid===expectedObserverUuid&&native.screenOpen===true
+  &&native.viewDeferred===true&&boundNativeCamera(native,request,now);
+}
+function lateNativeAttachment(n,s,now){
+ const r=s?.pending;
+ if(s?.running!==false||s.phase!=='unknown_request_receipt'||!boundNativeCamera(n,r,now)
+  ||n.screenOpen||n.viewDeferred===true||!Number.isFinite(n.renderedAt)||n.renderedAt>now||now-n.renderedAt>3000
+  ||n.renderedAt<r.issuedAt||!Number.isFinite(Date.parse(s.at))||Date.parse(s.at)>now
+  ||!n.targets?.some(t=>t.name===r.target&&t.uuid===r.targetUuid&&t.loaded===true&&t.alive===true&&t.spectator===false
+    &&t.entityId===n.cameraLife.entityId))return null;
+ return{kind:'late_native_attachment',requestId:r.id,lease:r.lease,outcome:'camera_bound',receiptAt:n.renderedAt,
+  previousRequestId:r.id,previousTarget:r.target,previousTargetUuid:r.targetUuid,
+  completionVerified:false,requestedViewVerified:false};
+}
+/** Camera-only supervision after a new connection or positively reconciled native receipt. No replay. */
 export function planNativeDirectorResume({enabled=false,observerAlive=false,selectorAlive=false,expectedServer,expectedObserverUuid,previousEpoch,native:n,selector:s,now=Date.now(),lastResumeAt=0,recentResumes=0}={}){
  const result=(action,reason)=>({schema:NATIVE_DIRECTOR_RESUME_PROTOCOL,action,reason,replayPreviousRequest:false});
  if(!enabled)return result('hold','supervision_disabled');
@@ -43,10 +69,10 @@ export function planNativeDirectorResume({enabled=false,observerAlive=false,sele
  if(typeof previousEpoch!=='string'||!previousEpoch||typeof epoch!=='string'||!epoch||epoch.length>128)return result('hold','connection_provenance_missing');
  if(epoch===previousEpoch){
   if(n.transition?.active===true)return result('hold','same_connection_outcome_retained');
-  const reconciliation=lateNonAdmission(n,s,now);
+  const reconciliation=lateNonAdmission(n,s,now)??lateNativeAttachment(n,s,now);
   if(!reconciliation)return result('hold','same_connection_outcome_retained');
   if(recentResumes>=4||lastResumeAt&&now-lastResumeAt<10000)return result('hold','resume_rate_limited');
-  return{...result('start','late_offer_non_admission_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true,reconciliation};
+  return{...result('start',reconciliation.kind==='late_native_attachment'?'late_native_attachment_confirmed':'late_offer_non_admission_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true,reconciliation};
  }
  if(n.transition?.active===true)return result('hold','new_camera_transition_pending');
  const self=n.phase==='idle'&&n.cameraUuid===n.observerUuid&&n.requestId==null&&n.activeLease==null;
