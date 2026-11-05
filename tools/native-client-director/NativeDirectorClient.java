@@ -211,7 +211,6 @@ public final class NativeDirectorClient implements ClientModInitializer {
         }
         NativeVisionCapture.poll(visionScope(client),now);
         if(!"attached".equals(policy.phase())||manualDetachRequested)NativeVisionCapture.invalidate();
-        if(client.field_1755!=null){if(++tick%20==0)diagnostics(client,true);return;}
         if(++tick%10==0){
             Path file=FabricLoader.getInstance().getConfigDir().resolve("mcvisual-director-request.json");
             try{
@@ -229,16 +228,23 @@ public final class NativeDirectorClient implements ClientModInitializer {
                             throw new IllegalArgumentException("cinematic_rig_not_explicitly_enabled");
                         if(request!=null&&OrthographicRig.supportsView(request.view())&&!ORTHO.ready())
                             throw new IllegalArgumentException("orthographic_backend_unavailable");
-                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch)){
+                        if(policy.offer(request,frame(client,request==null?null:request.target()),now,connectionEpoch,requireConnectionEpoch,client.field_1755!=null)){
                             manualDetachRequested=false;
                             boolean sameRig=droneActive&&droneWorld==client.field_1687&&DRONE.preservePosition(request.view())
                                 &&Objects.equals(droneUuid,frame(client,request.target()).targetUuid());
                             if(!sameRig)FrameBlend.begin(client,request.id());
                         }
                         requestProblem=null;
+                        diagnostics(client,true);
                     }
                 }
             }catch(Exception failure){requestProblem=failure.getClass().getSimpleName();}
+        }
+        if(client.field_1755!=null){
+            // GUI blocks commands and camera movement, not native readback.
+            observeRequestCamera(client,now);
+            policy.observeGuiAttachment(frame(client,policy.target()),now);
+            if(tick%20==0)diagnostics(client,true);return;
         }
         observeRequestCamera(client,now);
         var action=policy.step(frame(client,policy.target()),now);
@@ -356,12 +362,12 @@ public final class NativeDirectorClient implements ClientModInitializer {
             data.put("connected",connected);data.put("authenticated",authenticated);data.put("phase",policy.phase());
             data.put("connectionEpoch",connectionEpoch);data.put("connectionBoundRequests",requireConnectionEpoch);
             data.put("reason",policy.reason());data.put("requestId",policy.requestId());data.put("target",policy.target());
-            data.put("activeLease",policy.activeLease());data.put("cancelReceipt",cancelReceipt);data.put("rigCancelSupported",true);data.put("renderedAt",lastRenderedAt);
+            data.put("activeLease",policy.activeLease());data.put("viewDeferred",policy.viewDeferred());data.put("cancelReceipt",cancelReceipt);data.put("rigCancelSupported",true);data.put("renderedAt",lastRenderedAt);
             var f=frame(client,policy.target());data.put("targetUuid",f.targetUuid());data.put("cameraUuid",f.cameraUuid());
             data.put("server",f.server());data.put("observer",f.observer());
             data.put("observerUuid",f.observerUuid());data.put("offer",policy.offerReceipt());
             data.put("nativeWorldEpoch",nativeWorldEpoch);data.put("detachObservation",policy.detachObservation());
-            data.put("cameraLife",f.cameraLife());data.put("manualDetachRequested",f.manualDetachRequested());
+            data.put("cameraLife",f.cameraLife());data.put("terminalCameraLife",policy.terminalCameraLife());data.put("manualDetachRequested",f.manualDetachRequested());
             data.put("observerBodyHidden",hideObserverBody(client.field_1724));
             // Tab presence is not position. Unloaded/other-world players have no invented coordinates.
             List<Map<String,Object>> targets=new ArrayList<>();long sampledAt=System.currentTimeMillis();

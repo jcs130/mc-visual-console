@@ -1,3 +1,7 @@
+## 2026-11-05 GUI follow acknowledgement
+
+Native 0.1.36 / Fabric director 0.1.26 reads exact actual attachment through open GUIs without sending commands. `viewDeferred` is not a completed shot; the shared verifier only extends a host's receipt wait while fresh matching proof exists. Same-connection supervision may adopt a late proven attachment after host receipt timeout, preserving archive, new lease and no replay. Manual stop, cancelled and unknown native states remain terminal. Source/build/isolated GUI regression and actual live deployment are separate stages. Preserve deployed 0.1.35 bossbar and endpoint fixes when updating from main. See docs/native-gui-follow-recovery.md.
+
 ## 2026-11-03 native camera sequence and rejected-expiry candidate
 
 Coverage follow-up fixes the actual ortho/rear two-view loop: lively composition now selects a bounded repertoire using only rendered native view history, excludes the two recent camera families while alternatives exist, and supplies the same diverse proposals to the model and rule fallback. Eye-relative heights respect measured ceiling clearance; low views keep negative height. Finite room moves require explicit whole-path native preflight and a real perspective rig, and failed paths cool down by recipe. Diagnostics distinguish advertised, eligible/excluded and actually rendered views. Never count advice/admission or a failed requested style as completed visual coverage.
