@@ -22,7 +22,7 @@ public final class CinematicRig {
         "drone_front_left","drone_front_right","drone_side_left","drone_side_right","drone_low",
         "drone_orbit_left","drone_orbit_right","drone_push_in","drone_pull_out");
     private final DroneFollow tracking=new DroneFollow();
-    private String id,view="drone_follow",identity,phase="stopped",reason="stopped";
+    private String id,view="drone_follow",startView="drone_follow",identity,phase="stopped",reason="stopped";
     private long previous,start;
     private double bearing,radius=7,elevation=3,anchorX,anchorY,anchorZ,startBearing,startRadius,startElevation;
     private boolean initialized,checkedPath,startPending,fallback,settled;
@@ -41,6 +41,7 @@ public final class CinematicRig {
         if(Objects.equals(id,requestId)&&finiteShot(selected)&&Set.of("blocked","cancelled","stopped","completed").contains(phase)){
             view=selected;fallback=true;phase="blocked";reason="previous_finite_shot_not_replayed";return;
         }
+        startView=retainingStart()?startView:view;
         id=requestId;view=selected;parameters=checked;phase=finiteShot(view)?"preflight":"running";reason="awaiting_native_frame";
         previous=now;start=now;progress=0;checkedPath=false;startPending=true;fallback=false;
         // A recipe changes the same rig. Never reset its position merely because the host chose another view.
@@ -55,6 +56,8 @@ public final class CinematicRig {
     public void suspend(){abort("native_screen_opened");fallback=true;tracking.reset();initialized=false;}
     public void abort(String why){if(finiteShot(view)&&!Set.of("completed","blocked","cancelled","stopped").contains(phase)){phase="blocked";reason=why;}}
     public boolean needsPath(){return "preflight".equals(phase)&&initialized&&!checkedPath;}
+    private boolean retainingStart(){return finiteShot(view)&&"blocked".equals(phase)
+        &&Set.of("native_path_blocked","insufficient_dolly_range").contains(reason)&&progress==0&&!fallback;}
     public boolean finiteActive(){return finiteShot(view)&&!fallback&&Set.of("preflight","running","settling").contains(phase);}
     public void pathResult(boolean clear,long now){
         if(!needsPath())return;checkedPath=true;start=now;phase=clear?"running":"blocked";reason=clear?"native_path_verified":"native_path_blocked";
@@ -75,6 +78,7 @@ public final class CinematicRig {
         if(view.startsWith("drone_orbit_"))b+=(view.endsWith("left")?-1:1)*parameters.arcDegrees()*a;
         else if(view.equals("drone_push_in"))r=startRadius+(Math.max(2.5,startRadius*.55)-startRadius)*a;
         else if(view.equals("drone_pull_out"))r=startRadius+(Math.min(10,startRadius+3)-startRadius)*a;
+        if(view.equals("drone_push_in")||view.equals("drone_pull_out"))h=startElevation*r/startRadius;
         return pose(anchorX,anchorY,anchorZ,b,r,h,false);
     }
     public DroneFollow.Pose next(String uuid,double x,double y,double z,float bodyYaw,long now,double configuredDistance,double configuredHeight){
@@ -104,11 +108,13 @@ public final class CinematicRig {
         if(!initialized){initialized=true;bearing=base+offset;radius=desiredRadius;elevation=desiredHeight;
             anchorX=x;anchorY=y;anchorZ=z;startBearing=bearing;}
         if(startPending){startPending=false;anchorX=x;anchorY=y;anchorZ=z;startBearing=bearing;startRadius=radius;startElevation=elevation;}
-        if(!fallback&&finiteShot(view)&&(view.equals("drone_push_in")&&startRadius<2.8||view.equals("drone_pull_out")&&startRadius>9.8)){
-            abort("insufficient_dolly_range");fallback=true;
+        if(!fallback&&finiteShot(view)&&(view.equals("drone_push_in")&&startRadius-Math.max(2.5,startRadius*.55)<1
+            ||view.equals("drone_pull_out")&&Math.min(10,startRadius+3)-startRadius<1)){
+            abort("insufficient_dolly_range");
         }
         if(finiteShot(view)&&!fallback){
             if(Math.sqrt((x-anchorX)*(x-anchorX)+(y-anchorY)*(y-anchorY)+(z-anchorZ)*(z-anchorZ))>.75)abort("subject_left_verified_arc");
+            if(retainingStart())return lastPose=pose(x,y,z,startBearing,startRadius,startElevation,false);
             if(Set.of("blocked","cancelled").contains(phase))return lastPose=pose(x,y,z,bearing,Math.max(3,radius),Math.max(.2,elevation),false);
             if("running".equals(phase)||"settling".equals(phase)||"completed".equals(phase)){
                 progress=Math.max(progress,Math.min(1,(now-start)/(parameters.durationMs()*1_000_000.0)));
@@ -136,6 +142,8 @@ public final class CinematicRig {
         Map<String,Object> s=new LinkedHashMap<>();s.put("requestId",id);s.put("view",view);s.put("phase",phase);s.put("reason",reason);s.put("progress",progress);
         s.put("scriptSchema",SCRIPT_PROTOCOL);s.put("speed",parameters.speed());s.put("distance",parameters.distance());s.put("height",parameters.height());
         s.put("durationMs",finiteShot(view)?parameters.durationMs():null);s.put("arcDegrees",view.startsWith("drone_orbit_")?parameters.arcDegrees():null);
-        s.put("effectiveView",fallback?"drone_eye":view);s.put("fallback",fallback);return s;
+        s.put("effectiveView",retainingStart()?startView:fallback?"drone_eye":view);s.put("fallback",fallback);
+        s.put("retainingSafeStart",retainingStart());s.put("radius",radius);s.put("elevation",elevation);
+        return s;
     }
 }

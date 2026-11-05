@@ -9,6 +9,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(targets="net.minecraft.class_337",remap=false)
 public abstract class ObserverBossBarMixin {
     @Shadow(remap=false) @Final private Map<UUID,class_345> field_2060;
+    /** Filter only this render iteration. Never replace or clear vanilla's original event map. */
+    @Redirect(method="method_1796",at=@At(value="INVOKE",target="Ljava/util/Map;values()Ljava/util/Collection;"),require=1,remap=false)
+    private Collection<class_345> visible(Map<UUID,class_345> original){
+        return NativeObserverClient.visibleBossBars(original.values());
+    }
+    @Inject(method="method_1796",at=@At("TAIL"),require=1,remap=false)
+    private void summary(class_332 draw,CallbackInfo ci){NativeObserverClient.renderBossBarSummary(draw);}
     @Inject(method="method_1795",at=@At("HEAD"),cancellable=true,require=1,remap=false)
     private void packet(class_2629 packet,CallbackInfo ci) {
         if(!NativeObserverClient.scoped())return;
@@ -23,6 +30,12 @@ public abstract class ObserverBossBarMixin {
             @Override public void method_34104(UUID id,boolean dark,boolean music,boolean fog){update(id,false);}
         });
         if(!valid[0])ci.cancel();
+    }
+    @Inject(method="method_1795",at=@At("TAIL"),require=1,remap=false)
+    private void updated(class_2629 packet,CallbackInfo ci){
+        // Vanilla skips the render iteration when the final UUID is removed. Refresh the
+        // presentation here too, including hidden HUDs, so the collapsed count cannot linger.
+        NativeObserverClient.visibleBossBars(field_2060.values());
     }
     @Inject(method="method_1801",at=@At("TAIL"),require=1,remap=false)
     private void clear(CallbackInfo ci){NativeObserverClient.nativeBarsCleared();}

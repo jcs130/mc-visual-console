@@ -30,7 +30,7 @@ public final class DirectorPolicy {
     }
     public record DetachObservation(long at,long nativeWorldEpoch,boolean spectator,
                                     String targetUuid,String cameraUuid,String observerUuid) {}
-    public record OfferReceipt(String id,String lease,String target,long at,boolean accepted,String reason) {}
+    public record OfferReceipt(String id,String lease,String target,long at,boolean accepted,String reason,boolean neverAdmitted) {}
     public record PositionFailure(String requestId,String lease,String targetUuid,String observerUuid,
                                   String cameraUuid,long nativeWorldEpoch,long observedAt,int commands) {}
     public record Action(String command,String view) {
@@ -89,6 +89,8 @@ public final class DirectorPolicy {
     public int commands(){return commands;}
     public OfferReceipt offerReceipt(){return offerReceipt;}
     public DetachObservation detachObservation(){return detachObservation;}
+    /** Immutable terminal evidence survives native corpse/entity removal; never a current alive reading. */
+    public CameraLife terminalCameraLife(){return "stopped".equals(phase)&&"target_died".equals(reason)?deadAttachment:null;}
     public PositionFailure positionFailure(){return positionFailure;}
     public static boolean hideObserverBody(boolean scoped,boolean spectator,boolean self){
         return scoped&&spectator&&self;
@@ -162,21 +164,25 @@ public final class DirectorPolicy {
         return offer(r,f,now,null,false);
     }
     public boolean offer(Request r,Frame f,long now,String connectionEpoch,boolean requireConnectionEpoch){
+        return offer(r,f,now,connectionEpoch,requireConnectionEpoch,false);
+    }
+    /** Read and reject new ingress while a menu is open; never queue it invisibly behind the GUI. */
+    public boolean offer(Request r,Frame f,long now,String connectionEpoch,boolean requireConnectionEpoch,boolean screenOpen){
         String previousPhase=phase,previousReason=reason;
         boolean accepted;
         if(requireConnectionEpoch&&(r==null||r.connectionEpoch()==null||r.connectionEpoch().isBlank()))
             accepted=refuse("connection_epoch_required");
         else if(r!=null&&r.connectionEpoch()!=null&&!Objects.equals(r.connectionEpoch(),connectionEpoch))
             accepted=refuse("connection_epoch_mismatch");
-        else accepted=offerChecked(r,f,now);
+        else accepted=offerChecked(r,f,now,screenOpen);
         // A refused new offer must not be mistaken for the previous camera request's result.
         offerReceipt=new OfferReceipt(r==null?null:bounded(r.id()),r==null?null:bounded(r.lease()),
-            r!=null&&allowed(r.target())?r.target():null,now,accepted,reason);
+            r!=null&&allowed(r.target())?r.target():null,now,accepted,reason,!accepted&&r!=null&&!seen.contains(r.id()));
         if(!accepted&&request!=null&&Objects.equals(previousPhase,phase))reason=previousReason;
         return accepted;
     }
     private static String bounded(String value){return value!=null&&value.matches("[A-Za-z0-9:_-]{1,80}")?value:null;}
-    private boolean offerChecked(Request r,Frame f,long now){
+    private boolean offerChecked(Request r,Frame f,long now,boolean screenOpen){
         if(!scoped(f))return refuse("wrong_profile");
         if(!f.authenticated())return refuse("await_authentication");
         if(request!=null&&f.manualDetachRequested()
@@ -193,6 +199,7 @@ public final class DirectorPolicy {
         if(seen.contains(r.id()))return refuse("already_seen");
         if(pending())return refuse("previous_request_pending");
         if(Objects.equals(heldLease,r.lease()))return refuse("manual_override");
+        if(screenOpen)return refuse("native_screen_open");
         if(f.targetUuid()==null)return refuse("target_offline");
         if(discoverOnline&&onlineTargets.entrySet().stream().noneMatch(e->e.getKey().equalsIgnoreCase(r.target())&&e.getValue().equalsIgnoreCase(f.targetUuid())))return refuse("target_identity_lost");
         if(request!=null&&!request.target().equalsIgnoreCase(r.target())
@@ -234,7 +241,7 @@ public final class DirectorPolicy {
         // Only the exact previously attached native entity can prove death. Tab presence,
         // a missing player, a changed dimension or a chat message never supplies this proof.
         if("attached".equals(phase)&&nativeDeath(f,now)){
-            phase="stopped";reason="target_died";observeDetach(f,now);return Action.none();
+            deadAttachment=f.cameraLife();phase="stopped";reason="target_died";observeDetach(f,now);return Action.none();
         }
         if("world_transition".equals(phase)){
             // Passive readback only: never send a teleport/spectate or restore a view here.

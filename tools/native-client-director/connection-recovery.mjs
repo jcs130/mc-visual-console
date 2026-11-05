@@ -8,7 +8,7 @@ export function directorExpiredOffer({native:n,request:r,expectedObserverUuid,no
  const fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000;
  const o=n.offer;
  if(!fresh(Date.parse(n.recordedAt))||!fresh(o?.at)||o.id!==r.id||o.lease!==r.lease||o.target!==r.target
-  ||o.accepted!==false||o.reason!=='expired_request'||!Number.isFinite(r.issuedAt)||!Number.isFinite(r.expiresAt)
+  ||o.accepted!==false||o.neverAdmitted===false||o.reason!=='expired_request'||!Number.isFinite(r.issuedAt)||!Number.isFinite(r.expiresAt)
   ||r.expiresAt<=r.issuedAt||r.expiresAt-r.issuedAt>10000||r.expiresAt>o.at)return null;
  if(!Object.hasOwn(r,'previousNativeRequestId')||!Object.hasOwn(r,'previousCameraUuid')||n.requestId===r.id
   ||(n.requestId??null)!==r.previousNativeRequestId||n.cameraUuid!==r.previousCameraUuid)return null;
@@ -46,8 +46,9 @@ export function directorTargetLoss({native,expectedTarget,expectedUuid}={}) {
       &&Number.isSafeInteger(failure.nativeWorldEpoch)&&failure.nativeWorldEpoch>0
       &&Number.isFinite(failure.observedAt)&&Number.isInteger(failure.commands)&&failure.commands>=1&&failure.commands<=2)
     return{reason:native.reason,cooldownMs:30000,previousTeleportOutcome:'unconfirmed',replayPreviousRequest:false};
-  const life=native.cameraLife;
+  const life=native.terminalCameraLife??native.cameraLife;
   if(native.reason==='target_died'&&life?.dead===true&&life.uuid===expectedUuid
+      &&(life.requestId==null||life.requestId===native.requestId)
       &&Number.isSafeInteger(life.entityId)&&life.entityId>=0
       &&Number.isSafeInteger(native.nativeWorldEpoch)&&native.nativeWorldEpoch>0
       &&life.nativeWorldEpoch===native.nativeWorldEpoch)
