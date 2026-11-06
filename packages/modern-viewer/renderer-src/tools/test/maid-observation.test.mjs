@@ -4,7 +4,7 @@ import { injectObservedMaids } from '../../host/maid-observation.mjs'
 
 const id='12345678-1234-5678-1234-567812345678', player='22345678-1234-5678-1234-567812345678', world='32345678-1234-5678-1234-567812345678', generation='42345678-1234-5678-1234-567812345678'
 const context={playerUuid:player,worldUuid:world,dimension:'minecraft:overworld',generation}
-const entity={entityId:23,uuid:id,name:'minecraft:allay',metadata:[{key:2,value:'[Ů��]'}]}
+const entity={entityId:23,uuid:id,name:'minecraft:allay',metadata:[{key:2,value:'[女仆]'}]}
 const row={entityId:23,uuid:id,type:'touhou_little_maid:maid',modelId:'authors_and_credits:clocklalier',available:true,sampledAt:10000,
   ...Object.fromEntries('ysm sitting begging armRise sleeping passenger baby inWater usingItem offhandUse offhandSwing hasMainHand hasHelmet hasChestPlate hasLeggings hasBoots'.split(' ').map(k=>[k,false])),
   ...Object.fromEntries('attackAnim swingTime hurtTime bodyYaw headYaw pitch ageTicks'.split(' ').map(k=>[k,0])),health:20,task:'touhou_little_maid:idle',backpack:'touhou_little_maid:empty'}

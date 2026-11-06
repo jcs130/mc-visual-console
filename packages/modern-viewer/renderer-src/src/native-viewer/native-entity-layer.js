@@ -114,7 +114,7 @@ export class NativeEntityLayer {
   diagnostics() {
     const motionIssues=[...this.actors.values()].flatMap(row=>[row.actor.root.userData.nativeContraption?.reason,...(row.actor.root.userData.nativeLiving?.issues??[]),...(row.actor.root.userData.nativeProjectile?.issues??[])]).filter(Boolean)
     return {received:this.data.size,rendered:[...this.actors.values()].filter(row=>!row.actor.assetInfo?.intentionalNoMesh).length,intentionalNoMesh:[...this.actors.values()].filter(row=>row.actor.assetInfo?.intentionalNoMesh).length,registryCensus:NATIVE_ENTITY_CENSUS.length,registryCounts:{original:130,visiblePending:78,aquaticIntegrated:12,flyingIntegrated:2,intentionalNoMesh:3,otherNonSelfPaths:34,selfOnly:1},coverage:[...this.data.values()].map(row=>nativeEntityCoverage(row.name,row.paperMaid?this.actors.get(row.entityId)?.actor.assetInfo:null)),droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
-      issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}��${row.reason}`),completeEntityParityVerified:false}
+      issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
   }
   reset() {
     this.generation++;this.epoch=undefined;this.revision=null;this.pending=null;for(const row of this.actors.values())row.actor.dispose();this.actors.clear();this.failures.clear();this.data.clear();this.root.clear();this.streamReason=null
