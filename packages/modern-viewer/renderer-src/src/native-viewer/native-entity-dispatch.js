@@ -11,6 +11,7 @@ import { createNativeModelPart, ENTITY_MODEL_CLIENT_SHA256 } from './native-enti
 import { nativePlayerSin as sin, nativePlayerCos as cos } from './native-player-motion.js'
 import { NATIVE_MOB_MOTION_SOURCE } from './native-entity-motion.js'
 import { createNativeMaidActor, nativeMaidRenderState } from './native-entity-dispatch-maid.js'
+import { createPaperMaidActor } from './native-paper-maid.js'
 import { createNativeContraptionActor, nativeContraptionState } from './native-contraption.js'
 import { createNativeWandscapeActor, nativeWandscapeRenderState, WANDSCAPE_NPC } from './native-entity-dispatch-wandscape.js'
 import { createNativeDroppedItemActor } from './native-dropped-items.js'
@@ -109,6 +110,7 @@ export function nativeSheepColor(index){if(!Number.isInteger(index)||index<0||in
 
 async function texture(bytes){const url=URL.createObjectURL(new Blob([bytes],{type:'image/png'}));try{return await new THREE.TextureLoader().loadAsync(url)}finally{URL.revokeObjectURL(url)}}
 export async function createNativeEntityActor(reader,entity,{registries,loadTexture=texture}={}){
+  if(entity?.paperMaid)return createPaperMaidActor(reader,entity)
   if(!(reader instanceof NativeAssetReader)||reader.manifest.clientJarSha256!==ENTITY_MODEL_CLIENT_SHA256)throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(!nativeClientSourceVerified(reader.manifest,ENTITY_MODEL_CLIENT_SHA256))throw Error('NATIVE_ENTITY_CLIENT_SOURCE_UNSUPPORTED')
   if(nativeFlyingType(entity?.name))return createNativeFlyingActor(reader,entity,{loadTexture})

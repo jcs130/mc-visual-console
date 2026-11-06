@@ -12,6 +12,7 @@ import { createNativeSession } from '../../src/native-viewer/native-session.js'
 import { NATIVE_YSM_SOURCE, NATIVE_YSM_JAR_SHA256 } from '../../src/native-viewer/native-ysm-state.js'
 import { PaperObservedPlayer } from '../../host/paper-observation.mjs'
 import { selectNativeHeldItems } from '../../src/native-viewer/native-held-items.js'
+import { injectObservedMaids } from '../../host/maid-observation.mjs'
 
 let directory, prepared, registryHash
 const assetPath = 'assets/test/models/native.json'
@@ -242,7 +243,7 @@ function ownPlayerInfo (bot, properties = []) {
 
 function nativeInventory (playerUuid) {
   const slots = new Array(46).fill(null)
-  slots[36] = { id: 'farmersdelight:iron_knife', count: 1, snbt: '{id:"farmersdelight:iron_knife",count:1,components:{"minecraft:custom_name":"真正的刀"}}' }
+  slots[36] = { id: 'farmersdelight:iron_knife', count: 1, snbt: '{id:"farmersdelight:iron_knife",count:1,components:{"minecraft:custom_name":"�����ĵ�"}}' }
   return { schemaVersion: 1, playerUuid, windowId: 0, stateId: 7, menuType: 'minecraft:inventory', selectedHotbarSlot: 0, carried: null,
     slots, mayPickup: slots.map(() => true) }
 }
@@ -250,7 +251,7 @@ function nativeInventory (playerUuid) {
 test('server-authoritative body values and canonical inventory survive an open mod menu', () => {
   const playerUuid = '01234567-89ab-cdef-0123-456789abcdef'
   const canonical = nativeInventory(playerUuid).slots
-  canonical[36] = { id: 'ars_nouveau:worn_notebook', count: 1, snbt: '{count:1,id:"ars_nouveau:worn_notebook"}', displayName: '破旧笔记本', descriptionId: 'item.ars_nouveau.worn_notebook' }
+  canonical[36] = { id: 'ars_nouveau:worn_notebook', count: 1, snbt: '{count:1,id:"ars_nouveau:worn_notebook"}', displayName: '�ƾɱʼǱ�', descriptionId: 'item.ars_nouveau.worn_notebook' }
   const menu = { ...nativeInventory(playerUuid), windowId: 4, menuType: 'farmersdelight:cooking_pot', slots: Array(45).fill(null), playerInventory: canonical,
     self: { playerUuid, health: 6.25, maxHealth: 28, absorption: 4, armor: 13, food: 17, saturation: 2.5,
       airSupply: 150, maxAirSupply: 300, inWater: true, experienceLevel: 12, experienceProgress: 0.75, experiencePoints: 204,
@@ -259,7 +260,7 @@ test('server-authoritative body values and canonical inventory survive an open m
   assert.equal(value.nativeMenu.windowId, 4)
   assert.equal(value.inventory.windowId, 0)
   assert.equal(value.inventory.slots.length, 46)
-  assert.equal(value.inventory.slots[36].item.displayName, '破旧笔记本')
+  assert.equal(value.inventory.slots[36].item.displayName, '�ƾɱʼǱ�')
   assert.equal(value.inventory.slots[36].item.snbt, canonical[36].snbt)
   assert.equal(value.self.health, 6.25); assert.equal(value.self.maxHealth, 28)
   assert.equal(value.self.armor, 13); assert.equal(value.self.oxygen, 10)
@@ -912,11 +913,11 @@ test('native presentation preserves real mod IDs/components and open-container s
 test('Ars HUD states are genuine timestamped receipts, unknown cooldowns stay null and changing held item hides the old catalogue', () => {
   const playerUuid = '01234567-89ab-cdef-0123-456789abcdef', menu = nativeInventory(playerUuid)
   const spellState = { playerUuid, heldSnbt: menu.slots[36].snbt, selectedHotbarSlot: 0, mana: { current: 23, max: 80 }, cooldown: { active: true, fraction: 0.5, totalTicks: null, remainingTicks: null } }
-  const spellCatalog = { playerUuid, state: { ...spellState }, spells: [{ id: 'ars_nouveau:slot_0', name: '治愈', manaCost: 12 }] }
+  const spellCatalog = { playerUuid, state: { ...spellState }, spells: [{ id: 'ars_nouveau:slot_0', name: '����', manaCost: 12 }] }
   const state = createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog, spellObservedAt: 800, now: 1000 })
   assert.deepEqual(state.skills.mana, { current: 23, max: 80 })
   assert.equal(state.skills.source, 'ars_nouveau_receipt'); assert.equal(state.skills.observedAt, 800); assert.equal(state.skills.stale, false)
-  assert.deepEqual(state.skills.abilities, [{ id: 'ars_nouveau:slot_0', name: '治愈', manaCost: 12, cooldownMs: null, cooldownRemainingMs: null }])
+  assert.deepEqual(state.skills.abilities, [{ id: 'ars_nouveau:slot_0', name: '����', manaCost: 12, cooldownMs: null, cooldownRemainingMs: null }])
   assert.equal(createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog, spellObservedAt: 800, now: 6000 }).skills.stale, true)
   menu.slots[36] = null
   const changed = createNativePlayerPresentation({ playerUuid, menu, spellState, spellCatalog, spellObservedAt: 800, now: 1000 })
@@ -1011,11 +1012,11 @@ test('own messages, title, actionbar, vitals and weather stay private and clear 
   bot.entity.isInWater = true
   bot.foodSaturation = 3.5; bot.oxygenLevel = 18; bot.experience = { level: 4, points: 42, progress: 0.25 }; bot.quickBarSlot = 2
   bot.isRaining = true; bot.rainState = 0.7; bot.thunderState = 0.1
-  bot.emit('messagestr', '玩家私聊', 'chat'); bot.emit('messagestr', '本人系统回执', 'system'); bot.emit('messagestr', '技能生效', 'game_info')
-  bot.emit('title_times', 10, 50, 10); bot.emit('title', '{"text":"咏唱","extra":[{"text":"成功"}]}', 'title'); bot.emit('title', '只给本人', 'subtitle')
+  bot.emit('messagestr', '���˽��', 'chat'); bot.emit('messagestr', '����ϵͳ��ִ', 'system'); bot.emit('messagestr', '������Ч', 'game_info')
+  bot.emit('title_times', 10, 50, 10); bot.emit('title', '{"text":"ӽ��","extra":[{"text":"�ɹ�"}]}', 'title'); bot.emit('title', 'ֻ������', 'subtitle')
   let state = host.status().presentation
-  assert.deepEqual(state.gameMessages.map(m => [m.kind, m.text]), [['chat', '玩家私聊'], ['system', '本人系统回执']])
-  assert.equal(state.actionbar.text, '技能生效'); assert.equal(state.title.title, '咏唱成功'); assert.equal(state.title.subtitle, '只给本人'); assert.equal(state.title.stay, 50)
+  assert.deepEqual(state.gameMessages.map(m => [m.kind, m.text]), [['chat', '���˽��'], ['system', '����ϵͳ��ִ']])
+  assert.equal(state.actionbar.text, '������Ч'); assert.equal(state.title.title, 'ӽ���ɹ�'); assert.equal(state.title.subtitle, 'ֻ������'); assert.equal(state.title.stay, 50)
   assert.equal(state.self.saturation, 3.5); assert.equal(state.self.oxygen, 18); assert.equal(state.self.armor, null); assert.equal(state.self.inWater, true)
   assert.equal(state.self.experienceLevel, 4); assert.equal(state.self.experienceProgress, 0.25); assert.equal(state.self.quickBarSlot, 2)
   assert.deepEqual(state.weather, { raining: true, rain: 0.7, thunder: 0.1 })
@@ -1078,15 +1079,15 @@ test('legacy 3D view URLs redirect once, preserving query and asset suffix',asyn
   const response=await request(host,old);assert.equal(response.status,308);assert.equal(response.headers.location,next)
  }
  assert.equal((await request(host,'3dview/index.js?x=1')).status,200)
- const page=await request(host,'3dview/?photo=1');assert.equal(page.status,200);assert.match(page.body,/3D观战/);assert.doesNotMatch(page.body,/href="[^"]*dungeon/)
+ const page=await request(host,'3dview/?photo=1');assert.equal(page.status,200);assert.match(page.body,/3D��ս/);assert.doesNotMatch(page.body,/href="[^"]*dungeon/)
 })
 
 test('one encoded event is shared byte-for-byte with independent backpressure and exact UTF8 budget',()=>{
- let reads=0;const message={type:'frame',get text(){reads++;return '观战'}}
+ let reads=0;const message={type:'frame',get text(){reads++;return '��ս'}}
  const encoded=encodeNativeWorldEvent(message),writes=[]
  const first={response:{write:text=>{writes.push(text);return false}},blocked:false},second={response:{write:text=>{writes.push(text);return true}},blocked:false}
  assert.equal(sendNativeWorldEvent(first,encoded),true);assert.equal(sendNativeWorldEvent(second,encoded),true);assert.equal(reads,1);assert.equal(writes[0],writes[1]);assert.equal(sendNativeWorldEvent(first,encoded),false)
- assert.throws(()=>encodeNativeWorldEvent({text:'界'.repeat(1024*1024)}),/MESSAGE_TOO_LARGE/)
+ assert.throws(()=>encodeNativeWorldEvent({text:'��'.repeat(1024*1024)}),/MESSAGE_TOO_LARGE/)
 })
 test('actual own-player metadata survives the injected presentation boundary only for the same identity',t=>{
  const fields={bodyYaw:.3,headYaw:1,sprinting:true,climbing:false,flying:true,isPassenger:true,vehicleType:'minecraft:pig',pose:3,extraAction:2}
@@ -1112,11 +1113,12 @@ test('actual publisher keeps current frame and HUD samples during held and retir
  const clients=new Set([client]),cadence={dirty:true,required(){return this.dirty},completed(){this.dirty=false}}
  const world={pose:{},epoch:1,time:{age:1},entitySnapshot:()=>({entities:[]}),snapshotAsync:()=>{scans++;return new Promise(r=>resolveScan=r)},unavailable:e=>{throw e}}
  const initial={type:'snapshot',epoch:1,groups:[],bounds:{},biomeSeed:'old'}
- const state=Function('world','clients','cadence','encodeNativeWorldEvent','createHash','nativeTerrainSignature','initial','health','setInterval','sendNativeWorldEvent',`
+ const state=Function('world','clients','cadence','encodeNativeWorldEvent','createHash','nativeTerrainSignature','initial','health','setInterval','sendNativeWorldEvent','injectObservedMaids',`
  let closed=false,pendingSnapshot=null,cachedSnapshot=initial,cachedTerrainSignature=null,snapshotBuildMs,snapshotBuildCount=0,terrainSignatureMs,wireEncodeMs;
  let terrainWireStatus=null;const terrainDeltas=false;
+ const bot={game:{}},nativeStream={generation:1},maidSource=null,now=Date.now;
  const surfaceCulling=true,sourceMode='same_player_connection',selfPlayer=()=>({uuid:'own'}),presentation=()=>({self:{health:health()}}),playerPose=()=>({}),motionTracker={current:()=>({tick:world.time.age})},injectTrackedMaidPresentation=s=>s,sendIdentity=()=>true,agentVisual={subscribe:()=>()=>{}},connectionEnded=false;
- ${publisher};return {cache:()=>cachedSnapshot}`)(world,clients,cadence,encodeNativeWorldEvent,createHash,nativeTerrainSignature,initial,()=>health,callback=>{tick=callback;return {}},(c,value)=>{sent.push({client:c,message:JSON.parse(value.text.slice(6))});return true})
+ ${publisher};return {cache:()=>cachedSnapshot}`)(world,clients,cadence,encodeNativeWorldEvent,createHash,nativeTerrainSignature,initial,()=>health,callback=>{tick=callback;return {}},(c,value)=>{sent.push({client:c,message:JSON.parse(value.text.slice(6))});return true},injectObservedMaids)
  tick();assert.equal(scans,1);health=17;world.time.age=2;tick();health=12;world.time.age=3;tick()
  assert.equal(scans,1);assert.deepEqual(sent.map(s=>s.message.presentation.self.health),[20,17,12]);assert.deepEqual(sent.map(s=>s.message.motion.tick),[1,2,3])
  resolveScan(null);await new Promise(r=>setImmediate(r));assert.equal(state.cache(),initial);assert.equal(cadence.dirty,true)

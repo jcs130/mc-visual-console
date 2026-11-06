@@ -158,6 +158,7 @@ export class PaperObservedPlayer extends EventEmitter {
         inventoryStart: 9, hotbarStart: 36, offhandSlot: 45, slots: rows, carried: null } : null,
       nativeMenu: personalStashMenu(p.personalStash,this.uuid,this.scope,rows), skills: projectNativeRpgSkills(p.viewerState, this.uuid),
       gameOperations: projectGameOperations(p.gameOperations),
+      nativeMaids: p.nativeMaids ?? null,
       renderRegistries: p.renderRegistries?.source === 'server_builtin_registries' ? p.renderRegistries : null,
       nativeState: { available: true, source: PAPER_OBSERVATION_MODE } };
   }
