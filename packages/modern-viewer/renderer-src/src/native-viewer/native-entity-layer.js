@@ -37,6 +37,7 @@ export class NativeEntityLayer {
     this.pending={entities,registries,generation:this.generation};void this.drain()
   }
   signature(entity,registries) {
+    if(entity.paperMaid)return JSON.stringify([identityKey(entity),entity.name,entity.paperMaid.asset,!!entity.paperMaid.state])
     if(nativeAquaticType(entity.name))return JSON.stringify([identityKey(entity),entity.name,Boolean(entity.motion),entity.metadata.filter(row=>row.key===17&&['minecraft:axolotl','minecraft:pufferfish','minecraft:tropical_fish'].includes(entity.name))])
     return JSON.stringify([identityKey(entity),entity.name,entity.experienceValue,entity.objectData,entity.metadata,entity.equipment,Boolean(entity.motion),entity.name==='minecraft:villager'?registries:null,
       entity.name==='touhou_little_maid:maid'?[entity.maidRenderState,entity.motion?.maid?.hurtTime>0,entity.motion?.maid?.hurtPending,entity.motion?.maid?.swingPending,entity.motion?.maid?.animationId,entity.motion?.maid?.swimAmount>0||entity.motion?.maid?.swimAmountOld>0]:null,
@@ -112,7 +113,7 @@ export class NativeEntityLayer {
   }
   diagnostics() {
     const motionIssues=[...this.actors.values()].flatMap(row=>[row.actor.root.userData.nativeContraption?.reason,...(row.actor.root.userData.nativeLiving?.issues??[]),...(row.actor.root.userData.nativeProjectile?.issues??[])]).filter(Boolean)
-    return {received:this.data.size,rendered:[...this.actors.values()].filter(row=>!row.actor.assetInfo?.intentionalNoMesh).length,intentionalNoMesh:[...this.actors.values()].filter(row=>row.actor.assetInfo?.intentionalNoMesh).length,registryCensus:NATIVE_ENTITY_CENSUS.length,registryCounts:{original:130,visiblePending:78,aquaticIntegrated:12,flyingIntegrated:2,intentionalNoMesh:3,otherNonSelfPaths:34,selfOnly:1},coverage:[...this.data.values()].map(row=>nativeEntityCoverage(row.name)),droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
+    return {received:this.data.size,rendered:[...this.actors.values()].filter(row=>!row.actor.assetInfo?.intentionalNoMesh).length,intentionalNoMesh:[...this.actors.values()].filter(row=>row.actor.assetInfo?.intentionalNoMesh).length,registryCensus:NATIVE_ENTITY_CENSUS.length,registryCounts:{original:130,visiblePending:78,aquaticIntegrated:12,flyingIntegrated:2,intentionalNoMesh:3,otherNonSelfPaths:34,selfOnly:1},coverage:[...this.data.values()].map(row=>nativeEntityCoverage(row.name,row.paperMaid?this.actors.get(row.entityId)?.actor.assetInfo:null)),droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
       issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
   }
   reset() {

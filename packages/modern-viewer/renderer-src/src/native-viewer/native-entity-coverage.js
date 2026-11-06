@@ -151,7 +151,9 @@ const pendingFamily=name=>{
   if('armor_stand breeze_wind_charge dragon_fireball end_crystal evoker_fangs falling_block firework_rocket leash_knot lightning_bolt llama_spit ominous_item_spawner shulker_bullet tnt wind_charge wither_skull'.split(' ').includes(leaf))return 'special'
   return 'animals'
 }
-export function nativeEntityCoverage(name) {
+export function nativeEntityCoverage(name, maid = null) {
+  if(name==='touhou_little_maid:maid'&&maid?.source==='tlm-original'&&maid.originalGeometry&&maid.originalTexture)
+    return {name,modelId:maid.modelId,geometry:'original_TLM_geometry_integrated',state:'same_player_tracked_maid_state',animation:'original_inner_animations_with_input_boundaries',material:'partial',scene:'unverified',reasons:[...(maid.issues??[]),'COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}
   if(name==='twilightforest:naga')return {name,geometry:'original_Twilight_baked_layers_integrated',state:'same_connection_metadata_and_12_part_packets',animation:'received_motion_and_original_client_counters',material:'partial',scene:'unverified',reasons:['OTHER_TWILIGHT_BOSSES_NOT_INTEGRATED','COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}
   const row=NATIVE_ENTITY_CENSUS.find(row=>row.name===name)
   if(!row)return {name,geometry:'unavailable',state:'unavailable',animation:'unavailable',material:'unavailable',scene:'unverified',reasons:['ORIGINAL_ENTITY_REGISTRATION_UNAVAILABLE']}

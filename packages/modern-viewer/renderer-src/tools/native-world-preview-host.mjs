@@ -23,6 +23,7 @@ import {NativeAssetReader} from '../src/native-viewer/model-loader.js'
 import {nativeViewerBuildSignature,withNativeViewerBuild} from '../src/native-viewer/native-viewer-build.js'
 import { loadBundledAppearances } from '../host/native-bundled-appearances.mjs'
 import { loadServerItemPack } from '../host/server-item-pack.mjs'
+import { injectObservedMaids } from '../host/maid-observation.mjs'
 
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/native-viewer')
 const MAX_EVENT_BYTES = 2 * 1024 * 1024, MAX_AGENT_BYTES = 65536, MAX_PRESENTATION_BYTES = 128 * 1024
@@ -107,6 +108,7 @@ function injectedPresentation (provider, uuid) {
       modOperations: copy.modOperations ?? [],
       gameOperations: copy.gameOperations ?? [],
       nativeSelf: ownSelf, renderRegistries: copy.renderRegistries ?? null,
+      nativeMaids: copy.nativeMaids ?? null,
       twilightTravellerRegistry:copy.twilightTravellerRegistry?.registry==='twilight:travellers_modifiers'&&copy.twilightTravellerRegistry.source==='same_connection_configuration_registry_data'?copy.twilightTravellerRegistry:null,
       entityRenderStates: copy.entityRenderStates ?? null, contraptionRenderStates: copy.contraptionRenderStates ?? null,
       nativeState: { available: true,
@@ -399,7 +401,7 @@ function injectedAgentStatus (getAgentStatus, now) {
 
 // Prepare before createBot(), then attach synchronously before login packets.
 // Preparation creates no Minecraft client, listening socket or signal handler.
-export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server', selectionScope, serverItemCatalogFile = '', serverItemCatalogSha256 = '', surfaceCulling = false, terrainDeltas = false, appearanceSource = null }) {
+export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28983, lanAddress = null, bundledAppearanceCatalogFile = '', defaultAppearance = 'server', selectionScope, serverItemCatalogFile = '', serverItemCatalogSha256 = '', surfaceCulling = false, terrainDeltas = false, appearanceSource = null, maidSource = null }) {
   if (typeof terrainDeltas !== 'boolean') throw Error('NATIVE_WORLD_TERRAIN_DELTAS_INVALID')
   if (!Number.isInteger(port) || (port !== 0 && (port < 1024 || port > 65535))) throw Error('NATIVE_WORLD_PORT_INVALID')
   const access = nativePreviewAccess(lanAddress)
@@ -623,7 +625,8 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           else if (requestPath === 'manifest.json') { bytes = manifestBytes; type = 'application/json' }
           else if (requestPath === 'api/server-items') { bytes=Buffer.from(JSON.stringify(serverItemPack.metadata));type='application/json' }
           else if (/^api\/server-appearance\/assets\/[a-f0-9]{64}\.json$/.test(requestPath)) {
-            bytes=appearanceSource?.read(requestPath.split('/').at(-1).slice(0,-5));type='application/json'
+            const digest=requestPath.split('/').at(-1).slice(0,-5)
+            bytes=appearanceSource?.read(digest)??maidSource?.read(digest);type='application/json'
             if(!bytes){response.writeHead(404);response.end();return}
           }
           else if (requestPath.startsWith('api/server-items/assets/')) {
@@ -793,8 +796,11 @@ export async function prepareNativeWorldPreviewHost ({ assetDirectory, port = 28
           const terrainValue=snapshot || cachedSnapshot
           const common={pose:playerPose(player),time:world.time,motion:{...motionTracker.current(),epoch:world.epoch},selfPlayer:player,presentation:ownPresentation}
           const wireStarted=performance.now()
-          const terrainMessage=terrainValue?{...terrainValue,mode:sourceMode,entityState:injectTrackedMaidPresentation(world.entitySnapshot(terrainValue.bounds),ownPresentation,world.dimension?.name,player?.uuid),...common}:null
-          const frameMessage={type:world.error?'unavailable':'frame',reason:world.error,epoch:world.epoch,...common,entityState:injectTrackedMaidPresentation(world.entitySnapshot(cachedSnapshot?.bounds),ownPresentation,world.dimension?.name,player?.uuid),packetSequence:world.lastSequence}
+          const maids=sourceMode==='paper_server_observation'?injectedPresentation(getPresentationState,player?.uuid).nativeMaids:null
+          const entities=bounds=>injectObservedMaids(injectTrackedMaidPresentation(world.entitySnapshot(bounds),ownPresentation,world.dimension?.name,player?.uuid),maids,
+            {playerUuid:player?.uuid,dimension:world.dimension?.name,worldUuid:bot.game?.worldUuid,generation:nativeStream.generation},maidSource,now())
+          const terrainMessage=terrainValue?{...terrainValue,mode:sourceMode,entityState:entities(terrainValue.bounds),...common}:null
+          const frameMessage={type:world.error?'unavailable':'frame',reason:world.error,epoch:world.epoch,...common,entityState:entities(cachedSnapshot?.bounds),packetSequence:world.lastSequence}
           // Paper emits an explicit presentation event whenever inventory/HUD
           // changes. Full terrain checkpoints still bootstrap late viewers.
           if(sourceMode==='paper_server_observation')delete frameMessage.presentation

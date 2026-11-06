@@ -52,7 +52,16 @@ export class NativeEntityPresentation {
     const speed = live.walk?mix(old.walk.speed, next.walk.speed, t):null
     // Existing actors render one native 50ms interval. Supply an explicitly
     // marked display projection at its endpoint, using received walk phases.
-    return { ...current, position, motion: { ...live, ...pose, position,
+    let paperMaid=current.paperMaid
+    const ma=a.entity.paperMaid,mb=b.entity.paperMaid
+    if(paperMaid?.state&&ma?.uuid===current.uuid&&mb?.uuid===current.uuid&&
+      ma.asset?.bundleSha256===paperMaid.asset?.bundleSha256&&mb.asset?.bundleSha256===paperMaid.asset?.bundleSha256&&
+      ['bodyYaw','headYaw','pitch','ageTicks'].every(k=>Number.isFinite(ma.state?.[k])&&Number.isFinite(mb.state?.[k]))) {
+      const state={...paperMaid.state}
+      for(const k of ['bodyYaw','headYaw','pitch','ageTicks'])state[k]=k.endsWith('Yaw')?angle(ma.state[k],mb.state[k],t):mix(ma.state[k],mb.state[k],t)
+      paperMaid={...paperMaid,state,sampledAt:now,displayBuffered:true}
+    }
+    return { ...current, ...(paperMaid?{paperMaid}:{}), position, motion: { ...live, ...pose, position,
       previous: { ...live.previous, ...pose, position }, sampledAt: now - 50,
       ...(live.walk?{walk: { ...live.walk, position: mix(old.walk.position, next.walk.position, t), speed, speedOld: speed }}:{}),
       ...(animation?{displayAnimation:animation}:{}),

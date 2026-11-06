@@ -12,6 +12,7 @@ import { createNativeSession } from '../../src/native-viewer/native-session.js'
 import { NATIVE_YSM_SOURCE, NATIVE_YSM_JAR_SHA256 } from '../../src/native-viewer/native-ysm-state.js'
 import { PaperObservedPlayer } from '../../host/paper-observation.mjs'
 import { selectNativeHeldItems } from '../../src/native-viewer/native-held-items.js'
+import { injectObservedMaids } from '../../host/maid-observation.mjs'
 
 let directory, prepared, registryHash
 const assetPath = 'assets/test/models/native.json'
@@ -1112,11 +1113,12 @@ test('actual publisher keeps current frame and HUD samples during held and retir
  const clients=new Set([client]),cadence={dirty:true,required(){return this.dirty},completed(){this.dirty=false}}
  const world={pose:{},epoch:1,time:{age:1},entitySnapshot:()=>({entities:[]}),snapshotAsync:()=>{scans++;return new Promise(r=>resolveScan=r)},unavailable:e=>{throw e}}
  const initial={type:'snapshot',epoch:1,groups:[],bounds:{},biomeSeed:'old'}
- const state=Function('world','clients','cadence','encodeNativeWorldEvent','createHash','nativeTerrainSignature','initial','health','setInterval','sendNativeWorldEvent',`
+ const state=Function('world','clients','cadence','encodeNativeWorldEvent','createHash','nativeTerrainSignature','initial','health','setInterval','sendNativeWorldEvent','injectObservedMaids',`
  let closed=false,pendingSnapshot=null,cachedSnapshot=initial,cachedTerrainSignature=null,snapshotBuildMs,snapshotBuildCount=0,terrainSignatureMs,wireEncodeMs;
  let terrainWireStatus=null;const terrainDeltas=false;
+ const bot={game:{}},nativeStream={generation:1},maidSource=null,now=Date.now;
  const surfaceCulling=true,sourceMode='same_player_connection',selfPlayer=()=>({uuid:'own'}),presentation=()=>({self:{health:health()}}),playerPose=()=>({}),motionTracker={current:()=>({tick:world.time.age})},injectTrackedMaidPresentation=s=>s,sendIdentity=()=>true,agentVisual={subscribe:()=>()=>{}},connectionEnded=false;
- ${publisher};return {cache:()=>cachedSnapshot}`)(world,clients,cadence,encodeNativeWorldEvent,createHash,nativeTerrainSignature,initial,()=>health,callback=>{tick=callback;return {}},(c,value)=>{sent.push({client:c,message:JSON.parse(value.text.slice(6))});return true})
+ ${publisher};return {cache:()=>cachedSnapshot}`)(world,clients,cadence,encodeNativeWorldEvent,createHash,nativeTerrainSignature,initial,()=>health,callback=>{tick=callback;return {}},(c,value)=>{sent.push({client:c,message:JSON.parse(value.text.slice(6))});return true},injectObservedMaids)
  tick();assert.equal(scans,1);health=17;world.time.age=2;tick();health=12;world.time.age=3;tick()
  assert.equal(scans,1);assert.deepEqual(sent.map(s=>s.message.presentation.self.health),[20,17,12]);assert.deepEqual(sent.map(s=>s.message.motion.tick),[1,2,3])
  resolveScan(null);await new Promise(r=>setImmediate(r));assert.equal(state.cache(),initial);assert.equal(cadence.dirty,true)
