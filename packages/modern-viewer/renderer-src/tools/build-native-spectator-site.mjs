@@ -27,6 +27,10 @@ export async function buildSpectatorSite(output) {
   for (const name of ['spectator-protocol.mjs', 'spectator-site.mjs', 'spectator-relay.mjs', 'spectator-fanout.mjs']) {
     await copyFile(path.join(root, 'host', name), path.join(output, name));
   }
+  await writeFile(path.join(output, 'spectator-webrtc.mjs'),
+    (await readFile(path.join(root, 'host/spectator-webrtc.mjs'), 'utf8'))
+      .replace("'../src/native-viewer/native-rtc-protocol.js'", "'./native-rtc-protocol.js'"));
+  await copyFile(path.join(root, 'src/native-viewer/native-rtc-protocol.js'), path.join(output, 'native-rtc-protocol.js'));
   await writeFile(path.join(output,'spectator-public.mjs'),(await readFile(path.join(root,'host/spectator-public.mjs'),'utf8'))
     .replace("'../src/native-viewer/native-item-stack.js'","'./native-item-stack.js'")
     .replace("'../src/native-viewer/native-rpg-state.js'","'./native-rpg-state.js'")

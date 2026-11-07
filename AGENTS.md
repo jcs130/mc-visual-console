@@ -1,3 +1,7 @@
+## 2026-11-07 optional WebRTC spectator transport
+
+Browser-to-portal reliable ordered DataChannel is opt-in through the existing relay and same-source fanout. Keep original publisher WSS, HTTPS assets, owner/public projection, auth revocation, identity/registry/build gates and SSE fallback. It is read-only: no second game body or input/action replay. The standalone site must include the matching new RTC host/codec modules and rebuilt browser; old hosts omit the opt-in meta marker. Real wire and headless-browser fixtures passed, but source publication is not production activation or proof of WAN latency/gameplay/render parity. See docs/spectator-webrtc.md. Private captures and test runtime credentials stay outside Git.
+
 ## 2026-11-05 GUI follow acknowledgement
 
 Native 0.1.36 / Fabric director 0.1.26 reads exact actual attachment through open GUIs without sending commands. `viewDeferred` is not a completed shot; the shared verifier only extends a host's receipt wait while fresh matching proof exists. Same-connection supervision may adopt a late proven attachment after host receipt timeout, preserving archive, new lease and no replay. Manual stop, cancelled and unknown native states remain terminal. Source/build/isolated GUI regression and actual live deployment are separate stages. Preserve deployed 0.1.35 bossbar and endpoint fixes when updating from main. See docs/native-gui-follow-recovery.md.

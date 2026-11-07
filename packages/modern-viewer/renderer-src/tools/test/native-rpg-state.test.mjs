@@ -8,6 +8,7 @@ import path from 'node:path'
 import {tmpdir} from 'node:os'
 import {pathToFileURL} from 'node:url'
 import {buildSpectatorSite} from '../build-native-spectator-site.mjs'
+import { WebSocketServer } from 'ws'
 const uuid='01234567-89ab-3def-8123-456789abcdef',other='11111111-1111-3111-8111-111111111111'
 const state=()=>({schemaVersion:1,playerUuid:uuid,keepInventory:true,mana:{current:15,max:24},
  rpg:{available:true,backend:'vortex',combat:'ranger',className:'游侠',level:4,xp:120,nextLevelXp:400,skillPoints:2,
@@ -49,5 +50,13 @@ test('portable spectator artifact includes its RPG module and preserves public n
   const module=await import(pathToFileURL(path.join(dir,'spectator-public.mjs')).href)
   assert.equal(module.publicSpectatorPresentation({playerUuid:uuid,skills:state()}).skills.rpg.level,4)
   assert.ok((await fs.readFile(path.join(dir,'native-rpg-state.js'),'utf8')).includes('projectNativeRpgSkills'))
+  const { createSpectatorRelay } = await import(pathToFileURL(path.join(dir, 'spectator-relay.mjs')).href)
+  const { loadSpectatorSite } = await import(pathToFileURL(path.join(dir, 'spectator-site.mjs')).href)
+  const site = await loadSpectatorSite(dir)
+  const relay = createSpectatorRelay({ WebSocketServer, site, authorizeViewer: () => { throw Error('no grant') },
+    authorizePublisher: () => { throw Error('no grant') }, sharedStreams: true,
+    webRtc: { createPeerConnection: () => { throw Error('no authenticated offer') } } })
+  await relay.close()
+  assert.ok((await fs.readFile(path.join(dir, 'native-console.js'), 'utf8')).includes('mcvisual.sse.v1'))
  }finally{assert(dir.startsWith(workspace+path.sep+'.tmp-rpg-site-'));await fs.rm(dir,{recursive:true,force:true})}
 })
