@@ -256,7 +256,9 @@ async function start () {
         uiMs:afterUi-afterMap,diagnosticsMs:performance.now()-afterUi})
     } catch (error) { fail(error) }
   })
-  events = createNativeEventStream({url:nativeViewerUrl('events'),statusUrl:nativeViewerUrl('status.json'),onMessage:message => {
+  events = createNativeEventStream({url:nativeViewerUrl('events'),statusUrl:nativeViewerUrl('status.json'),
+    rtcUrl:document.querySelector('meta[name="native-viewer-transport"]')?.content==='webrtc-v1'?nativeViewerUrl('webrtc'):null,
+    onTransport:value=>{renderer.domElement.dataset.eventTransport=JSON.stringify(value)},onMessage:message => {
     try {
       const received=JSON.parse(message.data)
       // A resource/registry deployment can invalidate the old session reader.
