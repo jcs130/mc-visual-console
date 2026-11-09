@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { createNativeBedrockModel } from './native-entity-model-bedrock.js'
 import { nativeViewerUrl } from './native-url.js'
+import { readPaperAppearance } from './native-paper-appearance.js'
+import { createPaperYsmActor } from '../modern-viewer/paper-ysm.js'
 
 const SHA = /^[a-f0-9]{64}$/, F = Math.fround, RAD = F(Math.PI / 180)
 const SOURCE = 'f6db04195820c8508704277ea76d63723804ff236a7b780369ba59ebe5cd9c27'
@@ -19,6 +21,13 @@ export function paperMaidBinding(entity) {
   if (entity?.name !== 'touhou_little_maid:maid' || row?.source !== 'paper_tracked_maids' ||
       row.uuid !== entity.uuid || row.entityId !== entity.entityId || !row.state) throw Error('TLM_OBSERVED_IDENTITY_INVALID')
   if (!row.asset?.available) throw Error(row.asset?.reason ?? 'TLM_ASSET_UNAVAILABLE')
+  if (row.asset.format === 'ysm-bedrock-original') {
+    if (row.state.ysm !== true || row.asset.nativeModelId !== row.state.ysmModelId || row.asset.nativeTexture !== row.state.ysmTexture ||
+        row.asset.jarSha256 !== SOURCE || row.asset.ysmJarSha256 !== 'b285c73d4ec010d9a9be3c53c1bee890cf269645be5f1bcf1c27a2e8e82807cb' ||
+        row.asset.ysmVersion !== '2.6.5' || !SHA.test(row.asset.bundleSha256 ?? '') || !SHA.test(row.asset.assetSha256 ?? '') ||
+        !Number.isSafeInteger(row.asset.bytes) || row.asset.bytes < 1 || row.asset.bytes > 8 * 1024 * 1024) throw Error('TLM_OBSERVED_ASSET_INVALID')
+    return row
+  }
   if (row.asset.modelId !== row.state.modelId || row.asset.jarSha256 !== SOURCE ||
       row.asset.format !== 'tlm-bedrock-original' || !SHA.test(row.asset.bundleSha256 ?? '') ||
       !Number.isSafeInteger(row.asset.bytes) || row.asset.bytes < 1 || row.asset.bytes > 4 * 1024 * 1024) throw Error('TLM_OBSERVED_ASSET_INVALID')
@@ -181,7 +190,9 @@ async function loadOriginalTexture(file) {
 }
 
 export async function createPaperMaidActor(reader, entity, { readBundle = readMaidBundle, loadMaidTexture = loadOriginalTexture } = {}) {
-  const binding = paperMaidBinding(entity), resource = await readBundle(binding.asset)
+  const binding = paperMaidBinding(entity)
+  if (binding.asset.format === 'ysm-bedrock-original') return createMaidYsmActor(entity, binding, { loadMaidTexture })
+  const resource = await readBundle(binding.asset)
   const { bundle, definition, geometry } = resource
   if (bundle.modelId !== binding.state.modelId || bundle.jarSha256 !== SOURCE) throw Error('TLM_MODEL_SELECTION_MISMATCH')
   if (definition.animation?.some(id => id.endsWith('.json'))) throw Error('TLM_GECKOLIB_ANIMATION_UNAVAILABLE')
@@ -222,4 +233,44 @@ export async function createPaperMaidActor(reader, entity, { readBundle = readMa
       assetInfo.issues = issues; root.userData.nativeLiving = { health: state.health, issues }
     }, dispose() { if (disposed) return; disposed = true; root.removeFromParent(); model.dispose(); batch.dispose(); material.dispose(); texture.dispose(); root.clear() } }
   } catch (error) { model?.dispose(); batch?.dispose(); material.dispose(); texture.dispose(); root.clear(); throw error }
+}
+
+/** Same tracked maid, authored YSM geometry/PNG/clips. Never a player facade. */
+export async function createMaidYsmActor(entity, binding = paperMaidBinding(entity), { readBundle = readPaperAppearance, loadMaidTexture = loadOriginalTexture } = {}) {
+  const bundle = await readBundle(binding.asset)
+  const inner = await createPaperYsmActor(bundle, binding.asset.texture, { loadTexture: url => loadMaidTexture({ base64: url.slice('data:image/png;base64,'.length) }) })
+  const root = new THREE.Group(); root.name = 'native-server-original-ysm-maid'; root.add(inner.root)
+  let disposed = false, previous = null, speed = 0
+  const assetInfo = { ...inner.assetInfo, type: entity.name, source: 'tlm-ysm-original', originalGeometry: true, originalTexture: true,
+    nativeModelId: binding.asset.nativeModelId, nativeTexture: binding.asset.nativeTexture, ysmVersion: binding.asset.ysmVersion,
+    presentation: binding.asset.presentation, bundleSha256: binding.asset.bundleSha256, completeEntityParityVerified: false, issues: [] }
+  return { root, model: inner.model, assetInfo, update(next, now = Date.now()) {
+    if (disposed) throw Error('TLM_ACTOR_DISPOSED')
+    const row = paperMaidBinding(next), state = row.state
+    if (next.uuid !== entity.uuid || next.entityId !== entity.entityId || row.asset.bundleSha256 !== binding.asset.bundleSha256 || row.asset.texture !== binding.asset.texture) throw Error('TLM_ACTOR_IDENTITY_CHANGED')
+    const position = next.motion?.position ?? next.position, at = row.sampledAt
+    if (Number.isFinite(at) && previous?.at !== at) {
+      const dt = previous ? (at - previous.at) / 1000 : 0
+      speed = dt > 0 && dt <= 1 ? Math.min(30, Math.hypot(position.x - previous.x, position.z - previous.z) / dt) : 0
+      previous = { at, x: position.x, z: position.z }
+    }
+    if (Number.isFinite(at) && now - at > 1000) speed = 0
+    const motion = { horizontalSpeed: speed, bodyYaw: state.bodyYaw * Math.PI / 180,
+      headYawDegrees: wrap(state.headYaw - state.bodyYaw), headPitchDegrees: state.pitch,
+      health: state.health, maxHealth: state.maxHealth, onGround: state.onGround, inWater: state.inWater,
+      sprinting: state.sprinting, isPassenger: state.passenger, usingItem: state.usingItem,
+      activeHand: state.offhandUse ? 'offhand' : 'mainhand', pose: state.health <= 0 ? 'dying' : 'standing' }
+    inner.animate({ motion }, now)
+    root.position.set(position.x, position.y, position.z); root.rotation.y = Math.PI - state.bodyYaw * Math.PI / 180
+    root.visible = !((next.metadata?.find(r => r.key === 0)?.value ?? 0) & 32) && state.health > 0
+    const issues = [...(inner.animationState?.errors ?? [])]
+    if (state.sitting || state.passenger) issues.push('TLM_YSM_SEATED_POSE_UNVERIFIED')
+    if (state.sleeping) issues.push('TLM_YSM_BED_ORIENTATION_UNAVAILABLE')
+    if (next.equipment?.some(e => e.item?.itemCount > 0)) issues.push('TLM_YSM_EQUIPMENT_LAYER_UNAVAILABLE')
+    if (state.backpack !== 'touhou_little_maid:empty') issues.push('TLM_BACKPACK_LAYER_UNAVAILABLE')
+    assetInfo.issues = issues; assetInfo.animation = inner.animationState?.base ?? null
+    root.userData.nativeLiving = { health: state.health, issues }
+  }, setPresentation: policy => inner.setPresentation?.(policy), dispose() {
+    if (disposed) return; disposed = true; inner.dispose(); root.removeFromParent(); root.clear()
+  } }
 }

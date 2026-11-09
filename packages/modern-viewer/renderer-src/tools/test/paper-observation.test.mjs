@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { PaperObservedPlayer, PAPER_OBSERVATION_MODE } from '../../host/paper-observation.mjs';
 import { createNativeSession } from '../../src/native-viewer/native-session.js';
 import { nativePresentationView } from '../../src/native-viewer/native-ui-adapter.js';
@@ -12,6 +13,18 @@ function receipt(){return{available:true,uuid,generation:world,configurationPack
  gameTime:100,dayTime:6000,selectedHotbarSlot:0,mainArm:'right',health:20,maxHealth:20,usingItem:false,attackAnim:0,
  inventory:Array.from({length:46},(_,slot)=>({slot,item:slot===36?{name:'minecraft:diamond_sword',count:1,snbt:'{id:"minecraft:diamond_sword",count:1}'}:slot===9?{name:'minecraft:paper',count:1,snbt:'{private:"bag_only_secret"}'}:null}))}};}
 function observer(scope='owner'){return new PaperObservedPlayer({playerUuid:uuid,name:'ObservedAgent',registry:{},registrySha256:hash,decodePacket:bytes=>JSON.parse(bytes),scope});}
+
+test('Paper dropped stacks preserve the same verified vanilla registry contract as native clients',()=>{
+ const registry=createRequire(import.meta.url)('minecraft-data')('1.21.1');
+ const o=new PaperObservedPlayer({playerUuid:uuid,name:'ObservedAgent',registry,registrySha256:hash,decodePacket:bytes=>JSON.parse(bytes)});
+ const wire={itemId:registry.itemsByName.diamond_sword.id,itemCount:1,components:[{type:'custom_model_data',data:731001}],removeComponents:[]};
+ const resolved=o.resolveItemStack(wire);
+ assert.equal(resolved.available,true);assert.equal(resolved.source,'same_player_vanilla_item_registry');
+ assert.equal(resolved.minecraftVersion,'1.21.1');assert.equal(resolved.registryId,wire.itemId);
+ assert.equal(resolved.item.name,'minecraft:diamond_sword');assert.match(resolved.item.snbt,/731001/);
+ assert.equal(o.resolveItemStack({itemCount:0}).available,false);
+ assert.equal(o.resolveItemStack({...wire,itemId:999999}).available,false);o.close();
+});
 test('personal stash opens, synchronizes a changed slot, and closes without changing the world',()=>{
  const o=observer(),guest=observer('scene'),r=receipt();let sent=0;o.events.on('presentation',()=>sent++);
  o.ingest(r);guest.ingest(r);const count=sent;

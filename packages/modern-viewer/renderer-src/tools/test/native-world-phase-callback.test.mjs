@@ -11,6 +11,7 @@ import { nativeCameraTarget, nativeCameraCollisionDistance } from '../../src/nat
 import { normalizeCameraSettings } from '../../src/modern-viewer/camera-preferences.js'
 import { playerCamera } from '../../src/native-viewer/player-camera.js'
 import { NativeKineticRenderClock, nativeKineticTimeStatus } from '../../src/native-viewer/native-millstone.js'
+import { applyNativeSelfPlayerMotion } from '../../src/native-viewer/native-self-player.js'
 
 test('production world RAF and camera callbacks measure real camera rays/room masks, keeping CPU draw and preceding gap separate', async () => {
   globalThis.DOMRect ??= class DOMRect { constructor(x=0,y=0,width=0,height=0) { Object.assign(this,{x,y,width,height}) } }
@@ -36,7 +37,7 @@ test('production world RAF and camera callbacks measure real camera rays/room ma
     context: () => ({ view: scope.viewMode, snapshotRevision: current.revision, terrainRequested: 1, terrainCommitted: 1 }) })
   const scope = { THREE, document, performance: { now: () => ++clock }, disposed: false, transitionTiming: timing,
     frameGaps: new NativeFrameGaps(), selfDisplay: new NativeSelfDisplayPose(), current, displayPose: null, loader: { animateTextures() {} },
-    lastPlayerFrameTime: null, selfActor: null, entityLayer: { frame() {}, data: new Map() }, camera, scene,
+    lastPlayerFrameTime: null, selfActor: null, selfMotionState: null, applyNativeSelfPlayerMotion, entityLayer: { frame() {}, data: new Map() }, camera, scene,
     audio: { frame() {}, observation() {} }, particles: { frame() {} }, roomVisibility, roomStatus: null,
     observerPose: null, observerTarget: null, viewMode: 'third', sceneOptions: { occlusion: true },
     selectedEntity: null, controls: { update() {} }, director: new CameraDirector(), cameraOptions: { ...normalizeCameraSettings(null), mode: 'follow' },
@@ -45,7 +46,7 @@ test('production world RAF and camera callbacks measure real camera rays/room ma
     terrainRaycast(ray) { rays++; scene.updateMatrixWorld(true); return ray.intersectObject(scene, true) },
     nativeKineticTimeStatus, kineticClock: new NativeKineticRenderClock(), kineticClockState: {}, actors: new Map(), tickAge: null,
     textureStart: 0, firstTerrainRender: false, miniMap: { render: () => false, root: { dataset: {} } },
-    agentVisual: { snapshot: () => null }, playerUuid: null, epoch: 1, lastCostAt: 0,
+    agentVisual: { snapshot: () => null }, terrainQueue: { stats: { committed: 1 } }, playerUuid: null, epoch: 1, lastCostAt: 0,
     publishFrame() {}, publishDiagnostics() {}, writeChanged, fail(error) { throw error },
     renderer: { domElement: { dataset: {} }, info: { render: { calls: 1, triangles: 12 } },
       setAnimationLoop(fn) { callback = fn }, render(actualScene, actualCamera) {
@@ -61,5 +62,12 @@ test('production world RAF and camera callbacks measure real camera rays/room ma
   assert.equal(value.transitions.find(row => row.sequence === room.sequence).world.roomMs, 1)
   assert.equal(slow.gapMs, 70); assert.equal(slow.mainCpuDrawMs, 10); assert.equal(slow.precedingWorld.mainCpuDrawMs, 10)
   assert.equal(scope.roomStatus.reason, 'received_room'); assert.ok(scope.roomStatus.openCells > 0)
-  assert.equal(renderCalls, 2); scope.director.dispose(); roomVisibility.dispose(); timing.dispose(); floor.geometry.dispose(); floor.material.dispose()
+  assert.equal(renderCalls, 2)
+  // A real third-person callback with the collision distance inside the old
+  // whole-body hiding threshold must retain the selected actor.
+  scope.selfActor={root:new THREE.Group(),assetInfo:{kind:'skin'},applyPose(p){this.root.position.set(p.x,p.y,p.z)}}
+  scope.nativeCameraCollisionDistance=()=>.5;scope.viewMode='third';callback(240)
+  assert.equal(scope.cameraDistance,.5);assert.equal(scope.selfActor.root.visible,true,'near wall must not erase the observed body')
+  current.pose.eyeHeight=1.62;scope.viewMode='first';callback(310);assert.equal(scope.selfActor.root.visible,false,'first-person still hides the body')
+  scope.director.dispose(); roomVisibility.dispose(); timing.dispose(); floor.geometry.dispose(); floor.material.dispose()
 })

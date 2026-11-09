@@ -47,7 +47,11 @@ export class PaperObservedPlayer extends EventEmitter {
     this.events = new EventEmitter(); this.generation = null; this.wireSequence = 0; this.sequence = 0; this.closed = false;
     this.inventorySignature=null;this.inventoryRows=null;this.lastPresentationAt=-Infinity;
     this.swingSequence=0;this.attackProgress=0;this.swing=null;
-    this.resolveItemStack = wire => { const item = vanillaWireItem(wire, registry); return item?.snbt ? { available: true, item } : { available: false, reason: 'PAPER_ITEM_COMPONENTS_UNAVAILABLE' }; };
+    this.resolveItemStack = wire => {
+      const item = vanillaWireItem(wire, registry);
+      return item?.snbt ? { available: true, source: 'same_player_vanilla_item_registry', minecraftVersion: '1.21.1', registryId: wire.itemId, item }
+        : { available: false, reason: 'PAPER_ITEM_COMPONENTS_UNAVAILABLE' };
+    };
     this.resolveEffect = id => { const name = registry.effects?.[id]?.name; return name ? 'minecraft:' + name.replace(/[A-Z]/g,(c,i)=>(i?'_':'')+c.toLowerCase()) : null; };
   }
   feed(name, params) { this.events.emit('packet', { name, params, sequence: ++this.sequence, registrySha256: this.registrySha256 }); }

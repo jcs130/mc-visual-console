@@ -103,10 +103,10 @@ export class NativeSelfPlayerController {
     const same=this.key===binding.key
     // Keep a single in-flight load. A failed first HTTP/image request must not
     // permanently latch an empty actor for this otherwise unchanged body.
-    // Retry only transient transport failures, at most three attempts. Original
+    // Retry only transient transport failures with a capped backoff. Original
     // asset/hash/identity failures remain unavailable and never get substitutes.
     if(same&&(this.actor||this.pendingKey===binding.key||!this.retry||this.now()<this.retry.after))return this.actor
-    const attempts=same?(this.retry?.attempts??0)+1:1
+    const attempts=same?Math.min(10,(this.retry?.attempts??0)+1):1
     const revision = ++this.revision; this.key = binding.key
     this.pendingKey=binding.key;this.retry=null
     this.actor?.dispose(); this.actor = null; this.notify(null, '本人模型正在载入')
@@ -135,8 +135,8 @@ export class NativeSelfPlayerController {
       candidate?.dispose()
       if(!this.disposed&&revision===this.revision){
         this.pendingKey=null
-        if(binding.kind==='paper-original'&&transientAppearanceFailure(error)&&attempts<3)
-          this.retry={attempts,after:this.now()+(attempts===1?2000:5000)}
+        if(binding.kind==='paper-original'&&transientAppearanceFailure(error))
+          this.retry={attempts,after:this.now()+[2000,5000,15000,30000,60000][Math.min(4,attempts-1)]}
       }
       if (!this.disposed && revision === this.revision && binding.bundledAppearance) {
         this.appearanceId = 'server'; this.key = null
