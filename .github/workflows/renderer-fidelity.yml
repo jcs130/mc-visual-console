@@ -21,7 +21,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/renderer-deps"
           echo '{"private":true}' > "$RUNNER_TEMP/renderer-deps/package.json"
-          npm install --prefix "$RUNNER_TEMP/renderer-deps" --ignore-scripts --no-audit --no-fund three@0.184.0 fflate@0.8.2
+          npm install --prefix "$RUNNER_TEMP/renderer-deps" --ignore-scripts --no-audit --no-fund three@0.184.0 fflate@0.8.2 skinview-utils@0.7.1 skinview3d@3.4.2
           ln -s "$RUNNER_TEMP/renderer-deps/node_modules" node_modules
       - name: Original items, mob geometry, motion and bounded lifetimes
         env:
