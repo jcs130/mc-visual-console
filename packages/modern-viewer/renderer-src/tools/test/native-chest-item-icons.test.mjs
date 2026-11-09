@@ -44,7 +44,8 @@ test('missing sources, dynamic models and unobserved visual components cannot ac
     r=>r.manifest.assets['assets/minecraft/textures/entity/chest/normal.png.mcmeta']={bytes:1}]) {
     const r=reader();modify(r);await assert.rejects(prepareNativeChestItemIcon(r,'minecraft:chest',{date:new Date(2026,9,15)}))
   }
-  assert.equal(nativeItemIconEligible({...item('minecraft:chest'),snbt:'{id:"minecraft:chest",count:1,components:{"minecraft:custom_model_data":1}}'}),false)
+  assert.equal(nativeItemIconEligible({...item('minecraft:chest'),snbt:'{id:"minecraft:chest",count:1,components:{"minecraft:custom_model_data":1}}'}),true)
+  assert.equal(nativeItemIconEligible({...item('minecraft:chest'),snbt:'{id:"minecraft:chest",count:1,components:{"minecraft:custom_model_data":{}}}'}),false)
 })
 
 test('builtin chest provider uses original model rendering and releases its small context',async()=>{

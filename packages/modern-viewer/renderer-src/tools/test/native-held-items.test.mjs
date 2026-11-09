@@ -172,7 +172,7 @@ test('held blocks validate hidden faces, all texture bytes, opacity and complete
   await assert.rejects(prepareNativeHeldItem(altered.reader,raw('minecraft:oak_log'),'right',{readPixels:async()=>pixels()}),/HASH_MISMATCH/)
   const translucent = pixels(); translucent.pixels[3]=254
   await assert.rejects(prepareNativeHeldItem(blockReader().reader,raw('minecraft:oak_log'),'right',{readPixels:async()=>translucent}),/TRANSLUCENT/)
-  await assert.rejects(prepareNativeHeldItem(blockReader().reader,raw('minecraft:oak_log','"minecraft:custom_model_data":1'),'right'),/VISUAL_COMPONENT_UNSUPPORTED/)
+  await assert.rejects(prepareNativeHeldItem(blockReader().reader,raw('minecraft:oak_log','"minecraft:custom_model_data":{}'),'right'),/CUSTOM_MODEL_DATA_INVALID/)
 })
 
 test('held multi-texture blocks retire every texture on rebound, including an in-flight decode', async () => {
@@ -233,7 +233,7 @@ test('known static generated registrations use native namespaces and reject unve
   const plan = await prepareNativeHeldItem(fixture.reader, raw('minecraft:wheat_seeds'), 'left', { readPixels: async () => pixels() })
   assert.equal(plan.stack.id, 'minecraft:wheat_seeds'); assert.equal(plan.kind, 'native-generated-held')
   assert.equal(plan.texturePath, 'assets/minecraft/textures/item/wheat_seeds.png'); assert.ok(plan.faces.length > 0)
-  await assert.rejects(prepareNativeHeldItem(fixture.reader, raw('minecraft:wheat_seeds', '"minecraft:custom_model_data":1'), 'right'), /VISUAL_COMPONENT_UNSUPPORTED/)
+  await assert.rejects(prepareNativeHeldItem(fixture.reader, raw('minecraft:wheat_seeds', '"minecraft:custom_model_data":1.5f'), 'right'), /CUSTOM_MODEL_DATA_INVALID/)
   fixture.reader.manifest.sources[0].sha256 = 'wrong'
   await assert.rejects(prepareNativeHeldItem(fixture.reader, raw('minecraft:wheat_seeds'), 'right'), /SOURCE_UNVERIFIED/)
   await assert.rejects(prepareNativeHeldItem(fixture.reader, raw('unknown:seed'), 'right'), /PROVIDER_UNVERIFIED/)
@@ -344,7 +344,10 @@ test('damaged ordinary tool uses its real generated PNG geometry and third-perso
 })
 
 test('source hashes, animated PNG, wrong components and custom/dynamic models reject instead of approximating', async () => {
-  for (const component of ['"minecraft:custom_model_data":7','"foreign:state":{}']) {
+  const custom = await prepareNativeHeldItem(staticReader().reader,raw(undefined,'"minecraft:custom_model_data":7'),'right',{readPixels:async()=>pixels()})
+  assert.equal(custom.stack.components['minecraft:custom_model_data'],7)
+  assert.equal(custom.texturePath,'assets/minecraft/textures/item/wooden_pickaxe.png')
+  for (const component of ['"foreign:state":{}']) {
     await assert.rejects(prepareNativeHeldItem(staticReader().reader,raw(undefined,component),'right',{readPixels:async()=>pixels()}),/COMPONENT_UNSUPPORTED/)
   }
   const {reader,bytes}=staticReader();bytes['assets/minecraft/textures/item/wooden_pickaxe.png']=png(8,8)

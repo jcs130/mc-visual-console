@@ -29,13 +29,13 @@ export function nativeDynamicGuiState(stack,view,wobble){
     // Unknown/charged/active component patches stay unavailable, never guessed.
     if(typeof view.self.usingItem!=='boolean')throw Error('NATIVE_ITEM_PLAYER_CONTEXT_UNAVAILABLE');
     if(view.self.usingItem)throw Error('NATIVE_CROSSBOW_ACTIVE_USE_UNAVAILABLE');
-    return {...components,properties:{pulling:0,pull:0,charged:0,firework:0},variant:'uncharged'};
+    return {...components,properties:{pulling:0,pull:0,charged:0,firework:0,custom_model_data:Math.fround(components.customModelData)},variant:'uncharged'};
   }
   const context=view.itemProperties,position=view.self.position,target=context?.spawn,tick=view.time?.age;
   if(context?.source!=='same_player_spawn_position'||context.playerUuid!==view.playerUuid||!Number.isInteger(context.entityId)||context.entityId!==view.self.entityId||
     !['overworld','minecraft:overworld','the_nether','minecraft:the_nether','the_end','minecraft:the_end'].includes(context.dimension)||
     !Number.isSafeInteger(tick))throw Error('NATIVE_COMPASS_TARGET_UNAVAILABLE');
-  const random=()=>{const angle=wobble.spin(tick);return {...components,mode:'random',properties:{angle},variant:'frame-'+(Math.floor(angle*32+.5)%32)};};
+  const random=()=>{const angle=wobble.spin(tick);return {...components,mode:'random',properties:{angle,custom_model_data:Math.fround(components.customModelData)},variant:'frame-'+(Math.floor(angle*32+.5)%32)};};
   if(!['overworld','minecraft:overworld'].includes(context.dimension))return random();
   if(!target||!position||![target.x,target.y,target.z,position.x,position.y,position.z,view.self.yaw].every(Number.isFinite))throw Error('NATIVE_COMPASS_TARGET_UNAVAILABLE');
   // BlockPos.getCenter, Mineflayer -> Minecraft yaw, native float TWO_PI.
@@ -43,7 +43,7 @@ export function nativeDynamicGuiState(stack,view,wobble){
   if(dx*dx+dy*dy+dz*dz<9.999999747378752e-6)return random();
   const rotation=mod((Math.PI-view.self.yaw)/(Math.PI*2));
   const angle=modFloat(Math.atan2(dz,dx)/6.2831854820251465+wobble.update(tick,.5-(rotation-.25)));
-  return {...components,mode:'target',properties:{angle},variant:'frame-'+(Math.floor(angle*32+.5)%32)};
+  return {...components,mode:'target',properties:{angle,custom_model_data:Math.fround(components.customModelData)},variant:'frame-'+(Math.floor(angle*32+.5)%32)};
 }
 export async function prepareNativeDynamicGuiIcon(reader,state){
   if(reader.manifest?.minecraftVersion!=='1.21.1'||reader.manifest.assetIntegrityVerified!==true||reader.manifest.clientJarSha256!==STATIC_ITEM_SOURCES.minecraft.sha256)throw Error('NATIVE_DYNAMIC_GUI_SOURCE_UNVERIFIED');

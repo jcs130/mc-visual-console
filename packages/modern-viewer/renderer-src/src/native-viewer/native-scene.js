@@ -71,7 +71,7 @@ const receiveDisplay=()=>{
   if(previous!==selfDisplay.resetVersion){director?.reset();cameraDistance=null;lastCollision=null}
 }
 const visualListeners = new Map()
-let lastInventoryOperation = null, frameEntitiesData = null, frameEntitiesCount = -1, frameEntities = []
+let lastInventoryOperation = null, frameEntitiesData = null, frameEntitiesCount = -1, frameEntitiesFailures = -1, frameEntities = []
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
   off(event, callback) { visualListeners.get(event)?.delete(callback) },
   emit(event, value) { for (const callback of visualListeners.get(event) || []) callback(value) } }
@@ -434,9 +434,9 @@ function publishFrame(now) {
     label = { visible: labelPoint.z >= -1 && labelPoint.z <= 1 && Math.abs(labelPoint.x) <= 1 && Math.abs(labelPoint.y) <= 1,
       x: (labelPoint.x + 1) * viewport.clientWidth / 2, y: (1 - labelPoint.y) * viewport.clientHeight / 2, name: label.name }
   }
-  if(frameEntitiesData!==entityLayer?.data||frameEntitiesCount!==entityLayer?.actors.size){
-    frameEntitiesData=entityLayer?.data;frameEntitiesCount=entityLayer?.actors.size
-    frameEntities=[...(entityLayer?.data.values()??[])].slice(0,64).map(e=>({id:e.entityId,uuid:e.uuid,name:e.name,rendered:entityLayer.actors.has(e.entityId)}))
+  if(frameEntitiesData!==entityLayer?.data||frameEntitiesCount!==entityLayer?.actors.size||frameEntitiesFailures!==entityLayer?.failures.size){
+    frameEntitiesData=entityLayer?.data;frameEntitiesCount=entityLayer?.actors.size;frameEntitiesFailures=entityLayer?.failures.size
+    frameEntities=[...(entityLayer?.data.values()??[])].slice(0,64).map(e=>({id:e.entityId,uuid:e.uuid,name:e.name,rendered:entityLayer.actors.has(e.entityId),loading:!entityLayer.actors.has(e.entityId)&&!entityLayer.failures.has(e.entityId)}))
   }
   onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label,camera:cameraFrame,room:roomStatus,selectedEntity,entities:frameEntities })
 }

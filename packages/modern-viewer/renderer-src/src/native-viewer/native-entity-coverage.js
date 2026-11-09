@@ -157,7 +157,7 @@ export function nativeEntityCoverage(name, maid = null) {
   if(name==='twilightforest:naga')return {name,geometry:'original_Twilight_baked_layers_integrated',state:'same_connection_metadata_and_12_part_packets',animation:'received_motion_and_original_client_counters',material:'partial',scene:'unverified',reasons:['OTHER_TWILIGHT_BOSSES_NOT_INTEGRATED','COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}
   const row=NATIVE_ENTITY_CENSUS.find(row=>row.name===name)
   if(!row)return {name,geometry:'unavailable',state:'unavailable',animation:'unavailable',material:'unavailable',scene:'unverified',reasons:['ORIGINAL_ENTITY_REGISTRATION_UNAVAILABLE']}
-  const flying=['minecraft:allay','minecraft:vex'].includes(name)
+  const flying=['minecraft:allay','minecraft:vex','minecraft:phantom'].includes(name)
   const noop=row.path==='I',pending=row.path==='U'&&!flying,self=row.path==='S',aquatic=row.path==='A',family=pending?pendingFamily(name):null
   return {name:row.name,id:row.id,path:row.path,nextTask:family,geometry:noop?'intentional_no_mesh':pending?'original_resources_pending_actor':aquatic||flying?'original_baked_layers_integrated':'partial',
     state:noop?'no_mesh_required':pending?'original_typed_inputs_pending_integration':self?'self_only':aquatic?'typed_metadata_environment_and_cues':'partial',

@@ -52,20 +52,27 @@ export class NativeEntityLayer {
         const present=new Set(entities.map(entity=>entity.entityId))
         for(const [id,row] of this.actors)if(!present.has(id)){row.actor.dispose();this.actors.delete(id)}
         for(const id of this.failures.keys())if(!present.has(id))this.failures.delete(id)
-        for(const entity of entities){
-          if(generation!==this.generation||this.disposed)break
+        let index=0
+        const acquire=async entity=>{
+          if(generation!==this.generation||this.disposed)return
           const key=this.signature(entity,registries),old=this.actors.get(entity.entityId)
-          if(old?.key===key)continue
+          if(old?.key===key)return
           if(old){old.actor.dispose();this.actors.delete(entity.entityId)}
-          if(this.failures.get(entity.entityId)?.key===key)continue
+          if(this.failures.get(entity.entityId)?.key===key)return
+          const current=()=>{const row=this.data.get(entity.entityId);return row&&this.signature(row,registries)===key}
           try {
             const actor=await this.createActor(this.reader,entity,{registries})
-            if(generation!==this.generation||this.disposed){actor.dispose();break}
+            if(generation!==this.generation||this.disposed||!current()){actor.dispose();return}
             this.actors.set(entity.entityId,{key,actor});this.root.add(actor.root);this.failures.delete(entity.entityId)
           } catch(error) {
-            if(generation===this.generation&&!this.disposed)this.failures.set(entity.entityId,{key,name:entity.name,reason:error.message})
+            if(generation===this.generation&&!this.disposed&&current())this.failures.set(entity.entityId,{key,name:entity.name,reason:error.message})
           }
         }
+        // A slow resource must not serialize every nearby mob behind it.
+        // Four acquisitions share the existing bounded/integrity-checked reader.
+        await Promise.all(Array.from({length:Math.min(4,entities.length)},async()=>{
+          while(index<entities.length){const entity=entities[index++];await acquire(entity)}
+        }))
         if(generation===this.generation&&!this.disposed)this.onChange()
       }
     } finally {this.running=false}
@@ -113,7 +120,7 @@ export class NativeEntityLayer {
   }
   diagnostics() {
     const motionIssues=[...this.actors.values()].flatMap(row=>[row.actor.root.userData.nativeContraption?.reason,...(row.actor.root.userData.nativeLiving?.issues??[]),...(row.actor.root.userData.nativeProjectile?.issues??[])]).filter(Boolean)
-    return {received:this.data.size,rendered:[...this.actors.values()].filter(row=>!row.actor.assetInfo?.intentionalNoMesh).length,intentionalNoMesh:[...this.actors.values()].filter(row=>row.actor.assetInfo?.intentionalNoMesh).length,registryCensus:NATIVE_ENTITY_CENSUS.length,registryCounts:{original:130,visiblePending:78,aquaticIntegrated:12,flyingIntegrated:2,intentionalNoMesh:3,otherNonSelfPaths:34,selfOnly:1},coverage:[...this.data.values()].map(row=>nativeEntityCoverage(row.name,row.paperMaid?this.actors.get(row.entityId)?.actor.assetInfo:null)),droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
+    return {received:this.data.size,rendered:[...this.actors.values()].filter(row=>!row.actor.assetInfo?.intentionalNoMesh).length,intentionalNoMesh:[...this.actors.values()].filter(row=>row.actor.assetInfo?.intentionalNoMesh).length,registryCensus:NATIVE_ENTITY_CENSUS.length,registryCounts:{original:130,visiblePending:77,aquaticIntegrated:12,flyingIntegrated:3,intentionalNoMesh:3,otherNonSelfPaths:34,selfOnly:1},coverage:[...this.data.values()].map(row=>nativeEntityCoverage(row.name,row.paperMaid?this.actors.get(row.entityId)?.actor.assetInfo:null)),droppedItems:[...this.actors.values()].map(row=>row.actor.root.userData.nativeDroppedItem).filter(Boolean),pickupAnimations:this.pickups.size,
       issues:[...(this.streamReason?[this.streamReason]:[]),...motionIssues,...this.failures.values()].map(row=>typeof row==='string'?row:`${row.name}：${row.reason}`),completeEntityParityVerified:false}
   }
   reset() {

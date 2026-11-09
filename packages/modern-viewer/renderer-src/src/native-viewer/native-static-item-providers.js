@@ -325,7 +325,7 @@ const NON_VISUAL=new Set(['minecraft:custom_name','minecraft:item_name','minecra
   'minecraft:hide_tooltip','minecraft:hide_additional_tooltip','minecraft:food','minecraft:fire_resistant',
   'minecraft:attribute_modifiers','minecraft:can_break','minecraft:can_place_on',
   'minecraft:writable_book_content','minecraft:written_book_content'])
-const KNOWN=new Set([...NON_VISUAL,'minecraft:enchantments','minecraft:stored_enchantments','minecraft:enchantment_glint_override'])
+const KNOWN=new Set([...NON_VISUAL,'minecraft:enchantments','minecraft:stored_enchantments','minecraft:enchantment_glint_override','minecraft:custom_model_data'])
 const DEFAULT_GLINT=new Set(['minecraft:enchanted_golden_apple','minecraft:nether_star','minecraft:written_book','minecraft:enchanted_book'])
 const record=value=>value&&typeof value==='object'&&!Array.isArray(value)
 export function nativeStaticItemState(input,{allowPartialGlint=false}={}) {
@@ -354,6 +354,13 @@ export function nativeItemComponentState(stack,{allowPartialGlint=false}={}) {
     if(!KNOWN.has(name)&&!banner) throw Error(`NATIVE_ITEM_VISUAL_COMPONENT_UNSUPPORTED:${key}`)
     if(key.startsWith('!')&&(!record(value)||Object.keys(value).length||Object.hasOwn(components,name))) throw Error('NATIVE_ITEM_COMPONENT_PATCH_INVALID')
   }
+  // 1.21.1 CustomModelData is an int component, evaluated by the original
+  // custom_model_data ItemPropertyFunction. It is not itself replacement geometry.
+  let customModelData=0
+  if(Object.hasOwn(components,'minecraft:custom_model_data')){
+    customModelData=nativeNumericValue(components['minecraft:custom_model_data'])
+    if(!Number.isInteger(customModelData)||customModelData < -2147483648||customModelData > 2147483647)throw Error('NATIVE_ITEM_CUSTOM_MODEL_DATA_INVALID')
+  }
   let foil=Object.hasOwn(components,'!minecraft:enchantment_glint_override')?null:DEFAULT_GLINT.has(stack.id)?true:null
   if(Object.hasOwn(components,'minecraft:enchantment_glint_override')) {
     const value=components['minecraft:enchantment_glint_override'],n=nativeNumericValue(value)
@@ -373,5 +380,5 @@ export function nativeItemComponentState(stack,{allowPartialGlint=false}={}) {
       if(!allowPartialGlint)throw Error('NATIVE_ITEM_GLINT_UNSUPPORTED');foil=true
     }
   }
-  return {stack,foil:foil===true}
+  return {stack,foil:foil===true,customModelData}
 }

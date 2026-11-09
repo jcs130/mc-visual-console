@@ -293,7 +293,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         if(signature!==targetSignature){
           targetSignature=signature;const value=targetSelect.value;targetSelect.replaceChildren()
           const own=append(document,targetSelect,'option','','Agent 本人');own.value=''
-          for(const row of options){const option=append(document,targetSelect,'option','',`${row.name} · #${row.id}${row.rendered?'':'（模型未适配）'}`);option.value=String(row.id);option.disabled=!row.rendered}
+          for(const row of options){const option=append(document,targetSelect,'option','',`${row.name} · #${row.id}${row.rendered?'':row.loading?'（模型载入中）':'（模型未适配）'}`);option.value=String(row.id);option.disabled=!row.rendered}
           targetSelect.value=value
         }
         if(frame.camera){const text=`${({manual:'手动环绕',region:'自由视角 · 已载入区域',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称','3dview':'3D观战'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`;if(text!==lastCameraText){lastCameraText=text;cameraUi.status(text)}}
