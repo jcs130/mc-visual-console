@@ -1,3 +1,7 @@
+## 2026-11-09 public item/mob fidelity candidate
+
+Original 1.21.1 CustomModelData selection, original phantom bake/animation and four bounded model loads are implemented. 1,619 renderer checks and both type checks pass; 38 optional fixtures and full Java pixel parity remain unaccepted. A matched host/browser freeze is required before consumer activation. See packages/modern-viewer/renderer-src/docs/public-spectator-fidelity-20261109.md.
+
 ## 2026-11-07 optional WebRTC spectator transport
 
 Browser-to-portal reliable ordered DataChannel is opt-in through the existing relay and same-source fanout. Keep original publisher WSS, HTTPS assets, owner/public projection, auth revocation, identity/registry/build gates and SSE fallback. It is read-only: no second game body or input/action replay. The standalone site must include the matching new RTC host/codec modules and rebuilt browser; old hosts omit the opt-in meta marker. Real wire and headless-browser fixtures passed, but source publication is not production activation or proof of WAN latency/gameplay/render parity. See docs/spectator-webrtc.md. Private captures and test runtime credentials stay outside Git.

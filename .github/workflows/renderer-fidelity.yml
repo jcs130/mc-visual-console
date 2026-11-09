@@ -1,0 +1,34 @@
+name: Original renderer fidelity
+on:
+  pull_request:
+    paths:
+      - 'packages/modern-viewer/renderer-src/src/**'
+      - 'packages/modern-viewer/renderer-src/tools/test/native-*.test.mjs'
+      - '.github/workflows/renderer-fidelity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install only the locked renderer dependencies
+        run: |
+          mkdir -p "$RUNNER_TEMP/renderer-deps"
+          echo '{"private":true}' > "$RUNNER_TEMP/renderer-deps/package.json"
+          npm install --prefix "$RUNNER_TEMP/renderer-deps" --ignore-scripts --no-audit --no-fund three@0.184.0 fflate@0.8.2
+          ln -s "$RUNNER_TEMP/renderer-deps/node_modules" node_modules
+      - name: Original items, mob geometry, motion and bounded lifetimes
+        env:
+          NATIVE_ENTITY_ASSET_DIR: ${{ github.workspace }}/packages/modern-viewer/asset-packs/vanilla-1.21.1
+        run: >-
+          node --test
+          packages/modern-viewer/renderer-src/tools/test/native-custom-model-data.test.mjs
+          packages/modern-viewer/renderer-src/tools/test/native-phantom.test.mjs
+          packages/modern-viewer/renderer-src/tools/test/native-entity-layer.test.mjs
+          packages/modern-viewer/renderer-src/tools/test/native-hostile.test.mjs

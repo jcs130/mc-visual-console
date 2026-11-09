@@ -67,7 +67,7 @@ function validateFlatModel(model) {
 function validateHeldTool(stack) {
   const effect = nativeItemComponentState(stack, { allowPartialGlint: true })
   for (const [key, value] of Object.entries(stack.components)) {
-    if (['minecraft:enchantments', 'minecraft:stored_enchantments', 'minecraft:enchantment_glint_override'].includes(key.replace(/^!/, ''))) continue
+    if (['minecraft:enchantments', 'minecraft:stored_enchantments', 'minecraft:enchantment_glint_override', 'minecraft:custom_model_data'].includes(key.replace(/^!/, ''))) continue
     if (!HELD_NON_VISUAL.has(key)) throw Error(`NATIVE_HELD_ITEM_COMPONENT_UNSUPPORTED:${key}`)
     if (key === 'minecraft:damage') {
       const damage = nativeNumericValue(value)
@@ -123,12 +123,14 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     if (family === 'banner') { prepared = await prepareNativeBannerItem(reader, stack.id,stack); model = prepared.model }
   }
   if (!model) {
+    const properties={custom_model_data:Math.fround(effect?.customModelData??0),
+      ...(evidence?.itemClass==='net.minecraft.world.item.ArmorItem'?{trim_type:-1}:{})}
     if (gui) model = await resolveNativeBlockItemModel(reader, modelId, [], {
-      properties:evidence?.itemClass==='net.minecraft.world.item.ArmorItem'?{trim_type:-1}:null
+      properties
     })
     else {
-      if (nativeBlockItemEligible(stack.id)) model = await resolveNativeBlockItemModel(reader, modelId)
-      if (!model || model.nativeGenerated) model = await resolveNativeBlockItemModel(reader, modelId, [], { generatedOnly: true })
+      if (nativeBlockItemEligible(stack.id)) model = await resolveNativeBlockItemModel(reader, modelId, [], {properties})
+      if (!model || model.nativeGenerated) model = await resolveNativeBlockItemModel(reader, modelId, [], { generatedOnly: true, properties })
     }
   }
   const geometry = family === 'static' ? nativeBlockItemEligible(stack.id) && !model.nativeGenerated ? 'block' : 'generated'
@@ -148,5 +150,5 @@ export async function resolveNativeItemAppearance(reader, completeStack, context
     requirements: { material: prepared?.originalMaterial ?? (gui && ['block', 'specialized'].includes(geometry) && family !== 'chest' ? 'original_opaque_gui' : 'entityCutout'),
       tintColors: family === 'potion' ? { 0: prepared.color } : null,
       glint, effectUnavailableReason,
-      propertyEvaluation: family==='ranged'?'observed_inactive_ranged':'not_implemented', pixelParityVerified: false } }
+      propertyEvaluation: family==='ranged'?'observed_inactive_ranged':effect?.customModelData!==undefined&&Object.hasOwn(stack.components,'minecraft:custom_model_data')?'custom_model_data_1_21_1':'not_implemented', pixelParityVerified: false } }
 }

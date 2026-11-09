@@ -29,7 +29,10 @@ test('inactive uncharged crossbow uses original standby texture; active, charged
   assert.equal((await prepareNativeDynamicGuiIcon(r,state)).model.textures.layer0,'item/crossbow_standby');
   v.self.usingItem=true;assert.throws(()=>nativeDynamicGuiState(stack,v),/ACTIVE_USE_UNAVAILABLE/);v.self.usingItem=false;
   assert.throws(()=>nativeDynamicGuiState({...stack,components:{'minecraft:charged_projectiles':[]}},v),/VISUAL_COMPONENT_UNSUPPORTED/);
-  assert.throws(()=>nativeDynamicGuiState({...stack,components:{'minecraft:custom_model_data':7}},v),/VISUAL_COMPONENT_UNSUPPORTED/);
+  const custom=nativeDynamicGuiState({...stack,components:{'minecraft:custom_model_data':731001}},v);
+  assert.equal(custom.properties.custom_model_data,731001);
+  assert.equal((await prepareNativeDynamicGuiIcon(r,custom)).model.textures.layer0,'item/crossbow_standby');
+  assert.throws(()=>nativeDynamicGuiState({...stack,components:{'minecraft:custom_model_data':{}}},v),/CUSTOM_MODEL_DATA_INVALID/);
 });
 test('actual GUI icon queue consumes same-body context and bounds compass cache by original frame rather than yaw floats',async()=>{
   const icons=new NativeItemIcons(await reader(),{createUrl:()=> 'blob:original',revokeUrl:()=>{}}),v=view();

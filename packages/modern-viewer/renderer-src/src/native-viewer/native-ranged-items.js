@@ -17,7 +17,7 @@ export async function prepareNativeRangedItem(reader,stack,observed){
     !p||typeof p!=='object'||!/^minecraft:[a-z0-9_]+$/.test(p.id??'')||!Number.isInteger(nativeNumericValue(p.count??1))||nativeNumericValue(p.count??1)<1))throw Error('NATIVE_RANGED_PROJECTILES_INVALID')
   delete components['minecraft:charged_projectiles']
   const effect=nativeItemComponentState({...stack,components},{allowPartialGlint:true})
-  const properties={pulling:0,pull:0,charged:Number(projectiles.length>0),firework:Number(projectiles.some(p=>p.id==='minecraft:firework_rocket'))}
+  const properties={pulling:0,pull:0,charged:Number(projectiles.length>0),firework:Number(projectiles.some(p=>p.id==='minecraft:firework_rocket')),custom_model_data:Math.fround(effect.customModelData)}
   const model=await resolveNativeBlockItemModel(reader,stack.id.replace(':',':item/'),[],{generatedOnly:true,properties})
   return {model,effect,properties,sourcePaths:model.sourcePaths,geometrySource:'Minecraft_1.21.1_original_observed_ranged_item',activeUseAvailable:false}
 }
