@@ -197,7 +197,10 @@ async function start () {
         const roomStarted=timingFrame?performance.now():0
         roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,height:observerTarget?.height??1.8,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
         roomMs=timingFrame?performance.now()-roomStarted:0
-        if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
+        // Wall/foliage collision shortens a third-person camera, not the
+        // observed player's existence. Only the explicit first-person view
+        // hides the whole body; the camera near plane handles close geometry.
+        if(selfActor)selfActor.root.visible=viewMode!=='first'
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
         // is a freshness guard, never substituted for its absolute phase.
         const timeStatus = nativeKineticTimeStatus(current.time, Date.now(), { paused: document.hidden })
@@ -237,7 +240,7 @@ async function start () {
       }
       const beforeMap=performance.now()
       const mapDrawn=miniMap.render({position:displayPose,playerUuid,entityId:current?.selfPlayer?.entityId,epoch,
-        bounds:current?.bounds,visual:agentVisual.snapshot(),now})
+        bounds:current?.bounds,visual:agentVisual.snapshot(),terrainRevision:terrainQueue.stats.committed,now})
       const afterMap=performance.now()
       publishFrame(now)
       const afterUi=timingFrame?performance.now():afterMap
@@ -447,6 +450,7 @@ function publishDiagnostics() {
       ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[]),...(particles?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
     appearance: selfController?.appearance(),particles:particles?.diagnostics(),
     audio:audio?.state(),
+    selfVisibility:{loaded:!!selfActor,visible:selfActor?.root.visible===true,viewMode,cameraDistance},
     selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture, selectionSource: selfActor.assetInfo.selectionSource,
       support: selfActor.assetInfo.support ?? null, notice: selfActor.assetInfo.notice, motion: selfMotionState ?? selfActor.root.userData.motion ?? null } : null,
     heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,

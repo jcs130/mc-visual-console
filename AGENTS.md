@@ -1,3 +1,7 @@
+## 2026-11-09 public viewer fidelity follow-up candidate
+
+Third-person near-wall body visibility, bounded transient model recovery, cached original minimap pixels, dropped-stack provenance, nine audited vanilla weighted blocks and exact tracked-maid YSM2.6.5 catalog are implemented. 1622 shared checks pass / 41 optional fixtures skip; original Feiyu source WebGL preview passed, not production/Java pixel parity. Consumer must freeze matching host/browser/catalog and game-side actual model fields. Source is not deployment; seated/bed/equipment/backpack and other unsupported entities remain explicit. See renderer-src/docs/native-public-fidelity-followup.md.
+
 ## 2026-11-09 public item/mob fidelity candidate
 
 Original 1.21.1 CustomModelData selection, original phantom bake/animation and four bounded model loads are implemented. 1,619 renderer checks and both type checks pass; 38 optional fixtures and full Java pixel parity remain unaccepted. A matched host/browser freeze is required before consumer activation. See packages/modern-viewer/renderer-src/docs/public-spectator-fidelity-20261109.md.

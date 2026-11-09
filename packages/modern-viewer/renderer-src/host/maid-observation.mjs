@@ -24,11 +24,19 @@ export function injectObservedMaids(entityState, observed, context, source, now 
       Number.isFinite(row.sampledAt) && now - row.sampledAt <= 3000 && row.sampledAt <= now + 1000 &&
       row.ageTicks >= 0 && row.attackAnim >= 0 && row.attackAnim <= 1 && RESOURCE.test(row.task ?? '') && RESOURCE.test(row.backpack ?? '')
     const state = valid ? Object.fromEntries([...BOOL, ...NUM, 'modelId', 'task', 'backpack'].map(k => [k, row[k]])) : null
+    if (state && row.ysm === true && [row.ysmModelId, row.ysmTexture].every(v => typeof v === 'string' && v.length > 0 && v.length <= 96 &&
+        /^[-\p{L}\p{N}_./]+$/u.test(v) && !v.startsWith('/') && !v.includes('..'))) {
+      state.ysmModelId = row.ysmModelId; state.ysmTexture = row.ysmTexture
+    }
+    if (state) {
+      for (const k of ['onGround','sprinting']) if (typeof row[k] === 'boolean') state[k] = row[k]
+      if (Number.isFinite(row.maxHealth) && row.maxHealth > 0) state.maxHealth = row.maxHealth
+    }
     return { ...entity, name: 'touhou_little_maid:maid', paperMaid: {
       source: 'paper_tracked_maids', playerUuid: context.playerUuid, uuid: entity.uuid, entityId: entity.entityId,
       dimension: context.dimension, epoch: entityState.epoch, state,
       sampledAt: row.sampledAt,
-      asset: valid ? source?.binding(row) ?? { available: false, reason: 'TLM_ASSET_SOURCE_UNAVAILABLE' } : { available: false, reason: 'TLM_NATIVE_STATE_UNAVAILABLE' }
+      asset: valid ? source?.binding({ ...row, ...state }) ?? { available: false, reason: 'TLM_ASSET_SOURCE_UNAVAILABLE' } : { available: false, reason: 'TLM_NATIVE_STATE_UNAVAILABLE' }
     } }
   }) }
 }

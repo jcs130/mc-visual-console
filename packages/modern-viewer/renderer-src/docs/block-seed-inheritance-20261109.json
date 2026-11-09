@@ -1,0 +1,171 @@
+{
+  "minecraftVersion": "1.21.1",
+  "clientSha1": "30c73b1c5da787909b2f73340419fdf13b9def88",
+  "getSeedName": "a",
+  "getSeedDescriptor": "(Ldtc;Ljd;)J",
+  "blocks": {
+    "minecraft:rooted_dirt": [
+      {
+        "class": "net.minecraft.world.level.block.RootedDirtBlock",
+        "sha256": "211ea84a80b85467b2fdf30c0840240b1ab14ae69015bd261107df49c430c6dd",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ],
+    "minecraft:coarse_dirt": [
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ],
+    "minecraft:gravel": [
+      {
+        "class": "net.minecraft.world.level.block.ColoredFallingBlock",
+        "sha256": "8e5a37710831155293a336963193c148e94032dfd2bf0c2aabbd8626c971a6c3",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.FallingBlock",
+        "sha256": "018a3d5643f2d5bfe1b10c58415de9de1a5de15946d432e7707b2687cdce4394",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ],
+    "minecraft:red_sand": [
+      {
+        "class": "net.minecraft.world.level.block.ColoredFallingBlock",
+        "sha256": "8e5a37710831155293a336963193c148e94032dfd2bf0c2aabbd8626c971a6c3",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.FallingBlock",
+        "sha256": "018a3d5643f2d5bfe1b10c58415de9de1a5de15946d432e7707b2687cdce4394",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ],
+    "minecraft:netherrack": [
+      {
+        "class": "net.minecraft.world.level.block.NetherrackBlock",
+        "sha256": "f98e67bb6c5bbac07055df6794104b53249ad205b4f9bd9880e64f0478336f34",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ],
+    "minecraft:end_stone": [
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ],
+    "minecraft:soul_sand": [
+      {
+        "class": "net.minecraft.world.level.block.SoulSandBlock",
+        "sha256": "17548beb52e79a9ef9ec338767325e75e13216e7d48246137b30b2827aa79424",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ],
+    "minecraft:podzol": [
+      {
+        "class": "net.minecraft.world.level.block.SnowyDirtBlock",
+        "sha256": "588ad7aa2f82911188a92c7d9d254e4040f2cb59af7cc3c8007a8b7bbbac78d5",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ],
+    "minecraft:mycelium": [
+      {
+        "class": "net.minecraft.world.level.block.MyceliumBlock",
+        "sha256": "d02b668446d44081b6b3c56b8cb93c4a3345aee009c92241c12d9327fcf235f3",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.SpreadingSnowyDirtBlock",
+        "sha256": "8b9afac06b0b3a8672f3507305b4914ba5c56145757471972ebeda26295a28df",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.SnowyDirtBlock",
+        "sha256": "588ad7aa2f82911188a92c7d9d254e4040f2cb59af7cc3c8007a8b7bbbac78d5",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.Block",
+        "sha256": "b58f93af515b4b28f67e4bef77d9cfa69306243ee1787e6dfbc99bf066e639a6",
+        "declaresGetSeed": false
+      },
+      {
+        "class": "net.minecraft.world.level.block.state.BlockBehaviour",
+        "sha256": "4f491c3bda8e7c68c6ff435ed1b8fa8bb44e4afbfd5aedc0dd6f9d59058a32bb",
+        "declaresGetSeed": true
+      }
+    ]
+  }
+}

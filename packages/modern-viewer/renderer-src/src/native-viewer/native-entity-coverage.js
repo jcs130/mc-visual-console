@@ -152,6 +152,8 @@ const pendingFamily=name=>{
   return 'animals'
 }
 export function nativeEntityCoverage(name, maid = null) {
+  if(name==='touhou_little_maid:maid'&&maid?.source==='tlm-ysm-original'&&maid.originalGeometry&&maid.originalTexture)
+    return {name,modelId:maid.modelId,geometry:'original_YSM_geometry_integrated',state:'same_player_tracked_maid_state',animation:'original_YSM_clips_with_input_boundaries',material:'partial',scene:'unverified',reasons:[...(maid.issues??[]),'COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}
   if(name==='touhou_little_maid:maid'&&maid?.source==='tlm-original'&&maid.originalGeometry&&maid.originalTexture)
     return {name,modelId:maid.modelId,geometry:'original_TLM_geometry_integrated',state:'same_player_tracked_maid_state',animation:'original_inner_animations_with_input_boundaries',material:'partial',scene:'unverified',reasons:[...(maid.issues??[]),'COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}
   if(name==='twilightforest:naga')return {name,geometry:'original_Twilight_baked_layers_integrated',state:'same_connection_metadata_and_12_part_packets',animation:'received_motion_and_original_client_counters',material:'partial',scene:'unverified',reasons:['OTHER_TWILIGHT_BOSSES_NOT_INTEGRATED','COMPLETE_MATERIAL_LIGHT_AND_SCENE_PARITY_UNVERIFIED']}
