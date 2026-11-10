@@ -8,6 +8,8 @@ Build using the listening client's installed SVC, NeoForge loader and LWJGL depe
 node tools/native-voice-activity/build.mjs --profile /path/to/client --jdk /path/to/jdk-21 --out /external/artifacts
 ```
 
+Add `--device-replay` to test the actual handler against an OpenAL Soft loopback software device and the profile's installed LWJGL native libraries. Eight cases exercise the exact native linear enums, mixed output, mute, distance, silence, disabled receiving and fully processed queues. This opens no hardware speaker, microphone or game connection; the replay class is excluded from the mod JAR.
+
 Install the resulting JAR in that client's `mods` directory and create `config/mcvisual-voice-activity.properties`:
 
 ```properties

@@ -33,6 +33,14 @@ const artifact=path.join(output,'mcvisual-voice-activity-0.1.0-neoforge.jar');
 run('jar',['--create','--file',artifact,'-C',classes,'.']);
 run('javac',['--release','21','-encoding','UTF-8','-cp',classes+path.delimiter+cp,'-d',tests,path.join(source,'ActivityWindowTest.java')]);
 const check=run('java',['-ea','-cp',[tests,classes,cp].join(path.delimiter),'org.mcvisual.voiceactivity.ActivityWindowTest']).trim();
+let deviceReplay = null;
+if(args.includes('--device-replay')) {
+ const nativeJars=dependencies.filter(file=>/lwjgl(?:-openal)?-\d/.test(path.basename(file))).map(file=>file.replace(/\.jar$/, '-natives-'+({win32:'windows',darwin:'macos',linux:'linux'}[process.platform])+(process.arch==='arm64'?'-arm64':'')+'.jar'));
+ for(const file of nativeJars)assert(await fs.stat(file),'Installed native dependency missing');
+ const deviceCp=[tests,classes,cp,...nativeJars].join(path.delimiter);
+ run('javac',['--release','21','-encoding','UTF-8','-cp',deviceCp,'-d',tests,path.join(source,'NativeOpenALReplay.java')]);
+ deviceReplay=run('java',['-ea','-cp',deviceCp,'org.mcvisual.voiceactivity.NativeOpenALReplay']).trim();
+}
 const hash=async file=>createHash('sha256').update(await fs.readFile(file)).digest('hex');
-const report={artifact,sha256:await hash(artifact),check,sources:await Promise.all([...names,'neoforge.mods.toml'].map(async name=>({name,sha256:await hash(path.join(source,name))})))};
+const report={artifact,sha256:await hash(artifact),check,deviceReplay,sources:await Promise.all([...names,'neoforge.mods.toml'].map(async name=>({name,sha256:await hash(path.join(source,name))})))};
 await fs.writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));
