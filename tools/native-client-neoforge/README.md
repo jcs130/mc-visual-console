@@ -66,6 +66,19 @@ conditions. Do not substitute the observer account's own inventory or RPG sideba
 A disconnected loader check proves class/mixin compatibility only; it cannot prove
 live target information or rendered inventory contents.
 
+Camera capability and target authority are separate. Use the same observer,
+director, content and window components for a full-server camera and a personal
+camera. The former can explicitly use `observerAccess.mode="server"` with online
+discovery; the latter uses `mode="bound-player"`, the actual `boundTargetUuid`,
+and no online discovery. Do not select these rights from a hard-coded account
+name, or copy a full-server target list into a personal profile.
+
+Retain each component's activation inputs as well as its JAR and JSON. In
+particular, the independent content stream needs its documented
+`-Dmcvisual.contentConfig=<absolute-path>` argument. Orthographic readiness also
+depends on the native renderer's validated culling configuration. A file copied
+without its startup input is not an activated feature.
+
 The adapter consumes the UUID-bearing SpectatorPlus 1.2.1 display protocol using
 the actual connection registry and original compressed item NBT. It exposes native
 hotbar, health, food and experience displays, an explicit E-key inventory request,
