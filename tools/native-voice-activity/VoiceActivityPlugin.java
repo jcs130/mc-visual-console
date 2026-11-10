@@ -39,6 +39,8 @@ public final class VoiceActivityPlugin implements VoicechatPlugin {
     private volatile long lastReport;
     private volatile boolean wasActive;
     private volatile String deliveryState = "starting";
+    private volatile int lastDistanceModel = Integer.MIN_VALUE;
+    private int diagnosticRemaining = 8;
 
     @Override public String getPluginId() { return "mcvisual_voice_activity"; }
 
@@ -99,27 +101,40 @@ public final class VoiceActivityPlugin implements VoicechatPlugin {
             double distance = Math.sqrt(Math.pow(sourcePosition[0] - listenerPosition[0], 2) +
                     Math.pow(sourcePosition[1] - listenerPosition[1], 2) + Math.pow(sourcePosition[2] - listenerPosition[2], 2));
             int model = AL10.alGetInteger(AL10.AL_DISTANCE_MODEL);
-            // NORMAL stereo applies distance inside SVC and uses AL_NONE. Mono
-            // positioning uses native linear attenuation. Do not apply both.
-            double gain;
-            if (model == AL10.AL_NONE) gain = ActivityWindow.flatGain(AL10.alGetSourcef(sourceId, AL10.AL_GAIN),
-                    AL10.alGetListenerf(AL10.AL_GAIN), AL10.alGetSourcef(sourceId, AL10.AL_MIN_GAIN), AL10.alGetSourcef(sourceId, AL10.AL_MAX_GAIN));
-            else if (model == AL11.AL_LINEAR_DISTANCE_CLAMPED) gain = ActivityWindow.linearGain(AL10.alGetSourcef(sourceId, AL10.AL_GAIN),
+            if (model != lastDistanceModel) {
+                lastDistanceModel = model;
+                System.out.println("[mcvisual-voice-activity] OpenAL distance model=" + model);
+            }
+            double gain = deviceGain(model, AL10.alGetSourcef(sourceId, AL10.AL_GAIN),
                     AL10.alGetListenerf(AL10.AL_GAIN), AL10.alGetSourcef(sourceId, AL10.AL_MIN_GAIN),
                     AL10.alGetSourcef(sourceId, AL10.AL_MAX_GAIN), distance,
                     AL10.alGetSourcef(sourceId, AL10.AL_REFERENCE_DISTANCE),
                     AL10.alGetSourcef(sourceId, AL10.AL_MAX_DISTANCE), AL10.alGetSourcef(sourceId, AL10.AL_ROLLOFF_FACTOR));
-            else return;
-            if (activity.rendered(event.getChannelId(), gain, AL10.alGetSourcei(sourceId, AL10.AL_BUFFERS_QUEUED),
-                    AL10.alGetSourcei(sourceId, AL10.AL_BUFFERS_PROCESSED), event.getVoicechat().isDisabled() || event.getVoicechat().isDisconnected(), System.currentTimeMillis())) {
+            int queued = AL10.alGetSourcei(sourceId, AL10.AL_BUFFERS_QUEUED), processed = AL10.alGetSourcei(sourceId, AL10.AL_BUFFERS_PROCESSED);
+            boolean disabled = event.getVoicechat().isDisabled() || event.getVoicechat().isDisconnected();
+            if (activity.rendered(event.getChannelId(), gain, queued, processed, disabled, System.currentTimeMillis())) {
                 audibleFrames.incrementAndGet();
                 // Wake the metadata sender immediately for the first frame,
                 // without doing network work on the device callback thread.
                 if (!wasActive) timer.execute(this::report);
+            } else if (diagnosticRemaining > 0) {
+                diagnosticRemaining--;
+                System.out.println("[mcvisual-voice-activity] bounded device diagnostic model=" + model + " gain=" + gain +
+                        " queued=" + queued + " processed=" + processed + " disabled=" + disabled + " reason=" + activity.lastReason());
             }
         } catch (RuntimeException ignored) {
             // An audio-device replacement must not crash or alter the game.
         }
+    }
+
+    static double deviceGain(int model, double gain, double listener, double minimum, double maximum,
+                             double distance, double reference, double maxDistance, double rolloff) {
+        // Actual SVC 2.6.27 ALSpeakerBase sets AL_LINEAR_DISTANCE (0xD003),
+        // not AL_LINEAR_DISTANCE_CLAMPED (0xD004). Account for both exact enums.
+        if (model == AL10.AL_NONE) return ActivityWindow.flatGain(gain, listener, minimum, maximum);
+        if (model == AL11.AL_LINEAR_DISTANCE || model == AL11.AL_LINEAR_DISTANCE_CLAMPED)
+            return ActivityWindow.linearGain(gain, listener, minimum, maximum, distance, reference, maxDistance, rolloff);
+        return 0;
     }
 
     private void report() {

@@ -9,6 +9,7 @@ public final class ActivityWindow {
     private record Frame(long at, double rms, double durationMs) {}
     private final Map<UUID, Frame> frames = new HashMap<>();
     private long audibleUntil;
+    private String lastReason = "none";
 
     public synchronized void receive(UUID id, short[] pcm, long now) {
         if (id == null || pcm == null || pcm.length == 0) return;
@@ -21,14 +22,21 @@ public final class ActivityWindow {
 
     public synchronized boolean rendered(UUID id, double audibleGain, int queued, int processed, boolean disabled, long now) {
         Frame frame = frames.remove(id);
-        if (disabled || frame == null || now - frame.at > 500 || queued <= processed
-                || !Double.isFinite(audibleGain) || audibleGain <= 0 || frame.rms * audibleGain < .0001) return false;
+        if (disabled) { lastReason = "disabled"; return false; }
+        if (frame == null) { lastReason = "no-received-frame"; return false; }
+        if (now - frame.at > 500) { lastReason = "stale-frame"; return false; }
+        if (queued <= processed) { lastReason = "no-unprocessed-audio"; return false; }
+        if (!Double.isFinite(audibleGain) || audibleGain <= 0) { lastReason = "inaudible-gain"; return false; }
+        if (frame.rms * audibleGain < .0001) { lastReason = "silent-frame"; return false; }
         // SVC queues frames before starting a stopped OpenAL source. Include its
         // actual unprocessed frames so the very first sound wins the race too.
         long buffered = (long)Math.ceil(Math.min(1200, (queued - processed) * frame.durationMs));
         audibleUntil = Math.max(audibleUntil, now + buffered);
+        lastReason = "audible";
         return true;
     }
+
+    public synchronized String lastReason() { return lastReason; }
 
     public synchronized int remainingMs(long now) {
         return (int)Math.max(0, Math.min(1500, audibleUntil - now));

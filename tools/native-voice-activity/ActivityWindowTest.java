@@ -28,6 +28,10 @@ public final class ActivityWindowTest {
         assert ActivityWindow.linearGain(1, 1, 0, 1, 10, 0, 20, 1) == .5 : "native linear attenuation";
         assert ActivityWindow.flatGain(.5, 1, 0, 1) == .5 : "stereo already attenuated in SVC";
         assert ActivityWindow.flatGain(0, 1, 0, 1) == 0 : "stereo distant or muted";
+        assert VoiceActivityPlugin.deviceGain(org.lwjgl.openal.AL11.AL_LINEAR_DISTANCE, 1, 1, 0, 1, 10, 0, 20, 1) == .5 : "actual SVC unclamped linear enum";
+        assert VoiceActivityPlugin.deviceGain(org.lwjgl.openal.AL11.AL_LINEAR_DISTANCE_CLAMPED, 1, 1, 0, 1, 10, 0, 20, 1) == .5 : "clamped linear enum";
+        assert VoiceActivityPlugin.deviceGain(org.lwjgl.openal.AL10.AL_NONE, .5, 1, 0, 1, 1000, 0, 20, 1) == .5 : "already positioned mixing";
+        assert VoiceActivityPlugin.deviceGain(-99, 1, 1, 0, 1, 10, 0, 20, 1) == 0 : "unknown distance model";
         assert VoiceActivityPlugin.isLocalEndpoint(URI.create("http://127.0.0.1:18580/v1/game-audio"));
         assert !VoiceActivityPlugin.isLocalEndpoint(URI.create("http://example.com:18580/v1/game-audio"));
         assert !VoiceActivityPlugin.isLocalEndpoint(URI.create("http://127.0.0.1:18580/v1/game-audio?audio=1"));
