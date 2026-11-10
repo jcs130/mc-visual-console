@@ -79,6 +79,11 @@ Inventory screens are read-only: slot, recipe, creative and pick-item mutations 
 blocked while an owned screen is open. Changing target or losing the scoped snapshot
 closes it. There is no automatic inventory polling or second observation account.
 
+The item baseline and selected-slot baseline arrive independently. Verified hotbar
+items stay visible if selection is unknown; no selected-slot frame is drawn until
+its actual value arrives. The observer account's own selection is never substituted.
+Missing item baselines still remain unavailable until the original protocol delivers them.
+
 This is an independently maintained NeoForge adapter, not the Fabric SpectatorPlus
 binary. The combined native visual artifact is GPL-3.0-only with shared MIT notices;
 see [NOTICE.md](NOTICE.md) and [LICENSE-SPECTATORPLUS](LICENSE-SPECTATORPLUS).

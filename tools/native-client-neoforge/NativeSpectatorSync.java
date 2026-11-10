@@ -79,7 +79,7 @@ public final class NativeSpectatorSync {
  public static Integer selected(){var s=scope();return DETAILS.selected(s,target()!=null);}
  public static TargetInventory.View<ItemStack> inventory(){var s=scope();return NativeObserverClient.currentInventory(s!=null&&DETAILS.window(s)>0&&target()!=null);}
  public static ItemStack hotbar(int slot){var view=inventory();if(view==null||slot<0||slot>8)return ItemStack.EMPTY;var item=view.slots().get(slot);return item.known()?item.item():ItemStack.EMPTY;}
- public static boolean hotbarReady(){var view=inventory();return target()!=null&&selected()!=null&&view!=null&&view.slots().size()>=9&&view.slots().subList(0,9).stream().allMatch(TargetInventory.Slot::known);}
+ public static boolean hotbarReady(){var view=inventory();return target()!=null&&view!=null&&view.slots().size()>=9&&view.slots().subList(0,9).stream().allMatch(TargetInventory.Slot::known);}
  public static boolean requestInventory(){
   var s=scope();var mc=Minecraft.getInstance();if(s==null||target()==null||!DETAILS.request(s,now()))return false;
   boolean can=mc.getConnection()!=null&&NetworkRegistry.hasChannel(mc.getConnection(),REQUEST.id());
