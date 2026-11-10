@@ -44,6 +44,28 @@ JAR. Separate mixin-only namespaces avoid treating entrypoints or policies as mi
 
 ## Display and inventory boundary
 
+### Migrating an existing observer profile
+
+Changing the loader and keeping YSM, TLM, a voice receiver and the background-window
+module does not install this HUD adapter. A Fabric SpectatorPlus JAR cannot supply
+its inventory synchronization on NeoForge. Install the matching `mcvisual-native`
+artifact and its `agentmc_client_platform` dependency explicitly; the standalone
+window module remains a separate installation. Existing graphics/model/voice mods
+must be retained independently.
+
+Create `config/mcvisual-native-observer.json` with the exact destination server and
+the account of this observer profile, as described in the shared
+[observer configuration](../native-client-observer/README.md). Do not copy another
+profile's account binding. Enabling the HUD does not require enabling the director
+or changing an operator's camera-selection policy.
+
+After a scoped reconnect, verify the actual target UUID/entity, fresh observer
+diagnostics, hotbar items and original item icons. An absent module, a mismatched
+profile, missing target packets and an explicitly empty inventory are different
+conditions. Do not substitute the observer account's own inventory or RPG sidebar.
+A disconnected loader check proves class/mixin compatibility only; it cannot prove
+live target information or rendered inventory contents.
+
 The adapter consumes the UUID-bearing SpectatorPlus 1.2.1 display protocol using
 the actual connection registry and original compressed item NBT. It exposes native
 hotbar, health, food and experience displays, an explicit E-key inventory request,
