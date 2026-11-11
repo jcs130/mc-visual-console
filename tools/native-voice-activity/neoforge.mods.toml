@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="mcvisual_voice_activity"
+version="0.1.1"
+displayName="MC Visual Voice Activity"
+description="Optional receive-only voice playback activity for local broadcast arbitration."
+[[dependencies.mcvisual_voice_activity]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="CLIENT"
+[[dependencies.mcvisual_voice_activity]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.21.2)"
+ordering="NONE"
+side="CLIENT"
+[[dependencies.mcvisual_voice_activity]]
+modId="voicechat"
+type="required"
+versionRange="[1.21.1-2.6.27,)"
+ordering="AFTER"
+side="CLIENT"

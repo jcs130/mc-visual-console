@@ -44,6 +44,41 @@ JAR. Separate mixin-only namespaces avoid treating entrypoints or policies as mi
 
 ## Display and inventory boundary
 
+### Migrating an existing observer profile
+
+Changing the loader and keeping YSM, TLM, a voice receiver and the background-window
+module does not install this HUD adapter. A Fabric SpectatorPlus JAR cannot supply
+its inventory synchronization on NeoForge. Install the matching `mcvisual-native`
+artifact and its `agentmc_client_platform` dependency explicitly; the standalone
+window module remains a separate installation. Existing graphics/model/voice mods
+must be retained independently.
+
+Create `config/mcvisual-native-observer.json` with the exact destination server and
+the account of this observer profile, as described in the shared
+[observer configuration](../native-client-observer/README.md). Do not copy another
+profile's account binding. Enabling the HUD does not require enabling the director
+or changing an operator's camera-selection policy.
+
+After a scoped reconnect, verify the actual target UUID/entity, fresh observer
+diagnostics, hotbar items and original item icons. An absent module, a mismatched
+profile, missing target packets and an explicitly empty inventory are different
+conditions. Do not substitute the observer account's own inventory or RPG sidebar.
+A disconnected loader check proves class/mixin compatibility only; it cannot prove
+live target information or rendered inventory contents.
+
+Camera capability and target authority are separate. Use the same observer,
+director, content and window components for a full-server camera and a personal
+camera. The former can explicitly use `observerAccess.mode="server"` with online
+discovery; the latter uses `mode="bound-player"`, the actual `boundTargetUuid`,
+and no online discovery. Do not select these rights from a hard-coded account
+name, or copy a full-server target list into a personal profile.
+
+Retain each component's activation inputs as well as its JAR and JSON. In
+particular, the independent content stream needs its documented
+`-Dmcvisual.contentConfig=<absolute-path>` argument. Orthographic readiness also
+depends on the native renderer's validated culling configuration. A file copied
+without its startup input is not an activated feature.
+
 The adapter consumes the UUID-bearing SpectatorPlus 1.2.1 display protocol using
 the actual connection registry and original compressed item NBT. It exposes native
 hotbar, health, food and experience displays, an explicit E-key inventory request,
@@ -56,6 +91,11 @@ does not create a permanent full-inventory subscription.
 Inventory screens are read-only: slot, recipe, creative and pick-item mutations are
 blocked while an owned screen is open. Changing target or losing the scoped snapshot
 closes it. There is no automatic inventory polling or second observation account.
+
+The item baseline and selected-slot baseline arrive independently. Verified hotbar
+items stay visible if selection is unknown; no selected-slot frame is drawn until
+its actual value arrives. The observer account's own selection is never substituted.
+Missing item baselines still remain unavailable until the original protocol delivers them.
 
 This is an independently maintained NeoForge adapter, not the Fabric SpectatorPlus
 binary. The combined native visual artifact is GPL-3.0-only with shared MIT notices;
