@@ -19,7 +19,14 @@ public abstract class SpectatorGuiMixin {
  @Redirect(method="renderFood",at=@At(value="INVOKE",target="Lnet/minecraft/world/entity/player/Player;getFoodData()Lnet/minecraft/world/food/FoodData;"),require=1)
  private FoodData food(Player player){var value=NativeSpectatorSync.foodData();return value==null?player.getFoodData():value;}
  @Redirect(method="renderItemHotbar",at=@At(value="FIELD",target="Lnet/minecraft/world/entity/player/Inventory;selected:I"),require=1)
- private int selected(Inventory inventory){var slot=NativeSpectatorSync.selected();return slot==null?inventory.selected:slot;}
+ private int selected(Inventory inventory){var slot=NativeSpectatorSync.selected();return slot!=null?slot:NativeSpectatorSync.hotbarReady()?0:inventory.selected;}
+ // Inventory and selection arrive independently. Unknown selection must not
+ // hide verified items or use the observer account's own selected slot.
+ @Redirect(method="renderItemHotbar",at=@At(value="INVOKE",target="Lnet/minecraft/client/gui/GuiGraphics;blitSprite(Lnet/minecraft/resources/ResourceLocation;IIII)V"),require=1)
+ private void hotbarSprite(GuiGraphics draw,net.minecraft.resources.ResourceLocation sprite,int x,int y,int width,int height){
+  if(NativeSpectatorSync.hotbarReady()&&NativeSpectatorSync.selected()==null&&sprite.getNamespace().equals("minecraft")&&sprite.getPath().equals("hud/hotbar_selection"))return;
+  draw.blitSprite(sprite,x,y,width,height);
+ }
  @Redirect(method="renderItemHotbar",at=@At(value="INVOKE",target="Lnet/minecraft/core/NonNullList;get(I)Ljava/lang/Object;",ordinal=0),require=1)
  private Object items(NonNullList<?> items,int index){return NativeSpectatorSync.hotbarReady()?NativeSpectatorSync.hotbar(index):items.get(index);}
  @Redirect(method="renderExperienceBar",at=@At(value="INVOKE",target="Lnet/minecraft/client/player/LocalPlayer;getXpNeededForNextLevel()I"),require=1)
