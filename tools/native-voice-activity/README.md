@@ -1,6 +1,6 @@
 # Optional local game-voice activity
 
-Receive-only NeoForge 1.21.1 / Simple Voice Chat 2.6.27 integration for a broadcaster's existing listening client. This does not create a player, send voice, start a microphone, change sound settings or supply game observations to an Agent. Disabled unless explicitly configured. It reports only short-lived anonymous audio-device activity to a loopback coordinator, never PCM, ASR, chat or player identities.
+Receive-only NeoForge 1.21.1 / Simple Voice Chat 2.6.27 integration for a broadcaster's existing listening client. This does not create a player, send voice, start a microphone, change sound settings or supply game observations to an Agent. Disabled unless explicitly configured. It reports only short-lived anonymous audio-device activity to a loopback coordinator, never PCM, ASR, chat or player identities. An independently opt-in output-device recovery can recreate SVC's output manager when the OS default changes.
 
 Build using the listening client's installed SVC, NeoForge loader and LWJGL dependencies:
 
@@ -15,9 +15,18 @@ Install the resulting JAR in that client's `mods` directory and create `config/m
 ```properties
 enabled=true
 endpoint=http://127.0.0.1:18580/v1/game-audio
+follow_default_output=false
 ```
 
 The client needs a restart to load a new mod. Preserve any operator pause or independent observer identity. This optional mod does not modify the native camera, observer account binding, GPU selection or HUD.
+
+### Default output-device recovery (0.1.1)
+
+Windows can remove a display/remote-audio endpoint while Minecraft switches its own sound manager to the new default. SVC uses a separate output manager and may remain on the old device. To opt in, set `follow_default_output=true` **and explicitly select the default speaker in SVC** (`speaker=`). The extension never changes that setting or overrides a named device, disabled voice chat, microphone mute, connection or camera.
+
+Once a healthy connected output establishes a baseline, a changed OS default must stay stable for 1.5 seconds. On the client executor, the adapter calls SVC's public `reloadSoundManager()` only; `reloadAudio()` and microphone methods are forbidden. A request is acknowledged only when a different nonclosing output manager appears. An unconfirmed request waits ten seconds, then allows at most three attempts with 30-second spacing. Disconnect/manual disable clears the old context. A missing default is unknown; normal SVC startup is not replaced. Unsupported public API disables only this recovery adapter with a diagnostic. No device name or audio is transmitted to the activity coordinator.
+
+Source, compiled policy/OpenAL tests, independent adapter tests and live activation are separate evidence. Tests do not prove every Windows driver handles hot unplug correctly. Updating the JAR requires an authorized observer restart; remove the older activity JAR rather than installing both versions.
 
 ## Evidence and wire contract
 

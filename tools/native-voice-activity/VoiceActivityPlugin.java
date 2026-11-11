@@ -60,6 +60,10 @@ public final class VoiceActivityPlugin implements VoicechatPlugin {
             });
             enabled = true;
             timer.scheduleAtFixedRate(this::report, 0, 100, TimeUnit.MILLISECONDS);
+            if (Boolean.parseBoolean(cfg.getProperty("follow_default_output", "false"))) {
+                SvcOutputDeviceRecovery recovery = new SvcOutputDeviceRecovery();
+                timer.scheduleWithFixedDelay(recovery::poll, 1000, 1000, TimeUnit.MILLISECONDS);
+            }
             System.out.println("[mcvisual-voice-activity] receive-only activity enabled");
         } catch (Exception error) {
             enabled = false;
