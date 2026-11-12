@@ -144,6 +144,22 @@ export class NativeCameraSequence{
   const orthoSafe=space.floorSafe===true&&orthographic&&n.orthographic?.ready===true&&n.orthographic.worldCutawaySupported===false&&!n.orthographic.roomClip
     &&['open','room'].includes(space.layout)&&space.orthographicVisibility>=.8;
   const projectionAge=now-lastProjectionChangeAt,projectionHold=lively?5000:45000;
+  // A user-selected travel style takes precedence over repertoire coverage.
+  // Keep a readable orthographic follow through the journey instead of voting
+  // it out five seconds later because that family has already been shown.
+  if(travelling&&preferOrthographic&&orthoSafe&&!tight){
+   if(c.view.startsWith('ortho_')){this.phase='holding_preferred_travel';return null;}
+   const view=['ortho_isometric','ortho_overview'].find(v=>caps.has(v)&&!this.failedViews.has(v));
+   if(view&&projectionAge>=projectionHold){
+    this.phase='proposing_preferred_travel';this.eligible=[view];
+    return{name:n.target,view,kind:'movement',at:now,reframe:true,reason:'preferred_orthographic_travel',
+     sequence:{schema:'mcvisual.shot-sequence/v1',preference:'orthographic_travel',previousView:c.view,shotAgeMs:now-c.since,
+      subjectStationary:false,pathPreflightRequired:false,nativeSceneAt:space.at,
+      ...(lively?{alternatives:[{view,pathPreflightRequired:false}],cadence:{schema:NATIVE_CAMERA_CADENCE_PROTOCOL,
+       scope:c.scope,subjectUuid:n.targetUuid,requestId:n.requestId,since:c.since,cause:'composition',stationarySince:null,
+       dueAt:c.since+5000,deadlineAt:c.since+7000}}:{})}};
+   }
+  }
   if(lively&&!tight){
    const pathReady=still&&space.floorSafe===true&&['open','room'].includes(space.layout)&&space.headroom>=.35&&space.spanX>=6&&space.spanZ>=6
     &&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL&&n.cameraScript.preflightRequiredForFinite===true&&n.rigCancelSupported===true

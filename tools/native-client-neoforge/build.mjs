@@ -24,10 +24,13 @@ await add(observer+'/test/BossBarPresentationCheck.java');
 await add(observer+'/test/ObserverStateCheck.java');
 await add(observer+'/test/TargetPacketInboxCheck.java');
 await add(observer+'/test/SpectatorDetailsCheck.java');
+await add(observer+'/InventoryTravelPolicy.java');
+await add(observer+'/test/InventoryTravelPolicyCheck.java');
 for(const name of['NeoVisualClient','NeoObserverMetadata','OrthographicProjection','OrthographicCameraMixin','OrthographicMatrixMixin','SpectatorInventoryProtocol','NativeSpectatorSync','ReadOnlyInventoryScreen','SpectatorKeyMixin','SpectatorOpenScreenMixin','SpectatorSlotMixin','SpectatorMenuGuardMixin','SpectatorGuiMixin','SpectatorGameModeMixin','SpectatorHandPolicy','SpectatorHandPolicyCheck','NativeSpectatorHands','NativeShaderHands','IrisSpectatorHandMixin','SpectatorHandGameRendererMixin','SpectatorItemInHandMixin','SpectatorHandRendererAccessor','OfflineContractCheck'])await add(dir+'/'+name+'.java',false);
 const run=(name,a)=>execFileSync(path.join(jdk,'bin',name+'.exe'),a,{windowsHide:true,encoding:'utf8',maxBuffer:5_000_000,env:{...process.env,JAVA_TOOL_OPTIONS:'-Duser.language=en -Duser.country=US'}});
 await fs.writeFile(work+'/javac.args',['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources].map(s=>'"'+s.replaceAll('\\','/')+'"').join('\n'));run('javac',['@'+work+'/javac.args']);
 const names=['DirectorPolicyCheck','OnlineTargetsCheck','DroneFollowCheck','TransitionEnvelopeCheck','CinematicRigCheck','OrthographicRigCheck','CapturePolicyCheck','ObserverStateCheck','TargetPacketInboxCheck','BossBarPresentationCheck','SpectatorDetailsCheck','SpectatorHandPolicyCheck'];
+names.push('InventoryTravelPolicyCheck');
 const checks=names.map(n=>run('java',['-cp',classes+path.delimiter+cp,n]).trim());
 const mixins={required:true,minVersion:'0.8',compatibilityLevel:'JAVA_21',package:'org.mcvisual',client:['director.mixin.DroneCameraMixin','director.mixin.DirectorInputMixin','director.mixin.DirectorMouseMixin','director.mixin.ObserverBodyMixin','observer.mixin.ObserverSidebarMixin','observer.mixin.ObserverBossBarMixin','neoforge.mixin.OrthographicCameraMixin','neoforge.mixin.OrthographicMatrixMixin',...['SpectatorKeyMixin','SpectatorOpenScreenMixin','SpectatorSlotMixin','SpectatorMenuGuardMixin','SpectatorGuiMixin','SpectatorGameModeMixin','SpectatorHandGameRendererMixin','SpectatorItemInHandMixin','SpectatorHandRendererAccessor','IrisSpectatorHandMixin'].map(n=>'neoforge.mixin.'+n)],injectors:{defaultRequire:1}};
 // A mixin package must not contain entrypoint or policy classes.
