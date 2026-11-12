@@ -169,7 +169,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
   if(choice.kind==='conversation')add('front','drone_front');
   const c=n.spatial;
   if(n.orthographic?.ready&&c?.known===true&&c.targetUuid===candidate.uuid&&c.nativeWorldEpoch===n.nativeWorldEpoch
-    &&c.floorSafe===true&&['open','room'].includes(c.layout)&&c.orthographicVisibility>=.8&&c.at<=now&&now-c.at<2000){
+    &&['open','room'].includes(c.layout)&&c.orthographicVisibility>=.8&&c.at<=now&&now-c.at<2000&&!n.orthographic.roomClip){
    add('ortho_context',choice.kind==='interaction'?'ortho_close':'ortho_isometric');
   }
  }

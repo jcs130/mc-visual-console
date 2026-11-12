@@ -38,6 +38,28 @@ test('travel preference does not manufacture visibility or interrupt fresh comba
  delete f.activity[0].lastCombatAt;f.n.spatial.known=false;
  assert.equal(f.choose({orthographic:true,preferOrthographic:true}),null);
 });
+
+for(const cadence of ['steady','lively'])test(`water travel keeps measured orthographic visibility independent of foot support (${cadence})`,()=>{
+ const f=fixture(true,cadence);f.n.spatial.floorSafe=false;
+ Object.assign(f.activity[0],{motion:'moving',lastMotionAt:f.now(),stillSince:null});
+ const p=f.choose({orthographic:true,preferOrthographic:true});assert.equal(p.view,'ortho_isometric');
+ assert.ok(nativeCameraCandidates(p,f.n,{now:f.now()}).some(c=>c.view===p.view));
+ if(cadence==='lively'){
+  assert.equal(nativeScheduledCamera(p,f.n,{now:f.now()}),true);
+  for(const visibility of[undefined,null,NaN,.79]){
+   const n=structuredClone(f.n);n.spatial.orthographicVisibility=visibility;
+   assert.equal(nativeScheduledCamera(p,n,{now:f.now()}),false);
+  }
+ }
+ for(const change of[n=>n.spatial.orthographicVisibility=.3,n=>n.spatial.known=false,n=>n.spatial.at-=3001,
+   n=>n.spatial.targetUuid='other',n=>n.spatial.nativeWorldEpoch++,n=>n.orthographic.roomClip=true]){
+  const g=fixture(true,cadence);g.n.spatial.floorSafe=false;
+  Object.assign(g.activity[0],{motion:'moving',lastMotionAt:g.now(),stillSince:null});change(g.n);
+  assert.ok(!g.choose({orthographic:true,preferOrthographic:true})?.view.startsWith('ortho_'));
+ }
+ const still=fixture(true,cadence);still.n.spatial.floorSafe=false;
+ assert.ok(!still.choose()?.view.match(/orbit|push|pull/),'finite camera paths retain their separate native preflight requirements');
+});
 test('quiet open scenes offer bounded finite arcs from actual camera state, and model menus preserve them',()=>{
  const f=fixture(),p=f.choose();assert.equal(p.view,'drone_orbit_left');assert.equal(p.sequence.pathPreflightRequired,true);
  assert.deepEqual(p.motion,validateCameraScript(p.motion,p.view));assert.ok(!('height'in p.motion));assert.ok(!('distance'in p.motion));
@@ -141,7 +163,7 @@ test('advice and request acceptance cannot advance an actual shot or finish fini
  f.n.shotExecution.phase='completed';const next=f.choose();assert.ok(next);assert.notEqual(next.view,p.view);
 });
 test('native and same-subject evidence must remain fresh and in the same world',()=>{
- for(const mutate of[n=>n.renderedAt-=4000,n=>n.recordedAt=new Date(90000).toISOString(),n=>n.spatial.targetUuid='other',n=>n.spatial.nativeWorldEpoch=2,n=>n.spatial.floorSafe=false,n=>n.targets[0].alive=false,n=>n.cameraUuid='other']){
+ for(const mutate of[n=>n.renderedAt-=4000,n=>n.recordedAt=new Date(90000).toISOString(),n=>n.spatial.targetUuid='other',n=>n.spatial.nativeWorldEpoch=2,n=>n.spatial.known=false,n=>n.targets[0].alive=false,n=>n.cameraUuid='other']){
   const f=fixture();mutate(f.n);assert.equal(f.choose(),null);
  }
 });
@@ -222,11 +244,12 @@ test('water or airborne actors retain collision-checked composition cuts without
  const f=fixture(true,'lively');f.n.spatial.floorSafe=false;f.n.availableViews.push('drone_follow','drone_low','drone_overview');
  const choice=f.choose({orthographic:true,preferOrthographic:true}),menu=nativeCameraCandidates(choice,f.n,{now:f.now()});
  assert.ok(menu.length>=3,'a camera rig does not need actor footing to choose another perspective');
- assert.ok(menu.every(x=>!x.sequence.pathPreflightRequired&&!x.view.startsWith('ortho_')));
+ assert.ok(menu.every(x=>!x.sequence.pathPreflightRequired));
+ assert.ok(menu.some(x=>x.view.startsWith('ortho_')),'measured visible projection does not require walking support');
  assert.ok(menu.every(x=>nativeScheduledCamera(x,f.n,{now:f.now()})));
  const forged={...choice,view:'drone_orbit_left',motion:{schema:'mcvisual.camera-script/v1',speed:1,durationMs:4000,arcDegrees:15},sequence:{...choice.sequence,pathPreflightRequired:true}};
  assert.equal(nativeScheduledCamera(forged,f.n,{now:f.now()}),false,'finite anchors still require confirmed footing');
- assert.equal(nativeScheduledCamera({...choice,view:'ortho_overview'},f.n,{now:f.now()}),false,'floor-dependent orthographic policies stay closed');
+ assert.equal(nativeScheduledCamera({...choice,view:'ortho_overview'},f.n,{now:f.now()}),true,'orthographic requires visibility rather than actor footing');
 });
 
 test('orbit size follows measured room scale and model choices retain the same bounded script',()=>{
