@@ -173,7 +173,7 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
    add('ortho_context',choice.kind==='interaction'?'ortho_close':'ortho_isometric');
   }
  }
- return out.slice(0,6);
+ return (choice.sequence?.preference==='orthographic_travel'?out.filter(c=>c.view.startsWith('ortho_')):out).slice(0,6);
 }
 const nativeSafeOrthographic=n=>n.orthographic?.ready===true&&n.orthographic?.worldCutawaySupported===false;
 

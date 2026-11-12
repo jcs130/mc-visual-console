@@ -16,6 +16,28 @@ function fixture(enabled=true,cadenceProfile='steady'){
  const tick=ms=>{time+=ms;n.recordedAt=new Date(time).toISOString();n.renderedAt=time;n.spatial.at=time;n.drone.lastRenderedAt=time;activity[0].positionAt=time;};
  return{n,activity,sequence,now,tick,choose:options=>sequence.choose(n,{activity,...options})};
 }
+
+test('travel preference wins over lively repertoire rotation while native visibility and manual controls still apply',()=>{
+ const f=fixture(true,'lively');Object.assign(f.activity[0],{motion:'moving',lastMotionAt:f.now(),stillSince:null});
+ const choice=f.choose({orthographic:true,preferOrthographic:true});assert.equal(choice.view,'ortho_isometric');
+ assert.equal(nativeScheduledCamera(choice,f.n,{now:f.now()}),true);
+ assert.ok(nativeCameraCandidates(choice,f.n,{now:f.now()}).every(c=>c.view.startsWith('ortho_')));
+ f.n.effectiveView='ortho_isometric';f.n.projection='orthographic';f.n.orthographic.active=true;
+ f.n.requestId='ortho';f.n.offer={id:'ortho',accepted:true,at:f.now()};
+ f.n.shotExecution={requestId:'ortho',view:'ortho_isometric',phase:'holding'};
+ f.tick(60000);f.activity[0].lastMotionAt=f.now();
+ assert.equal(f.choose({orthographic:true,preferOrthographic:true}),null);assert.equal(f.sequence.phase,'holding_preferred_travel');
+ f.n.spatial.orthographicVisibility=.3;assert.notEqual(f.choose({orthographic:true,preferOrthographic:true})?.view,'ortho_isometric');
+ f.n.screenOpen=true;assert.equal(f.choose({orthographic:true,preferOrthographic:true}),null);
+ f.n.screenOpen=false;f.n.manualDetachRequested=true;assert.equal(f.choose({orthographic:true,preferOrthographic:true}),null);
+});
+
+test('travel preference does not manufacture visibility or interrupt fresh combat',()=>{
+ const f=fixture(true,'lively');Object.assign(f.activity[0],{motion:'moving',lastMotionAt:f.now(),lastCombatAt:f.now()});
+ assert.equal(f.choose({orthographic:true,preferOrthographic:true}),null);
+ delete f.activity[0].lastCombatAt;f.n.spatial.known=false;
+ assert.equal(f.choose({orthographic:true,preferOrthographic:true}),null);
+});
 test('quiet open scenes offer bounded finite arcs from actual camera state, and model menus preserve them',()=>{
  const f=fixture(),p=f.choose();assert.equal(p.view,'drone_orbit_left');assert.equal(p.sequence.pathPreflightRequired,true);
  assert.deepEqual(p.motion,validateCameraScript(p.motion,p.view));assert.ok(!('height'in p.motion));assert.ok(!('distance'in p.motion));
