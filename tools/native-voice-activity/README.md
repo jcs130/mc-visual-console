@@ -16,9 +16,18 @@ Install the resulting JAR in that client's `mods` directory and create `config/m
 enabled=true
 endpoint=http://127.0.0.1:18580/v1/game-audio
 follow_default_output=false
+listener_at_observed_player=false
 ```
 
 The client needs a restart to load a new mod. Preserve any operator pause or independent observer identity. This optional mod does not modify the native camera, observer account binding, GPU selection or HUD.
+
+### Observed-player listening position (0.1.2)
+
+For a native spectator with cinematic camera movement, opt in to `listener_at_observed_player=true`. SVC 2.6.27 normally measures voice distance from the camera lens; its `freecam_mode=PLAYER` explicitly excludes spectators. Moving the lens away can therefore make an otherwise nearby conversation faint or inaudible.
+
+The optional adapter uses the exact installed SVC `UpdateCameraPositionEvent` and the native observer's fresh target contract. It supplies the observed body's current eye position and the real camera orientation. No target identity is configured in this mod: the existing native observer owns the account/world/connection binding. Detached, disconnected, stale or unavailable observations supply no override; another camera integration's existing override is preserved. It never moves a body or camera, boosts a source, changes server range, bypasses mute, opens a microphone or creates a second playback path. Natural source volume and distance attenuation still apply. This uses an internal SVC hook, so future versions require renewed compatibility validation; unsupported hooks fail closed with a diagnostic.
+
+The six event-adapter cases and native OpenAL comparison cover a moving camera, fresh/no target, another override, invalid coordinates/orientation, range and mute. They do not establish that any specific received recording was loud enough, or replace a natural recipient recording after loading.
 
 ### Default output-device recovery (0.1.1)
 

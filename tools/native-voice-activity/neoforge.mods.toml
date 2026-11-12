@@ -3,7 +3,7 @@ loaderVersion="[4,)"
 license="MIT"
 [[mods]]
 modId="mcvisual_voice_activity"
-version="0.1.1"
+version="0.1.2"
 displayName="MC Visual Voice Activity"
 description="Optional receive-only voice playback activity for local broadcast arbitration."
 [[dependencies.mcvisual_voice_activity]]

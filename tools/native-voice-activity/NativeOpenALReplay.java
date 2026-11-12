@@ -21,6 +21,17 @@ public final class NativeOpenALReplay {
   Method rendered=VoiceActivityPlugin.class.getDeclaredMethod("rendered",OpenALSoundEvent.Post.class);rendered.setAccessible(true);rendered.invoke(plugin,event);
   return activity.remainingMs(System.currentTimeMillis())>0;
  }
+ static double measured(long device,float listenerZ,boolean muted) {
+  int source=AL10.alGenSources(),buffer=AL10.alGenBuffers();short[] tone=new short[24000];
+  for(int i=0;i<tone.length;i++)tone[i]=(short)(8000*Math.sin(i*2*Math.PI*440/48000));
+  AL10.alBufferData(buffer,AL10.AL_FORMAT_MONO16,tone,48000);AL10.alSourceQueueBuffers(source,buffer);
+  AL10.alDistanceModel(AL11.AL_LINEAR_DISTANCE);AL10.alSource3f(source,AL10.AL_POSITION,0,0,5);
+  AL10.alSourcef(source,AL10.AL_REFERENCE_DISTANCE,0);AL10.alSourcef(source,AL10.AL_MAX_DISTANCE,20);
+  AL10.alSourcef(source,AL10.AL_GAIN,muted?0:1);AL10.alListener3f(AL10.AL_POSITION,0,0,listenerZ);
+  AL10.alSourcePlay(source);short[] output=new short[19200];SOFTLoopback.alcRenderSamplesSOFT(device,output,output.length);
+  double energy=0;for(int i=9600;i<output.length;i++)energy+=(double)output[i]*output[i];
+  AL10.alSourceStop(source);AL10.alDeleteSources(source);AL10.alDeleteBuffers(buffer);return Math.sqrt(energy/9600);
+ }
  public static void main(String[]args)throws Exception {
   long device=SOFTLoopback.alcLoopbackOpenDeviceSOFT((CharSequence)null);if(device==0)throw new AssertionError("No loopback software device");
   ALCCapabilities caps=ALC.createCapabilities(device);
@@ -38,7 +49,12 @@ public final class NativeOpenALReplay {
   assert !classify(source,AL11.AL_LINEAR_DISTANCE,pcm,true):"disabled receiver must not gate";
   AL10.alSourcePlay(source);SOFTLoopback.alcRenderSamplesSOFT(device,new short[19200],19200);
   assert !classify(source,AL11.AL_LINEAR_DISTANCE,pcm,false):"processed device queue must not gate";
-  AL10.alDeleteSources(source);AL10.alDeleteBuffers(buffer);ALC10.alcMakeContextCurrent(0);ALC10.alcDestroyContext(context);ALC10.alcCloseDevice(device);timer.shutdownNow();
-  System.out.println("8 real OpenAL software-device replay cases passed; no microphone, speaker or game connection");
+  AL10.alDeleteSources(source);AL10.alDeleteBuffers(buffer);
+  double camera=measured(device,-12,false),body=measured(device,0,false),distant=measured(device,-25,false),muted=measured(device,0,true);
+  assert body>camera*3:"same received PCM becomes quiet when cinematic camera moves away";
+  assert distant<1:"physical source out of the listening radius stays silent";
+  assert muted<1:"listener anchoring must not bypass channel mute";
+  ALC10.alcMakeContextCurrent(0);ALC10.alcDestroyContext(context);ALC10.alcCloseDevice(device);timer.shutdownNow();
+  System.out.println("11 real OpenAL software-device replay cases passed; cameraRms="+camera+" bodyRms="+body+" distantRms="+distant+" mutedRms="+muted+"; no microphone, speaker or game connection");
  }
 }
