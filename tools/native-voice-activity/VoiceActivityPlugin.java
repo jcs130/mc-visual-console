@@ -88,10 +88,15 @@ public final class VoiceActivityPlugin implements VoicechatPlugin {
         events.registerEvent(ClientReceiveSoundEvent.LocationalSound.class, this::received);
         events.registerEvent(ClientReceiveSoundEvent.StaticSound.class, this::received);
         events.registerEvent(OpenALSoundEvent.Post.class, this::rendered);
-        events.registerEvent(UpdateCameraPositionEvent.class, event -> {
-            var listener = observerListener;
-            if (enabled && listener != null) listener.update(event);
-        });
+        try {
+            events.registerEvent(UpdateCameraPositionEvent.class, event -> {
+                var listener = observerListener;
+                if (enabled && listener != null) listener.update(event);
+            });
+        } catch (LinkageError | RuntimeException unsupported) {
+            observerListener = null;
+            System.err.println("[mcvisual-voice-activity] observer listener hook unavailable");
+        }
     }
 
     private void received(ClientReceiveSoundEvent event) {
