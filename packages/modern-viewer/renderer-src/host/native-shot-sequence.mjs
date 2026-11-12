@@ -49,7 +49,7 @@ export function nativeScheduledCamera(choice,n,{now=Date.now(),deadline=false}={
   ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at)||!['open','room'].includes(space.layout))return false;
  if(n.shotExecution?.requestId===n.requestId&&finite(n.shotExecution.view)&&!['completed','blocked','cancelled'].includes(n.shotExecution.phase))return false;
  if(n.shotExecution?.requestId===n.requestId&&n.shotExecution.fallback===true&&n.shotExecution.view===choice.view)return false;
- if(choice.view.startsWith('ortho_')&&(space.floorSafe!==true||n.orthographic?.ready!==true||n.orthographic.worldCutawaySupported!==false||n.orthographic.roomClip||space.orthographicVisibility<.8))return false;
+ if(choice.view.startsWith('ortho_')&&(n.orthographic?.ready!==true||n.orthographic.worldCutawaySupported!==false||n.orthographic.roomClip||!(space.orthographicVisibility>=.8)))return false;
  if(finite(choice.view))return s.pathPreflightRequired===true&&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL&&n.cameraScript.preflightRequiredForFinite===true
   &&n.rigCancelSupported===true&&n.projection!=='orthographic'&&n.drone?.active===true&&fresh(n.drone.lastRenderedAt)
   &&space.floorSafe===true&&['open','room'].includes(space.layout)&&space.headroom>=.35&&space.spanX>=6&&space.spanZ>=6
@@ -130,7 +130,7 @@ export class NativeCameraSequence{
   if(now-c.since<this.intervalMs&&!earlyMotion){this.phase='holding_shot';return null;}
   const space=n.spatial,subject=n.targets?.find(t=>t.uuid===n.targetUuid&&t.name===n.target);
   if(!subject?.loaded||subject.alive!==true||space?.known!==true||space.targetUuid!==n.targetUuid
-    ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at,2000)||space.floorSafe!==true&&!(lively&&['open','room'].includes(space.layout))){this.phase='waiting_for_scene_evidence';return null;}
+    ||space.nativeWorldEpoch!==n.nativeWorldEpoch||!fresh(space.at,2000)||space.floorSafe!==true&&!['open','room'].includes(space.layout)){this.phase='waiting_for_scene_evidence';return null;}
   const caps=new Set(n.availableViews);
   // A vertical shaft can have plenty of headroom but no horizontal camera boom.
   // Keep the measured native close view until geometry changes, rather than retrying every recipe.
@@ -141,7 +141,9 @@ export class NativeCameraSequence{
   }
   const travelling=a?.motion!=='stationary'&&fresh(a?.lastMotionAt,5000);
   const tight=['tunnel','layered'].includes(space.layout);
-  const orthoSafe=space.floorSafe===true&&orthographic&&n.orthographic?.ready===true&&n.orthographic.worldCutawaySupported===false&&!n.orthographic.roomClip
+  // Ground support describes the actor, not the camera. A boat or swimming
+  // actor can have a fully visible orthographic scene without a solid floor.
+  const orthoSafe=orthographic&&n.orthographic?.ready===true&&n.orthographic.worldCutawaySupported===false&&!n.orthographic.roomClip
     &&['open','room'].includes(space.layout)&&space.orthographicVisibility>=.8;
   const projectionAge=now-lastProjectionChangeAt,projectionHold=lively?5000:45000;
   // A user-selected travel style takes precedence over repertoire coverage.
@@ -211,7 +213,7 @@ export class NativeCameraSequence{
   else if((still||lively&&this.failedViews.size>0&&c.view==='first_person')&&orthoSafe&&preferOrthographic&&projectionAge>=(lively?5000:75000))candidates=orthographics;
   else candidates=earlyMotion?['drone_orbit_left','drone_orbit_right','drone_push_in','drone_follow']:
    rotate(lively?travelViews:still?perspectives:['drone_front_left','drone_side_right','drone_front_right','drone_side_left','drone_eye'],c.view);
-  const pathReady=still&&space.layout==='open'&&space.headroom>=3.5&&space.spanX>=8&&space.spanZ>=8
+  const pathReady=still&&space.floorSafe===true&&space.layout==='open'&&space.headroom>=3.5&&space.spanX>=8&&space.spanZ>=8
     &&n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL&&n.cameraScript.preflightRequiredForFinite===true&&n.rigCancelSupported===true
     &&n.projection!=='orthographic'&&n.drone?.active===true&&fresh(n.drone.lastRenderedAt,2000)
     &&!Array.from(this.blocked.values()).some(x=>x.until>now);
