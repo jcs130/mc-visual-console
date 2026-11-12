@@ -21,20 +21,29 @@ const dependencies=[path.join(profile,'mods',voice[0])];
 for(const dir of ['net/neoforged/fancymodloader/loader','net/neoforged/mergetool','org/lwjgl/lwjgl','org/lwjgl/lwjgl-openal']){
  const jars=await jarsAt(path.join(libraries,dir));assert.equal(jars.length,1,'Choose a single client dependency for '+dir);dependencies.push(jars[0]);
 }
+// The optional listener hook targets the installed NeoForge Mojang-named
+// client and SVC internal camera contract, not an inferred freecam setting.
+const gameJars=(await jarsAt(path.join(libraries,'net/minecraft/client'))).filter(file=>file.endsWith('-srg.jar'));
+assert.equal(gameJars.length,1,'One actual 1.21.1 client dependency is required');
+dependencies.push(gameJars[0]);
+for(const dir of ['org/joml/joml','com/mojang/datafixerupper','com/google/guava/guava','com/google/code/gson/gson','com/mojang/logging','org/slf4j/slf4j-api','it/unimi/dsi/fastutil'])
+ dependencies.push(...await jarsAt(path.join(libraries,dir)));
 const binary=name=>path.join(jdk,'bin',name+(process.platform==='win32'?'.exe':''));
 const run=(name,argv)=>execFileSync(binary(name),argv,{windowsHide:true,encoding:'utf8'});
 const classes=path.join(output,'classes'),tests=path.join(output,'tests'),cp=dependencies.join(path.delimiter);
 await fs.mkdir(classes,{recursive:true});await fs.mkdir(tests,{recursive:true});
-const names=['ActivityWindow.java','OutputDeviceRecovery.java','SvcOutputDeviceRecovery.java','VoiceActivityMod.java','VoiceActivityPlugin.java'];
+const names=['ActivityWindow.java','OutputDeviceRecovery.java','SvcOutputDeviceRecovery.java','ObserverVoiceListener.java','VoiceActivityMod.java','VoiceActivityPlugin.java'];
 run('javac',['--release','21','-encoding','UTF-8','-cp',cp,'-d',classes,...names.map(name=>path.join(source,name))]);
 await fs.mkdir(path.join(classes,'META-INF'),{recursive:true});
 await fs.copyFile(path.join(source,'neoforge.mods.toml'),path.join(classes,'META-INF/neoforge.mods.toml'));
-const artifact=path.join(output,'mcvisual-voice-activity-0.1.1-neoforge.jar');
+const artifact=path.join(output,'mcvisual-voice-activity-0.1.2-neoforge.jar');
 run('jar',['--create','--file',artifact,'-C',classes,'.']);
 run('javac',['--release','21','-encoding','UTF-8','-cp',classes+path.delimiter+cp,'-d',tests,path.join(source,'ActivityWindowTest.java')]);
 const check=run('java',['-ea','-cp',[tests,classes,cp].join(path.delimiter),'org.mcvisual.voiceactivity.ActivityWindowTest']).trim();
 run('javac',['--release','21','-encoding','UTF-8','-cp',classes+path.delimiter+cp,'-d',tests,path.join(source,'OutputDeviceRecoveryTest.java')]);
 const recoveryCheck=run('java',['-ea','-cp',[tests,classes,cp].join(path.delimiter),'org.mcvisual.voiceactivity.OutputDeviceRecoveryTest']).trim();
+run('javac',['--release','21','-encoding','UTF-8','-cp',classes+path.delimiter+cp,'-d',tests,path.join(source,'ObserverVoiceListenerTest.java')]);
+const listenerCheck=run('java',['-ea','-cp',[tests,classes,cp].join(path.delimiter),'org.mcvisual.voiceactivity.ObserverVoiceListenerTest']).trim();
 let deviceReplay = null;
 if(args.includes('--device-replay')) {
  const nativeJars=dependencies.filter(file=>/lwjgl(?:-openal)?-\d/.test(path.basename(file))).map(file=>file.replace(/\.jar$/, '-natives-'+({win32:'windows',darwin:'macos',linux:'linux'}[process.platform])+(process.arch==='arm64'?'-arm64':'')+'.jar'));
@@ -44,5 +53,5 @@ if(args.includes('--device-replay')) {
  deviceReplay=run('java',['-ea','-cp',deviceCp,'org.mcvisual.voiceactivity.NativeOpenALReplay']).trim();
 }
 const hash=async file=>createHash('sha256').update(await fs.readFile(file)).digest('hex');
-const report={artifact,sha256:await hash(artifact),check,recoveryCheck,deviceReplay,sources:await Promise.all([...names,'neoforge.mods.toml'].map(async name=>({name,sha256:await hash(path.join(source,name))})))};
+const report={artifact,sha256:await hash(artifact),check,recoveryCheck,listenerCheck,deviceReplay,sources:await Promise.all([...names,'neoforge.mods.toml'].map(async name=>({name,sha256:await hash(path.join(source,name))})))};
 await fs.writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));

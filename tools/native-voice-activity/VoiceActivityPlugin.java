@@ -6,6 +6,7 @@ import de.maxhenkel.voicechat.api.VoicechatPlugin;
 import de.maxhenkel.voicechat.api.events.ClientReceiveSoundEvent;
 import de.maxhenkel.voicechat.api.events.EventRegistration;
 import de.maxhenkel.voicechat.api.events.OpenALSoundEvent;
+import de.maxhenkel.voicechat.api.internal.events.UpdateCameraPositionEvent;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.AL11;
 
@@ -41,6 +42,7 @@ public final class VoiceActivityPlugin implements VoicechatPlugin {
     private volatile String deliveryState = "starting";
     private volatile int lastDistanceModel = Integer.MIN_VALUE;
     private int diagnosticRemaining = 8;
+    private volatile ObserverVoiceListener observerListener;
 
     @Override public String getPluginId() { return "mcvisual_voice_activity"; }
 
@@ -59,6 +61,8 @@ public final class VoiceActivityPlugin implements VoicechatPlugin {
                 Thread thread = new Thread(r, "mcvisual-voice-activity"); thread.setDaemon(true); return thread;
             });
             enabled = true;
+            if (Boolean.parseBoolean(cfg.getProperty("listener_at_observed_player", "false")))
+                observerListener = new ObserverVoiceListener();
             timer.scheduleAtFixedRate(this::report, 0, 100, TimeUnit.MILLISECONDS);
             if (Boolean.parseBoolean(cfg.getProperty("follow_default_output", "false"))) {
                 SvcOutputDeviceRecovery recovery = new SvcOutputDeviceRecovery();
@@ -84,6 +88,15 @@ public final class VoiceActivityPlugin implements VoicechatPlugin {
         events.registerEvent(ClientReceiveSoundEvent.LocationalSound.class, this::received);
         events.registerEvent(ClientReceiveSoundEvent.StaticSound.class, this::received);
         events.registerEvent(OpenALSoundEvent.Post.class, this::rendered);
+        try {
+            events.registerEvent(UpdateCameraPositionEvent.class, event -> {
+                var listener = observerListener;
+                if (enabled && listener != null) listener.update(event);
+            });
+        } catch (LinkageError | RuntimeException unsupported) {
+            observerListener = null;
+            System.err.println("[mcvisual-voice-activity] observer listener hook unavailable");
+        }
     }
 
     private void received(ClientReceiveSoundEvent event) {
