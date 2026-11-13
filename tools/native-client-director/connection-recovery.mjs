@@ -1,6 +1,6 @@
 // Camera-only recovery after a positively observed new native connection.
 // Prior effects remain unknown; callers must create a new lease/request.
-import {nativeTargetDeathRecovery} from '../../packages/modern-viewer/renderer-src/host/native-target-recovery.mjs';
+import {nativeTargetDeathRecovery,nativeBoundIdleCamera} from '../../packages/modern-viewer/renderer-src/host/native-target-recovery.mjs';
 /** Only a fresh, explicitly refused offer with the pre-submission camera intact proves non-execution. */
 export function directorExpiredOffer({native:n,request:r,expectedObserverUuid,now=Date.now()}={}){
  if(!n||!r||!expectedObserverUuid||n.observerUuid!==expectedObserverUuid||n.connected!==true||n.authenticated!==true
@@ -58,11 +58,11 @@ export function directorTargetLoss({native,expectedTarget,expectedUuid,now=Date.
     return{reason:native.reason,cooldownMs:15000};
   return null;
 }
-export function directorConnectionRecovery({enabled,previousEpoch,expectedObserverUuid,targets=[],native}={}) {
+export function directorConnectionRecovery({enabled,previousEpoch,expectedObserverUuid,targets=[],native,now=Date.now()}={}) {
   const epoch=native?.connectionEpoch;
   if(!previousEpoch||epoch===previousEpoch)return{action:'unchanged'};
   if(enabled!==true)return{action:'stop',reason:'connection_changed_manual_resume'};
-  if(native?.phase==='paused')return{action:'stop',reason:'manual_or_native_detach'};
+  if(native?.phase==='paused'||native?.manualDetachRequested===true)return{action:'stop',reason:'manual_or_native_detach'};
   if(native?.connected!==true||native?.authenticated!==true)return{action:'wait',reason:'await_new_connection_authentication'};
   if(typeof epoch!=='string'||!epoch||epoch.length>128)return{action:'stop',reason:'invalid_connection_epoch'};
   if(typeof expectedObserverUuid!=='string'||!expectedObserverUuid||native.observerUuid!==expectedObserverUuid)
@@ -72,7 +72,8 @@ export function directorConnectionRecovery({enabled,previousEpoch,expectedObserv
   const attached=native.phase==='attached'&&targets.includes(native.target)&&native.targetUuid
     &&native.targetUuid===native.cameraUuid;
   if(native.cameraUuid==null)return{action:'wait',reason:'await_native_camera_identity'};
-  if(!self&&!attached)return{action:'stop',reason:'new_connection_camera_identity_unknown'};
+  const bound=nativeBoundIdleCamera(native,now);
+  if(!self&&!attached&&!(bound&&targets.includes(bound.name)))return{action:'stop',reason:'new_connection_camera_identity_unknown'};
   return{action:'recover',connectionEpoch:epoch,previousOutcome:'unknown_unless_previously_confirmed',
     replayPreviousRequest:false,newLeaseRequired:true};
 }

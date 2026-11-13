@@ -1,7 +1,7 @@
 import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts,validateCameraScript} from './camera-script.mjs';
 import {validateChoiceProbabilities} from './systemone-decisions.mjs';
 import {nativeScheduledCamera} from './native-shot-sequence.mjs';
-import {nativeTargetDeathRecovery} from './native-target-recovery.mjs';
+import {nativeTargetDeathRecovery,nativeBoundIdleCamera} from './native-target-recovery.mjs';
 export {nativeTargetDeathRecovery} from './native-target-recovery.mjs';
 export {NativeCameraSequence,nativeScheduledCamera,nativeCameraFamily,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
 export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
@@ -93,7 +93,7 @@ export function planNativeDirectorResume({enabled=false,observerAlive=false,sele
  const attached=n.phase==='attached'&&n.targetUuid&&n.targetUuid!==n.observerUuid&&n.cameraUuid===n.targetUuid
    &&fresh(n.renderedAt)&&life?.requestId===n.requestId&&life.uuid===n.targetUuid&&life.nativeWorldEpoch===n.nativeWorldEpoch&&life.dead===false&&fresh(life.observedAttachedAt)
    &&Array.isArray(n.targets)&&n.targets.some(t=>t.name===n.target&&t.uuid===n.targetUuid&&t.spectator===false);
- if(!self&&!attached)return result('hold','new_camera_state_unconfirmed');
+ if(!self&&!attached&&!nativeBoundIdleCamera(n,now))return result('hold','new_camera_state_unconfirmed');
  if(recentResumes>=4||lastResumeAt&&now-lastResumeAt<10000)return result('hold','resume_rate_limited');
  return{...result('start','new_native_connection_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true};
 }
