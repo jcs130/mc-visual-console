@@ -1,3 +1,21 @@
+/** A server-bound eye can already view its player before any new director lease.
+ * This proves only the current camera identity; it never adopts the rejected offer.
+ */
+export function nativeBoundIdleCamera(n,now=Date.now()){
+ const fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000;
+ const uuid=n?.observerAccess?.boundTargetUuid;
+ if(n?.phase!=='idle'||n.reason!=='connection_epoch_mismatch'||n.connected!==true||n.authenticated!==true
+  ||n.connectionBoundRequests!==true||n.spectator!==true||n.manualDetachRequested===true||n.transition?.active===true
+  ||n.requestId!=null||n.activeLease!=null||n.observerAccess?.mode!=='bound-player'||n.targetDiscovery?.mode!=='bound_player'
+  ||!uuid||uuid===n.observerUuid||n.cameraUuid!==uuid||!n.connectionEpoch
+  ||!fresh(Date.parse(n.recordedAt))||!fresh(n.renderedAt)
+  ||n.offer?.accepted!==false||n.offer.neverAdmitted!==true||n.offer.reason!=='connection_epoch_mismatch')return null;
+ const target=n.targets?.find(t=>t.uuid===uuid&&t.loaded===true&&t.alive===true&&t.spectator===false
+  &&typeof t.name==='string'&&t.name&&Number.isSafeInteger(t.entityId)&&t.entityId>=0&&fresh(t.sampledAt)
+  &&typeof t.scope==='string'&&t.scope.startsWith(n.connectionEpoch+':'));
+ return target?{name:target.name,uuid,entityId:target.entityId}:null;
+}
+
 /** A death receipt belongs to the old entity, not to the currently rendered world.
  * It permits waiting/reselection only; it never proves a respawn or an attachment.
  */
