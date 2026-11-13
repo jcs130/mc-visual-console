@@ -69,6 +69,10 @@ const packagedCinematicChecks=run('java',['-cp',consumer+path.delimiter+jar,'Cin
 const packagedOrthographicChecks=run('java',['-cp',consumer+path.delimiter+jar,'OrthographicRigCheck']);process.stdout.write('Packaged consumer: '+packagedOrthographicChecks);
 const packagedCaptureChecks=run('java',['-cp',consumer+path.delimiter+jar,'CapturePolicyCheck']);process.stdout.write('Packaged consumer: '+packagedCaptureChecks);
 for(const file of ['scene-policy.mjs','scene-policy.test.mjs','connection-recovery.mjs','connection-recovery.test.mjs','shot-policy.mjs','shot-policy.test.mjs'])fs.copyFileSync(path.join(source,file),path.join(output,file));
+const recoverySource=path.resolve(source,'../../packages/modern-viewer/renderer-src/host/native-target-recovery.mjs');
+fs.copyFileSync(recoverySource,path.join(output,'native-target-recovery.mjs'));
+const recoveryFile=path.join(output,'connection-recovery.mjs');
+fs.writeFileSync(recoveryFile,fs.readFileSync(recoveryFile,'utf8').replace('../../packages/modern-viewer/renderer-src/host/native-target-recovery.mjs','./native-target-recovery.mjs'));
 const sceneChecks=execFileSync(process.execPath,['--test',path.join(output,'scene-policy.test.mjs'),path.join(output,'connection-recovery.test.mjs'),path.join(output,'shot-policy.test.mjs')],{encoding:'utf8',windowsHide:true});
 process.stdout.write(sceneChecks.split('\n').slice(-10).join('\n'));
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');

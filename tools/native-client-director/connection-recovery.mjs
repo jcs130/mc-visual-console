@@ -1,5 +1,6 @@
 // Camera-only recovery after a positively observed new native connection.
 // Prior effects remain unknown; callers must create a new lease/request.
+import {nativeTargetDeathRecovery} from '../../packages/modern-viewer/renderer-src/host/native-target-recovery.mjs';
 /** Only a fresh, explicitly refused offer with the pre-submission camera intact proves non-execution. */
 export function directorExpiredOffer({native:n,request:r,expectedObserverUuid,now=Date.now()}={}){
  if(!n||!r||!expectedObserverUuid||n.observerUuid!==expectedObserverUuid||n.connected!==true||n.authenticated!==true
@@ -33,7 +34,9 @@ export function directorWorldReconciliation({native:n,request:r,expectedObserver
   return{requestId:r.id,previousWorldEpoch:r.nativeWorldEpoch,nativeWorldEpoch:n.nativeWorldEpoch,
     targetUuid:r.targetUuid,requestReissued:false,completionVerified:false};
 }
-export function directorTargetLoss({native,expectedTarget,expectedUuid}={}) {
+export function directorTargetLoss({native,expectedTarget,expectedUuid,now=Date.now()}={}) {
+  const death=nativeTargetDeathRecovery({native,expectedTarget,expectedUuid,now});
+  if(death||native?.terminalCameraLife&&native.offer?.accepted===true)return death;
   if(native?.phase!=='stopped'||native.connected!==true||native.authenticated!==true||native.spectator!==true
       ||!native.observerUuid||native.cameraUuid!==native.observerUuid
       ||native.target!==expectedTarget||!expectedUuid||native.manualDetachRequested===true)return null;

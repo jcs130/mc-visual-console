@@ -72,3 +72,10 @@ test('an already attached camera is accepted only with matched native UUID and a
   const i=input();Object.assign(i.native,{phase:'attached',target:'Alice',targetUuid:'alice',cameraUuid:'alice'});
   assert.equal(recover(i).action,'recover');i.native.target='unlisted';assert.equal(recover(i).action,'stop');
 });
+test('packed recovery retains a proven death across missing camera and a later world',()=>{
+ const f=death();Object.assign(f,{now:100000});Object.assign(f.native,{recordedAt:new Date(100000).toISOString(),connectionEpoch:'same',requestId:'accepted',activeLease:'lease',
+  offer:{id:'accepted',lease:'lease',target:'Alice',accepted:true},terminalCameraLife:{...f.native.cameraLife,requestId:'accepted',observedAttachedAt:90000}});
+ f.native.cameraUuid=null;assert.equal(targetLoss(f)?.action,'wait');
+ f.native.cameraUuid='observer';f.native.nativeWorldEpoch=5;assert.equal(targetLoss(f)?.action,'reselect');
+ f.native.manualDetachRequested=true;assert.equal(targetLoss(f),null);
+});

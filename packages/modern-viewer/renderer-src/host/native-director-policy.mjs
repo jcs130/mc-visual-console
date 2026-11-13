@@ -1,6 +1,8 @@
 import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts,validateCameraScript} from './camera-script.mjs';
 import {validateChoiceProbabilities} from './systemone-decisions.mjs';
 import {nativeScheduledCamera} from './native-shot-sequence.mjs';
+import {nativeTargetDeathRecovery} from './native-target-recovery.mjs';
+export {nativeTargetDeathRecovery} from './native-target-recovery.mjs';
 export {NativeCameraSequence,nativeScheduledCamera,nativeCameraFamily,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
 export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
 export const NATIVE_DIRECTOR_RESUME_PROTOCOL='mcvisual.native-director-resume/v1';
@@ -54,6 +56,17 @@ function lateNativeAttachment(n,s,now){
   previousRequestId:r.id,previousTarget:r.target,previousTargetUuid:r.targetUuid,
   completionVerified:false,requestedViewVerified:false};
 }
+function stoppedTargetDeath(n,s,now){
+ const loss=s?.knownTargetLoss,stoppedAt=Date.parse(s?.at);
+ if(s?.running!==false||s.phase!=='native_stopped_requires_review'||s.pending!=null
+  ||!Number.isFinite(stoppedAt)||stoppedAt>now||loss?.reason!=='target_died'
+  ||loss.requestId!==n.requestId||loss.connectionEpoch!==n.connectionEpoch)return null;
+ const death=nativeTargetDeathRecovery({native:n,expectedTarget:loss.target,expectedUuid:loss.uuid,now});
+ if(death?.action!=='reselect')return null;
+ return{kind:'target_death',requestId:n.requestId,lease:n.activeLease,outcome:'target_death_confirmed',
+  receiptAt:Date.parse(n.recordedAt),previousRequestId:n.requestId,previousTarget:loss.target,
+  previousTargetUuid:loss.uuid,previousTargetDied:true,completionVerified:false};
+}
 /** Camera-only supervision after a new connection or positively reconciled native receipt. No replay. */
 export function planNativeDirectorResume({enabled=false,observerAlive=false,selectorAlive=false,expectedServer,expectedObserverUuid,previousEpoch,native:n,selector:s,now=Date.now(),lastResumeAt=0,recentResumes=0}={}){
  const result=(action,reason)=>({schema:NATIVE_DIRECTOR_RESUME_PROTOCOL,action,reason,replayPreviousRequest:false});
@@ -69,10 +82,10 @@ export function planNativeDirectorResume({enabled=false,observerAlive=false,sele
  if(typeof previousEpoch!=='string'||!previousEpoch||typeof epoch!=='string'||!epoch||epoch.length>128)return result('hold','connection_provenance_missing');
  if(epoch===previousEpoch){
   if(n.transition?.active===true)return result('hold','same_connection_outcome_retained');
-  const reconciliation=lateNonAdmission(n,s,now)??lateNativeAttachment(n,s,now);
+  const reconciliation=lateNonAdmission(n,s,now)??lateNativeAttachment(n,s,now)??stoppedTargetDeath(n,s,now);
   if(!reconciliation)return result('hold','same_connection_outcome_retained');
   if(recentResumes>=4||lastResumeAt&&now-lastResumeAt<10000)return result('hold','resume_rate_limited');
-  return{...result('start',reconciliation.kind==='late_native_attachment'?'late_native_attachment_confirmed':'late_offer_non_admission_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true,reconciliation};
+  return{...result('start',reconciliation.kind==='target_death'?'native_target_death_confirmed':reconciliation.kind==='late_native_attachment'?'late_native_attachment_confirmed':'late_offer_non_admission_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true,reconciliation};
  }
  if(n.transition?.active===true)return result('hold','new_camera_transition_pending');
  const self=n.phase==='idle'&&n.cameraUuid===n.observerUuid&&n.requestId==null&&n.activeLease==null;
@@ -243,6 +256,8 @@ export class NativeCameraPacing{
   // recovery is supplied only after the host's canonical death/position-loss verifier succeeds.
   if(recovery===true&&n.phase==='stopped'&&['target_identity_lost','target_died','target_position_unconfirmed'].includes(n.reason)
     &&n.connected===true&&n.authenticated===true&&n.spectator===true&&n.cameraUuid===n.observerUuid&&!n.manualDetachRequested)return{allow:true,reason:'verified_target_loss_recovery'};
+  if(recovery===true&&choice.name===n.target&&nativeTargetDeathRecovery({native:n,expectedTarget:n.target,
+    expectedUuid:subject,now})?.action==='reselect')return{allow:true,reason:'verified_respawn_camera_recovery'};
   if(!c||!subject)return{allow:false,reason:'awaiting_render_binding'};
   const projection=choice.view.startsWith('ortho_')?'orthographic':'perspective',cross=subject!==c.uuid;
   this.history=this.history.filter(h=>now-h.at<60000);
