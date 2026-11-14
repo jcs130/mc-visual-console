@@ -1,3 +1,12 @@
+## Native spectator container release invariant
+
+Keep scoped container idle/travel dismissal, operator pin/unpin, local inspection
+renewal and normal menu isolation in all future native observer builds. Run the
+native container wiring gate, behavioral policies and independent packaged consumer
+checks; publish the source revision and artifact hash. Consumer upgrades must verify
+the `containerProtection` build receipt and preserve these protections. Never treat
+source publication as live loading. See `docs/native-container-preview.md`.
+
 ## 2026-11-09 public viewer fidelity follow-up candidate
 
 Third-person near-wall body visibility, bounded transient model recovery, cached original minimap pixels, dropped-stack provenance, nine audited vanilla weighted blocks and exact tracked-maid YSM2.6.5 catalog are implemented. 1622 shared checks pass / 41 optional fixtures skip; original Feiyu source WebGL preview passed, not production/Java pixel parity. Consumer must freeze matching host/browser/catalog and game-side actual model fields. Source is not deployment; seated/bed/equipment/backpack and other unsupported entities remain explicit. See renderer-src/docs/native-public-fidelity-followup.md.

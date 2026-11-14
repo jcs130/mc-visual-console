@@ -19,3 +19,11 @@ client-side lifecycle gap was confirmed in source.
 
 Source/build checks, consumer installation, and in-world pixel acceptance must be
 recorded separately. This document alone does not claim a running client update.
+
+Release invariant: every native build runs `check-container-protection.mjs` before
+compilation and records its receipt in `build-report.json`. The independent JAR
+consumer reruns the policy tests. The Native observer protections CI workflow
+checks PRs and main for both native wiring and timeout/travel/pin/ownership behavior.
+Do not publish or install a replacement JAR without this receipt and matching source
+hashes. The release's SHA256 manifest is the consumer pin; a version label alone
+does not prove that a copied deployment includes these protections.
