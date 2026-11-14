@@ -28,6 +28,8 @@ public final class NativeSpectatorSync {
  private static long announcedAt;
  private static int pendingMenuId=-1,ownedMenuId=-1;
  private static net.minecraft.client.gui.screens.Screen ownedMenu;
+ private static InventoryTravelPolicy menuPreview;
+ private static int menuStateId,lastMenuMouseX=Integer.MIN_VALUE,lastMenuMouseY=Integer.MIN_VALUE;
  private static final CustomPacketPayload.Type<Food> FOOD=type("food_sync");
  private static final CustomPacketPayload.Type<Experience> EXPERIENCE=type("experience_sync");
  private static final CustomPacketPayload.Type<Selected> SELECTED=type("selected_slot_sync");
@@ -60,6 +62,11 @@ public final class NativeSpectatorSync {
    if(ownedMenu!=null&&(client.screen!=ownedMenu||!Objects.equals(current,ownedMenuScope)||target()==null)){
     if(client.screen==ownedMenu){if(client.player!=null&&client.getConnection()==ownedMenuScope.connection())client.player.closeContainer();else client.setScreen(null);}
     ownedMenu=null;ownedMenuScope=null;ownedMenuId=-1;
+   }
+   if(ownsAnyMenu()&&menuPreview!=null){
+    var actor=target();int revision=client.player.containerMenu.getStateId();
+    if(revision!=menuStateId){menuStateId=revision;menuPreview.interaction(now());}
+    if(actor!=null&&menuPreview.observe(now(),actor.getX(),actor.getZ(),NativeObserverClient.targetStateFresh()))client.player.closeContainer();
    }
    if(announcedScope!=null&&now()-announcedAt>5000)announcedScope=null;
   });
@@ -98,9 +105,12 @@ public final class NativeSpectatorSync {
   pendingMenuScope=s;pendingMenuId=id;
   return false;
  }
- public static void confirmMenu(){var mc=Minecraft.getInstance();if(pendingMenuScope!=null&&Objects.equals(pendingMenuScope,scope())&&mc.player!=null&&mc.player.containerMenu.containerId==pendingMenuId&&mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen){ownedMenu=mc.screen;ownedMenuScope=pendingMenuScope;ownedMenuId=pendingMenuId;}pendingMenuScope=null;pendingMenuId=-1;}
+ public static void confirmMenu(){var mc=Minecraft.getInstance();if(pendingMenuScope!=null&&Objects.equals(pendingMenuScope,scope())&&mc.player!=null&&mc.player.containerMenu.containerId==pendingMenuId&&mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen){ownedMenu=mc.screen;ownedMenuScope=pendingMenuScope;ownedMenuId=pendingMenuId;menuPreview=new InventoryTravelPolicy(now(),15000);menuStateId=mc.player.containerMenu.getStateId();lastMenuMouseX=lastMenuMouseY=Integer.MIN_VALUE;}pendingMenuScope=null;pendingMenuId=-1;}
  public static boolean ownsAnyMenu(){var mc=Minecraft.getInstance();return ownedMenu!=null&&mc.screen==ownedMenu&&mc.getConnection()==ownedMenuScope.connection()&&mc.player!=null&&mc.player.containerMenu.containerId==ownedMenuId;}
- public static void menuClosed(Object screen){if(screen==ownedMenu){DETAILS.close(scope());ownedMenu=null;ownedMenuScope=null;ownedMenuId=-1;}}
+ public static void menuClosed(Object screen){if(screen==ownedMenu){DETAILS.close(scope());ownedMenu=null;ownedMenuScope=null;ownedMenuId=-1;menuPreview=null;}}
+ public static boolean toggleMenuPin(){if(!ownsAnyMenu()||menuPreview==null)return false;menuPreview.togglePin(now());return true;}
+ public static boolean menuPinned(){return ownsAnyMenu()&&menuPreview!=null&&menuPreview.pinned();}
+ public static void menuPointer(int x,int y){if(!ownsAnyMenu()||menuPreview==null)return;if(lastMenuMouseX!=Integer.MIN_VALUE&&(Math.abs(x-lastMenuMouseX)>1||Math.abs(y-lastMenuMouseY)>1))menuPreview.interaction(now());lastMenuMouseX=x;lastMenuMouseY=y;}
  private static boolean displayScope(){return !ownsAnyMenu()||Objects.equals(ownedMenuScope,scope())&&target()!=null;}
  public static ItemStack menuItem(int slot){if(!displayScope())return ItemStack.EMPTY;var view=inventory();if(view==null||slot<0||slot>=view.slots().size())return ItemStack.EMPTY;var item=view.slots().get(slot);return item.known()?item.item():ItemStack.EMPTY;}
  public static boolean knownItem(int slot){if(!displayScope())return false;var view=inventory();return view!=null&&slot>=0&&slot<view.slots().size()&&view.slots().get(slot).known();}

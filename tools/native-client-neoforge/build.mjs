@@ -1,6 +1,8 @@
 import fs from'node:fs/promises';import path from'node:path';import{fileURLToPath,pathToFileURL}from'node:url';import{execFileSync}from'node:child_process';import{createHash,randomUUID}from'node:crypto';
 const dir=path.dirname(fileURLToPath(import.meta.url)),args=process.argv.slice(2),opt=n=>args[args.indexOf(n)+1];
 for(const n of['--platform-report','--mapper','--mappings','--java-home','--output-dir'])if(!args.includes(n))throw Error('Required explicit input '+n);
+const {checkContainerProtection}=await import('./check-container-protection.mjs');
+const containerProtection=await checkContainerProtection();
 const platform=JSON.parse(await fs.readFile(opt('--platform-report'),'utf8'));let cp=[platform.artifact,...platform.classpath].join(path.delimiter);
 const {clientSourceMappings}=await import(pathToFileURL(path.resolve(opt('--mapper'))));const mapper=await clientSourceMappings(opt('--mappings'));
 const out=path.resolve(opt('--output-dir')),work=out+'/compile-'+randomUUID(),src=work+'/src',classes=work+'/classes';await fs.mkdir(src,{recursive:true});await fs.mkdir(classes,{recursive:true});
@@ -61,5 +63,5 @@ for(const name of configs){
 }
 const consumer=work+'/consumer';await fs.mkdir(consumer);const tests=sources.filter(n=>n.endsWith('Check.java'));await fs.writeFile(work+'/consumer.args',['--release','21','-encoding','UTF-8','-proc:none','-classpath',artifact+path.delimiter+cp,'-d',consumer,...tests].map(s=>'"'+s.replaceAll('\\','/')+'"').join('\n'));run('javac',['@'+work+'/consumer.args']);
 const packaged=names.map(n=>run('java',['-cp',consumer+path.delimiter+artifact+path.delimiter+cp,n]).trim());if(JSON.stringify(checks)!==JSON.stringify(packaged))throw Error('Packaged consumer mismatch');
-for(const name of['build.mjs','neoforge.mods.toml','NOTICE.md','LICENSE-SPECTATORPLUS'])records.push({file:'tools/native-client-neoforge/'+name,sha256:sha(await fs.readFile(dir+'/'+name))});
-const report={schema:'mcvisual-neoforge-build/v1',at:new Date().toISOString(),artifact,sha256:sha(await fs.readFile(artifact)),platformSha256:platform.sha256,runtimeDependencies,mapping:mapper.report(),sources:records,checks,packaged,packagedMetadataVerified:true,mixinConfigs:configs,work,productionLoaded:false,gameConnections:0};await fs.writeFile(out+'/build-report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({artifact,sha256:report.sha256,checks,packaged,packagedMetadataVerified:true}));
+for(const name of['build.mjs','check-container-protection.mjs','neoforge.mods.toml','NOTICE.md','LICENSE-SPECTATORPLUS'])records.push({file:'tools/native-client-neoforge/'+name,sha256:sha(await fs.readFile(dir+'/'+name))});
+const report={schema:'mcvisual-neoforge-build/v1',at:new Date().toISOString(),artifact,sha256:sha(await fs.readFile(artifact)),platformSha256:platform.sha256,runtimeDependencies,mapping:mapper.report(),sources:records,checks,packaged,containerProtection,packagedMetadataVerified:true,mixinConfigs:configs,work,productionLoaded:false,gameConnections:0};await fs.writeFile(out+'/build-report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({artifact,sha256:report.sha256,checks,packaged,containerProtection,packagedMetadataVerified:true}));
