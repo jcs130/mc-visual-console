@@ -5,6 +5,8 @@ import org.spongepowered.asm.mixin.Mixin;import org.spongepowered.asm.mixin.inje
 public abstract class SpectatorKeyMixin {
  @Inject(method="keyPress",at=@At("HEAD"),cancellable=true,require=1)
  private void inventory(long window,int key,int scan,int action,int mods,CallbackInfo ci){
-  var mc=Minecraft.getInstance();if(action==1&&mc.screen==null&&window==mc.getWindow().getWindow()&&mc.options.keyInventory.matches(key,scan)&&NativeSpectatorSync.requestInventory())ci.cancel();
+  var mc=Minecraft.getInstance();if(action!=1||window!=mc.getWindow().getWindow())return;
+  if(key==80&&NativeSpectatorSync.toggleMenuPin()){ci.cancel();return;}
+  if(mc.screen==null&&mc.options.keyInventory.matches(key,scan)&&NativeSpectatorSync.requestInventory())ci.cancel();
  }
 }

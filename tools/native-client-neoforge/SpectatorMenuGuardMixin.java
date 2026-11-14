@@ -12,7 +12,8 @@ public abstract class SpectatorMenuGuardMixin {
  @Inject(method="render",at=@At("TAIL"),require=1)
  private void receipt(GuiGraphics draw,int mx,int my,float delta,CallbackInfo ci){
   if(!NativeSpectatorSync.ownsAnyMenu())return;var mc=net.minecraft.client.Minecraft.getInstance();
-  draw.drawString(mc.font,"观战容器 · 只读",leftPos,Math.max(2,topPos-12),0xff9ee7ff,true);
+  NativeSpectatorSync.menuPointer(mx,my);
+  draw.drawString(mc.font,NativeSpectatorSync.menuPinned()?"观战容器 · 已固定 · P 取消":"观战容器 · 15秒无变化收起 · P 固定",leftPos,Math.max(2,topPos-12),0xff9ee7ff,true);
   for(var slot:menu.slots)if(slot.container==mc.player.getInventory()&&!NativeSpectatorSync.knownItem(slot.getContainerSlot()))draw.drawString(mc.font,"?",leftPos+slot.x+5,topPos+slot.y+4,0xffd7dfe8,true);
  }
 }
