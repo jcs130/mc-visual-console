@@ -35,3 +35,15 @@ export function corticoContentPhase(status,{now=Date.now()}={}){
  const at=Date.parse(p.enteredAt),elapsed=Number.isFinite(at)&&at<=now?' · 已持续'+Math.floor((now-at)/1000)+'秒':'';
  return{text:status.loop.paused?'已暂停':(labels[p.state]??'宿主运行中')+(Number.isInteger(p.round)?' · 第'+p.round+'轮':'')+elapsed,paused:status.loop.paused===true};
 }
+
+/** Optional host-public activity panel, never a worker journal or raw prompt. */
+export function corticoTaskRecords(state,{now=Date.now(),world}={}){
+ if(state?.schema!=='task-activity-state/v1'||!Array.isArray(state.records))return [];
+ return state.records.slice(0,8).filter(r=>r?.schema==='agent-activity/v1'&&r.kind==='phase'&&r.session==='task-progress'
+   &&r.result?.schema==='task-progress/v1'&&r.result.goalCompleted===false&&(!world||r.result.world===world)
+   &&Date.parse(r.result.observedAt)<=now+1000&&Date.parse(r.result.observedAt)>=now-12000&&Date.parse(r.result.expiresAt)>now
+   &&Date.parse(r.result.expiresAt)<=Date.parse(r.result.observedAt)+15000)
+   .map(r=>({schema:r.schema,id:r.id,at:r.at,kind:r.kind,session:r.session,source:r.source,status:r.status,
+     title:activityText(r.title,80),text:activityText(r.text,240),result:{schema:r.result.schema,phase:r.result.phase,
+       observedAt:r.result.observedAt,expiresAt:r.result.expiresAt,bodyOwned:r.result.bodyOwned===true,goalCompleted:false}}));
+}
