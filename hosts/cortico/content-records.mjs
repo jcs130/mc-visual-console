@@ -1,4 +1,5 @@
 import {activityText} from '../../packages/modern-viewer/renderer-src/src/modern-viewer/agent-activity.js';
+import {publicThoughtView} from '../../packages/modern-viewer/renderer-src/host/public-thought.mjs';
 const skills={attack:'攻击',engage:'接敌作战',goto:'前往目标',goto_player:'跟随玩家',find:'寻找目标',say:'发送游戏消息',craft:'合成',collect:'采集',mine:'挖掘',dig:'挖掘',eat:'进食',equip:'装备',cast:'施法',interact:'交互',look:'观察',wait:'等待'};
 const taskId=msg=>/任务#(\d+)/.exec(msg??'')?.[1]??null;
 function skillTitle(data){const step=data?.steps?.[0]??data?.args?.steps?.[0];return skills[step?.skill??step?.type]??'游戏操作';}
@@ -45,5 +46,6 @@ export function corticoTaskRecords(state,{now=Date.now(),world}={}){
    &&Date.parse(r.result.expiresAt)<=Date.parse(r.result.observedAt)+15000)
    .map(r=>({schema:r.schema,id:r.id,at:r.at,kind:r.kind,session:r.session,source:r.source,status:r.status,
      title:activityText(r.title,80),text:activityText(r.text,240),result:{schema:r.result.schema,phase:r.result.phase,
-       observedAt:r.result.observedAt,expiresAt:r.result.expiresAt,bodyOwned:r.result.bodyOwned===true,goalCompleted:false}}));
+       observedAt:r.result.observedAt,expiresAt:r.result.expiresAt,bodyOwned:r.result.bodyOwned===true,goalCompleted:false,
+       ...(publicThoughtView(r.result.publicThought,now)?{publicThought:publicThoughtView(r.result.publicThought,now)}:{})}}));
 }

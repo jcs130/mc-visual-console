@@ -19,6 +19,17 @@ test('shows long-running public task intent alongside idle body and expires disc
  assert.deepEqual(corticoTaskRecords({...state,records:[{...task,result:{...task.result,expiresAt:new Date(now+60000).toISOString()}}]},{now}),[]);
 });
 const {WebSocket,WebSocketServer}=createRequire(import.meta.url)(process.env.MCVISUAL_TEST_WS_MODULE||'ws');
+test('shows explicit public thinking separately from movement and never renews a stale/private note',()=>{
+ const now=200000,at=new Date(now-30000).toISOString(),r={schema:'agent-activity/v1',id:'task:1',at,kind:'phase',session:'task-progress',status:'running',title:'寻找出口',text:'模型选择中',
+  result:{schema:'task-progress/v1',world:'game',phase:'model',observedAt:new Date(now).toISOString(),expiresAt:new Date(now+10000).toISOString(),goalCompleted:false,
+   publicThought:{source:'model-public-note',verification:'intention-not-outcome',at,text:'上方可能有高差，需要确认净空。',next:'查移动能力与落点。'},reasoning:'PRIVATE'}};
+ const project=record=>agentActivityPanels({now,records:corticoTaskRecords({schema:'task-activity-state/v1',records:[record]},{now,world:'game'})});
+ assert.equal(project(r)[1].rows[0].text,r.result.publicThought.text);assert.match(project(r)[1].rows[2].text,/30秒/);
+ assert.equal(normalizeContentPanels(project(r)).length,2);
+ assert.ok(!JSON.stringify(project(r)).includes('PRIVATE'));
+ for(const note of [{...r.result.publicThought,at:new Date(now-121000).toISOString()},{...r.result.publicThought,text:'派分身挖路'},{...r.result.publicThought,source:'raw-reasoning'}])
+  assert.equal(project({...r,result:{...r.result,publicThought:note}}).length,1);
+});
 const scope={instanceId:'fixture',epoch:1,server:'offline',recipientUuid:'11111111-1111-1111-1111-111111111111',subjectUuid:'22222222-2222-2222-2222-222222222222',entityId:5,dimension:'minecraft:overworld'};
 const panel=title=>[{id:'fixture',title,anchor:'bottom_left',width:180,bottomInset:40,rows:[{label:'动作',text:'测试',tone:'info'}]}];
 test('native HUD shows actual model wait and current body independently, without stale action claims',()=>{
