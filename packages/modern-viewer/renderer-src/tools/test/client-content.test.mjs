@@ -1,7 +1,23 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {createServer} from 'node:http';import {once} from 'node:events';import {createRequire} from 'node:module';
 import {createClientContentStream,normalizeContentScope,normalizeContentPanels} from '../../host/client-content-stream.mjs';
 import {agentActivityPanels} from '../../host/agent-content.mjs';
-import {corticoContentRecords,corticoContentPhase} from '../../../../../hosts/cortico/content-records.mjs';
+import {corticoContentRecords,corticoContentPhase,corticoTaskRecords} from '../../../../../hosts/cortico/content-records.mjs';
+
+test('shows long-running public task intent alongside idle body and expires discontinued state',()=>{
+ const now=200000,at=new Date(now).toISOString();
+ const task={schema:'agent-activity/v1',id:'task:attempt-1',at:new Date(now-190000).toISOString(),kind:'phase',session:'task-progress',source:'system2',status:'running',
+  title:'补充箭矢',text:'正在核对服务器信息；购买尚未确认',reasoning:'PRIVATE',args:{password:'PRIVATE'},
+  result:{schema:'task-progress/v1',world:'game',phase:'model',observedAt:at,expiresAt:new Date(now+12000).toISOString(),bodyOwned:true,goalCompleted:false}};
+ const state={schema:'task-activity-state/v1',records:[task,{...task,id:'other',title:'OTHER_WORLD',result:{...task.result,world:'town'}}]};
+ const tasks=corticoTaskRecords(state,{now,world:'game'});assert.equal(tasks.length,1);assert.ok(!JSON.stringify(tasks).includes('PRIVATE'));
+ const body={schema:'agent-activity/v1',id:'current-body',at,kind:'phase',status:'unknown',title:'身体：空闲',text:'等待动作',result:{schema:'body-status/v1',expiresAt:new Date(now+6000).toISOString()}};
+ const p=agentActivityPanels({records:[...tasks,body],phase:{text:'模型处理中'},now});
+ assert.equal(p[0].rows[0].text,'补充箭矢');assert.match(p[0].rows[1].text,/购买尚未确认.*190秒/);assert.match(p[0].rows[2].text,/空闲/);
+ assert.ok(!JSON.stringify(p).includes('OTHER_WORLD'));
+ assert.equal(agentActivityPanels({records:tasks,now:now+13000})[0].rows.some(r=>r.label==='正在做'),false);
+ assert.deepEqual(corticoTaskRecords(state,{now:now+13000,world:'game'}),[]);
+ assert.deepEqual(corticoTaskRecords({...state,records:[{...task,result:{...task.result,expiresAt:new Date(now+60000).toISOString()}}]},{now}),[]);
+});
 const {WebSocket,WebSocketServer}=createRequire(import.meta.url)(process.env.MCVISUAL_TEST_WS_MODULE||'ws');
 const scope={instanceId:'fixture',epoch:1,server:'offline',recipientUuid:'11111111-1111-1111-1111-111111111111',subjectUuid:'22222222-2222-2222-2222-222222222222',entityId:5,dimension:'minecraft:overworld'};
 const panel=title=>[{id:'fixture',title,anchor:'bottom_left',width:180,bottomInset:40,rows:[{label:'动作',text:'测试',tone:'info'}]}];

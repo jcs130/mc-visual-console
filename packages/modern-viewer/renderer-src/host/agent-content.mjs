@@ -4,11 +4,19 @@ const tone=s=>s==='failed'?'error':s==='completed'?'success':s==='unknown'?'warn
 /** Public records only. No reasoning transcripts, prompts, inferred success or added model calls. */
 export function agentActivityPanels({name,records=[],phase=null,now=Date.now()}={}){
  const rows=[],safe=records.slice(-80).map(normalizeAgentActivity).filter(r=>r&&r.kind!=='reasoning'&&Date.parse(r.at)<=now+1000
-  && (now-Date.parse(r.at)<120000 || r.id==='current-body'&&r.result?.schema==='body-status/v1'&&Date.parse(r.result.expiresAt)>now)).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+  && (now-Date.parse(r.at)<120000 || ['body-status/v1','task-progress/v1'].includes(r.result?.schema)&&Date.parse(r.result.expiresAt)>now)).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
  const age=r=>Math.max(0,Math.floor((now-Date.parse(r.at))/1000))+'秒前';
- if(phase&&typeof phase.text==='string')rows.push({label:'调度',text:activityText(phase.text,100),tone:phase.paused?'muted':'info'});
+ const tasks=safe.filter(r=>r.kind==='phase'&&r.session==='task-progress'&&r.result?.schema==='task-progress/v1'
+   &&Date.parse(r.result.expiresAt)>now&&Date.parse(r.result.observedAt)<=now+1000&&r.result.goalCompleted===false);
+ const task=tasks.findLast(r=>r.result.bodyOwned===true)??tasks.at(-1);
+ if(task){
+   rows.push({label:'正在做',text:activityText(task.title,80),tone:'info'});
+   rows.push({label:'处理',text:activityText(task.text+' · '+Math.max(0,Math.floor((now-Date.parse(task.at))/1000))+'秒',180),tone:tone(task.status)});
+ }
+ if(!task&&phase&&typeof phase.text==='string')rows.push({label:'调度',text:activityText(phase.text,100),tone:phase.paused?'muted':'info'});
  const body=safe.findLast(r=>r.id==='current-body'&&r.kind==='phase'&&r.result?.schema==='body-status/v1'&&Date.parse(r.result.expiresAt)>now);
  if(body)rows.push({label:'身体',text:activityText(body.title.replace(/^身体：/,'')+' · 已持续'+Math.max(0,Math.floor((now-Date.parse(body.at))/1000))+'秒'+(body.text?' · '+body.text:''),180),tone:body.status==='running'?'active':'muted'});
+ if(task&&tasks.length>1)rows.push({label:'另外',text:activityText(tasks.filter(r=>r.id!==task.id).slice(0,2).map(r=>r.title+'：'+r.text).join('；'),180),tone:'muted'});
  const progress=safe.findLast(r=>r.kind==='phase'&&r.session==='audience-progress'&&r.result?.schema==='audience-progress/v1'&&Date.parse(r.result.expiresAt)>now);
  if(progress)rows.push({label:'当前',text:activityText(progress.text||progress.title,150),tone:'info'});
  const decision=safe.findLast(r=>r.kind==='decision');
