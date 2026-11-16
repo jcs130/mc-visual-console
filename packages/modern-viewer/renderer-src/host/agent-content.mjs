@@ -1,4 +1,5 @@
 import {normalizeAgentActivity,activityText} from '../src/modern-viewer/agent-activity.js';
+import {publicThoughtView} from './public-thought.mjs';
 const states={started:'开始',accepted:'已受理',running:'执行中',completed:'完成回执',failed:'失败',cancelled:'已取消',unknown:'结果未确认'};
 const tone=s=>s==='failed'?'error':s==='completed'?'success':s==='unknown'?'warning':['accepted','running','started'].includes(s)?'active':'muted';
 /** Public records only. No reasoning transcripts, prompts, inferred success or added model calls. */
@@ -25,5 +26,9 @@ export function agentActivityPanels({name,records=[],phase=null,now=Date.now()}=
  const actions=safe.filter(r=>['tool','execution'].includes(r.kind));
  for(const r of actions.slice(-2))rows.push({label:r.kind==='execution'?'最近回执':'最近操作',text:activityText(age(r)+' · '+states[r.status]+' · '+r.title,150),tone:tone(r.status)});
  if(rows.length===0)rows.push({label:'数据',text:'等待宿主公开行为记录',tone:'muted'});
- return[{id:'agent-behavior',title:activityText((name||'Agent')+' · 决策与行动',72),anchor:'bottom_right',width:220,bottomInset:58,rows:rows.slice(0,5)}];
+ const thought=publicThoughtView(task?.result?.publicThought,now);
+ return[{id:'agent-behavior',title:activityText((name||'Agent')+' · 决策与行动',72),anchor:'bottom_right',width:220,bottomInset:58,rows:rows.slice(0,5)},
+  ...(thought?[{id:'agent-public-thought',title:activityText((name||'Agent')+' · 思路与打算',72),anchor:'bottom_left',width:260,bottomInset:58,
+   rows:[{label:'思路',text:thought.text,tone:'info'},{label:'下一步',text:thought.next,tone:'info'},
+    {label:'说明',text:Math.floor((now-Date.parse(thought.at))/1000)+'秒前的判断，执行结果另看回执',tone:'muted'}]}]:[])];
 }
