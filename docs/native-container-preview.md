@@ -5,12 +5,20 @@ share the scoped travel-dismissal policy already used by the explicit read-only
 backpack. Only the exact owned spectator menu is eligible; ordinary player menus
 and another connection/target remain outside this path.
 
-A stationary mirrored menu also closes after 15 seconds without a native menu
-state revision or local pointer inspection. Repainting the same contents does not
-renew the preview. P pins/unpins the preview, and E/Escape still close normally.
-The explicit E-key backpack retains its existing travel-only timeout policy.
+A stationary backpack or mirrored menu closes after 15 seconds without a visible
+item change or local inspection. The target's inventory activity alone can keep it
+open for up to 30 seconds from opening or the last local inspection. Repainting
+identical stacks and receiving another window for the same open preview preserve
+its clock. Travel can dismiss it sooner. P pins/unpins the preview, and E/Escape
+close it immediately. A new target or connection discards the previous scope.
 Closing uses the observer's own container-close path; it does not click slots,
 move items, or issue commands to the followed player.
+
+The backpack shows the target's head, chest, legs, feet, main hand and off hand
+above the 36 carried slots. A mirrored container shows the same equipment beside
+its original slots when the viewport has room. Equipment comes from the tracked
+camera entity. Item icons, durability bars and tooltips use the original stacks.
+An unknown target is displayed as "?", while a known empty equipment slot shows "空".
 
 This fixes a production observation where the personal trial chest covered the
 scene and prevented automatic camera composition for an extended period. Missing
