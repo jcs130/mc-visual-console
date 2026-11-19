@@ -17,6 +17,17 @@ public final class OfflineContractCheck {
    Class.forName("net.minecraft.client.renderer.ItemInHandRenderer",false,loader);checks.add("net.minecraft.client.renderer.ItemInHandRenderer");
    Class.forName("net.minecraft.client.MouseHandler",false,loader);checks.add("net.minecraft.client.MouseHandler");
    Class.forName("com.mojang.blaze3d.platform.Window",false,loader);checks.add("com.mojang.blaze3d.platform.Window");
+   var contents=new PreviewContents();
+   var item=new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.IRON_LEGGINGS);
+   var slots=new ArrayList<net.minecraft.world.item.ItemStack>();slots.add(item);slots.add(null);
+   if(contents.update(slots)||contents.update(slots))throw new IllegalStateException("Unchanged slots extended the preview");
+   item.setDamageValue(15);
+   if(!contents.update(slots)||!contents.update(List.of(item.copy(),net.minecraft.world.item.ItemStack.EMPTY)))
+    throw new IllegalStateException("Durability or unknown-to-empty slot change lost");
+   if(contents.update(List.of(item.copy(),net.minecraft.world.item.ItemStack.EMPTY)))throw new IllegalStateException("Identical replacement extended the preview");
+   var unknown=SpectatorEquipmentPanel.stacks(null);
+   if(unknown.size()!=6||unknown.stream().anyMatch(Objects::nonNull))throw new IllegalStateException("Unscoped equipment disclosed");
+   data.put("equipmentAndContentChecks",true);
    if(Boolean.getBoolean("mcvisual.offlineWindowCheck")){
     var windowModule=Class.forName("org.mcvisual.window.WindowRuntime",false,loader);
     if(!Boolean.TRUE.equals(windowModule.getMethod("enabled").invoke(null))||!Boolean.TRUE.equals(windowModule.getMethod("freeCursor").invoke(null)))throw new IllegalStateException("Explicit standalone window policy required");

@@ -29,6 +29,8 @@ public final class NativeSpectatorSync {
  private static int pendingMenuId=-1,ownedMenuId=-1;
  private static net.minecraft.client.gui.screens.Screen ownedMenu;
  private static InventoryTravelPolicy menuPreview;
+ private static InventoryTravelPolicy pendingPreview;
+ private static PreviewContents menuContents;
  private static int menuStateId,lastMenuMouseX=Integer.MIN_VALUE,lastMenuMouseY=Integer.MIN_VALUE;
  private static final CustomPacketPayload.Type<Food> FOOD=type("food_sync");
  private static final CustomPacketPayload.Type<Experience> EXPERIENCE=type("experience_sync");
@@ -56,17 +58,20 @@ public final class NativeSpectatorSync {
   register(SELECTED,b->new Selected(b.readUUID(),b.readByte()),p->NativeObserverClient.targetData(p.player,s->{DETAILS.reconcile(s);DETAILS.selected(s,p.slot);}));
   register(SCREEN,b->new ScreenInfo(b.readUUID(),b.readByte()),p->{var s=accept(p.player);if(s!=null&&DETAILS.screen(s,p.flags,now())){announcedScope=s;announcedAt=now();}});
   register(CURSOR,b->new Cursor(b.readUUID(),SpectatorInventoryProtocol.readItem(b),b.readByte()),p->{var s=accept(p.player);if(s!=null){cursor=p.item.copy();cursorScope=s;}});
-  ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{DETAILS.reconcile(null);cursor=ItemStack.EMPTY;cursorScope=null;announcedScope=null;pendingMenuScope=null;ownedMenu=null;ownedMenuScope=null;});
+  ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{DETAILS.reconcile(null);cursor=ItemStack.EMPTY;cursorScope=null;announcedScope=null;pendingMenuScope=null;pendingPreview=null;ownedMenu=null;ownedMenuScope=null;menuPreview=null;menuContents=null;});
   ClientTickEvents.END_CLIENT_TICK.register(client->{
    var current=scope();if(client.screen instanceof ReadOnlyInventoryScreen screen)screen.checkScope();
    if(ownedMenu!=null&&(client.screen!=ownedMenu||!Objects.equals(current,ownedMenuScope)||target()==null)){
     if(client.screen==ownedMenu){if(client.player!=null&&client.getConnection()==ownedMenuScope.connection())client.player.closeContainer();else client.setScreen(null);}
-    ownedMenu=null;ownedMenuScope=null;ownedMenuId=-1;
+    ownedMenu=null;ownedMenuScope=null;ownedMenuId=-1;menuPreview=null;menuContents=null;
    }
    if(ownsAnyMenu()&&menuPreview!=null){
     var actor=target();int revision=client.player.containerMenu.getStateId();
-    if(revision!=menuStateId){menuStateId=revision;menuPreview.interaction(now());}
-    if(actor!=null&&menuPreview.observe(now(),actor.getX(),actor.getZ(),NativeObserverClient.targetStateFresh()))client.player.closeContainer();
+    if(revision!=menuStateId){
+     menuStateId=revision;
+     if(menuContents.update(containerStacks(client)))menuPreview.contentChanged(now());
+    }
+    if(menuPreview.expired(now())||actor!=null&&menuPreview.observe(now(),actor.getX(),actor.getZ(),true))client.player.closeContainer();
    }
    if(announcedScope!=null&&now()-announcedAt>5000)announcedScope=null;
   });
@@ -80,7 +85,11 @@ public final class NativeSpectatorSync {
  public static NativeObserverClient.NativeScope scope(){var s=NativeObserverClient.currentScope();DETAILS.reconcile(s);if(!Objects.equals(cursorScope,s)){cursorScope=null;cursor=ItemStack.EMPTY;}return s;}
  private static NativeObserverClient.NativeScope accept(UUID id){var s=scope();return s!=null&&s.player().equalsIgnoreCase(id.toString())?s:null;}
  private static long now(){return System.nanoTime()/1_000_000;}
- public static AbstractClientPlayer target(){var s=scope();var camera=Minecraft.getInstance().getCameraEntity();return s!=null&&NativeObserverClient.targetStateFresh()&&camera instanceof AbstractClientPlayer p&&!p.isCreative()&&!p.isSpectator()?p:null;}
+ public static AbstractClientPlayer target(){
+  var s=scope();var mc=Minecraft.getInstance();var camera=mc.getCameraEntity();
+  return s!=null&&NativeObserverClient.targetStateFresh()&&camera instanceof AbstractClientPlayer p&&p!=mc.player&&
+      p.getId()==s.entity()&&p.getStringUUID().equalsIgnoreCase(s.player())&&!p.isCreative()&&!p.isSpectator()?p:null;
+ }
  public static SpectatorDetails.Food food(){var s=scope();return DETAILS.food(s,target()!=null);}
  public static SpectatorDetails.Experience experience(){var s=scope();return DETAILS.experience(s,target()!=null);}
  public static Integer selected(){var s=scope();return DETAILS.selected(s,target()!=null);}
@@ -101,16 +110,41 @@ public final class NativeSpectatorSync {
    var connection=Minecraft.getInstance().getConnection();if(connection==announcement.connection())connection.send(new ServerboundContainerClosePacket(id));return true;
   }
   if(!DETAILS.open(s,id,now()))return false;
-  if(DETAILS.survival(s)){Minecraft.getInstance().setScreen(new ReadOnlyInventoryScreen(s,id,"服务器背包 · 只读"));return true;}
-  pendingMenuScope=s;pendingMenuId=id;
+  var mc=Minecraft.getInstance();
+  var bag=mc.screen instanceof ReadOnlyInventoryScreen screen?screen:null;
+  var inherited=bag!=null?bag.preview(s):ownsAnyMenu()&&Objects.equals(s,ownedMenuScope)?menuPreview:null;
+  if(DETAILS.survival(s)){
+   if(bag==null||!bag.adopt(s,id))mc.setScreen(new ReadOnlyInventoryScreen(s,id,"服务器背包 · 只读",inherited));
+   return true;
+  }
+  pendingMenuScope=s;pendingMenuId=id;pendingPreview=inherited;
   return false;
  }
- public static void confirmMenu(){var mc=Minecraft.getInstance();if(pendingMenuScope!=null&&Objects.equals(pendingMenuScope,scope())&&mc.player!=null&&mc.player.containerMenu.containerId==pendingMenuId&&mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen){ownedMenu=mc.screen;ownedMenuScope=pendingMenuScope;ownedMenuId=pendingMenuId;menuPreview=new InventoryTravelPolicy(now(),15000);menuStateId=mc.player.containerMenu.getStateId();lastMenuMouseX=lastMenuMouseY=Integer.MIN_VALUE;}pendingMenuScope=null;pendingMenuId=-1;}
+ private static List<ItemStack> containerStacks(Minecraft client){
+  var items=new ArrayList<ItemStack>();
+  for(var slot:client.player.containerMenu.slots)if(slot.container!=client.player.getInventory())items.add(slot.getItem());
+  return items;
+ }
+ public static void confirmMenu(){
+  var mc=Minecraft.getInstance();
+  if(pendingMenuScope!=null&&Objects.equals(pendingMenuScope,scope())&&mc.player!=null&&mc.player.containerMenu.containerId==pendingMenuId&&mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen){
+   ownedMenu=mc.screen;ownedMenuScope=pendingMenuScope;ownedMenuId=pendingMenuId;
+   menuPreview=pendingPreview!=null?pendingPreview:new InventoryTravelPolicy(now(),InventoryTravelPolicy.IDLE_PREVIEW_MS);
+   menuStateId=mc.player.containerMenu.getStateId();
+   menuContents=new PreviewContents();menuContents.update(containerStacks(mc));
+   lastMenuMouseX=lastMenuMouseY=Integer.MIN_VALUE;
+  }
+  pendingMenuScope=null;pendingMenuId=-1;pendingPreview=null;
+ }
  public static boolean ownsAnyMenu(){var mc=Minecraft.getInstance();return ownedMenu!=null&&mc.screen==ownedMenu&&mc.getConnection()==ownedMenuScope.connection()&&mc.player!=null&&mc.player.containerMenu.containerId==ownedMenuId;}
- public static void menuClosed(Object screen){if(screen==ownedMenu){DETAILS.close(scope());ownedMenu=null;ownedMenuScope=null;ownedMenuId=-1;menuPreview=null;}}
+ public static void menuClosed(Object screen){
+  if(screen!=ownedMenu)return;
+  if(DETAILS.owns(scope(),ownedMenuId))DETAILS.close(ownedMenuScope);
+  ownedMenu=null;ownedMenuScope=null;ownedMenuId=-1;menuPreview=null;menuContents=null;
+ }
  public static boolean toggleMenuPin(){if(!ownsAnyMenu()||menuPreview==null)return false;menuPreview.togglePin(now());return true;}
  public static boolean menuPinned(){return ownsAnyMenu()&&menuPreview!=null&&menuPreview.pinned();}
- public static void menuPointer(int x,int y){if(!ownsAnyMenu()||menuPreview==null)return;if(lastMenuMouseX!=Integer.MIN_VALUE&&(Math.abs(x-lastMenuMouseX)>1||Math.abs(y-lastMenuMouseY)>1))menuPreview.interaction(now());lastMenuMouseX=x;lastMenuMouseY=y;}
+ public static void menuPointer(int x,int y,boolean inside){if(!ownsAnyMenu()||menuPreview==null)return;if(inside&&lastMenuMouseX!=Integer.MIN_VALUE&&(Math.abs(x-lastMenuMouseX)>1||Math.abs(y-lastMenuMouseY)>1))menuPreview.interaction(now());lastMenuMouseX=x;lastMenuMouseY=y;}
  private static boolean displayScope(){return !ownsAnyMenu()||Objects.equals(ownedMenuScope,scope())&&target()!=null;}
  public static ItemStack menuItem(int slot){if(!displayScope())return ItemStack.EMPTY;var view=inventory();if(view==null||slot<0||slot>=view.slots().size())return ItemStack.EMPTY;var item=view.slots().get(slot);return item.known()?item.item():ItemStack.EMPTY;}
  public static boolean knownItem(int slot){if(!displayScope())return false;var view=inventory();return view!=null&&slot>=0&&slot<view.slots().size()&&view.slots().get(slot).known();}
