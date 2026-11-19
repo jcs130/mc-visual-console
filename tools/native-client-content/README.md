@@ -4,6 +4,22 @@ An independent, client-only MIT mod for custom content over WebSocket. It does n
 require a server mod, Cortico, N.E.K.O., an Agent SDK or the native director companion.
 The provider owns meaning and public content; this mod only draws bounded panels.
 
+The optional Cortico storage feed can show a command-driven personal stash while
+the camera remains in the world. A page read shows its page number, occupied
+slots and up to two sample stacks with their quantities. An overview reports
+all-page occupancy. Transfers show the actual server-reported quantity and source
+slot when provided. A zero move, partial move, unknown result or syntax rejection
+has a separate presentation. The carried inventory and the personal stash use
+different labels. A normal container GUI continues to display its original slots.
+
+Export `createCorticoStorageFeed` from the frozen provider. Bind one instance to
+one verified camera/World/account, initialize it with the current event cursor,
+and read bounded new entries from that World with `readEvents({source,from,to,limit})`.
+Discard the instance on a camera or connection change. The card expires 15 seconds
+after the last applicable receipt. It accepts a local Minecraft language map for
+item and block names and exposes only the presentation rows. No game command or
+model request is required.
+
 The first primitives are text rows, status colors, recent-event rows and numeric
 progress/probability bars. There is no HTML, JavaScript, URL image fetching, game
 input, arbitrary RPC or model loop. Multiple roles can publish the same contract.
