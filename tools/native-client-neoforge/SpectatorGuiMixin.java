@@ -1,17 +1,34 @@
 package org.mcvisual.neoforge.mixin;
 import net.minecraft.client.*;import net.minecraft.client.gui.*;import net.minecraft.client.multiplayer.MultiPlayerGameMode;import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.NonNullList;import net.minecraft.world.entity.player.*;import net.minecraft.world.food.FoodData;import net.minecraft.world.item.ItemStack;
-import org.mcvisual.neoforge.NativeSpectatorSync;import org.spongepowered.asm.mixin.*;import org.spongepowered.asm.mixin.injection.*;
+import net.minecraft.world.effect.MobEffects;
+import org.mcvisual.neoforge.NativeSpectatorSync;import org.mcvisual.neoforge.SpectatorHealthGauge;import org.spongepowered.asm.mixin.*;import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.*;
 @Mixin(Gui.class)
 public abstract class SpectatorGuiMixin {
  @Shadow @Final private Minecraft minecraft;
+ @Shadow public int leftHeight;
  @Shadow private void renderItemHotbar(GuiGraphics draw,DeltaTracker delta){throw new AssertionError();}
  @Inject(method="renderHotbar",at=@At("HEAD"),cancellable=true,require=1)
  private void hotbar(GuiGraphics draw,DeltaTracker delta,CallbackInfo ci){if(NativeSpectatorSync.hotbarReady()&&!minecraft.gui.getSpectatorGui().isMenuActive()){renderItemHotbar(draw,delta);ci.cancel();}}
  // NeoForge 21.1.252 splits vanilla status into named GUI layers and two constructor lambdas.
  @Redirect(method={"maybeRenderPlayerHealth","lambda$new$3","lambda$new$4"},at=@At(value="INVOKE",target="Lnet/minecraft/client/multiplayer/MultiPlayerGameMode;canHurtPlayer()Z"),require=3)
  private boolean status(MultiPlayerGameMode mode){return NativeSpectatorSync.target()!=null||mode.canHurtPlayer();}
+ @Inject(method="renderHealthLevel",at=@At("HEAD"),cancellable=true,require=1)
+ private void compactSpectatorHealth(GuiGraphics draw,CallbackInfo ci){
+  var player=NativeSpectatorSync.target();
+  if(player==null)return;
+  var gauge=SpectatorHealthGauge.compact(player.getHealth(),player.getMaxHealth(),player.getAbsorptionAmount());
+  if(gauge==null)return;
+  int x=draw.guiWidth()/2-91,y=draw.guiHeight()-leftHeight;
+  int color=player.hasEffect(MobEffects.WITHER)?0xff858287:player.hasEffect(MobEffects.POISON)?0xff93ab43:
+      player.isFullyFrozen()?0xff86c9ff:0xffe15159;
+  draw.fill(x,y+1,x+SpectatorHealthGauge.WIDTH,y+9,0xea211a20);
+  if(gauge.healthPixels()>0)draw.fill(x+1,y+3,x+1+gauge.healthPixels(),y+8,color);
+  if(gauge.absorptionPixels()>0)draw.fill(x+1,y+1,x+1+gauge.absorptionPixels(),y+3,0xffffc75e);
+  leftHeight+=SpectatorHealthGauge.HEIGHT;
+  ci.cancel();
+ }
  @Inject(method="isExperienceBarVisible",at=@At("HEAD"),cancellable=true,require=1)
  private void xp(CallbackInfoReturnable<Boolean> ci){if(NativeSpectatorSync.scope()!=null)ci.setReturnValue(NativeSpectatorSync.experience()!=null);}
  @Inject(method="renderFood",at=@At("HEAD"),cancellable=true,require=1)
