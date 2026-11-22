@@ -167,6 +167,20 @@ export class SceneSelector{
           reason:overdue?'coverage_starvation_review':'coverage_review_after_max_dwell',forceSubjectReview:true};
       }
     }
+    // A quiet programme can check in on a verified player outside the current
+    // camera's chunks. Let a recent line finish and prefer an actual scene on
+    // any other player to this coverage choice.
+    const inQuietInterval=active?.priority===0||active?.priority===1&&now-active.at>=8000;
+    if(this.idleSubjectRotation&&this.available!==null&&inQuietInterval&&now-currentSince>=this.maxDwellMs
+      &&this.rosterIdentities?.has(current)){
+      const others=subjects.filter(s=>s.name!==current);
+      if(others.every(s=>s.priority===0)){
+        const next=others.filter(s=>this.rosterIdentities.has(s.name))
+          .sort((a,b)=>(a.lastShownAt??0)-(b.lastShownAt??0)||b.waitingMs-a.waitingMs
+            ||a.airtimeMs-b.airtimeMs||a.name.localeCompare(b.name))[0];
+        if(next)return{...next,view:'first_person',reason:'idle_online_subject_rotation'};
+      }
+    }
     const stationary=name=>this.stationary(name,now);
     const scored=this.names.filter(name=>this.available===null||this.available.has(name)).flatMap(name=>{
       const activities=[...(this.activities.get(name)?.values()??[])];
@@ -182,16 +196,6 @@ export class SceneSelector{
     const best=physical[0]??speakers[0];
     if(!best||best.score<0.15){
       if(!current&&this.available!==null&&subjects.length)return{...subjects[0],kind:'coverage',view:'first_person',reason:'initial_available_subject'};
-      // With a trusted online roster, a quiet programme can briefly check in on
-      // players outside the current camera's loaded chunks. Rendering, rather
-      // than a proposal, still determines how recently a player was shown.
-      if(this.idleSubjectRotation&&this.available!==null&&active?.priority===0&&now-currentSince>=this.maxDwellMs
-        &&this.rosterIdentities?.has(current)){
-        const next=subjects.filter(s=>s.name!==current&&s.priority===0&&this.rosterIdentities.has(s.name))
-          .sort((a,b)=>(a.lastShownAt??0)-(b.lastShownAt??0)||b.waitingMs-a.waitingMs
-            ||a.airtimeMs-b.airtimeMs||a.name.localeCompare(b.name))[0];
-        if(next)return{...next,view:'first_person',reason:'idle_online_subject_rotation'};
-      }
       if(this.cinematicFraming&&current&&currentView&&currentView!=='drone_overview'&&stationary(current)
         &&now-this.presence.get(current).stillSince>=15000)
         return {name:current,score:0,kind:'overview',at:this.presence.get(current).at,view:'drone_overview',reframe:true};

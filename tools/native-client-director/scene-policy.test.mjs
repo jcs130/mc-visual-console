@@ -245,6 +245,9 @@ test('quiet rotation respects the filtered online roster and gives way to actual
  p.setAvailable(['Alice','Bob']);
  p.observe('Alice',speech('Alice',now),now);
  assert.equal(p.choose('Alice',now-100000,now,'first_person'),null);
+ assert.equal(p.choose('Alice',now-100000,now+9000,'first_person').reason,'idle_online_subject_rotation');
+ p.observe('Bob',speech('Bob',now+9000),now+9000);
+ assert.equal(p.choose('Alice',now-100000,now+9000,'first_person').reason,'coverage_review_after_max_dwell');
  p.observe('Alice',combat(now),now);
  assert.notEqual(p.choose('Alice',now-100000,now)?.name,'Bob');
  p.setAvailable(['Alice']);

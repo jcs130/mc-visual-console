@@ -37,11 +37,13 @@ test('explicit manual selection may watch an idle player; returning to auto rest
  assert.equal(broadcastAllows(s,{name:'Bob'},subjects,'Alice'),true);
  assert.equal(resolveBroadcastSelection({...pin,mode:'auto'},native).mode,'auto');
 });
-test('an explicit quiet coverage decision is admissible only among eligible zero-priority subjects in auto mode',()=>{
+test('an explicit quiet coverage decision permits current speech but no other activity in auto mode',()=>{
  const s=resolveBroadcastSelection(null,native);
  const choice={name:'Bob',reason:'idle_online_subject_rotation'};
  const quiet=subjects.map(row=>({...row,priority:0}));
  assert.equal(broadcastAllows(s,choice,quiet,'Alice'),true);
+ assert.equal(broadcastAllows(s,choice,[{name:'Alice',priority:1},quiet[1]],'Alice'),true);
+ assert.equal(broadcastAllows(s,choice,[quiet[0],{name:'Bob',priority:1}],'Alice'),false);
  assert.equal(broadcastAllows(s,choice,subjects,'Alice'),false);
  assert.equal(broadcastAllows(s,choice,[{name:'Alice',priority:0}],'Alice'),false);
  assert.equal(broadcastAllows(s,choice,quiet,'Bob'),false);
