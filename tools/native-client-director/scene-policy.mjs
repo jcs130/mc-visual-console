@@ -69,10 +69,11 @@ export function classifyEvent(event,now=Date.now()){
   return null;
 }
 export class SceneSelector{
-  constructor(names,{minDwellMs=30_000,maxDwellMs=120_000,cinematicFraming=false}={}){
+  constructor(names,{minDwellMs=30_000,maxDwellMs=120_000,cinematicFraming=false,idleSubjectRotation=false}={}){
     this.names=[...names];this.minDwellMs=Math.max(10_000,minDwellMs);
     this.maxDwellMs=Math.max(this.minDwellMs,maxDwellMs);this.activities=new Map();this.presence=new Map();this.cinematicFraming=cinematicFraming===true;
     this.available=null;this.coverage=new Map();this.program=null;this.firstOpportunityAt=null;
+    this.idleSubjectRotation=idleSubjectRotation===true;
   }
   setAvailable(names){this.available=names===null?null:new Set(names.filter(n=>this.names.includes(n)));}
   /** Trusted native online roster; preserves coverage for the same identity, never inherits it after rename/reuse. */
@@ -181,6 +182,16 @@ export class SceneSelector{
     const best=physical[0]??speakers[0];
     if(!best||best.score<0.15){
       if(!current&&this.available!==null&&subjects.length)return{...subjects[0],kind:'coverage',view:'first_person',reason:'initial_available_subject'};
+      // With a trusted online roster, a quiet programme can briefly check in on
+      // players outside the current camera's loaded chunks. Rendering, rather
+      // than a proposal, still determines how recently a player was shown.
+      if(this.idleSubjectRotation&&this.available!==null&&active?.priority===0&&now-currentSince>=this.maxDwellMs
+        &&this.rosterIdentities?.has(current)){
+        const next=subjects.filter(s=>s.name!==current&&s.priority===0&&this.rosterIdentities.has(s.name))
+          .sort((a,b)=>(a.lastShownAt??0)-(b.lastShownAt??0)||b.waitingMs-a.waitingMs
+            ||a.airtimeMs-b.airtimeMs||a.name.localeCompare(b.name))[0];
+        if(next)return{...next,view:'first_person',reason:'idle_online_subject_rotation'};
+      }
       if(this.cinematicFraming&&current&&currentView&&currentView!=='drone_overview'&&stationary(current)
         &&now-this.presence.get(current).stillSince>=15000)
         return {name:current,score:0,kind:'overview',at:this.presence.get(current).at,view:'drone_overview',reframe:true};
