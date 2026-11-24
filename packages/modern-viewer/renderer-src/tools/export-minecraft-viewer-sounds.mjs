@@ -1,6 +1,6 @@
 /** Export vanilla sounds from version-matched, hash-verified launcher assets. */
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises'
 import path from 'node:path'
 import { expandMinecraftSounds } from './minecraft-viewer-sound-manifest.mjs'
 
@@ -10,7 +10,7 @@ if (!versionArg || !assetsArg || !outputArg) {
   process.exit(2)
 }
 const version = JSON.parse(await readFile(path.resolve(versionArg), 'utf8'))
-if (!['1.20.6','1.21.1'].includes(version.id) || !version.assetIndex?.id || !version.assetIndex?.sha1) {
+if (!/^\d{1,3}\.\d{1,3}(?:\.\d{1,3})?$/.test(version.id) || !version.assetIndex?.id || !version.assetIndex?.sha1) {
   throw Error('音效必须来自已核验版本客户端的资源索引')
 }
 const assetsRoot = path.resolve(assetsArg)
@@ -28,23 +28,25 @@ const source = JSON.parse(soundsBytes.toString('utf8'))
 const { events, files, eventMetadata } = expandMinecraftSounds(source, index)
 const soundRoot = path.join(outputRoot, 'public', 'sounds')
 const fileMetadata={}
+const present=relative=>access(path.join(soundRoot,relative)).then(()=>true,()=>false)
 for (const [relative, hash] of Object.entries(files)) {
   const sourceFile = objectFile(hash)
   const bytes=await readFile(sourceFile)
-  if (sha1(bytes) !== hash) throw Error(`音效内容校验失败：${relative}`)
+  if (sha1(bytes) !== hash || bytes.length !== index['minecraft/sounds/'+relative]?.size) throw Error(`音效内容校验失败：${relative}`)
   fileMetadata[relative]={sha1:hash,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length}
   const target = path.join(soundRoot, relative)
   await mkdir(path.dirname(target), { recursive: true })
   await copyFile(sourceFile, target)
 }
 await mkdir(soundRoot, { recursive: true })
-if(version.id==='1.21.1'){
+if(version.id!=='1.20.6'){
   await writeFile(path.join(soundRoot,'source-index.json'),indexBytes)
   await writeFile(path.join(soundRoot,'source-sounds.json'),soundsBytes)
 }
 await writeFile(path.join(soundRoot, 'manifest.json'), JSON.stringify({
-  schemaVersion: version.id==='1.21.1'?3:2, minecraftVersion: version.id, assetIndexId: version.assetIndex.id,
+  schemaVersion: version.id!=='1.20.6'?3:2, minecraftVersion: version.id, assetIndexId: version.assetIndex.id,
   assetIndexSha1: version.assetIndex.sha1, soundsJsonSha1: soundsHash,
-  events, files, eventMetadata,...(version.id==='1.21.1'?{fileMetadata}:{}),
+  optionalResources:{blockSounds:await present('block-sounds.json'),customBgm:await present('custom-bgm.json')},
+  events, files, eventMetadata,...(version.id!=='1.20.6'?{fileMetadata}:{}),
 }) + '\n')
 console.log(`${version.id} 音效已导出：${Object.keys(events).length} 个事件，${Object.keys(files).length} 个音频文件`)

@@ -1,3 +1,9 @@
+export function localProfileTexture(value) {
+  try { const u=new URL(value);const hash=/^\/texture\/([a-f0-9]{40,64})$/.exec(u.pathname)?.[1];
+    return hash && ['http:','https:'].includes(u.protocol) && u.hostname==='textures.minecraft.net'
+      && !u.port && !u.username && !u.password && !u.search && !u.hash ? '/head-texture/'+hash+'.png' : null;
+  } catch { return null; }
+}
 /** Await decoded skins and reject responses for a superseded profile or entity. */
 export function patchRendererPlayerSkin(source) {
   const replacements = [
@@ -11,5 +17,8 @@ export function patchRendererPlayerSkin(source) {
     if (source.split(before).length !== 2) throw Error('minecraft-renderer player skin anchor changed');
     source = source.replace(before, after);
   }
-  return source;
+  const profile=/JSON\.parse\(O\.from\(([a-zA-Z_$][\w$]*),"base64"\)\.toString\(\)\)\.textures\?\.SKIN\?\.url/g;
+  let count=0;source=source.replace(profile,match=>{count++;return 'cortiLocalProfileTexture('+match+')';});
+  if(count!==3)throw Error('minecraft-renderer skull profile anchors changed');
+  return 'const cortiLocalProfileTexture='+localProfileTexture.toString()+';\n'+source;
 }

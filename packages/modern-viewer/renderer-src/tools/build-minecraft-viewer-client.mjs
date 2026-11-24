@@ -1,3 +1,5 @@
+import {patchViewerQueueGate} from './viewer-queue-gate.mjs';
+import {chunk262Plugin} from './chunk-26.2-compat.mjs';
 import {patchRendererMovement} from './minecraft-viewer-movement-patch.mjs';
 import {assertViewerVersion} from '../host/viewer-version.mjs';
 import {viewerDataAlias} from './viewer-data-alias.mjs';
@@ -122,6 +124,7 @@ const clientSource = (await readFile(clientFile, 'utf8')).replaceAll('\r\n', '\n
 let correctedEntitySkeleton = false
 let correctedAvatarMotion = false
 const itemIconSource = await readFile(new URL('./minecraft-viewer-item-icon.js', import.meta.url), 'utf8')
+const hudTextSource = await readFile(new URL('./minecraft-viewer-hud-text.js', import.meta.url), 'utf8')
 const hudSource = await readFile(new URL('./minecraft-viewer-hud.js', import.meta.url), 'utf8')
 const motionSource = await readFile(new URL('./minecraft-viewer-motion.js', import.meta.url), 'utf8')
 const weaponMotionSource = await readFile(new URL('./minecraft-viewer-weapon-motion.js', import.meta.url), 'utf8')
@@ -187,7 +190,7 @@ const adaptedClient = clientSource
   .replace(potionRenderAnchor,
     '  if (!isObservedProjectile(normalized.name) || isObservedArrow(normalized.name))\n' +
     '    worldView.emit(isMove ? "entityMoved" : "entity",\n' +
-    '      isMove ? normalized : rendererEntityEquipment(normalized, globalThis.mcData?.itemsByName));')
+    '      rendererNameTagEntity(isMove ? normalized : rendererEntityEquipment(normalized, globalThis.mcData?.itemsByName)));')
   .replace('  renderMotionHud();\n}\n\nfunction applyEntityAnimation',
     '  cortiAlignAvatarArmor(state.entity);\n  cortiSyncAvatarShield(state.entity, state.offhand ?? equipment?.[1]);\n  renderMotionHud();\n}\n\nfunction applyEntityAnimation')
   .replace('socket.on("entityAnimation", (event) => applyEntityAnimation(event));',
@@ -256,7 +259,7 @@ if (changedClient === clientSource || !changedClient.includes(`String(version ||
     || !changedClient.includes('  if (pendingBlockEntities) worldView.emit("blockEntities", pendingBlockEntities);\n  for (const event of pendingChunks.values())')) {
   throw Error('modern viewer 源码版本锚点已变化')
 }
-const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${chatSource}\n${eventsSource}\n${particleSource}\n${contentSource}\n${presentationSource}\n${soundSource}\n`
+const clientWithHud = `import * as CortiThree from "three";\nimport { InventoryPlayerPreview, createInventoryPreviewFallback } from "./inventory-player-preview.js";\n${changedClient}\nglobalThis.THREE = CortiThree;\n${presetSource}\n${itemIconSource}\n${hudTextSource}\n${hudSource}\n${motionSource}\n${weaponMotionSource}\n${shieldSource}\n${entityMotionSource}\n${avatarIntegritySource}\n${droppedItemsSource}\n${biomeStyleSource}\n${panelsSource}\n${servicePanelSource}\n${sheepSource}\n${castSource}\n${combatSource}\n${tacticsSource}\n${chatSource}\n${eventsSource}\n${particleSource}\n${contentSource}\n${presentationSource}\n${soundSource}\n`
 
 await mkdir(path.join(outputRoot, 'dist'), { recursive: true })
 await mkdir(path.join(outputRoot, 'public'), { recursive: true })
@@ -267,7 +270,7 @@ const buildResult = await build({
   },
   format: 'esm', legalComments: 'none', loader: { '.png': 'dataurl' }, minify: true,
   outfile: path.join(outputRoot, 'dist', 'modern-viewer.js'), platform: 'browser',
-  plugins: [
+  plugins: [chunk262Plugin,
     await viewerReactiveModule(sourceRoot),
     { name: 'cortico-minecraft-1.20.6', setup(context) {
       context.onResolve({ filter: /^minecraft-data$/ }, () => ({ path: aliasFile }))
@@ -301,7 +304,7 @@ const buildResult = await build({
           loader: 'js', resolveDir: path.dirname(file) }
       })
       context.onLoad({ filter: /[\\/]minecraft-renderer[\\/]dist[\\/]minecraft-renderer\.js$/ }, async ({ path: file }) => {
-        const original = await readFile(file, 'utf8')
+        const original = patchViewerQueueGate(await readFile(file, 'utf8'))
         const anchor = 'for(let _ of t.bones)_.parent&&c[_.parent]?c[_.parent].add(c[_.name]):p.push(c[_.name]);'
         const glintAnchor = 'this.lastUpdate&&s-this.lastUpdate>50&&this.replaceItemModel(this.lastHeldItem)'
         const equipmentAnchor = 'this.applyEntityRenderHints(i,e),this.updateEntityEquipment(i,e);'

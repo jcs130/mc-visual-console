@@ -669,3 +669,18 @@ body[data-viewer-layout=docked] .corti-boss-bars{top:var(--viewer-top);width:min
 html:fullscreen,body:fullscreen{width:100vw;height:100dvh;overflow:hidden;background:#07131b}
 html:-webkit-full-screen,body:-webkit-full-screen{width:100vw;height:100dvh;overflow:hidden;background:#07131b}
 [data-viewer-fullscreen="window"]{position:fixed!important;inset:0!important;z-index:2147483000;width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;aspect-ratio:auto!important}
+/* HUD text: server strings are mostly Chinese; keep a CJK-capable stack so nothing falls to tofu. */
+.corti-boss-title,.corti-actionbar,.corti-game-title,.corti-event-feed,.corti-scoreboard,.corti-scoreboard>strong,.corti-scoreboard>div,.viewer-load-status{font-family:system-ui,"Noto Sans CJK SC","Noto Sans SC","Source Han Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+.corti-boss-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.corti-boss-title[hidden]{display:none}
+/* Route legend sat on top of the boss bars; move it above the action bar. */
+.corti-tactical-legend,body[data-viewer-layout=docked] .corti-tactical-legend{top:auto;bottom:150px}
+.corti-tactical-legend span{padding:3px 8px;font-size:11px}
+/* One-line Chinese loading status (default); English chunk diagnostics only with ?debugChunks=1. */
+.viewer-load-status{position:fixed;z-index:8;left:calc(var(--viewer-gap,18px) + 236px);bottom:16px;max-width:min(240px,calc(50vw - 200px));box-sizing:border-box;padding:3px 9px;border:1px solid #7a9cb44d;border-radius:999px;background:#0c1724cc;color:#cfe3ee;font-size:11px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;transition:opacity .6s ease}
+.viewer-load-status[hidden]{display:none}
+.viewer-load-status[data-settled=true]{opacity:0}
+.viewer-display-debug{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:#c4d4d3}
+@media(max-width:900px){.viewer-load-status{left:auto;right:8px;bottom:8px;max-width:46vw}}
+/* Audio buttons: keep the true state but in fewer characters. */
+.corti-sound-toggle,.corti-music-toggle{max-width:9em}

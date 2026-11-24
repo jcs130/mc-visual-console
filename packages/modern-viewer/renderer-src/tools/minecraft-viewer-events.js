@@ -48,7 +48,8 @@ function cortiInstallGameEvents(socket) {
     if (globalThis.MinecraftViewerDocuments?.consumeMessage(event)) return;
     if (archived?.technical || archived?.suppressed) return;
     const kind = event.kind;
-    const message = event.text.length > 160 ? event.text.slice(0, 157) + '…' : event.text;
+    const message = globalThis.cortiHudText ? globalThis.cortiHudText(event.text, { limit: 160 }) : (event.text.length > 160 ? event.text.slice(0, 157) + '…' : event.text);
+    if (!message) return;
     if (kind === 'actionbar') {
       actionbar.hidden = false;
       actionbar.textContent = message;
@@ -95,9 +96,15 @@ function cortiInstallGameEvents(socket) {
       const row = document.createElement('div');
       row.className = 'corti-boss-bar';
       row.dataset.color = bar.color;
+      const info = globalThis.cortiHudTextInfo ? globalThis.cortiHudTextInfo(bar.title, { limit: 90 }) : { text: bar.title, privateGlyphs: 0 };
       const name = document.createElement('span');
       name.className = 'corti-boss-title';
-      name.textContent = bar.title;
+      name.textContent = info.text;
+      if (info.privateGlyphs) {
+        row.dataset.privateGlyphs = String(info.privateGlyphs);
+        row.title = '已隐藏服务器资源包里的自定义图标（资源包未下载）';
+      }
+      if (!info.text) name.hidden = true;
       const track = document.createElement('div');
       track.className = 'corti-boss-track';
       const fill = document.createElement('div');

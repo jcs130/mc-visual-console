@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
-import { patchRendererPlayerSkin } from '../minecraft-viewer-player-skin.mjs';
+import { patchRendererPlayerSkin, localProfileTexture } from '../minecraft-viewer-player-skin.mjs';
 
 const require = createRequire(import.meta.url);
 const source = patchRendererPlayerSkin(readFileSync(require.resolve('minecraft-renderer/dist/minecraft-renderer.js'), 'utf8'));
@@ -53,4 +53,11 @@ test('skin loading completes after decode and rejects late profiles and default 
   await fallback;
   assert.equal(player.skin.map.image.name, 'current');
   assert.equal(updates, 1, 'stale results never replace the visible texture');
+});
+
+test('all renderer head/skull URLs use the bounded existing proxy, never a broad remote origin',()=>{
+ const hash='a'.repeat(64);
+ assert.equal(localProfileTexture('https://textures.minecraft.net/texture/'+hash),'/head-texture/'+hash+'.png');
+ for(const value of ['https://textures.minecraft.net.evil/texture/'+hash,'http://127.0.0.1/texture/'+hash,'https://textures.minecraft.net:4430/texture/'+hash,'https://textures.minecraft.net/texture/'+hash+'?x=1','data:image/png;base64,abc'])assert.equal(localProfileTexture(value),null);
+ assert.equal(source.split('cortiLocalProfileTexture(JSON.parse(').length-1,3);
 });

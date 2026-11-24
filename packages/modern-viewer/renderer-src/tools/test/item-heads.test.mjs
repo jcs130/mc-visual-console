@@ -55,6 +55,34 @@ test('texture proxy permits only observed hashes and deduplicates simultaneous r
   const results = await Promise.all([proxy.read(hash), proxy.read(hash)]);
   assert.equal(calls, 1); assert.deepEqual(results[0], fakePng()); assert.equal(results[0], results[1]);
 });
+test('texture proxy allows profiles delivered as skull block entities or derived equipment hashes only', async () => {
+  let calls = 0; const other = 'a'.repeat(64);
+  const proxy = createViewerHeadTextures({ fetcher: async url => { calls++; assert.equal(url, 'https://textures.minecraft.net/texture/' + hash); return new Response(fakePng()); } });
+  assert.equal(await proxy.read(hash), null); assert.equal(calls, 0);
+  // 26.1 skull block-entity snapshot shape (prismarine-nbt simplified profile.properties[].value).
+  proxy.observeValue({ '-1122,64,-573': { type: 'compound', value: { profile: { type: 'compound', value: { properties: { type: 'list', value: { type: 'compound', value: [{ name: { type: 'string', value: 'textures' }, value: { type: 'string', value: profile.properties[0].value } }] } } } } } } });
+  assert.deepEqual(await proxy.read(hash), fakePng()); assert.equal(calls, 1);
+  proxy.observeValue({ equipment: [{ name: 'player_head', headTextureHash: other }], note: 'https://example.com/texture/' + other, bad: 'http://textures.minecraft.net.evil/texture/' + other });
+  const second = createViewerHeadTextures({ fetcher: async () => { calls++; return new Response(fakePng()); } });
+  second.observeValue({ note: 'https://example.com/texture/' + other, bad: 'http://textures.minecraft.net.evil/texture/' + other, deep: [[[[[[[[[[[[[[[[[[[[[[[[[[{ headTextureHash: other }]]]]]]]]]]]]]]]]]]]]]]]]]] });
+  assert.equal(await second.read(other), null, 'foreign hosts and over-deep values are not allowlisted');
+  second.observeValue({ equipment: [{ headTextureHash: other }] });
+  assert.deepEqual(await second.read(other), fakePng());
+});
+test('delivered skull profiles survive per-request rescans of a large tab list', async () => {
+  const proxy = createViewerHeadTextures({ limit: 4, fetcher: async () => new Response(fakePng()) });
+  proxy.observeValue({ profile: { properties: [{ name: 'textures', value: profile.properties[0].value }] } });
+  const players = Object.fromEntries(Array.from({ length: 20 }, (_, i) => ['p' + i, { skinData: { url: 'https://textures.minecraft.net/texture/' + String(i).padStart(64, 'b') } }]));
+  proxy.observeBot({ players });
+  assert.deepEqual(await proxy.read(hash), fakePng());
+});
+test('a large block-entity snapshot cannot starve skulls serialised last', async () => {
+  const proxy = createViewerHeadTextures({ fetcher: async () => new Response(fakePng()) });
+  const snapshot = Object.fromEntries(Array.from({ length: 150 }, (_, i) => [`${i},64,0`, { type: 'compound', value: { lines: Array.from({ length: 40 }, () => ({ text: 'sign' })) } }]));
+  snapshot['999,64,0'] = { profile: { properties: [{ name: 'textures', value: profile.properties[0].value }] } };
+  proxy.observeValue(snapshot);
+  assert.deepEqual(await proxy.read(hash), fakePng());
+});
 test('invalid texture response is bounded, negatively cached and never treated as a skin', async () => {
   let calls = 0, at = 0;
   const proxy = createViewerHeadTextures({ now: () => at, fetcher: async () => { calls++; return new Response('not a PNG'); } });

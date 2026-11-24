@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from viewer_texture_options import mark_translucent_faces
 
 from minecraft_viewer_icons import export_icons
 
@@ -50,6 +51,22 @@ def cleanup_block_name(name: str) -> str:
     if name.startswith('item/'):
         return 'item__' + name[len('item/'):]
     return name
+
+
+
+def texture_sprite(value):
+    """Java 26.1 may describe a texture as {sprite, force_translucent}."""
+    if isinstance(value, dict) and isinstance(value.get('sprite'), str):
+        return value['sprite']
+    return value
+
+
+def normalize_model_textures(model):
+    textures = model.get('textures') if isinstance(model, dict) else None
+    if isinstance(textures, dict):
+        model['corticoOriginalTextures'] = json.loads(json.dumps(textures))
+        model['textures'] = {key: texture_sprite(value) for key, value in textures.items()}
+    return model
 
 
 def render_model_identifiers(value):
@@ -100,7 +117,11 @@ def add_block_entity_models(states: dict, models: dict, all_models: dict):
     signs_dir = Path(PUBLIC, 'textures', VERSION, 'entity', 'signs')
     woods = sorted(path.stem for path in signs_dir.glob('*.png'))
     if not woods:
-        raise ValueError('1.20.6 客户端缺少告示牌实体纹理')
+        # 26.2 sign geometries are the official blockstate/model tree, not a
+        # removed entity atlas. Never synthesize the older sign over that tree.
+        if any(key.startswith('block/oak_sign_rot_') for key in all_models):
+            return
+        raise ValueError('客户端既无实体告示牌纹理也无原版方块告示牌模型')
     for wood in woods:
         hanging = signs_dir / 'hanging' / f'{wood}.png'
         if not hanging.is_file():
@@ -147,11 +168,11 @@ def extract_inputs(jar_path: str, cache: str):
             if name.startswith('assets/minecraft/blockstates/') and name.endswith('.json'):
                 states[os.path.basename(name)[:-5]] = json.loads(jar.read(name))
             elif name.startswith('assets/minecraft/models/block/') and name.endswith('.json'):
-                model = json.loads(jar.read(name))
-                models[os.path.basename(name)[:-5]] = model
+                model = normalize_model_textures(json.loads(jar.read(name)))
+                models[name[len('assets/minecraft/models/block/'):-5]] = model
                 all_models[name[len('assets/minecraft/models/'):-5]] = model
             elif name.startswith('assets/minecraft/models/item/') and name.endswith('.json'):
-                all_models[name[len('assets/minecraft/models/'):-5]] = json.loads(jar.read(name))
+                all_models[name[len('assets/minecraft/models/'):-5]] = normalize_model_textures(json.loads(jar.read(name)))
             elif name.startswith('assets/minecraft/items/') and name.endswith('.json'):
                 item_definitions[name[len('assets/minecraft/items/'):-5]] = json.loads(jar.read(name))
             elif name.startswith('assets/minecraft/textures/') and name.endswith('.png'):
@@ -166,7 +187,9 @@ def extract_inputs(jar_path: str, cache: str):
                         raise IOError(f'纹理复制校验失败：{rel}')
                 texture_count += 1
                 if rel.startswith('block/'):
-                    with open(os.path.join(BLOCKS_DIR, os.path.basename(rel)), 'wb') as out:
+                    target = os.path.join(BLOCKS_DIR, rel[len('block/'):])
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    with open(target, 'wb') as out:
                         out.write(body)
                 if rel.startswith('item/'):
                     item_pngs[os.path.basename(rel)[:-4]] = body
@@ -175,34 +198,38 @@ def extract_inputs(jar_path: str, cache: str):
                     os.makedirs(os.path.dirname(painting), exist_ok=True)
                     with open(painting, 'wb') as out:
                         out.write(body)
-    # 原版床用方块实体模型；blockstates/<色>_bed.json 的 block/bed 只有粒子贴图。
-    # 几何体沿用床实体的两个半块，颜色纹理仍从本次指定的 1.20.6 JAR 读取。
-    with open(Path(__file__).with_name('minecraft-viewer-bed-geometry.json'), encoding='utf-8') as source:
-        bed_geometry = json.load(source)['models']
-    for part in ('head', 'foot'):
-        key = f'bed/bed_{part}'
-        models[key] = bed_geometry[part]
-        all_models[f'block/{key}'] = bed_geometry[part]
-    for color in BED_COLORS:
-        texture = os.path.join(PUBLIC, 'textures', VERSION, 'entity', 'bed', f'{color}.png')
-        if not os.path.isfile(texture):
-            raise ValueError(f'1.20.6 客户端缺少床纹理：{color}')
+    # 26.2 moved beds to genuine block models/textures. Preserve them verbatim;
+    # legacy entity geometry is only applicable when that actual texture exists.
+    if os.path.isfile(os.path.join(PUBLIC, 'textures', VERSION, 'entity', 'bed', 'white.png')):
+        # 原版床用方块实体模型；blockstates/<色>_bed.json 的 block/bed 只有粒子贴图。
+        # 几何体沿用床实体的两个半块，颜色纹理仍从本次指定的 1.20.6 JAR 读取。
+        with open(Path(__file__).with_name('minecraft-viewer-bed-geometry.json'), encoding='utf-8') as source:
+            bed_geometry = json.load(source)['models']
         for part in ('head', 'foot'):
-            key = f'bed/{color}_{part}'
-            model = {'parent': f'block/bed/bed_{part}',
-                     'textures': {'bed': f'block/entity/bed/{color}'}}
-            models[key] = model
-            all_models[f'block/{key}'] = model
-        states[f'{color}_bed'] = {'variants': {
-            f'part={part},facing={facing}': {
-                'model': f'block/bed/{color}_{part}', **({'y': turn} if turn else {})}
-            for part in ('head', 'foot')
-            for facing, turn in (('north', 0), ('east', 90), ('south', 180), ('west', 270))}}
+            key = f'bed/bed_{part}'
+            models[key] = bed_geometry[part]
+            all_models[f'block/{key}'] = bed_geometry[part]
+        for color in BED_COLORS:
+            texture = os.path.join(PUBLIC, 'textures', VERSION, 'entity', 'bed', f'{color}.png')
+            if not os.path.isfile(texture):
+                raise ValueError(f'1.20.6 客户端缺少床纹理：{color}')
+            for part in ('head', 'foot'):
+                key = f'bed/{color}_{part}'
+                model = {'parent': f'block/bed/bed_{part}',
+                         'textures': {'bed': f'block/entity/bed/{color}'}}
+                models[key] = model
+                all_models[f'block/{key}'] = model
+            states[f'{color}_bed'] = {'variants': {
+                f'part={part},facing={facing}': {
+                    'model': f'block/bed/{color}_{part}', **({'y': turn} if turn else {})}
+                for part in ('head', 'foot')
+                for facing, turn in (('north', 0), ('east', 90), ('south', 180), ('west', 270))}}
     add_block_entity_models(states, models, all_models)
+    mark_translucent_faces(all_models)
     item_refs = {
         cleanup_block_name(value) for model in models.values()
-        for value in model.get('textures', {}).values()
-        if isinstance(value, str) and (value.startswith('item/') or value.startswith('minecraft:item/'))
+        for raw in model.get('textures', {}).values()
+        if (value := texture_sprite(raw)) and isinstance(value, str) and (value.startswith('item/') or value.startswith('minecraft:item/'))
     }
     for ref in item_refs:
         name = ref[len('item__'):]
@@ -283,9 +310,23 @@ def make_render_atlases(jar_path: str, output: str):
                 if atlas_type == 'items' and not rel.startswith('item/'):
                     continue
                 image = Image.open(BytesIO(jar.read(name))).convert('RGBA')
-                # 原版动画是一条竖排帧；静态图集使用首帧，原始 PNG 仍逐张完整导出。
-                if rel.startswith(('block/', 'item/')) and image.height > image.width:
-                    image = image.crop((0, 0, image.width, image.width))
+                # Every animation domain (terrain/item/entity/GUI/particle),
+                # including rectangular/grid frames, uses its declared first
+                # frame in the atlas. Full original PNG sheets stay unchanged.
+                meta_name = name + '.mcmeta'
+                if meta_name in jar.namelist():
+                    anim = json.loads(jar.read(meta_name)).get('animation')
+                    if anim is not None:
+                        fw = anim.get('width', min(image.size) if 'height' not in anim else image.width)
+                        fh = anim.get('height', min(image.size) if 'width' not in anim else image.height)
+                        if not all(isinstance(n,int) and n>0 for n in (fw,fh)) or image.width%fw or image.height%fh:
+                            raise ValueError('ANIMATION_FRAME_DIMENSIONS_INVALID')
+                        first = (anim.get('frames') or [0])[0]
+                        first = first if isinstance(first,int) else first['index']
+                        columns = image.width // fw
+                        if not isinstance(first,int) or not 0<=first<columns*(image.height//fh):raise ValueError('ANIMATION_FIRST_FRAME_INVALID')
+                        x,y = first%columns*fw, first//columns*fh
+                        image = image.crop((x,y,x+fw,y+fh))
                 key = rel.split('/', 1)[1] if rel.startswith('block/') or (atlas_type == 'items' and rel.startswith('item/')) else rel
                 sprites.append((key, image))
             for name, image in derived.items():
@@ -351,7 +392,7 @@ class Atlas:
         from PIL import Image
         self.Image = Image
         self.files = ['missing_texture.png'] + sorted(
-            f for f in os.listdir(BLOCKS_DIR) if f.endswith('.png'))
+            p.relative_to(Path(BLOCKS_DIR)).as_posix() for p in Path(BLOCKS_DIR).rglob('*.png'))
         count = len(self.files)
         self.tile = 16
         signs_dir = Path(PUBLIC, 'textures', VERSION, 'entity', 'signs')
@@ -361,6 +402,7 @@ class Atlas:
                            for name in CHEST_TEXTURES]
                         + sorted(signs_dir.glob('*.png'))
                         + sorted((signs_dir / 'hanging').glob('*.png')))
+        entity_paths = [path for path in entity_paths if path.is_file()]
         entity_tiles = sum(math.ceil(self.Image.open(path).width / 16) *
                            math.ceil(self.Image.open(path).height / 16) for path in entity_paths)
         self.dim = next_power_of_two(int(math.ceil(math.sqrt(count + entity_tiles))))
@@ -469,9 +511,9 @@ def prepare_model(model: dict, atlas: Atlas):
         depth = 0
         while isinstance(root, str) and root.startswith('#') and depth < 8:
             key = root[1:]
-            root = model['textures'].get(key)
+            root = texture_sprite(model['textures'].get(key))
             depth += 1
-        model['textures'][tex] = root
+        model['textures'][tex] = texture_sprite(root)
 
     resolved = {}
     for tex, name in model['textures'].items():

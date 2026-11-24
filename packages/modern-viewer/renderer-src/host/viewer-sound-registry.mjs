@@ -7,6 +7,7 @@ import path from 'node:path';
  * use the verified native export rather than silently playing a different sound.
  */
 export const VIEWER_SOUND_REGISTRY_LAYOUTS = Object.freeze({
+  '26.1': Object.freeze({count:1902,clientJarSha256:'bc6194c61566b587f196090d730698f2191170f7580adb143e4ff839939d3840'}),
   '1.20.6': Object.freeze({
     count: 1607,
     clientJarSha256: '02dfd345ac1ad55692d5dbc8486ac7e4fea72cd54ac494a79cd48963048e56b2',
@@ -48,6 +49,18 @@ export function validateViewerSoundRegistry(value, minecraftVersion) {
  * Direct/inline resource names remain usable with an unavailable numeric table.
  */
 export async function loadViewerSoundRegistry(assetsDir, minecraftVersion, fallbackRegistry) {
+  if (minecraftVersion === '26.1') {
+    try { const value=JSON.parse(await readFile(path.join(assetsDir,'public/sounds/registry.json'),'utf8'));return {registry:validateViewerSoundRegistry(value,minecraftVersion),source:'exact-assets',diagnostic:null}; } catch {}
+    // The current 26.1 data table is 1-based; registryEntryHolder decodes n-1.
+    const sounds=Object.create(null),names=new Set();
+    for(let id=0;id<1902;id++) {
+      const name=fallbackRegistry?.sounds?.[id+1]?.name;
+      if(typeof name!=='string'||!/^[a-z0-9_.]+$/.test(name)||names.has(name))
+        return {registry:emptyRegistry(),source:'unavailable',diagnostic:'Invalid 26.1 sound holder table'};
+      names.add(name);sounds[id]=Object.freeze({name});
+    }
+    return {registry:Object.freeze({sounds:Object.freeze(sounds)}),source:'minecraft-data',diagnostic:null};
+  }
   if (!VIEWER_SOUND_REGISTRY_LAYOUTS[minecraftVersion]) {
     return { registry: fallbackRegistry ?? emptyRegistry(), source: 'minecraft-data', diagnostic: null };
   }

@@ -88,5 +88,12 @@ export function viewerVersionTexture(relative, version) {
     if (armor) texture = `entity/equipment/${armor[2] === '2' ? 'humanoid_leggings' : 'humanoid'}/${armor[1] === 'turtle' ? 'turtle_scute' : armor[1]}${armor[3] ?? ''}.png`;
     if (texture === 'entity/elytra.png') texture = 'entity/equipment/wings/elytra.png';
   }
+  // Java 26.1 renamed projectile entity textures (spectral_arrow -> arrow_spectral).
+  if (major >= 26) {
+    if (texture === 'entity/llama/spit.png') texture = 'entity/llama/llama_spit.png';
+    if (texture === 'entity/trident.png') texture = 'entity/trident/trident.png';
+    if (texture === 'entity/projectiles/spectral_arrow.png') texture = 'entity/projectiles/arrow_spectral.png';
+    if (texture === 'entity/projectiles/tipped_arrow.png') texture = 'entity/projectiles/arrow_tipped.png';
+  }
   return `textures/${version}/${texture}`;
 }

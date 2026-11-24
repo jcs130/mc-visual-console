@@ -6,8 +6,15 @@ from pathlib import Path
 
 def palette(jar,mappings,javap):
     name=re.search(r'^net.minecraft.world.level.material.MapColor -> ([a-z]+):$',mappings,re.M)
-    if not name:raise ValueError('MapColor mapping missing')
-    code=subprocess.check_output([javap,'-classpath',str(jar),'-c','-p',name[1]],encoding='utf-8')
+    # Java 26.1 is officially unobfuscated. Never borrow an older palette.
+    with zipfile.ZipFile(jar) as z:
+        named='net/minecraft/world/level/material/MapColor.class' in z.namelist()
+    if not name and not named:raise ValueError('MapColor mapping missing')
+    class_name='net.minecraft.world.level.material.MapColor' if named else name[1]
+    code=subprocess.check_output([javap,'-classpath',str(jar),'-c','-p',class_name],encoding='utf-8')
+    return parse_palette_code(code)
+
+def parse_palette_code(code):
     static=code.split('static {};',1)[1]
     values=[]
     for block in re.findall(r'\d+: new\s+.*?invokespecial.*?\(II\)V',static,re.S):
@@ -26,7 +33,7 @@ def main():
     with zipfile.ZipFile(a.client) as z:
         version=json.loads(z.read('version.json'))
         version=version['id']
-        if version not in ['1.20.6','1.21.1']:raise ValueError('Exact supported Java client required')
+        if version not in ['1.20.6','1.21.1','26.1','26.2']:raise ValueError('Exact supported Java client required')
         def model(name,seen=()):
             if name in seen or len(seen)>8:raise ValueError('Cyclic model')
             path='assets/minecraft/models/'+name.removeprefix('minecraft:')+'.json';raw=z.read(path);own=json.loads(raw)
@@ -61,9 +68,17 @@ def main():
             image=images[n];x=(index%side)*cell+1;y=(index//side)*cell+1;atlas.paste(image,(x,y))
             sprites[n]['uv']=[x/atlas.width,y/atlas.height,image.width/atlas.width,image.height/atlas.height]
         atlas_path=a.output/'public/particle-content.png';atlas_path.parent.mkdir(parents=True,exist_ok=True);atlas.save(atlas_path)
+        level_events={}
+        if version in ['26.1','26.2']:
+            constants=subprocess.check_output([a.javap,'-classpath',str(a.client),'-constants','net.minecraft.world.level.block.LevelEvent'],encoding='utf-8')
+            level_events={name:int(value) for name,value in re.findall(r'public static final int ([A-Z_]+) = (\d+);',constants)}
+            expected={'SOUND_PLAY_JUKEBOX_SONG':1010,'SOUND_STOP_JUKEBOX_SONG':1011,'SOUND_BLAZE_FIREBALL':1018,'PARTICLES_DESTROY_BLOCK':2001}
+            if any(level_events.get(name)!=value for name,value in expected.items()):raise ValueError('Unexpected 26.1 LevelEvent constants')
         record={'schemaVersion':1,'minecraftVersion':version,'clientJarSha256':hashlib.sha256(a.client.read_bytes()).hexdigest(),
-                'mappingsSha256':hashlib.sha256(a.mappings.read_bytes()).hexdigest(),
-                'mapColors':palette(a.client,a.mappings.read_text(encoding='utf-8'),a.javap),'shades':[180,220,255,135],
+                'mappingsSha256':hashlib.sha256(a.mappings.read_bytes()).hexdigest() if a.mappings.is_file() else None,
+                'paletteSource':'named-client-class' if version in ['26.1','26.2'] else 'official-mappings',
+                'levelEventConstants':level_events,
+                'mapColors':palette(a.client,a.mappings.read_text(encoding='utf-8') if a.mappings.is_file() else '',a.javap),'shades':[180,220,255,135],
                 'frameModels':frames,'textureHashes':textures,'textureAliases':aliases,'mapDecorationsRendered':False,
                 'particleDefinitions':definitions,'particleSprites':sprites,'particleAtlasSha256':hashlib.sha256(atlas_path.read_bytes()).hexdigest()}
         out=a.output/'public/viewer-content.json';out.parent.mkdir(parents=True,exist_ok=True);out.write_text(json.dumps(record,separators=(',',':'))+'\n',encoding='utf-8')

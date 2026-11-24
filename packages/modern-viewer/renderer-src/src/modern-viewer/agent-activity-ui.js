@@ -18,7 +18,19 @@ export function installAgentActivity({ socket, document, window, visible = () =>
   const rows = new Map();
   const style = make('style', document.head); roots.push(style);
   const nonce = document.querySelector('meta[name="viewer-style-nonce"]')?.content; if (nonce) style.nonce = nonce;
-  style.textContent = `#agent-activity{width:min(360px,calc(100vw - 32px));box-sizing:border-box;background:#101d2dea;color:#e6edf7;border:1px solid #52677f99;border-radius:12px;padding:11px;font:13px/1.5 system-ui;pointer-events:auto} .agent-activity-header{display:flex;justify-content:space-between;gap:10px}.agent-activity-live{font-size:11px;color:#aabbd1}.agent-activity-timeline>summary{cursor:pointer;color:#b8d8ff;padding-top:6px}.agent-activity-hint{font-size:11px;color:#9eb0c6;margin:6px 0}.agent-activity-list{max-height:min(48vh,500px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}.agent-activity-row{border-left:3px solid #8190a4;background:#192a4099;border-radius:4px;margin:7px 0;padding:6px 8px;overflow-wrap:anywhere}.agent-activity-row>summary{cursor:pointer;white-space:normal}.agent-activity-row pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 ui-monospace,monospace;margin:6px 0;max-height:260px;overflow:auto}.agent-activity-meta{font-size:10px;color:#aebcd0}.agent-activity-section{font-size:11px;color:#c6d5e9;margin-top:7px}.agent-activity-preview{margin-top:3px;color:#e0e9f8;font-size:12px}body:not([data-viewer-layout]) #agent-activity{position:fixed;top:116px;right:14px;z-index:35}`;
+  style.textContent = `#agent-activity{width:min(360px,calc(100vw - 32px));box-sizing:border-box;background:#101d2dea;color:#e6edf7;border:1px solid #52677f99;border-radius:12px;padding:11px;font:13px/1.5 system-ui;pointer-events:auto} .agent-activity-header{display:flex;justify-content:space-between;gap:10px}.agent-activity-live{font-size:11px;color:#aabbd1}.agent-activity-timeline>summary{cursor:pointer;color:#b8d8ff;padding-top:6px}.agent-activity-hint{font-size:11px;color:#9eb0c6;margin:6px 0}.agent-activity-list{max-height:min(48vh,500px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}.agent-activity-row{border-left:3px solid #8190a4;background:#192a4099;border-radius:4px;margin:7px 0;padding:6px 8px;overflow-wrap:anywhere}.agent-activity-row>summary{cursor:pointer;white-space:normal}.agent-activity-row pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 ui-monospace,monospace;margin:6px 0;max-height:260px;overflow:auto}.agent-activity-meta{font-size:10px;color:#aebcd0}.agent-activity-section{font-size:11px;color:#c6d5e9;margin-top:7px}.agent-activity-preview{margin-top:3px;color:#e0e9f8;font-size:12px}body:not([data-viewer-layout]) #agent-activity{position:fixed;top:116px;right:14px;z-index:35}#corti-right-column{position:fixed;top:64px;right:14px;z-index:35;display:flex;flex-direction:column;align-items:stretch;gap:8px;width:min(360px,calc(100vw - 28px));max-height:calc(100vh - 200px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;pointer-events:none}#corti-right-column>*{pointer-events:auto;position:static!important;top:auto!important;right:auto!important;width:100%!important;max-width:none!important;margin:0!important;flex:0 0 auto;box-sizing:border-box}#corti-right-column>[hidden]{display:none!important}#corti-right-column .agent-activity-list{max-height:min(38vh,300px)}`;
+  // First-person HUD: one right-hand column (服务器读数 first, then this card) so neither covers the other.
+  const dock = () => {
+    if (disposed || typeof document.getElementById !== 'function' || document.body?.hasAttribute?.('data-viewer-layout') !== false) return;
+    let column = document.getElementById('corti-right-column');
+    if (!column) { column = document.createElement('div'); column.id = 'corti-right-column'; document.body.append(column); }
+    const stats = document.getElementById('corti-server-stats');
+    if (stats && column.firstElementChild !== stats) column.prepend(stats);
+    if (panel.parentElement !== column) column.append(panel);
+  };
+  const MutationObserverClass = window.MutationObserver ?? globalThis.MutationObserver;
+  const docking = MutationObserverClass ? new MutationObserverClass(dock) : null;
+  docking?.observe(document.body, { childList: true }); dock();
   function updateRow(row) {
     let entry = rows.get(row.id);
     if (!entry) { const root = make('details', list, 'agent-activity-row'); const head = make('summary', root); const meta = make('div', root, 'agent-activity-meta'); const body = make('div', root); entry = { root, head, meta, body, signature: '' }; rows.set(row.id, entry); }
@@ -64,7 +76,7 @@ export function installAgentActivity({ socket, document, window, visible = () =>
   on('disconnect', () => { connected = false; schedule(); });
   // Expiry needs no history scan, row serialization or rebuilding collapsed details.
   const refresh = window.setInterval(refreshPublicCard, 1000);
-  function dispose() { if (disposed) return; disposed = true; for (const [name, fn] of listeners) socket.off(name, fn); if (scheduled !== null) window.clearTimeout(scheduled); window.clearInterval(refresh); for (const root of roots) root.remove(); window.removeEventListener('pagehide', dispose); }
+  function dispose() { if (disposed) return; disposed = true; for (const [name, fn] of listeners) socket.off(name, fn); if (scheduled !== null) window.clearTimeout(scheduled); window.clearInterval(refresh); docking?.disconnect(); for (const root of roots) root.remove(); window.removeEventListener('pagehide', dispose); }
   window.addEventListener('pagehide', dispose, { once: true }); render();
   return { dispose, snapshot: () => history.snapshot(), render };
 }

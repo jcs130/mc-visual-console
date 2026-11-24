@@ -22,6 +22,7 @@ export const OBS_COMPONENTS = Object.freeze([
   ['scoreboard', '计分板', '#corti-scoreboard'],
   ['messages', '游戏消息', '#corti-event-feed'],
   ['actionbar', '行动提示', '#corti-actionbar'],
+  ['loadStatus', '画面加载状态', '#viewer-load-status'],
   ['title', '标题提示', '#corti-game-title'],
   ['cast', '施法提示', '#corti-cast, #skill-cue'],
   ['toasts', '事件提示', '#corti-presentation-toasts, #viewer-fishing-catch'],

@@ -14,7 +14,8 @@ const sha=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA
 /** Optional original resources from this viewer's deployment, not server YSM attachments. */
 export async function loadPaperBundledAppearances(endpoint,{fetcher=globalThis.fetch,storage=null}={}) {
   const response=await fetcher(endpoint,{cache:'no-store'});
-  if(response.status===404)return null;
+  // 404 or 204: the optional catalogue is not installed for this deployment.
+  if(response.status===404||response.status===204)return null;
   if(!response.ok)throw Error('PAPER_BUNDLED_CONFIG_UNAVAILABLE');
   const text=await response.text();
   if(new TextEncoder().encode(text).length>BUNDLED_LIMITS.catalog)throw Error('PAPER_BUNDLED_CONFIG_TOO_LARGE');

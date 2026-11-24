@@ -228,13 +228,14 @@ function cortiInstallWorldSound(socket) {
     const available = AudioContextClass && manifest;
     const bgmAvailable = AudioContextClass && musicAvailable();
     if (button) {
-      button.textContent = !AudioContextClass ? '音效 不支持' : !manifest ? '音效 资源未就绪'
+      button.textContent = !AudioContextClass ? '音效 不支持' : !manifest ? '音效 未就绪'
         : !enabled ? '音效 关闭' : snapshot.unlocked ? '音效 开启' : '音效 点击开启';
       button.dataset.active = String(enabled && snapshot.unlocked && available);
+      button.title = !AudioContextClass ? '浏览器不支持网页音频' : !manifest ? '音效资源未就绪：本机还没有准备好音效资源' : '';
       button.setAttribute('aria-pressed', String(enabled));
     }
     if (musicButton) {
-      musicButton.textContent = !musicEnabled || musicSource === 'off' ? '音乐 关闭' : !bgmAvailable ? '音乐 资源未就绪'
+      musicButton.textContent = !musicEnabled || musicSource === 'off' ? '音乐 关闭' : !bgmAvailable ? '音乐 未就绪'
         : !snapshot.unlocked ? '音乐 点击开启'
           : snapshot.musicGate === 'foreground-music' ? '音乐 暂候'
           : snapshot.musicGate === 'muted' ? '音乐 静音'
@@ -363,6 +364,7 @@ function cortiInstallWorldSound(socket) {
   };
   const reloadCatalog = async () => {
     if (disposed) return false;
+    if(manifest?.optionalResources?.customBgm===false){customCatalog=null;catalogError='未安装可选原创音乐目录';update();return false;}
     const request = ++catalogRequest;
     try {
       const response = await fetch('/sounds/custom-bgm.json', { cache: 'no-cache' });
@@ -521,7 +523,7 @@ function cortiInstallWorldSound(socket) {
         const sound = cortiBlockSound(event.blockName, 'break', blockSounds, manifest?.events);
         if (sound) playLocal({ name: sound.name, category: 'blocks', position: event.position,
           volume: (sound.volume + 1) / 2, pitch: sound.pitch * 0.8 });
-      } else if (effectId === 1010 && validPosition(event.position)) {
+      } else if (effectId === 1010 && cortiAudioMinecraftVersion !== '26.1' && validPosition(event.position)) {
         const item = String(event.itemName || '').replace(/^minecraft:/, '');
         if (/^music_disc_[a-z0-9_]+$/.test(item)) {
           const name = `music_disc.${item.slice('music_disc_'.length)}`;
@@ -538,7 +540,9 @@ function cortiInstallWorldSound(socket) {
           }
         }
       } else if (effectId === 1011 && validPosition(event.position)) stop({ category: 'records', position: event.position });
-      // Exact 1.20.6 LevelRenderer mapping. Blaze firing is a level event,
+      // Also verified against official 26.1 LevelEvent constants. Jukebox 1010
+      // is registry-song based in 26.1: never reinterpret it as an old item ID.
+      // Blaze firing is a level event,
       // rather than a sound_effect packet, and must not remain silent.
       else if (effectId === 1018 && validPosition(event.position)) playLocal({ name: 'entity.blaze.shoot',
         category: 'hostile', position: event.position, volume: 2, pitch: 1 + (Math.random() - Math.random()) * 0.2 });
@@ -773,13 +777,13 @@ function cortiInstallWorldSound(socket) {
     } };
   window.addEventListener('pagehide', () => controller.dispose(), { once: true });
   window.cortiWorldAudio = controller;
-  void reloadCatalog(); // Optional; failure never changes vanilla resource metadata.
+  // Load optional custom music only after the deployment has declared it installed.
   // Metadata keeps the same URL across rebuilds. Revalidate it instead of
   // retaining a previous partial sound catalogue for the HTTP cache lifetime.
   void fetch('/sounds/manifest.json', { cache: 'no-cache' }).then(response => response.ok ? response.json() : null).then(value => {
     if (disposed) return;
     if (value?.minecraftVersion === cortiAudioMinecraftVersion && value.events && /^[a-f0-9]{40}$/.test(value.assetIndexSha1 || '')
-      && /^[a-f0-9]{40}$/.test(value.soundsJsonSha1 || '')) manifest = value;
+      && /^[a-f0-9]{40}$/.test(value.soundsJsonSha1 || '')) { manifest = value; void reloadCatalog(); }
     else lastAudioError = `缺少匹配的本地 ${cortiAudioMinecraftVersion} 声音资源`;
     update();
   }).catch(() => { if (!disposed) { lastAudioError = '无法读取本地声音资源'; update(); } });
