@@ -1,3 +1,4 @@
+import './helpers/native-asset-defaults.mjs';
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { nativeGuideItemEligible, prepareNativeGuideItemIcon } from '../../src/native-viewer/native-guide-item-icons.js'

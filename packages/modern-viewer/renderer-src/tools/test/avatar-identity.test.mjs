@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
+import { isObservedProjectile } from '../../src/modern-viewer/observed-projectiles.js';
+import { isObservedArrow } from '../../src/modern-viewer/observed-arrows.js';
+import { rendererNameTagEntity } from '../../src/modern-viewer/nametag-text.js';
 
 function harness() {
   const clientSource = readFileSync(new URL('../../src/modern-viewer/client.js', import.meta.url), 'utf8');
@@ -21,6 +24,8 @@ function harness() {
     dungeonHoverEntityId: null, dungeonHoverPointer: null, normalizedAvatarMotion: null,
     pendingVillagerStyleChecks: new Set(), entityMotionFrames: new Map(),
     playerHeadIntegrityById: new Map(), villagerModelIntegrityById: new Map(), pendingPlayerHeadChecks: new Set(),
+    // The build injects these real projectile and name-tag helpers beside handleEntity.
+    isObservedProjectile, isObservedArrow, rendererNameTagEntity,
     canonicalEntityName: name => String(name ?? '').replace(/^minecraft:/, ''),
     finiteOr: (value, fallback) => Number.isFinite(value) ? value : fallback,
     normalizeEntity: entity => ({ ...entity }), isRenderableEntity: () => true,

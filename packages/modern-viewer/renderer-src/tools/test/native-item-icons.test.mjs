@@ -1,3 +1,4 @@
+import './helpers/native-asset-defaults.mjs';
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { NativeItemIcons, nativeItemIconEligible } from '../../src/native-viewer/native-item-icons.js'
