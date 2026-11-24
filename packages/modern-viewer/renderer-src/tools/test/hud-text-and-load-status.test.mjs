@@ -77,7 +77,7 @@ test('default status line is one short Chinese line with a stable grid denominat
 
 test('nametag text handed to the renderer is cleaned; cache identity untouched; empty hides the tag', async () => {
   const { rendererNameTagEntity } = await import(`${src}/src/modern-viewer/nametag-text.js`);
-  const real = { id: 1, username: 'nmnmmm78cccccc' };
+  const real = { id: 1, username: 'nearby_player42' };
   assert.equal(rendererNameTagEntity(real, cortiHudText), real);
   const glyph = { id: 2, username: '\uE001§a玩家\uF801' };
   const out = rendererNameTagEntity(glyph, cortiHudText);
