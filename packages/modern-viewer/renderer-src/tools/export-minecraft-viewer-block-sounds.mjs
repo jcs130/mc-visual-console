@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { validateViewerSoundRegistry,VIEWER_SOUND_REGISTRY_LAYOUTS } from '../host/viewer-sound-registry.mjs';
 
-const [versionArg, librariesArg, outputArg, javaArg = 'java'] = process.argv.slice(2);
+const [versionArg, librariesArg, outputArg, javaArg = 'java',clientArg] = process.argv.slice(2);
 if (!versionArg || !librariesArg || !outputArg) {
   console.error('用法：node tools/export-minecraft-viewer-block-sounds.mjs <1.20.6.json> <启动器 libraries 目录> <输出包目录> [Java 21 可执行文件]');
   process.exit(2);
@@ -16,7 +16,7 @@ if (!versionArg || !librariesArg || !outputArg) {
 const versionPath = path.resolve(versionArg);
 const version = JSON.parse(await readFile(versionPath, 'utf8'));
 if (!VIEWER_SOUND_REGISTRY_LAYOUTS[version.id]) throw Error('Block sounds require an explicitly verified client version');
-const client = path.join(path.dirname(versionPath), `${version.id}.jar`);
+const client = clientArg ? path.resolve(clientArg) : path.join(path.dirname(versionPath), `${version.id}.jar`);
 const bytes = await readFile(client);
 if (createHash('sha1').update(bytes).digest('hex') !== version.downloads?.client?.sha1) {
   throw Error('Installed client does not match its official launcher metadata');
@@ -48,7 +48,7 @@ try {
     throw Error('Native block sound export failed; check Java 21 and the installed client libraries');
   }
   const result = JSON.parse(await readFile(resultFile, 'utf8'));
-  if (result.minecraftVersion !== version.id || Object.keys(result.blocks ?? {}).length !== 1060) {
+  if (result.minecraftVersion !== version.id || Object.keys(result.blocks ?? {}).length !== (version.id==='26.1'?1168:1060)) {
     throw Error('Unexpected native block registry; no surface sound mapping was published');
   }
   result.clientJarSha256 = clientJarSha256;

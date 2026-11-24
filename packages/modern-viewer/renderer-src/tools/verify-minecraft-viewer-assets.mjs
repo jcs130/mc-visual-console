@@ -35,7 +35,7 @@ for (const relative of ['dist/modern-viewer.js', 'public/mesher.js', 'public/mes
 
 const mc = minecraftData(version)
 if (!mc) throw Error(`minecraft-data 缺少 ${version}`)
-const Block = prismarineBlock(version)
+const Block = prismarineBlock(mc) // validate the already-resolved exact registry, not a stale transitive dependency
 const baked = JSON.parse(await readFile(path.join(root, 'public', 'blocksStates', `${version}.json`), 'utf8'))
 const errors = []
 const sha256 = content => createHash('sha256').update(content).digest('hex')
@@ -130,10 +130,12 @@ for (const color of ['white', 'orange', 'magenta', 'light_blue', 'yellow', 'lime
   const entry = baked[name]
   if (!entry) { errors.push(`${name}: 床方块实体缺失`); continue }
   for (const part of ['head', 'foot']) for (const facing of ['north', 'east', 'south', 'west']) {
-    const model = entry.variants?.[`part=${part},facing=${facing}`]?.model
+    const match=Object.entries(entry.variants??{}).find(([key])=>{const props=Object.fromEntries(key.split(',').map(x=>x.split('=')));return props.part===part&&props.facing===facing});
+    const model = match?.[1]?.model
     if (!model?.elements?.length) errors.push(`${name}: ${part}/${facing} 不是实体床几何体`)
   }
-  if (!renderModels.models.latest[`block/bed/${color}_head`] || !renderModels.models.latest[`block/bed/${color}_foot`]) {
+  const nativeBed = !!renderModels.models.latest[`block/${color}_bed_head`];
+  if (!(nativeBed ? (renderModels.models.latest[`block/${color}_bed_head`] && renderModels.models.latest[`block/${color}_bed_foot`]) : (renderModels.models.latest[`block/bed/${color}_head`] && renderModels.models.latest[`block/bed/${color}_foot`]))) {
     errors.push(`${name}: 现代渲染器床实体模型缺失`)
   }
 }
@@ -151,8 +153,7 @@ for (const [name, textures] of [
         !blockAtlas[`entity/chest/${texture}`]) errors.push(`${name}: ${texture} 箱子实体资源缺失`)
   }
 }
-for (const wood of ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove',
-  'cherry', 'bamboo', 'crimson', 'warped']) {
+for (const wood of Object.keys(mc.blocksByName).filter(k=>k.endsWith('_wall_hanging_sign')).map(k=>k.slice(0,-'_wall_hanging_sign'.length))) {
   for (const [suffix, form, texture] of [
     ['sign', 'standing', `entity/signs/${wood}`],
     ['wall_sign', 'wall', `entity/signs/${wood}`],
@@ -161,11 +162,16 @@ for (const wood of ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'm
   ]) {
     const name = `${wood}_${suffix}`
     const variants = Object.values(baked[name]?.variants ?? {})
+    const nativeSign = !!renderModels.models.latest[`block/${wood}_sign_rot_0`];
     if (!variants.length || variants.some(value => !value.model?.elements?.length ||
-        !value.model?.textures?.[form.includes('hanging') ? 'wood' : 'sign'])) {
-      errors.push(`${name}: 告示牌实体几何或纹理缺失`)
+        !(nativeSign ? Object.keys(value.model.textures??{}).length : value.model?.textures?.[form.includes('hanging') ? 'wood' : 'sign']))) {
+      errors.push(`${name}: 告示牌真实几何或纹理缺失`)
     }
-    if (!renderModels.models.latest[`block/viewer/sign/${wood}_${form}`] || !blockAtlas[texture]) {
+    if (nativeSign) {
+      for(const value of Object.values(renderModels.blockstates.latest[name]?.variants??{})) {
+        if(!renderModels.models.latest[value.model])errors.push(`${name}: 原版26.2告示牌模型引用缺失`);
+      }
+    } else if (!renderModels.models.latest[`block/viewer/sign/${wood}_${form}`] || !blockAtlas[texture]) {
       errors.push(`${name}: 告示牌实体资源缺失`)
     }
   }

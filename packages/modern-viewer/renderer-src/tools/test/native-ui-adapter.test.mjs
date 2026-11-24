@@ -1,3 +1,4 @@
+import './helpers/native-asset-defaults.mjs';
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import * as THREE from 'three'

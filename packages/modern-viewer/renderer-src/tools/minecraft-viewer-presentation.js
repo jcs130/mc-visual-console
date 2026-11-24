@@ -100,26 +100,45 @@ function cortiPresentationCooldownsRender() {
   }
 }
 
-function cortiPresentationScoreboard(event) {
+let cortiSidebarFromDisplayAt = 0;
+function cortiScoreboardRowLabel(entry) {
+  const pick = [entry?.line, entry?.displayName, entry?.name].find(value => typeof value === 'string' && value.length);
+  return globalThis.cortiHudText ? globalThis.cortiHudText(pick ?? '', { limit: 40 }) : String(pick ?? '').slice(0, 40);
+}
+function cortiPresentationScoreboard(event, source = 'scoreboardState') {
   if (!cortiScoreboardRoot) return;
+  // serverDisplayState carries the rendered sidebar lines; the plain
+  // scoreboardState only has the hidden §-code entry names, so let the richer
+  // source win while it is fresh.
+  if (source === 'scoreboardState' && Date.now() - cortiSidebarFromDisplayAt < 5_000) return;
+  const rows = Array.isArray(event?.rows) ? event.rows.slice(0, 15).map(entry => ({
+    label: cortiScoreboardRowLabel(entry),
+    value: typeof entry?.right === 'string' ? (globalThis.cortiHudText?.(entry.right, { limit: 12 }) ?? entry.right) : String(entry?.value ?? ''),
+  })).filter(row => row.label) : [];
   cortiScoreboardRoot.replaceChildren();
-  if (!event || !Array.isArray(event.rows) || !event.rows.length) {
+  if (!rows.length) {
     cortiScoreboardRoot.hidden = true;
     return;
   }
   cortiScoreboardRoot.hidden = false;
   const header = document.createElement('strong');
-  header.textContent = String(event.title || '计分板').slice(0, 80);
+  header.textContent = (globalThis.cortiHudText?.(event.title || '', { limit: 40 }) || String(event.title || '').slice(0, 40)) || '计分板';
   cortiScoreboardRoot.append(header);
-  for (const entry of event.rows.slice(0, 15)) {
+  for (const entry of rows) {
     const row = document.createElement('div');
     const label = document.createElement('span');
     const value = document.createElement('b');
-    label.textContent = String(entry.name || '').slice(0, 80);
-    value.textContent = String(entry.value ?? '');
+    label.textContent = entry.label;
+    value.textContent = entry.value;
     row.append(label, value);
     cortiScoreboardRoot.append(row);
   }
+}
+function cortiPresentationDisplayState(state) {
+  const sidebar = Array.isArray(state?.scoreboards) ? state.scoreboards.find(board => board?.slot === 'sidebar') : null;
+  if (!sidebar || !Array.isArray(sidebar.rows)) return;
+  cortiSidebarFromDisplayAt = Date.now();
+  cortiPresentationScoreboard(sidebar, 'serverDisplayState');
 }
 
 function cortiPresentationEvent(event) {
@@ -176,7 +195,8 @@ globalThis.MinecraftViewerPresentation = cortiPresentationApi;
 globalThis.CortiViewerPresentation = cortiPresentationApi;
 
 socket.on('presentationEvent', cortiPresentationEvent);
-socket.on('scoreboardState', cortiPresentationScoreboard);
+socket.on('scoreboardState', event => cortiPresentationScoreboard(event));
+socket.on('serverDisplayState', cortiPresentationDisplayState);
 let cortiLastTeleportPosition = null;
 socket.on('position', packet => {
   const pos = packet?.pos;

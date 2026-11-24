@@ -1,5 +1,6 @@
 import { OBS_COMPONENTS } from './obs-layout.js';
 import { installViewerFullscreen } from './viewer-fullscreen.js';
+import { chunkDiagnosticsEnabled, setChunkDiagnosticsPreference } from './load-status.js';
 
 const KEY = 'minecraft.viewer.layout.v1';
 const COMPONENTS = OBS_COMPONENTS.filter(row => !['hands', 'inventoryButton'].includes(row.id));
@@ -55,6 +56,15 @@ export function installViewerLayout({document, window, photo = false, overlay = 
     checks.set(id, input);
     listen(input, 'change', () => { layout.components[id] = input.checked; apply(); });
   }
+  const debugRow = make('label', 'viewer-display-debug', panel), debugInput = make('input', '', debugRow);
+  debugInput.type = 'checkbox'; debugInput.dataset.viewerDebug = 'chunks';
+  debugInput.setAttribute('aria-label', '显示区块调试信息');
+  make('span', '', debugRow, '区块调试信息（开发用，英文）');
+  debugInput.checked = chunkDiagnosticsEnabled(window.location?.search ?? '', storage);
+  listen(debugInput, 'change', () => {
+    setChunkDiagnosticsPreference(storage, debugInput.checked);
+    window.dispatchEvent?.(new window.CustomEvent('viewer-debug-chunks', { detail: debugInput.checked }));
+  });
   const footer = make('div', 'viewer-display-actions', panel);
   const reset = make('button', '', footer, '恢复默认'); reset.type = 'button';
   listen(reset, 'click', () => { layout = normalizeViewerLayout(null); apply(); });
@@ -99,7 +109,8 @@ export function installViewerLayout({document, window, photo = false, overlay = 
     // Inputs and transient messages have independent viewport anchors. A live
     // chat row must never reflow the input panel or scroll it with the rail.
     dock(['corti-minimap', 'native-terrain-map', 'corti-scoreboard', 'corti-effects', 'agent-decisions', 'corti-content-status', 'corti-held-map'], left);
-    dock(['corti-skills', 'agent-intent', 'agent-activity', 'agent-route-map', 'agent-presentation', 'native-live-inspector'], right);
+    // Host 服务器读数 (#corti-server-stats) leads the right rail so 思考与工具 stacks below it, never over it.
+    dock(['corti-server-stats', 'corti-skills', 'agent-intent', 'agent-activity', 'agent-route-map', 'agent-presentation', 'native-live-inspector'], right);
     measureToolbar();
   }
   listen(clean, 'click', () => { layout.clean = !layout.clean; apply(); });

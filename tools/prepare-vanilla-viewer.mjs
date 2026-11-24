@@ -1,3 +1,4 @@
+import {prepareVanillaExtras} from './prepare-vanilla-extras.mjs';
 /** Build an exact vanilla viewer on demand. Never connects Minecraft or a model. */
 import {createHash,randomUUID} from 'node:crypto';
 import {mkdir,readFile,writeFile,lstat,rename,open,unlink} from 'node:fs/promises';
@@ -35,7 +36,7 @@ async function run(command,args,{signal}={}){
   });
 }
 /** Explicit cache and output; no version whitelist or cross-version fallback. */
-export async function prepareVanillaViewer({version,outputDirectory,cacheDirectory,python='python',fetch:transport=globalThis.fetch,signal,run:execute=run}){
+export async function prepareVanillaViewer({version,outputDirectory,cacheDirectory,python='python',extras=false,sounds=false,javap='javap',fetch:transport=globalThis.fetch,signal,run:execute=run}){
   if(typeof version!=='string'||!/^\d{1,3}\.\d{1,3}(?:\.\d{1,3})?$/.test(version))throw Error('VIEWER_VERSION_INVALID');
   if(!outputDirectory||!cacheDirectory)throw Error('VIEWER_OUTPUT_AND_CACHE_REQUIRED');
   const output=path.resolve(outputDirectory),cache=path.resolve(cacheDirectory);
@@ -66,11 +67,12 @@ export async function prepareVanillaViewer({version,outputDirectory,cacheDirecto
     await mkdir(staging);
     console.log(JSON.stringify({phase:'exporting',version,clientSha256:digest(bytes,'sha256')}));
     await execute(python,[path.join(renderer,'tools/export-minecraft-viewer-assets.py'),jar,staging],{signal});
+    if(extras||sounds)await prepareVanillaExtras({metadata,jar,cache,output:staging,python,javap,fetch:transport,signal,sounds,run:execute});
     await execute(process.execPath,[path.join(renderer,'tools/build-minecraft-viewer-client.mjs'),renderer,staging,'--no-sounds'],{signal});
     await execute(process.execPath,[path.join(renderer,'tools/verify-minecraft-viewer-assets.mjs'),jar,staging],{signal});
     const client=JSON.parse(await readFile(path.join(staging,'viewer-client.json'),'utf8'));
     if(client.minecraftVersion!==version||client.clientJarSha256!==digest(bytes,'sha256'))throw Error('VIEWER_BUILT_VERSION_MISMATCH');
-    const receipt={schemaVersion:1,minecraftVersion:version,preparedAt:new Date().toISOString(),source:{manifest:MANIFEST,metadata:entry.url,metadataSha1:entry.sha1,clientUrl:download.url,clientSha1:download.sha1,clientSha256:client.clientJarSha256},browserBundleSha256:client.browserBundleSha256,mesherSha256:client.mesherSha256,audio:{requested:false,status:'disabled'},gameConnections:0,modelCalls:0};
+    const receipt={schemaVersion:1,minecraftVersion:version,preparedAt:new Date().toISOString(),source:{manifest:MANIFEST,metadata:entry.url,metadataSha1:entry.sha1,clientUrl:download.url,clientSha1:download.sha1,clientSha256:client.clientJarSha256},browserBundleSha256:client.browserBundleSha256,mesherSha256:client.mesherSha256,audio:{requested:sounds,status:sounds?'prepared':'disabled'},gameConnections:0,modelCalls:0};
     await writeFile(path.join(staging,'viewer-assets.json'),JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
     await mkdir(path.dirname(target),{recursive:true});
     const previous=await lstat(target).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
@@ -83,6 +85,6 @@ export async function prepareVanillaViewer({version,outputDirectory,cacheDirecto
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   const args=process.argv.slice(2),options={};
-  for(let index=0;index<args.length;index+=2){if(!['--version','--output','--cache','--python'].includes(args[index])||!args[index+1])throw Error('Usage: node tools/prepare-vanilla-viewer.mjs --version 1.21.5 --output <viewer-root> --cache <private-cache> [--python <python-executable>]');options[args[index].slice(2)]=args[index+1];}
-  console.log(JSON.stringify(await prepareVanillaViewer({version:options.version,outputDirectory:options.output,cacheDirectory:options.cache,python:options.python}),null,2));
+  for(let index=0;index<args.length;index+=2){if(!['--version','--output','--cache','--python','--extras','--sounds','--javap'].includes(args[index])||!args[index+1])throw Error('Usage: node tools/prepare-vanilla-viewer.mjs --version 1.21.5 --output <viewer-root> --cache <private-cache> [--python <python-executable>]');options[args[index].slice(2)]=args[index+1];}
+  console.log(JSON.stringify(await prepareVanillaViewer({version:options.version,outputDirectory:options.output,cacheDirectory:options.cache,python:options.python,extras:options.extras==='true',sounds:options.sounds==='true',javap:options.javap}),null,2));
 }

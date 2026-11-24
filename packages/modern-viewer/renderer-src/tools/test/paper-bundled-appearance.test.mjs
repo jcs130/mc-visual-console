@@ -47,6 +47,7 @@ test('wrong hashes, absent sources and mismatched versions never become selectab
   const v=source();v.config.catalog.appearances[0].ysmVersion='2.6.6';
   await assert.rejects(loadPaperBundledAppearances(endpoint,{fetcher:v.fetcher}),/VERSION_UNSUPPORTED/);
   assert.equal(await loadPaperBundledAppearances(endpoint,{fetcher:async()=>({status:404})}),null);
+  assert.equal(await loadPaperBundledAppearances(endpoint,{fetcher:async()=>({status:204,ok:true,text:async()=>''})}),null);
 });
 
 test('a reviewed public 2.6.5 bundle remains selectable with unchanged original bytes',async()=>{

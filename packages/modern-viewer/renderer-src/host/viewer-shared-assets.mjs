@@ -2,7 +2,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {readFile,writeFile,readdir,mkdir,lstat,rename,unlink,stat} from 'node:fs/promises';
 import path from 'node:path';
-const schema='agent-mc-viewer-shared-assets/v1',MAX=32*1024*1024;
+const schema='agent-mc-viewer-shared-assets/v1',MAX=32*1024*1024,RACY_MS=2000;
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const key=(root,file)=>path.relative(root,file).split(path.sep).join('/');
 const eligible=name=>/^(?:versions\/\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\/)?public\/(?:icons\/|textures\/\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\/)[a-zA-Z0-9_./-]+\.png$/.test(name)&&!name.split('/').includes('..');
@@ -54,7 +54,10 @@ export function createSharedViewerAssets(directory){
     const object=path.join(root,'.objects',entry.sha256),info=await lstat(object);
     if(!info.isFile()||info.isSymbolicLink()||info.size!==entry.bytes)throw Error('VIEWER_SHARED_OBJECT_INVALID');
     const stamp=info.mtimeMs+':'+info.size;
-    if(checked.get(entry.sha256)!==stamp){if(hash(await readFile(object))!==entry.sha256)throw Error('VIEWER_SHARED_HASH_MISMATCH');checked.set(entry.sha256,stamp);if(checked.size>2048)checked.delete(checked.keys().next().value);}
+    if(checked.get(entry.sha256)!==stamp){if(hash(await readFile(object))!==entry.sha256)throw Error('VIEWER_SHARED_HASH_MISMATCH');
+      // Like git's "racily clean" rule: a same-size rewrite within the file system's timestamp
+      // granularity keeps the same mtime, so only trust the stamp once the file is clearly older.
+      if(Date.now()-info.mtimeMs>RACY_MS){checked.set(entry.sha256,stamp);if(checked.size>2048)checked.delete(checked.keys().next().value);}}
     return {file:object,bytes:entry.bytes,sha256:entry.sha256};
   }};
 }

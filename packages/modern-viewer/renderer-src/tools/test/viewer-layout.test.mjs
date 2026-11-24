@@ -75,3 +75,12 @@ test('wrapped toolbars reserve their measured height and release the observer an
   bottom=68;watcher.fn();assert.equal(style.get('--viewer-toolbar-bottom'),'68px');
   ui.dispose();assert.equal(watcher.closed,true);assert.equal(style.has('--viewer-toolbar-bottom'),false);
 });
+test('host 服务器读数 joins the right rail ahead of 思考与工具 even when it mounts later, so neither overlays the other',()=>{
+  const h=browser(),activity=h.add('agent-activity'),skills=h.add('corti-skills');
+  const ui=installViewerLayout(h);const right=activity.parentNode;assert.equal(right.className,'viewer-rail viewer-rail-right');
+  const stats=h.add('corti-server-stats');h.mutate();
+  assert.equal(stats.parentNode,right);
+  const order=Array.from(right.children).map(el=>el.id);
+  assert.ok(order.indexOf('corti-server-stats')<order.indexOf('agent-activity'),order.join());
+  ui.dispose();assert.equal(stats.parentNode,h.document.body);
+});

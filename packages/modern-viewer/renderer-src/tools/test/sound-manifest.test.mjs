@@ -44,13 +44,13 @@ test('offline exporter validates the version index and every referenced audio ha
     const target = path.join(assets, 'objects', digest.slice(0, 2), digest);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, bytes);
-    return { hash: digest, target };
+    return { hash: digest, target, size: bytes.length };
   };
   const audio = await object(Buffer.from('test audio fixture, not a distributed Minecraft sound'));
   const source = await object(Buffer.from(JSON.stringify({ 'music.game': { sounds: [{ name: 'music/test', stream: true }] },
     'music.creative': { sounds: [{ name: 'music.game', type: 'event' }] } })));
-  const index = Buffer.from(JSON.stringify({ objects: { 'minecraft/sounds.json': { hash: source.hash },
-    'minecraft/sounds/music/test.ogg': { hash: audio.hash } } }));
+  const index = Buffer.from(JSON.stringify({ objects: { 'minecraft/sounds.json': { hash: source.hash, size: source.size },
+    'minecraft/sounds/music/test.ogg': { hash: audio.hash, size: audio.size } } }));
   await mkdir(path.join(assets, 'indexes'), { recursive: true });
   await writeFile(path.join(assets, 'indexes', 'fixture.json'), index);
   const versionPath = path.join(root, 'version.json');

@@ -1,3 +1,5 @@
+import{patchForceTranslucentMesher}from'./force-translucent-mesher.mjs';
+import {chunk262Plugin} from './chunk-26.2-compat.mjs';
 /** Build the JS mesher with a 1.20.6 biome palette for tinted terrain faces. */
 import { createRequire } from 'node:module'
 import { readFile, stat } from 'node:fs/promises'
@@ -52,7 +54,7 @@ export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDa
     legalComments: 'none', outfile: outputFile, target: ['chrome103', 'edge103', 'firefox102', 'safari15.4'],
     define: { 'process.env.NODE_ENV': '"production"' },
     banner: { js: 'globalThis.global = globalThis; globalThis.process = {env: {}, versions: {}};' },
-    plugins: [
+    plugins: [chunk262Plugin,
       { name: 'cortico-1.20.6-biome-tints', setup(context) {
         const nativeModule=JSON.stringify(fileURLToPath(new URL('./native-biome-worker.mjs',import.meta.url)))
         context.onLoad({filter:/[\\/]mesher-shared[\\/]world\.ts$/},async ({path:file})=>{
@@ -64,7 +66,7 @@ export async function buildBiomeMesherWorker(sourceRoot, outputRoot, minecraftDa
             .replace(anchor,'    this.biomeCache = installNativeBiomes(json,this.biomeCache)\n'+anchor)}
         })
         context.onLoad({filter:/[\\/]mesher-shared[\\/]models\.ts$/},async ({path:file})=>{
-          let source=await readFile(file,'utf8')
+          let source=patchForceTranslucentMesher(await readFile(file,'utf8'))
           for(const kind of ['water','grass','foliage']) {
             const anchor='tints.'+kind+'[biome]'
             if(!source.includes(anchor))throw Error('Native biome tint anchor missing '+kind)

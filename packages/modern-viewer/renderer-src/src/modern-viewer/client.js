@@ -1,3 +1,4 @@
+import{installAtlasAnimations}from'./resource-packs/atlas-gpu.js';
 import {
   AppViewer,
   ResourcesManager,
@@ -12,6 +13,8 @@ import { SightGrid } from "./perception-view.js";
 import { installCameraWater } from './camera-water.js';
 import { FishingCatchHud } from "./fishing-catch.js";
 import { installViewerConnectionStatus } from "./viewer-connection.js";
+import { chunkDiagnosticsEnabled, viewerLoadStatus } from "./load-status.js";
+import { rendererNameTagEntity } from "./nametag-text.js";
 import { installObsLayout } from "./obs-layout.js";
 import { installViewerLayout } from "./viewer-layout.js";
 import { loadSceneSettings, resolveSceneQuality, applySceneQuality, applySceneWeather, sceneColourFilter } from './scene-quality.js';
@@ -212,7 +215,7 @@ let qualityPreference = normalizeQualityPreference(sceneSettings.quality);
 let activeScenePolicy = null, sceneSettingsUi = null;
 let cameraSettings = loadCameraSettings(sceneStorage), cameraDirector = null, cameraSettingsUi = null;
 if (isPhotoView || queryValue('fov') !== null) cameraSettings = { ...cameraSettings, fov: thirdPersonFov };
-const showChunkDiagnostics = queryValue("debugChunks") === "1";
+let showChunkDiagnostics = chunkDiagnosticsEnabled(location.search, sceneStorage);
 // Mineflayer only has chunks around the bot. Stay inside that loaded radius so
 // zooming out reveals the world instead of the empty sky beyond streamed data.
 const maximumOrbitDistance = Math.max(32, renderDistance * 16 - 8);
@@ -322,8 +325,9 @@ function installChunkDiagnostics() {
   chunkDiagnosticsElement = document.createElement("pre");
   chunkDiagnosticsElement.id = "viewer-chunk-diagnostics";
   Object.assign(chunkDiagnosticsElement.style, {
-    position: "fixed", left: "12px", bottom: "12px", zIndex: "30", margin: "0",
-    maxWidth: "min(620px, calc(100vw - 24px))", maxHeight: "28vh", overflow: "hidden",
+    position: "fixed", right: "16px", bottom: "16px", zIndex: "30", margin: "0", boxSizing: "border-box",
+    width: "max-content", maxWidth: "min(520px, 44vw, calc(100vw - 32px))", maxHeight: "min(40vh, 320px)", overflow: "hidden",
+    overflowWrap: "anywhere", wordBreak: "break-word",
     padding: "8px 10px", border: "1px solid #8db6ff", borderRadius: "6px",
     background: "#07111ddd", color: "#d9ebff", font: "12px/1.4 ui-monospace, Consolas, monospace",
     whiteSpace: "pre-wrap", pointerEvents: "none",
@@ -343,18 +347,73 @@ function installChunkDiagnostics() {
       `server stream ${stream ? `${stream.streamed}/${stream.expected} · retry ${stream.retried} · ${Math.max(0, Date.now() - stream.at)}ms ago` : "waiting"}`,
       `client chunks received ${received} · meshed ${meshed} · guarded ${chunkLoadingGuards.size} · pending sections ${world?.sectionsWaiting?.size ?? 0}`,
       `pending near view ${pending.length}${pending.length ? ` · ${shown}` : ""}`,
+      `atlas animation ${formatAtlasAnimationDiagnostics(globalThis.atlasAnimationDiagnostics?.())}`,
       `smart cull ${world?.isSmartCullEnabled?.() === false ? "off" : "on"} · cutaway ${dungeonOcclusionDiagnostics.applied ? "active" : "clear"} (${dungeonOcclusionDiagnostics.lastReason || "not checked"})`,
     ].join("\n");
   };
   chunkDiagnosticsTimer = setInterval(update, 500);
   update();
+  window.addEventListener("pagehide", removeChunkDiagnostics, { once: true });
+}
+function formatAtlasAnimationDiagnostics(d) {
+  if (!d || d.pending) return "pending";
+  if (d.loading) {
+    const active = Array.isArray(d.active) && d.active.length
+      ? ` · active ${d.active.length} (${d.active.slice(0, 2).map(p => String(p).split("/").pop()).join(", ")}${d.active.length > 2 ? ", …" : ""})` : "";
+    return `loading ${d.phase ?? ""} ${d.loaded ?? 0}/${d.total ?? "?"}${active}${d.errors ? ` · errors ${d.errors}` : ""}`;
+  }
+  return `ready · sprites ${d.sprites ?? 0} · frames ${d.frames ?? 0} · copies ${d.copies ?? 0} · errors ${d.errors ?? 0}${d.lastError ? ` (${String(d.lastError).slice(0, 80)})` : ""}`;
+}
+function removeChunkDiagnostics() {
+  if (chunkDiagnosticsTimer !== null) clearInterval(chunkDiagnosticsTimer);
+  chunkDiagnosticsTimer = null;
+  chunkDiagnosticsElement?.remove();
+  chunkDiagnosticsElement = null;
+}
+let loadStatusElement = null, loadStatusTimer = null, loadStatusSettledAt = 0;
+function updateLoadStatus() {
+  if (!loadStatusElement) return;
+  loadStatusElement.hidden = showChunkDiagnostics;
+  if (showChunkDiagnostics) return;
+  const world = globalThis.world;
+  const pending = latestPosition ? pendingChunkOrigins(latestPosition.pos, renderDistance, world?.finishedChunks) : [];
+  const status = viewerLoadStatus({
+    connected: socket.connected,
+    grid: (renderDistance * 2 + 1) ** 2,
+    received: Object.keys(world?.loadedChunks ?? {}).length,
+    meshed: Object.keys(world?.finishedChunks ?? {}).length,
+    sectionsWaiting: world?.sectionsWaiting?.size ?? 0,
+    pendingNear: latestPosition ? pending.length : (renderDistance * 2 + 1) ** 2,
+    animation: globalThis.atlasAnimationDiagnostics?.() ?? null,
+  });
+  if (loadStatusElement.textContent !== status.text) loadStatusElement.textContent = status.text;
+  const now = Date.now();
+  if (!status.settled) loadStatusSettledAt = 0;
+  else if (!loadStatusSettledAt) loadStatusSettledAt = now;
+  // Once everything is ready, fade the line after a few seconds; it comes
+  // back on its own as soon as loading resumes.
+  loadStatusElement.dataset.settled = String(Boolean(loadStatusSettledAt && now - loadStatusSettledAt > 6_000));
+}
+function installLoadStatus() {
+  if (loadStatusElement || isPhotoView || isObsOverlay) return;
+  loadStatusElement = document.createElement("div");
+  loadStatusElement.id = "viewer-load-status";
+  loadStatusElement.className = "viewer-load-status";
+  loadStatusElement.setAttribute("role", "status");
+  loadStatusElement.setAttribute("aria-live", "polite");
+  document.body.append(loadStatusElement);
+  loadStatusTimer = setInterval(updateLoadStatus, 1_000);
+  updateLoadStatus();
   window.addEventListener("pagehide", () => {
-    if (chunkDiagnosticsTimer !== null) clearInterval(chunkDiagnosticsTimer);
-    chunkDiagnosticsTimer = null;
-    chunkDiagnosticsElement?.remove();
-    chunkDiagnosticsElement = null;
+    if (loadStatusTimer !== null) clearInterval(loadStatusTimer);
+    loadStatusTimer = null; loadStatusElement?.remove(); loadStatusElement = null;
   }, { once: true });
 }
+window.addEventListener("viewer-debug-chunks", event => {
+  showChunkDiagnostics = event?.detail === true;
+  if (showChunkDiagnostics) installChunkDiagnostics(); else removeChunkDiagnostics();
+  updateLoadStatus();
+});
 const pendingBlockUpdates = [];
 const pendingViewerEffects = [];
 const entityCache = new Map();
@@ -694,6 +753,17 @@ const socket = io({
   transports: ["websocket", "polling"],
 });
 installAgentViewGallery({document,window,hidden:isPhotoView||isObsOverlay});
+// Opt-in, loopback-only diagnostics: counts/errors only, never chat/audio.
+if(showChunkDiagnostics&&location.port==='7794'){
+ const epoch=Date.now(),errors=[],observed=new WeakSet();let last=performance.now(),disconnect=null;
+ socket.on('disconnect',reason=>{disconnect={at:Date.now(),reason};});
+ const timer=setInterval(()=>{const now=performance.now(),world=globalThis.world;
+ for(const worker of world?.workers??[])if(!observed.has(worker)){observed.add(worker);worker.addEventListener('error',event=>{errors.push({kind:'worker',name:event.error?.name??'Error',message:String(event.message??'').slice(0,180)});while(errors.length>12)errors.shift();});}
+ const data={epoch,at:Date.now(),visible:document.visibilityState,connected:socket.connected,transport:socket.io.engine?.transport?.name,disconnect,eventLoopLagMs:Math.round(Math.max(0,now-last-2000)),received:Object.keys(world?.loadedChunks??{}).length,meshed:Object.keys(world?.finishedChunks??{}).length,pending:world?.sectionsWaiting?.size??null,messageQueue:world?.messageQueue?.length??null,processing:world?.isProcessingQueue??null,stream:latestChunkStreamState,animation:globalThis.atlasAnimationDiagnostics?.(),errors:[...errors]};last=now;
+ void fetch('/candidate-telemetry',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(3000)}).catch(()=>{});
+ },2000);window.addEventListener('pagehide',()=>clearInterval(timer),{once:true});
+}
+
 if (!isPhotoView) installAgentActivity({ socket, document, window,
   visible: id => obsLayout?.visible(id) !== false && viewerLayout.visible(id) });
 
@@ -903,15 +973,15 @@ socket.on("entityMoved", (update) => { if (!isObsOverlay) handleEntity(update, t
 
 async function initializeRenderer(version) {
   initializing = true;
-  if (!isObsOverlay) perceptionGrid = new SightGrid(version);
-  if (!isObsOverlay) {
-    dungeonRoomCoverCache = new RoomCoverCache(version);
-  }
-  if (usesWorldAvatar) {
-    dungeonFloorMask = new RoomFloorMask(dungeonRoomCoverCache);
-  }
   setStatus("正在建立现代方块与实体图集…");
   try {
+    if (!isObsOverlay) perceptionGrid = new SightGrid(version);
+    if (!isObsOverlay) {
+      dungeonRoomCoverCache = new RoomCoverCache(version);
+    }
+    if (usesWorldAvatar) {
+      dungeonFloorMask = new RoomFloorMask(dungeonRoomCoverCache);
+    }
     await installOriginalWorldBanners(version);
     ensureWebGl2();
     const resources = new ResourcesManager();
@@ -978,6 +1048,9 @@ async function initializeRenderer(version) {
       setBlockStateId: () => {},
     };
     await viewer.startWorld(emptyWorld, renderDistance, viewer.playerState.reactive, initial);
+    // Resource animation setup must not delay initial buffered chunk replay.
+    globalThis.atlasAnimationDiagnostics=()=>({loading:true});
+    void installAtlasAnimations(globalThis.world,{onProgress:state=>{globalThis.atlasAnimationDiagnostics=()=>state;}}).then(animations=>{globalThis.atlasAnimationDiagnostics=()=>animations.stats();window.addEventListener('beforeunload',()=>animations.dispose(),{once:true});}).catch(error=>{globalThis.atlasAnimationDiagnostics=()=>({unavailable:String(error.message)});console.warn('Atlas animation unavailable:',error.message);});
     try { await loadItemAppearancePack(paperItemAppearances, { enabled: globalThis.itemAppearancePackAvailable !== false }); }
     catch (error) { paperItemAppearances.error=String(error.message); }
     installRendererEquipmentHandedness(globalThis.world?.entities);
@@ -1084,6 +1157,7 @@ async function initializeRenderer(version) {
     installVisibilityHandling();
     publishDiagnostics(version);
     installChunkDiagnostics();
+    installLoadStatus();
     setStatus(
       isFreeOrbitView
         ? `Three.js r184 · WebGL2 · ${mesherLabel}｜拖拽环绕视角`
@@ -1122,7 +1196,7 @@ function flushPendingWorld() {
   for (const entity of entityCache.values()) {
     if (!isRenderableEntity(entity)) continue;
     if (canonicalEntityName(entity.name) === "fishing_bobber") continue;
-    worldView.emit("entity", rendererEntityEquipment(entity, globalThis.mcData?.itemsByName));
+    worldView.emit("entity", rendererNameTagEntity(rendererEntityEquipment(entity, globalThis.mcData?.itemsByName)));
     maybeApplyPlayerSkin(entity);
     maybeApplySelectedPlayerModel(entity);
     schedulePlayerHeadIntegrityCheck(entity, false);
@@ -1144,7 +1218,7 @@ function publishFirstPersonEntity(force = false) {
   if (isObsOverlay) return false;
   if (!isFirstPersonView || !rendererReady || !worldView || !pendingPlayerEntity) return false;
   if (firstPersonEntityPublished && !force) return false;
-  worldView.emit("playerEntity", rendererEntityEquipment(pendingPlayerEntity, globalThis.mcData?.itemsByName));
+  worldView.emit("playerEntity", rendererNameTagEntity(rendererEntityEquipment(pendingPlayerEntity, globalThis.mcData?.itemsByName)));
   firstPersonEntityPublished = true;
   maybeApplyPlayerSkin(pendingPlayerEntity, true);
   applySelectedPlayerModelToSelf();

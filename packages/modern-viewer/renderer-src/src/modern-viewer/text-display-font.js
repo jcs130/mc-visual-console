@@ -2,21 +2,21 @@ import {unzipSync,strFromU8} from 'fflate';
 
 /** Original bitmap providers first, then the client's Chinese/default Unihex provider. */
 export class TextDisplayFont {
-  constructor() {this.bitmaps=new Map();this.cache=new Map();this.hex='';this.offsets=new Uint32Array(0x110000);this.overrides=[];}
+  constructor({maxGlyphSize=64}={}) {this.maxGlyphSize=maxGlyphSize;this.bitmaps=new Map();this.cache=new Map();this.hex='';this.offsets=new Uint32Array(0x110000);this.overrides=[];}
   addBitmap(provider,image,createCanvas=()=>document.createElement('canvas')) {
     const canvas=createCanvas();canvas.width=image.width;canvas.height=image.height;
     const context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0);
     const pixels=context.getImageData(0,0,canvas.width,canvas.height).data;
     const rows=provider.chars.map(row=>[...row]),columns=rows[0].length;
     const w=canvas.width/columns,h=canvas.height/rows.length,height=provider.height??8;
-    if(!Number.isInteger(w)||!Number.isInteger(h)||w>64||h>64)throw Error('font_bitmap_dimensions');
+    if(!Number.isInteger(w)||!Number.isInteger(h)||w>this.maxGlyphSize||h>this.maxGlyphSize||image.width*image.height>16777216)throw Error('font_bitmap_dimensions');
     for(let y=0;y<rows.length;y++)for(let x=0;x<columns;x++) {
       const character=rows[y][x];if(character==='\0'||this.bitmaps.has(character))continue;
       let right=-1;
       for(let col=0;col<w;col++)for(let row=0;row<h;row++)if(pixels[((y*h+row)*canvas.width+x*w+col)*4+3])right=Math.max(right,col);
-      const mask=new Uint8Array((right+1)*h);
-      for(let row=0;row<h;row++)for(let col=0;col<=right;col++)mask[row*(right+1)+col]=pixels[((y*h+row)*canvas.width+x*w+col)*4+3];
-      this.bitmaps.set(character,{mask,width:right+1,height:h,resolution:h/height,top:7-provider.ascent,
+      const mask=new Uint8Array((right+1)*h),rgba=new Uint8Array((right+1)*h*4);
+      for(let row=0;row<h;row++)for(let col=0;col<=right;col++){const src=((y*h+row)*canvas.width+x*w+col)*4,dst=(row*(right+1)+col)*4;mask[row*(right+1)+col]=pixels[src+3];rgba.set(pixels.subarray(src,src+4),dst);}
+      this.bitmaps.set(character,{mask,rgba,width:right+1,height:h,resolution:h/height,top:7-provider.ascent,
         advance:Math.floor((right+1)*height/h+.5)+1,shadow:1});
     }
   }
@@ -83,14 +83,16 @@ export function textDisplayLayout(display,font) {
   const lines=[{glyphs:[],width:0}];
   for(const run of display.runs)for(const character of run.text) {
     if(character==='\n'){lines.push({glyphs:[],width:0});continue;}
-    const glyph=font.glyph(character);if(!glyph)throw Error('font_glyph_unavailable');
+    const glyph=font.glyph(character,run.font);if(!glyph)throw Error('font_glyph_unavailable');
     let line=lines.at(-1);
     if(line.width+glyph.advance>display.lineWidth&&line.glyphs.length){lines.push({glyphs:[],width:0});line=lines.at(-1);}
     line.glyphs.push({glyph,color:run.color,x:line.width});line.width+=glyph.advance;
   }
   if(lines.length>16)throw Error('text_line_budget');
-  const width=Math.max(1,...lines.map(l=>l.width));if(width>1024)throw Error('text_width_budget');
-  return {lines,width,height:lines.length*10,canvasWidth:(width+1)*2,canvasHeight:(lines.length*10+1)*2};
+  const minX=Math.min(0,...lines.flatMap(l=>l.glyphs.map(e=>e.x))),minY=Math.min(0,...lines.flatMap((l,i)=>l.glyphs.map(e=>i*10+e.glyph.top)));
+  const right=Math.max(1,...lines.map(l=>l.width),...lines.flatMap(l=>l.glyphs.map(e=>e.x+e.glyph.width/e.glyph.resolution))),bottom=Math.max(lines.length*10,...lines.flatMap((l,i)=>l.glyphs.map(e=>i*10+e.glyph.top+e.glyph.height/e.glyph.resolution)));
+  const width=Math.ceil(right-minX),height=Math.ceil(bottom-minY);if(width>1024||height>1024)throw Error('text_width_or_height_budget');
+  return {lines,width,height,minX,minY,canvasWidth:(width+1)*2,canvasHeight:(height+1)*2};
 }
 
 export function paintTextDisplay(canvas,display,font) {
@@ -105,12 +107,12 @@ export function paintTextDisplay(canvas,display,font) {
     context.fillStyle=`rgba(${r},${g},${b},${display.opacity/255})`;
     const step=2/glyph.resolution,offset=shadow?glyph.shadow*2:0;
     for(let row=0;row<glyph.height;row++)for(let col=0;col<glyph.width;col++)if(glyph.mask[row*glyph.width+col])
-      context.fillRect(x+col*step+offset,y+(glyph.top+row/glyph.resolution)*2+offset,step,step);
+      {const i=(row*glyph.width+col)*4,a=glyph.mask[row*glyph.width+col]/255,cr=glyph.rgba?Math.floor(r*glyph.rgba[i]/255):r,cg=glyph.rgba?Math.floor(g*glyph.rgba[i+1]/255):g,cb=glyph.rgba?Math.floor(b*glyph.rgba[i+2]/255):b;context.fillStyle=`rgba(${cr},${cg},${cb},${display.opacity/255*a})`;context.fillRect(x+col*step+offset,y+(glyph.top+row/glyph.resolution)*2+offset,step,step);}
   };
   for(let index=0;index<layout.lines.length;index++) {
     const line=layout.lines[index],left=display.flags&8?0:display.flags&16?layout.width-line.width:(layout.width-line.width)/2;
-    if(display.flags&1)for(const entry of line.glyphs)paint(entry,(1+left+entry.x)*2,2+index*20,true);
-    for(const entry of line.glyphs)paint(entry,(1+left+entry.x)*2,2+index*20,false);
+    if(display.flags&1)for(const entry of line.glyphs)paint(entry,(1+left+entry.x-layout.minX)*2,2+index*20-layout.minY*2,true);
+    for(const entry of line.glyphs)paint(entry,(1+left+entry.x-layout.minX)*2,2+index*20-layout.minY*2,false);
   }
   return layout;
 }

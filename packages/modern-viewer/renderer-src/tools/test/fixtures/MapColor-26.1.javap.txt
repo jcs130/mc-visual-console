@@ -1,0 +1,608 @@
+Compiled from "MapColor.java"
+public class net.minecraft.world.level.material.MapColor {
+  private static final net.minecraft.world.level.material.MapColor[] MATERIAL_COLORS;
+
+  public static final net.minecraft.world.level.material.MapColor NONE;
+
+  public static final net.minecraft.world.level.material.MapColor GRASS;
+
+  public static final net.minecraft.world.level.material.MapColor SAND;
+
+  public static final net.minecraft.world.level.material.MapColor WOOL;
+
+  public static final net.minecraft.world.level.material.MapColor FIRE;
+
+  public static final net.minecraft.world.level.material.MapColor ICE;
+
+  public static final net.minecraft.world.level.material.MapColor METAL;
+
+  public static final net.minecraft.world.level.material.MapColor PLANT;
+
+  public static final net.minecraft.world.level.material.MapColor SNOW;
+
+  public static final net.minecraft.world.level.material.MapColor CLAY;
+
+  public static final net.minecraft.world.level.material.MapColor DIRT;
+
+  public static final net.minecraft.world.level.material.MapColor STONE;
+
+  public static final net.minecraft.world.level.material.MapColor WATER;
+
+  public static final net.minecraft.world.level.material.MapColor WOOD;
+
+  public static final net.minecraft.world.level.material.MapColor QUARTZ;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_ORANGE;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_MAGENTA;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_LIGHT_BLUE;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_YELLOW;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_LIGHT_GREEN;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_PINK;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_GRAY;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_LIGHT_GRAY;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_CYAN;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_PURPLE;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_BLUE;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_BROWN;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_GREEN;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_RED;
+
+  public static final net.minecraft.world.level.material.MapColor COLOR_BLACK;
+
+  public static final net.minecraft.world.level.material.MapColor GOLD;
+
+  public static final net.minecraft.world.level.material.MapColor DIAMOND;
+
+  public static final net.minecraft.world.level.material.MapColor LAPIS;
+
+  public static final net.minecraft.world.level.material.MapColor EMERALD;
+
+  public static final net.minecraft.world.level.material.MapColor PODZOL;
+
+  public static final net.minecraft.world.level.material.MapColor NETHER;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_WHITE;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_ORANGE;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_MAGENTA;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_LIGHT_BLUE;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_YELLOW;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_LIGHT_GREEN;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_PINK;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_GRAY;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_LIGHT_GRAY;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_CYAN;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_PURPLE;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_BLUE;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_BROWN;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_GREEN;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_RED;
+
+  public static final net.minecraft.world.level.material.MapColor TERRACOTTA_BLACK;
+
+  public static final net.minecraft.world.level.material.MapColor CRIMSON_NYLIUM;
+
+  public static final net.minecraft.world.level.material.MapColor CRIMSON_STEM;
+
+  public static final net.minecraft.world.level.material.MapColor CRIMSON_HYPHAE;
+
+  public static final net.minecraft.world.level.material.MapColor WARPED_NYLIUM;
+
+  public static final net.minecraft.world.level.material.MapColor WARPED_STEM;
+
+  public static final net.minecraft.world.level.material.MapColor WARPED_HYPHAE;
+
+  public static final net.minecraft.world.level.material.MapColor WARPED_WART_BLOCK;
+
+  public static final net.minecraft.world.level.material.MapColor DEEPSLATE;
+
+  public static final net.minecraft.world.level.material.MapColor RAW_IRON;
+
+  public static final net.minecraft.world.level.material.MapColor GLOW_LICHEN;
+
+  public final int col;
+
+  public final int id;
+
+  private net.minecraft.world.level.material.MapColor(int, int);
+    Code:
+         0: aload_0
+         1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+         4: iload_1
+         5: iflt          14
+         8: iload_1
+         9: bipush        63
+        11: if_icmple     24
+        14: new           #7                  // class java/lang/IndexOutOfBoundsException
+        17: dup
+        18: ldc           #9                  // String Map colour ID must be between 0 and 63 (inclusive)
+        20: invokespecial #11                 // Method java/lang/IndexOutOfBoundsException."<init>":(Ljava/lang/String;)V
+        23: athrow
+        24: aload_0
+        25: iload_1
+        26: putfield      #14                 // Field id:I
+        29: aload_0
+        30: iload_2
+        31: putfield      #20                 // Field col:I
+        34: getstatic     #23                 // Field MATERIAL_COLORS:[Lnet/minecraft/world/level/material/MapColor;
+        37: iload_1
+        38: aload_0
+        39: aastore
+        40: return
+
+  public int calculateARGBColor(net.minecraft.world.level.material.MapColor$Brightness);
+    Code:
+         0: aload_0
+         1: getstatic     #27                 // Field NONE:Lnet/minecraft/world/level/material/MapColor;
+         4: if_acmpne     9
+         7: iconst_0
+         8: ireturn
+         9: aload_0
+        10: getfield      #20                 // Field col:I
+        13: invokestatic  #31                 // Method net/minecraft/util/ARGB.opaque:(I)I
+        16: aload_1
+        17: getfield      #37                 // Field net/minecraft/world/level/material/MapColor$Brightness.modifier:I
+        20: invokestatic  #42                 // Method net/minecraft/util/ARGB.scaleRGB:(II)I
+        23: ireturn
+
+  public static net.minecraft.world.level.material.MapColor byId(int);
+    Code:
+         0: iload_0
+         1: getstatic     #23                 // Field MATERIAL_COLORS:[Lnet/minecraft/world/level/material/MapColor;
+         4: arraylength
+         5: ldc           #46                 // String material id
+         7: invokestatic  #48                 // Method com/google/common/base/Preconditions.checkPositionIndex:(IILjava/lang/String;)I
+        10: pop
+        11: iload_0
+        12: invokestatic  #54                 // Method byIdUnsafe:(I)Lnet/minecraft/world/level/material/MapColor;
+        15: areturn
+
+  private static net.minecraft.world.level.material.MapColor byIdUnsafe(int);
+    Code:
+         0: getstatic     #23                 // Field MATERIAL_COLORS:[Lnet/minecraft/world/level/material/MapColor;
+         3: iload_0
+         4: aaload
+         5: astore_1
+         6: aload_1
+         7: ifnull        14
+        10: aload_1
+        11: goto          17
+        14: getstatic     #27                 // Field NONE:Lnet/minecraft/world/level/material/MapColor;
+        17: areturn
+
+  public static int getColorFromPackedId(int);
+    Code:
+         0: iload_0
+         1: sipush        255
+         4: iand
+         5: istore_1
+         6: iload_1
+         7: iconst_2
+         8: ishr
+         9: invokestatic  #54                 // Method byIdUnsafe:(I)Lnet/minecraft/world/level/material/MapColor;
+        12: iload_1
+        13: iconst_3
+        14: iand
+        15: invokestatic  #58                 // Method net/minecraft/world/level/material/MapColor$Brightness.byIdUnsafe:(I)Lnet/minecraft/world/level/material/MapColor$Brightness;
+        18: invokevirtual #61                 // Method calculateARGBColor:(Lnet/minecraft/world/level/material/MapColor$Brightness;)I
+        21: ireturn
+
+  public byte getPackedId(net.minecraft.world.level.material.MapColor$Brightness);
+    Code:
+         0: aload_0
+         1: getfield      #14                 // Field id:I
+         4: iconst_2
+         5: ishl
+         6: aload_1
+         7: getfield      #65                 // Field net/minecraft/world/level/material/MapColor$Brightness.id:I
+        10: iconst_3
+        11: iand
+        12: ior
+        13: i2b
+        14: ireturn
+
+  static {};
+    Code:
+         0: bipush        64
+         2: anewarray     #15                 // class net/minecraft/world/level/material/MapColor
+         5: putstatic     #23                 // Field MATERIAL_COLORS:[Lnet/minecraft/world/level/material/MapColor;
+         8: new           #15                 // class net/minecraft/world/level/material/MapColor
+        11: dup
+        12: iconst_0
+        13: iconst_0
+        14: invokespecial #66                 // Method "<init>":(II)V
+        17: putstatic     #27                 // Field NONE:Lnet/minecraft/world/level/material/MapColor;
+        20: new           #15                 // class net/minecraft/world/level/material/MapColor
+        23: dup
+        24: iconst_1
+        25: ldc           #69                 // int 8368696
+        27: invokespecial #66                 // Method "<init>":(II)V
+        30: putstatic     #70                 // Field GRASS:Lnet/minecraft/world/level/material/MapColor;
+        33: new           #15                 // class net/minecraft/world/level/material/MapColor
+        36: dup
+        37: iconst_2
+        38: ldc           #73                 // int 16247203
+        40: invokespecial #66                 // Method "<init>":(II)V
+        43: putstatic     #74                 // Field SAND:Lnet/minecraft/world/level/material/MapColor;
+        46: new           #15                 // class net/minecraft/world/level/material/MapColor
+        49: dup
+        50: iconst_3
+        51: ldc           #77                 // int 13092807
+        53: invokespecial #66                 // Method "<init>":(II)V
+        56: putstatic     #78                 // Field WOOL:Lnet/minecraft/world/level/material/MapColor;
+        59: new           #15                 // class net/minecraft/world/level/material/MapColor
+        62: dup
+        63: iconst_4
+        64: ldc           #81                 // int 16711680
+        66: invokespecial #66                 // Method "<init>":(II)V
+        69: putstatic     #82                 // Field FIRE:Lnet/minecraft/world/level/material/MapColor;
+        72: new           #15                 // class net/minecraft/world/level/material/MapColor
+        75: dup
+        76: iconst_5
+        77: ldc           #85                 // int 10526975
+        79: invokespecial #66                 // Method "<init>":(II)V
+        82: putstatic     #86                 // Field ICE:Lnet/minecraft/world/level/material/MapColor;
+        85: new           #15                 // class net/minecraft/world/level/material/MapColor
+        88: dup
+        89: bipush        6
+        91: ldc           #89                 // int 10987431
+        93: invokespecial #66                 // Method "<init>":(II)V
+        96: putstatic     #90                 // Field METAL:Lnet/minecraft/world/level/material/MapColor;
+        99: new           #15                 // class net/minecraft/world/level/material/MapColor
+       102: dup
+       103: bipush        7
+       105: sipush        31744
+       108: invokespecial #66                 // Method "<init>":(II)V
+       111: putstatic     #93                 // Field PLANT:Lnet/minecraft/world/level/material/MapColor;
+       114: new           #15                 // class net/minecraft/world/level/material/MapColor
+       117: dup
+       118: bipush        8
+       120: ldc           #96                 // int 16777215
+       122: invokespecial #66                 // Method "<init>":(II)V
+       125: putstatic     #97                 // Field SNOW:Lnet/minecraft/world/level/material/MapColor;
+       128: new           #15                 // class net/minecraft/world/level/material/MapColor
+       131: dup
+       132: bipush        9
+       134: ldc           #100                // int 10791096
+       136: invokespecial #66                 // Method "<init>":(II)V
+       139: putstatic     #101                // Field CLAY:Lnet/minecraft/world/level/material/MapColor;
+       142: new           #15                 // class net/minecraft/world/level/material/MapColor
+       145: dup
+       146: bipush        10
+       148: ldc           #104                // int 9923917
+       150: invokespecial #66                 // Method "<init>":(II)V
+       153: putstatic     #105                // Field DIRT:Lnet/minecraft/world/level/material/MapColor;
+       156: new           #15                 // class net/minecraft/world/level/material/MapColor
+       159: dup
+       160: bipush        11
+       162: ldc           #108                // int 7368816
+       164: invokespecial #66                 // Method "<init>":(II)V
+       167: putstatic     #109                // Field STONE:Lnet/minecraft/world/level/material/MapColor;
+       170: new           #15                 // class net/minecraft/world/level/material/MapColor
+       173: dup
+       174: bipush        12
+       176: ldc           #112                // int 4210943
+       178: invokespecial #66                 // Method "<init>":(II)V
+       181: putstatic     #113                // Field WATER:Lnet/minecraft/world/level/material/MapColor;
+       184: new           #15                 // class net/minecraft/world/level/material/MapColor
+       187: dup
+       188: bipush        13
+       190: ldc           #116                // int 9402184
+       192: invokespecial #66                 // Method "<init>":(II)V
+       195: putstatic     #117                // Field WOOD:Lnet/minecraft/world/level/material/MapColor;
+       198: new           #15                 // class net/minecraft/world/level/material/MapColor
+       201: dup
+       202: bipush        14
+       204: ldc           #120                // int 16776437
+       206: invokespecial #66                 // Method "<init>":(II)V
+       209: putstatic     #121                // Field QUARTZ:Lnet/minecraft/world/level/material/MapColor;
+       212: new           #15                 // class net/minecraft/world/level/material/MapColor
+       215: dup
+       216: bipush        15
+       218: ldc           #124                // int 14188339
+       220: invokespecial #66                 // Method "<init>":(II)V
+       223: putstatic     #125                // Field COLOR_ORANGE:Lnet/minecraft/world/level/material/MapColor;
+       226: new           #15                 // class net/minecraft/world/level/material/MapColor
+       229: dup
+       230: bipush        16
+       232: ldc           #128                // int 11685080
+       234: invokespecial #66                 // Method "<init>":(II)V
+       237: putstatic     #129                // Field COLOR_MAGENTA:Lnet/minecraft/world/level/material/MapColor;
+       240: new           #15                 // class net/minecraft/world/level/material/MapColor
+       243: dup
+       244: bipush        17
+       246: ldc           #132                // int 6724056
+       248: invokespecial #66                 // Method "<init>":(II)V
+       251: putstatic     #133                // Field COLOR_LIGHT_BLUE:Lnet/minecraft/world/level/material/MapColor;
+       254: new           #15                 // class net/minecraft/world/level/material/MapColor
+       257: dup
+       258: bipush        18
+       260: ldc           #136                // int 15066419
+       262: invokespecial #66                 // Method "<init>":(II)V
+       265: putstatic     #137                // Field COLOR_YELLOW:Lnet/minecraft/world/level/material/MapColor;
+       268: new           #15                 // class net/minecraft/world/level/material/MapColor
+       271: dup
+       272: bipush        19
+       274: ldc           #140                // int 8375321
+       276: invokespecial #66                 // Method "<init>":(II)V
+       279: putstatic     #141                // Field COLOR_LIGHT_GREEN:Lnet/minecraft/world/level/material/MapColor;
+       282: new           #15                 // class net/minecraft/world/level/material/MapColor
+       285: dup
+       286: bipush        20
+       288: ldc           #144                // int 15892389
+       290: invokespecial #66                 // Method "<init>":(II)V
+       293: putstatic     #145                // Field COLOR_PINK:Lnet/minecraft/world/level/material/MapColor;
+       296: new           #15                 // class net/minecraft/world/level/material/MapColor
+       299: dup
+       300: bipush        21
+       302: ldc           #148                // int 5000268
+       304: invokespecial #66                 // Method "<init>":(II)V
+       307: putstatic     #149                // Field COLOR_GRAY:Lnet/minecraft/world/level/material/MapColor;
+       310: new           #15                 // class net/minecraft/world/level/material/MapColor
+       313: dup
+       314: bipush        22
+       316: ldc           #152                // int 10066329
+       318: invokespecial #66                 // Method "<init>":(II)V
+       321: putstatic     #153                // Field COLOR_LIGHT_GRAY:Lnet/minecraft/world/level/material/MapColor;
+       324: new           #15                 // class net/minecraft/world/level/material/MapColor
+       327: dup
+       328: bipush        23
+       330: ldc           #156                // int 5013401
+       332: invokespecial #66                 // Method "<init>":(II)V
+       335: putstatic     #157                // Field COLOR_CYAN:Lnet/minecraft/world/level/material/MapColor;
+       338: new           #15                 // class net/minecraft/world/level/material/MapColor
+       341: dup
+       342: bipush        24
+       344: ldc           #160                // int 8339378
+       346: invokespecial #66                 // Method "<init>":(II)V
+       349: putstatic     #161                // Field COLOR_PURPLE:Lnet/minecraft/world/level/material/MapColor;
+       352: new           #15                 // class net/minecraft/world/level/material/MapColor
+       355: dup
+       356: bipush        25
+       358: ldc           #164                // int 3361970
+       360: invokespecial #66                 // Method "<init>":(II)V
+       363: putstatic     #165                // Field COLOR_BLUE:Lnet/minecraft/world/level/material/MapColor;
+       366: new           #15                 // class net/minecraft/world/level/material/MapColor
+       369: dup
+       370: bipush        26
+       372: ldc           #168                // int 6704179
+       374: invokespecial #66                 // Method "<init>":(II)V
+       377: putstatic     #169                // Field COLOR_BROWN:Lnet/minecraft/world/level/material/MapColor;
+       380: new           #15                 // class net/minecraft/world/level/material/MapColor
+       383: dup
+       384: bipush        27
+       386: ldc           #172                // int 6717235
+       388: invokespecial #66                 // Method "<init>":(II)V
+       391: putstatic     #173                // Field COLOR_GREEN:Lnet/minecraft/world/level/material/MapColor;
+       394: new           #15                 // class net/minecraft/world/level/material/MapColor
+       397: dup
+       398: bipush        28
+       400: ldc           #176                // int 10040115
+       402: invokespecial #66                 // Method "<init>":(II)V
+       405: putstatic     #177                // Field COLOR_RED:Lnet/minecraft/world/level/material/MapColor;
+       408: new           #15                 // class net/minecraft/world/level/material/MapColor
+       411: dup
+       412: bipush        29
+       414: ldc           #180                // int 1644825
+       416: invokespecial #66                 // Method "<init>":(II)V
+       419: putstatic     #181                // Field COLOR_BLACK:Lnet/minecraft/world/level/material/MapColor;
+       422: new           #15                 // class net/minecraft/world/level/material/MapColor
+       425: dup
+       426: bipush        30
+       428: ldc           #184                // int 16445005
+       430: invokespecial #66                 // Method "<init>":(II)V
+       433: putstatic     #185                // Field GOLD:Lnet/minecraft/world/level/material/MapColor;
+       436: new           #15                 // class net/minecraft/world/level/material/MapColor
+       439: dup
+       440: bipush        31
+       442: ldc           #188                // int 6085589
+       444: invokespecial #66                 // Method "<init>":(II)V
+       447: putstatic     #189                // Field DIAMOND:Lnet/minecraft/world/level/material/MapColor;
+       450: new           #15                 // class net/minecraft/world/level/material/MapColor
+       453: dup
+       454: bipush        32
+       456: ldc           #192                // int 4882687
+       458: invokespecial #66                 // Method "<init>":(II)V
+       461: putstatic     #193                // Field LAPIS:Lnet/minecraft/world/level/material/MapColor;
+       464: new           #15                 // class net/minecraft/world/level/material/MapColor
+       467: dup
+       468: bipush        33
+       470: ldc           #196                // int 55610
+       472: invokespecial #66                 // Method "<init>":(II)V
+       475: putstatic     #197                // Field EMERALD:Lnet/minecraft/world/level/material/MapColor;
+       478: new           #15                 // class net/minecraft/world/level/material/MapColor
+       481: dup
+       482: bipush        34
+       484: ldc           #200                // int 8476209
+       486: invokespecial #66                 // Method "<init>":(II)V
+       489: putstatic     #201                // Field PODZOL:Lnet/minecraft/world/level/material/MapColor;
+       492: new           #15                 // class net/minecraft/world/level/material/MapColor
+       495: dup
+       496: bipush        35
+       498: ldc           #204                // int 7340544
+       500: invokespecial #66                 // Method "<init>":(II)V
+       503: putstatic     #205                // Field NETHER:Lnet/minecraft/world/level/material/MapColor;
+       506: new           #15                 // class net/minecraft/world/level/material/MapColor
+       509: dup
+       510: bipush        36
+       512: ldc           #208                // int 13742497
+       514: invokespecial #66                 // Method "<init>":(II)V
+       517: putstatic     #209                // Field TERRACOTTA_WHITE:Lnet/minecraft/world/level/material/MapColor;
+       520: new           #15                 // class net/minecraft/world/level/material/MapColor
+       523: dup
+       524: bipush        37
+       526: ldc           #212                // int 10441252
+       528: invokespecial #66                 // Method "<init>":(II)V
+       531: putstatic     #213                // Field TERRACOTTA_ORANGE:Lnet/minecraft/world/level/material/MapColor;
+       534: new           #15                 // class net/minecraft/world/level/material/MapColor
+       537: dup
+       538: bipush        38
+       540: ldc           #216                // int 9787244
+       542: invokespecial #66                 // Method "<init>":(II)V
+       545: putstatic     #217                // Field TERRACOTTA_MAGENTA:Lnet/minecraft/world/level/material/MapColor;
+       548: new           #15                 // class net/minecraft/world/level/material/MapColor
+       551: dup
+       552: bipush        39
+       554: ldc           #220                // int 7367818
+       556: invokespecial #66                 // Method "<init>":(II)V
+       559: putstatic     #221                // Field TERRACOTTA_LIGHT_BLUE:Lnet/minecraft/world/level/material/MapColor;
+       562: new           #15                 // class net/minecraft/world/level/material/MapColor
+       565: dup
+       566: bipush        40
+       568: ldc           #224                // int 12223780
+       570: invokespecial #66                 // Method "<init>":(II)V
+       573: putstatic     #225                // Field TERRACOTTA_YELLOW:Lnet/minecraft/world/level/material/MapColor;
+       576: new           #15                 // class net/minecraft/world/level/material/MapColor
+       579: dup
+       580: bipush        41
+       582: ldc           #228                // int 6780213
+       584: invokespecial #66                 // Method "<init>":(II)V
+       587: putstatic     #229                // Field TERRACOTTA_LIGHT_GREEN:Lnet/minecraft/world/level/material/MapColor;
+       590: new           #15                 // class net/minecraft/world/level/material/MapColor
+       593: dup
+       594: bipush        42
+       596: ldc           #232                // int 10505550
+       598: invokespecial #66                 // Method "<init>":(II)V
+       601: putstatic     #233                // Field TERRACOTTA_PINK:Lnet/minecraft/world/level/material/MapColor;
+       604: new           #15                 // class net/minecraft/world/level/material/MapColor
+       607: dup
+       608: bipush        43
+       610: ldc           #236                // int 3746083
+       612: invokespecial #66                 // Method "<init>":(II)V
+       615: putstatic     #237                // Field TERRACOTTA_GRAY:Lnet/minecraft/world/level/material/MapColor;
+       618: new           #15                 // class net/minecraft/world/level/material/MapColor
+       621: dup
+       622: bipush        44
+       624: ldc           #240                // int 8874850
+       626: invokespecial #66                 // Method "<init>":(II)V
+       629: putstatic     #241                // Field TERRACOTTA_LIGHT_GRAY:Lnet/minecraft/world/level/material/MapColor;
+       632: new           #15                 // class net/minecraft/world/level/material/MapColor
+       635: dup
+       636: bipush        45
+       638: ldc           #244                // int 5725276
+       640: invokespecial #66                 // Method "<init>":(II)V
+       643: putstatic     #245                // Field TERRACOTTA_CYAN:Lnet/minecraft/world/level/material/MapColor;
+       646: new           #15                 // class net/minecraft/world/level/material/MapColor
+       649: dup
+       650: bipush        46
+       652: ldc           #248                // int 8014168
+       654: invokespecial #66                 // Method "<init>":(II)V
+       657: putstatic     #249                // Field TERRACOTTA_PURPLE:Lnet/minecraft/world/level/material/MapColor;
+       660: new           #15                 // class net/minecraft/world/level/material/MapColor
+       663: dup
+       664: bipush        47
+       666: ldc           #252                // int 4996700
+       668: invokespecial #66                 // Method "<init>":(II)V
+       671: putstatic     #253                // Field TERRACOTTA_BLUE:Lnet/minecraft/world/level/material/MapColor;
+       674: new           #15                 // class net/minecraft/world/level/material/MapColor
+       677: dup
+       678: bipush        48
+       680: ldc_w         #256                // int 4993571
+       683: invokespecial #66                 // Method "<init>":(II)V
+       686: putstatic     #257                // Field TERRACOTTA_BROWN:Lnet/minecraft/world/level/material/MapColor;
+       689: new           #15                 // class net/minecraft/world/level/material/MapColor
+       692: dup
+       693: bipush        49
+       695: ldc_w         #260                // int 5001770
+       698: invokespecial #66                 // Method "<init>":(II)V
+       701: putstatic     #261                // Field TERRACOTTA_GREEN:Lnet/minecraft/world/level/material/MapColor;
+       704: new           #15                 // class net/minecraft/world/level/material/MapColor
+       707: dup
+       708: bipush        50
+       710: ldc_w         #264                // int 9321518
+       713: invokespecial #66                 // Method "<init>":(II)V
+       716: putstatic     #265                // Field TERRACOTTA_RED:Lnet/minecraft/world/level/material/MapColor;
+       719: new           #15                 // class net/minecraft/world/level/material/MapColor
+       722: dup
+       723: bipush        51
+       725: ldc_w         #268                // int 2430480
+       728: invokespecial #66                 // Method "<init>":(II)V
+       731: putstatic     #269                // Field TERRACOTTA_BLACK:Lnet/minecraft/world/level/material/MapColor;
+       734: new           #15                 // class net/minecraft/world/level/material/MapColor
+       737: dup
+       738: bipush        52
+       740: ldc_w         #272                // int 12398641
+       743: invokespecial #66                 // Method "<init>":(II)V
+       746: putstatic     #273                // Field CRIMSON_NYLIUM:Lnet/minecraft/world/level/material/MapColor;
+       749: new           #15                 // class net/minecraft/world/level/material/MapColor
+       752: dup
+       753: bipush        53
+       755: ldc_w         #276                // int 9715553
+       758: invokespecial #66                 // Method "<init>":(II)V
+       761: putstatic     #277                // Field CRIMSON_STEM:Lnet/minecraft/world/level/material/MapColor;
+       764: new           #15                 // class net/minecraft/world/level/material/MapColor
+       767: dup
+       768: bipush        54
+       770: ldc_w         #280                // int 6035741
+       773: invokespecial #66                 // Method "<init>":(II)V
+       776: putstatic     #281                // Field CRIMSON_HYPHAE:Lnet/minecraft/world/level/material/MapColor;
+       779: new           #15                 // class net/minecraft/world/level/material/MapColor
+       782: dup
+       783: bipush        55
+       785: ldc_w         #284                // int 1474182
+       788: invokespecial #66                 // Method "<init>":(II)V
+       791: putstatic     #285                // Field WARPED_NYLIUM:Lnet/minecraft/world/level/material/MapColor;
+       794: new           #15                 // class net/minecraft/world/level/material/MapColor
+       797: dup
+       798: bipush        56
+       800: ldc_w         #288                // int 3837580
+       803: invokespecial #66                 // Method "<init>":(II)V
+       806: putstatic     #289                // Field WARPED_STEM:Lnet/minecraft/world/level/material/MapColor;
+       809: new           #15                 // class net/minecraft/world/level/material/MapColor
+       812: dup
+       813: bipush        57
+       815: ldc_w         #292                // int 5647422
+       818: invokespecial #66                 // Method "<init>":(II)V
+       821: putstatic     #293                // Field WARPED_HYPHAE:Lnet/minecraft/world/level/material/MapColor;
+       824: new           #15                 // class net/minecraft/world/level/material/MapColor
+       827: dup
+       828: bipush        58
+       830: ldc_w         #296                // int 1356933
+       833: invokespecial #66                 // Method "<init>":(II)V
+       836: putstatic     #297                // Field WARPED_WART_BLOCK:Lnet/minecraft/world/level/material/MapColor;
+       839: new           #15                 // class net/minecraft/world/level/material/MapColor
+       842: dup
+       843: bipush        59
+       845: ldc_w         #300                // int 6579300
+       848: invokespecial #66                 // Method "<init>":(II)V
+       851: putstatic     #301                // Field DEEPSLATE:Lnet/minecraft/world/level/material/MapColor;
+       854: new           #15                 // class net/minecraft/world/level/material/MapColor
+       857: dup
+       858: bipush        60
+       860: ldc_w         #304                // int 14200723
+       863: invokespecial #66                 // Method "<init>":(II)V
+       866: putstatic     #305                // Field RAW_IRON:Lnet/minecraft/world/level/material/MapColor;
+       869: new           #15                 // class net/minecraft/world/level/material/MapColor
+       872: dup
+       873: bipush        61
+       875: ldc_w         #308                // int 8365974
+       878: invokespecial #66                 // Method "<init>":(II)V
+       881: putstatic     #309                // Field GLOW_LICHEN:Lnet/minecraft/world/level/material/MapColor;
+       884: return
+}
