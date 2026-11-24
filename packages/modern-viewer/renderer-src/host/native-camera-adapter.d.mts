@@ -1,8 +1,10 @@
-import type {CameraAdapter} from './broadcast-camera.mjs';
+import type {CameraAdapter,ObserverAccess} from './broadcast-camera.mjs';
 export interface NativeCameraStatus {
  schema:'mcvisual-native-director/v1';recordedAt:string;server:string;observerUuid:string;connected:boolean;authenticated:boolean;
  connectionBoundRequests:boolean;connectionEpoch:string;nativeWorldEpoch:number;phase:string;availableViews?:string[];
- targets:Array<{name:string;uuid:string|null}>;requestId?:string;activeLease?:string;cameraUuid?:string;targetUuid?:string;
+ targets:Array<{name:string;uuid:string|null;spectator?:boolean|null;gameMode?:string|null}>;requestId?:string;activeLease?:string;cameraUuid?:string;targetUuid?:string;
+ observerAccess?:ObserverAccess;
+ targetDiscovery?:{mode:'all_online'|'configured'|'bound_player';excludeSpectators:boolean;observedPlayerCount:number;maxTargets:number;truncated:boolean};
  renderedAt?:number;perspective?:string;effectiveView?:string;manualDetachRequested?:boolean;rigCancelSupported?:boolean;
  drone?:{active:boolean;lastRenderedAt:number};
  cameraScript?:{schema:'mcvisual.camera-script/v1';parameters:string[];preflightRequiredForFinite:boolean};

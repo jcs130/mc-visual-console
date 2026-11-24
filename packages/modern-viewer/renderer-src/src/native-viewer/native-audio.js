@@ -27,14 +27,14 @@ export function createNativeAudio({fetchData=globalThis.fetch,contextFactory=()=
   }catch{/* Unavailable storage keeps this session usable. */}
   const remember=()=>{try{storage?.setItem('mc-viewer-native-audio',JSON.stringify({version:1,effects,music,volumes}))}catch{}}
   const clearMusicTimer=()=>{if(musicTimer!==null)cancelSchedule(musicTimer);musicTimer=null;nextMusicAt=null}
-  const canMusic=()=>!disposed&&connected&&music&&metadata?.available&&context?.state==='running'&&volumes.master>0&&volumes.music>0
+  const canMusic=()=>!disposed&&connected&&music&&metadata?.available&&metadata.musicIncluded!==false&&context?.state==='running'&&volumes.master>0&&volumes.music>0
   const queueMusic=(delay=0)=>{
     if(!canMusic()||musicTimer!==null||musicLoading||[...sources].some(row=>['music','records'].includes(row.category)))return
     nextMusicAt=Date.now()+delay
     musicTimer=schedule(()=>{musicTimer=null;nextMusicAt=null;void startPlaylist()},delay)
     changed()
   }
-  const state=()=>({available:metadata?.available===true,reason:metadata?.reason??error,soundEnabled:effects,musicEnabled:music,
+  const state=()=>({available:metadata?.available===true,musicIncluded:metadata?.musicIncluded!==false,reason:metadata?.reason??error,soundEnabled:effects,musicEnabled:music,
     unlocked:context?.state==='running',connected,started,failed,missing,lastFailure,byCategory:{...byCategory},nextMusicAt,
     musicPlaying:[...sources].some(row=>row.category==='music'),active:sources.size,volumes:{...volumes},completeAudioParityVerified:false})
   const changed=()=>onChange(state())
@@ -78,6 +78,7 @@ export function createNativeAudio({fetchData=globalThis.fetch,contextFactory=()=
   const applyVolume=row=>{const group=['music','records'].includes(row.category)?volumes[row.category]:volumes.effects*(volumes[row.category]??1);row.gain.gain.value=clamp(row.volume*group,0,1)}
   async function play(value,{preview=false,playlist=false}={}) {
     const category=value.category??'neutral',isMusic=['music','records'].includes(category)
+    if(isMusic&&metadata?.musicIncluded===false)return false
     if(disposed||!metadata?.available||context?.state!=='running'||(!preview&&(!connected||(isMusic?!music:!effects))))return false
     const run=generation,eventName=name(value.name),seed=value.seed??String((Date.now()+ ++serial)|0)
     const ticket={name:eventName,category,cancelled:false};pending.add(ticket)
@@ -121,14 +122,14 @@ export function createNativeAudio({fetchData=globalThis.fetch,contextFactory=()=
       if(metadata.available===true&&(metadata.minecraftVersion!=='1.21.1'||metadata.source!=='verified_original_launcher_assets'||!metadata.definitions||!metadata.files))throw Error('NATIVE_AUDIO_MANIFEST_INVALID')
     }catch(e){metadata={available:false,reason:e.message}}changed();return state()},
     async activate(){if(!await unlock())return false;queueMusic();return true},
-    async toggle(kind){if(!['effects','music'].includes(kind))return false;const locked=context?.state!=='running',selected=kind==='effects'?effects:music;if(!await unlock())return false
+    async toggle(kind){if(!['effects','music'].includes(kind)||kind==='music'&&metadata?.musicIncluded===false)return false;const locked=context?.state!=='running',selected=kind==='effects'?effects:music;if(!await unlock())return false
       if(locked&&selected){queueMusic();return true}
       if(kind==='effects'){effects=!effects;if(!effects)retireMatching(row=>!['music','records'].includes(row.category))}
       else {music=!music;if(!music){clearMusicTimer();retireMatching(row=>['music','records'].includes(row.category))}}
       remember();queueMusic();changed();return kind==='effects'?effects:music},
     setVolume(category,value){if(!Object.hasOwn(volumes,category)||!Number.isFinite(value))return false;volumes[category]=clamp(value,0,1);if(master)master.gain.value=volumes.master;for(const row of sources)applyVolume(row);remember();queueMusic();changed();return true},
     async preview(){if(await unlock())return play({name:'ui.button.click',category:'players',volume:.25,pitch:1,seed:'0'},{preview:true});return false},
-    async playlist(){if(!await unlock())return false;music=true;remember();clearMusicTimer();retireMatching(row=>row.category==='music')
+    async playlist(){if(metadata?.musicIncluded===false||!await unlock())return false;music=true;remember();clearMusicTimer();retireMatching(row=>row.category==='music')
       changed();return startPlaylist()},
     event(message){if(!connected||!unique(message))return;if(message.effect.kind==='sound_stop')stop(message.effect.value)
       else if(message.effect.kind==='sound'){const value=message.effect.value;recentServer.set(name(value.name),{at:Date.now(),position:value.position});if(recentServer.size>128)recentServer.delete(recentServer.keys().next().value);void play({...value,observedAt:message.observedAt})}},

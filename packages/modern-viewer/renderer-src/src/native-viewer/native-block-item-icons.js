@@ -39,9 +39,10 @@ export async function resolveNativeBlockItemModel(reader, id, ancestry = [], { g
     for (const row of own.overrides) {
       if (!record(row) || typeof row.model!=='string' || !record(row.predicate) || !Object.keys(row.predicate).length
         || Object.keys(row).some(key=>!['model','predicate'].includes(key))
-        || Object.entries(row.predicate).some(([key,value])=>!Object.hasOwn(properties,key)||!Number.isFinite(value)||value<0||value>predicateMax))
+        || Object.entries(row.predicate).some(([key,value])=>!Object.hasOwn(properties,key)||!Number.isFinite(value)||
+          (key==='custom_model_data' ? value < -2147483648 || value > 2147483648 : value<0||value>predicateMax)))
         throw Error('NATIVE_ITEM_PROPERTY_UNAVAILABLE')
-      if (Object.entries(row.predicate).every(([key,value])=>properties[key]>=value)) selected=row.model
+      if (Object.entries(row.predicate).every(([key,value])=>properties[key]>=(key==='custom_model_data'?Math.fround(value):value))) selected=row.model
     }
     // ItemOverrides resolves a self-reference to the original base model.
     // Compass deliberately uses this for its wrap-around frame.

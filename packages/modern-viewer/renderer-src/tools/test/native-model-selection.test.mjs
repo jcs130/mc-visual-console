@@ -24,6 +24,19 @@ test('position seed and weighted variants match independent Java at negative and
   }
 })
 
+test('registered rooted dirt and other observed terrain use their verified original seed inheritance',()=>{
+ const names=['rooted_dirt','coarse_dirt','gravel','red_sand','netherrack','end_stone','soul_sand','podzol','mycelium'];
+ for(const name of names){
+  const snowy=['podzol','mycelium'].includes(name),state={name:'minecraft:'+name,properties:snowy?{snowy:'false'}:{}};
+  const variants=[0,90,180,270].map(y=>({model:'minecraft:block/'+name,y}));
+  const definition={variants:{[snowy?'snowy=false':'']:variants}};
+  for(const [[x,y,z],,,expected]of fixtures)assert.deepEqual(selectBlockVariants(definition,state,{x,y,z}),[variants[expected]]);
+  assert.equal(defaultBlockSeedEvidence({...state,properties:{...state.properties,unregistered:'value'}}),null);
+ }
+ assert.equal(defaultBlockSeedEvidence({name:'minecraft:podzol',properties:{snowy:'sometimes'}}),null);
+ assert.equal(defaultBlockSeedEvidence({name:'custom:rooted_dirt',properties:{}}),null);
+});
+
 test('weighted selection requires position and a verified block seed implementation', () => {
   const blockstate = { variants: { '': [{ model: 'minecraft:stone' }, { model: 'minecraft:stone_mirrored' }] } }
   assert.throws(() => selectBlockVariants(blockstate, { name: 'test:custom_seed', properties: {} }, { x: 0, y: 0, z: 0 }), /UNVERIFIED/)
@@ -68,7 +81,7 @@ test('default seed evidence is limited to original registrations and exact state
   for (const state of [
     { name: 'example:dirt', properties: {}, modelSeedVerified: true },
     { name: 'minecraft:oak_door', properties: {}, modelSeedVerified: true },
-    { name: 'minecraft:coarse_dirt', properties: {}, modelSeedVerified: true },
+    { name: 'minecraft:deepslate', properties: {axis:'y'}, modelSeedVerified: true },
     { name: 'minecraft:dirt', properties: { invented: 'true' }, modelSeedVerified: true },
     { name: 'minecraft:grass_block', properties: {} },
     { name: 'minecraft:grass_block', properties: { snowy: 'unknown' } },

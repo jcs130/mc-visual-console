@@ -12,8 +12,8 @@ export const NATIVE_CAMERA_RECIPES = Object.freeze({
   drone_side_left:{recipeId:'side_track',label:'左侧跟拍',finite:false},
   drone_side_right:{recipeId:'side_track',label:'右侧跟拍',finite:false},
   drone_low:{recipeId:'low_hero',label:'低机位仰视',finite:false},
-  drone_orbit_left:{recipeId:'orbit_arc',label:'左向60度有限环绕',finite:true},
-  drone_orbit_right:{recipeId:'orbit_arc',label:'右向60度有限环绕',finite:true},
+  drone_orbit_left:{recipeId:'orbit_arc',label:'左向有限环绕',finite:true},
+  drone_orbit_right:{recipeId:'orbit_arc',label:'右向有限环绕',finite:true},
   drone_push_in:{recipeId:'push_in',label:'有终点的推近',finite:true},
   drone_pull_out:{recipeId:'pull_out_reveal',label:'有终点的拉远',finite:true},
   ortho_isometric:{recipeId:'ortho_overview',label:'正交等距跟随',finite:false,projection:'orthographic',projectionProfile:'ortho_isometric'},
@@ -78,6 +78,7 @@ export function nativeShotReceipt(native,request,now=Date.now(),{maxAgeMs=3000}=
   if(native.phase==='cancelled')return{kind:'cancelled',reason:native.reason};
   if(native.phase!=='attached'||native.targetUuid!==request.targetUuid||native.cameraUuid!==request.targetUuid)
     return{kind:'waiting',reason:'actor_attachment_pending'};
+  if(native.viewDeferred===true)return{kind:'waiting',reason:'native_gui_view_deferred'};
   const fresh=at=>Number.isFinite(at)&&at>=request.issuedAt&&at<=now&&now-at<=maxAgeMs;
   const rendered=fresh(native.renderedAt);
   if(!rendered||native.transition?.active===true)return{kind:'waiting',reason:'program_frame_pending'};
@@ -99,6 +100,14 @@ export function nativeShotReceipt(native,request,now=Date.now(),{maxAgeMs=3000}=
   const shot=native.shotExecution,recipe=NATIVE_CAMERA_RECIPES[request.view];
   if(!recipe||shot?.requestId!==request.id||shot.view!==request.view)return{kind:'waiting',reason:'shot_binding_pending'};
   const adaptive=['drone_follow','drone_eye','drone_overview'].includes(request.view);
+  // A passive world reattachment restores the actor, not the old trajectory.
+  // Its exact stopped rig is a failed shot, so the host can select a NEW request.
+  const life=native.cameraLife;
+  if(shot.phase==='stopped'&&native.drone?.active===false&&['native_world_replacement','native_rig_world_or_lifecycle_changed'].includes(native.drone.reason)
+    &&native.connected===true&&native.authenticated===true&&native.spectator===true&&native.manualDetachRequested!==true
+    &&native.offer?.id===request.id&&native.offer.lease===request.lease&&native.offer.accepted===true
+    &&life?.requestId===request.id&&life.uuid===request.targetUuid&&life.nativeWorldEpoch===native.nativeWorldEpoch&&life.dead===false
+    &&fresh(life.observedAttachedAt)&&fresh(Date.parse(native.recordedAt)))return{kind:'rejected',reason:'native_rig_stopped_after_world_replacement'};
   if(['blocked','cancelled'].includes(shot.phase)||shot.fallback===true&&!adaptive)return{kind:'rejected',reason:shot.reason??'requested_shot_degraded'};
   if(native.drone?.active!==true||!fresh(native.drone.lastRenderedAt))
     return{kind:'waiting',reason:'native_rig_frame_pending'};

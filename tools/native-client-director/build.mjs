@@ -18,6 +18,7 @@ fs.mkdirSync(output,{recursive:true});const scratch=fs.mkdtempSync(path.join(out
 fs.mkdirSync(classes);
 const run=(tool,argv)=>execFileSync(path.join(jdk,'bin',tool+(process.platform==='win32'?'.exe':'')),argv,{encoding:'utf8',windowsHide:true,maxBuffer:8*1024*1024});
 const contract={'net.minecraft.class_634':['method_2874(java.lang.String)','method_45730(java.lang.String)'],
+ 'net.minecraft.class_640':['method_2958()'],'net.minecraft.class_1934':['field_9219'],
  'net.minecraft.class_638':['method_18456()'],'net.minecraft.class_315':['method_31043(net.minecraft.class_5498)'],
  'net.minecraft.class_5498':['field_26664','field_26665','field_26666'],
  'net.minecraft.class_4184':['method_19321(net.minecraft.class_1922, net.minecraft.class_1297, boolean, boolean, float)','method_19318(float)','method_19324(float, float, float)','field_18719'],
@@ -33,12 +34,13 @@ for(const [type,names]of Object.entries(contract)){
  const shape=run('javap',['-p','-s','-classpath',cp,type]);
  for(const name of names)if(!shape.includes(name))throw Error('Native camera API missing: '+type+' '+name);
 }
-const sources=['DirectorPolicy.java','DroneFollow.java','CinematicRig.java','CloseView.java','OrthographicRig.java','NativeOrthographic.java','TransitionEnvelope.java','FrameBlend.java','CapturePolicy.java','NativeVisionCapture.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/DroneFollowCheck.java','test/TransitionEnvelopeCheck.java','test/CinematicRigCheck.java','test/OrthographicRigCheck.java','test/CapturePolicyCheck.java'];
+const sources=['DirectorPolicy.java','ObserverAccess.java','OnlineTargets.java','DroneFollow.java','CinematicRig.java','CloseView.java','OrthographicRig.java','NativeOrthographic.java','TransitionEnvelope.java','FrameBlend.java','CapturePolicy.java','NativeVisionCapture.java','DroneCameraMixin.java','DirectorInputMixin.java','DirectorMouseMixin.java','ObserverBodyMixin.java','NativeDirectorClient.java','test/DirectorPolicyCheck.java','test/OnlineTargetsCheck.java','test/DroneFollowCheck.java','test/TransitionEnvelopeCheck.java','test/CinematicRigCheck.java','test/OrthographicRigCheck.java','test/CapturePolicyCheck.java'];
 const argfile=path.join(scratch,'javac.args');
 const quote=x=>'"'+x.replaceAll('\\','/').replaceAll('"','\\"')+'"';
 fs.writeFileSync(argfile,['--release','21','-encoding','UTF-8','-proc:none','-classpath',cp,'-d',classes,...sources.map(p=>path.join(source,p))].map(quote).join('\n'));
 run('javac',['@'+argfile]);
 const checks=run('java',['-cp',classes+path.delimiter+cp,'DirectorPolicyCheck']);process.stdout.write(checks);
+process.stdout.write(run('java',['-cp',classes+path.delimiter+cp,'OnlineTargetsCheck']));
 const droneChecks=run('java',['-cp',classes+path.delimiter+cp,'DroneFollowCheck']);process.stdout.write(droneChecks);
 const transitionChecks=run('java',['-cp',classes+path.delimiter+cp,'TransitionEnvelopeCheck']);process.stdout.write(transitionChecks);
 const cinematicChecks=run('java',['-cp',classes+path.delimiter+cp,'CinematicRigCheck']);process.stdout.write(cinematicChecks);
@@ -57,15 +59,20 @@ run('jar',['--create','--file',jar,'-C',classes,'org','-C',classes,'fabric.mod.j
 // Recompile the consumer against the finished production JAR only.
 const consumer=path.join(scratch,'consumer');fs.mkdirSync(consumer);
 const consumerArgs=path.join(scratch,'consumer.args');
-fs.writeFileSync(consumerArgs,['--release','21','-encoding','UTF-8','-proc:none','-classpath',jar,'-d',consumer,path.join(source,'test/DirectorPolicyCheck.java'),path.join(source,'test/DroneFollowCheck.java'),path.join(source,'test/TransitionEnvelopeCheck.java'),path.join(source,'test/CinematicRigCheck.java'),path.join(source,'test/OrthographicRigCheck.java'),path.join(source,'test/CapturePolicyCheck.java')].map(quote).join('\n'));
+fs.writeFileSync(consumerArgs,['--release','21','-encoding','UTF-8','-proc:none','-classpath',jar,'-d',consumer,path.join(source,'test/DirectorPolicyCheck.java'),path.join(source,'test/OnlineTargetsCheck.java'),path.join(source,'test/DroneFollowCheck.java'),path.join(source,'test/TransitionEnvelopeCheck.java'),path.join(source,'test/CinematicRigCheck.java'),path.join(source,'test/OrthographicRigCheck.java'),path.join(source,'test/CapturePolicyCheck.java')].map(quote).join('\n'));
 run('javac',['@'+consumerArgs]);const packagedChecks=run('java',['-cp',consumer+path.delimiter+jar,'DirectorPolicyCheck']);
 process.stdout.write('Packaged consumer: '+packagedChecks);
+process.stdout.write(run('java',['-cp',consumer+path.delimiter+jar,'OnlineTargetsCheck']));
 const packagedDroneChecks=run('java',['-cp',consumer+path.delimiter+jar,'DroneFollowCheck']);process.stdout.write('Packaged consumer: '+packagedDroneChecks);
 const packagedTransitionChecks=run('java',['-cp',consumer+path.delimiter+jar,'TransitionEnvelopeCheck']);process.stdout.write('Packaged consumer: '+packagedTransitionChecks);
 const packagedCinematicChecks=run('java',['-cp',consumer+path.delimiter+jar,'CinematicRigCheck']);process.stdout.write('Packaged consumer: '+packagedCinematicChecks);
 const packagedOrthographicChecks=run('java',['-cp',consumer+path.delimiter+jar,'OrthographicRigCheck']);process.stdout.write('Packaged consumer: '+packagedOrthographicChecks);
 const packagedCaptureChecks=run('java',['-cp',consumer+path.delimiter+jar,'CapturePolicyCheck']);process.stdout.write('Packaged consumer: '+packagedCaptureChecks);
 for(const file of ['scene-policy.mjs','scene-policy.test.mjs','connection-recovery.mjs','connection-recovery.test.mjs','shot-policy.mjs','shot-policy.test.mjs'])fs.copyFileSync(path.join(source,file),path.join(output,file));
+const recoverySource=path.resolve(source,'../../packages/modern-viewer/renderer-src/host/native-target-recovery.mjs');
+fs.copyFileSync(recoverySource,path.join(output,'native-target-recovery.mjs'));
+const recoveryFile=path.join(output,'connection-recovery.mjs');
+fs.writeFileSync(recoveryFile,fs.readFileSync(recoveryFile,'utf8').replace('../../packages/modern-viewer/renderer-src/host/native-target-recovery.mjs','./native-target-recovery.mjs'));
 const sceneChecks=execFileSync(process.execPath,['--test',path.join(output,'scene-policy.test.mjs'),path.join(output,'connection-recovery.test.mjs'),path.join(output,'shot-policy.test.mjs')],{encoding:'utf8',windowsHide:true});
 process.stdout.write(sceneChecks.split('\n').slice(-10).join('\n'));
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');

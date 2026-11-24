@@ -1,24 +1,128 @@
-import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts} from './camera-script.mjs';
+import {CAMERA_SCRIPT_PROTOCOL,blendCameraScripts,validateCameraScript} from './camera-script.mjs';
 import {validateChoiceProbabilities} from './systemone-decisions.mjs';
+import {nativeScheduledCamera} from './native-shot-sequence.mjs';
+import {nativeTargetDeathRecovery,nativeBoundIdleCamera} from './native-target-recovery.mjs';
+export {nativeTargetDeathRecovery} from './native-target-recovery.mjs';
+export {NativeCameraSequence,nativeScheduledCamera,nativeCameraFamily,NATIVE_CAMERA_CADENCE_PROTOCOL} from './native-shot-sequence.mjs';
 export const SUBJECT_CHOICE_PROTOCOL='mcvisual.subject-choice/v1';
+export const NATIVE_DIRECTOR_RESUME_PROTOCOL='mcvisual.native-director-resume/v1';
+
+/** An immutable late rejection can settle an old timeout. It cannot settle an admitted operation. */
+function lateNonAdmission(n,s,now){
+ const r=s?.pending,o=n.offer,stoppedAt=Date.parse(s?.at);
+ if(s?.running!==false||s.phase!=='unknown_request_receipt'||!r||!o||!Number.isFinite(stoppedAt)||stoppedAt>now
+  ||o.accepted!==false||!['expired_request','native_screen_open'].includes(o.reason)||o.neverAdmitted===false
+  ||o.reason==='native_screen_open'&&o.neverAdmitted!==true
+  ||o.id!==r.id||o.lease!==r.lease||o.target!==r.target||r.connectionEpoch!==n.connectionEpoch
+  ||!Number.isSafeInteger(r.nativeWorldEpoch)||r.nativeWorldEpoch<1||r.nativeWorldEpoch!==n.nativeWorldEpoch
+  ||!Number.isFinite(r.issuedAt)||!Number.isFinite(r.expiresAt)||r.expiresAt<=r.issuedAt||r.expiresAt-r.issuedAt>10000
+  ||!Number.isFinite(o.at)||o.at<r.issuedAt||o.at>now||o.reason==='expired_request'&&o.at<r.expiresAt
+  ||stoppedAt<r.issuedAt||!r.previousNativeRequestId||!r.previousCameraUuid
+  ||r.id===n.requestId||n.requestId!==r.previousNativeRequestId||n.activeLease!==r.lease)return null;
+ const attached=n.phase==='attached'&&n.cameraUuid===r.previousCameraUuid&&n.targetUuid===n.cameraUuid;
+ const life=n.terminalCameraLife??n.cameraLife;
+ const dead=n.phase==='stopped'&&n.reason==='target_died'&&n.cameraUuid===n.observerUuid
+  &&life?.dead===true&&life.requestId===r.previousNativeRequestId&&life.uuid===r.previousCameraUuid
+  &&life.nativeWorldEpoch===n.nativeWorldEpoch&&Number.isSafeInteger(life.entityId)&&life.entityId>=0
+  &&Number.isFinite(life.observedAttachedAt)&&life.observedAttachedAt<=now;
+ if(!attached&&!dead)return null;
+ return{requestId:r.id,lease:r.lease,outcome:'not_admitted',receiptAt:o.at,reason:o.reason,
+  previousRequestId:r.previousNativeRequestId,previousTarget:n.target,previousTargetUuid:r.previousCameraUuid,
+  previousTargetDied:dead,completionVerified:false};
+}
+function boundNativeCamera(n,r,now){
+ const fresh=t=>Number.isFinite(t)&&t>=r?.issuedAt&&t<=now&&now-t<=3000,life=n?.cameraLife;
+ return !!(r?.id&&r.lease&&r.targetUuid&&Number.isFinite(r.issuedAt)&&n?.connected===true&&n.authenticated===true
+  &&n.spectator===true&&n.manualDetachRequested!==true&&n.phase==='attached'&&n.connectionEpoch===r.connectionEpoch
+  &&n.requestId===r.id&&n.activeLease===r.lease&&n.target===r.target&&n.targetUuid===r.targetUuid&&n.cameraUuid===r.targetUuid
+  &&Number.isSafeInteger(r.nativeWorldEpoch)&&r.nativeWorldEpoch>0&&Number.isSafeInteger(n.nativeWorldEpoch)&&n.nativeWorldEpoch>=r.nativeWorldEpoch
+  &&n.offer?.id===r.id&&n.offer.lease===r.lease&&n.offer.target===r.target&&n.offer.accepted===true
+  &&life?.requestId===r.id&&life.uuid===r.targetUuid&&life.nativeWorldEpoch===n.nativeWorldEpoch&&life.dead===false
+  &&Number.isSafeInteger(life.entityId)&&life.entityId>=0&&fresh(life.observedAttachedAt)&&fresh(Date.parse(n.recordedAt)));
+}
+/** GUI deferral is readback, not completion or permission to send another request. */
+export function nativeGuiAttachmentPending(native,request,{expectedObserverUuid,now=Date.now()}={}){
+ return !!expectedObserverUuid&&native?.observerUuid===expectedObserverUuid&&native.screenOpen===true
+  &&native.viewDeferred===true&&boundNativeCamera(native,request,now);
+}
+function lateNativeAttachment(n,s,now){
+ const r=s?.pending;
+ if(s?.running!==false||s.phase!=='unknown_request_receipt'||!boundNativeCamera(n,r,now)
+  ||n.screenOpen||n.viewDeferred===true||!Number.isFinite(n.renderedAt)||n.renderedAt>now||now-n.renderedAt>3000
+  ||n.renderedAt<r.issuedAt||!Number.isFinite(Date.parse(s.at))||Date.parse(s.at)>now
+  ||!n.targets?.some(t=>t.name===r.target&&t.uuid===r.targetUuid&&t.loaded===true&&t.alive===true&&t.spectator===false
+    &&t.entityId===n.cameraLife.entityId))return null;
+ return{kind:'late_native_attachment',requestId:r.id,lease:r.lease,outcome:'camera_bound',receiptAt:n.renderedAt,
+  previousRequestId:r.id,previousTarget:r.target,previousTargetUuid:r.targetUuid,
+  completionVerified:false,requestedViewVerified:false};
+}
+function stoppedTargetDeath(n,s,now){
+ const loss=s?.knownTargetLoss,stoppedAt=Date.parse(s?.at);
+ if(s?.running!==false||s.phase!=='native_stopped_requires_review'||s.pending!=null
+  ||!Number.isFinite(stoppedAt)||stoppedAt>now||loss?.reason!=='target_died'
+  ||loss.requestId!==n.requestId||loss.connectionEpoch!==n.connectionEpoch)return null;
+ const death=nativeTargetDeathRecovery({native:n,expectedTarget:loss.target,expectedUuid:loss.uuid,now});
+ if(death?.action!=='reselect')return null;
+ return{kind:'target_death',requestId:n.requestId,lease:n.activeLease,outcome:'target_death_confirmed',
+  receiptAt:Date.parse(n.recordedAt),previousRequestId:n.requestId,previousTarget:loss.target,
+  previousTargetUuid:loss.uuid,previousTargetDied:true,completionVerified:false};
+}
+/** Camera-only supervision after a new connection or positively reconciled native receipt. No replay. */
+export function planNativeDirectorResume({enabled=false,observerAlive=false,selectorAlive=false,expectedServer,expectedObserverUuid,previousEpoch,native:n,selector:s,now=Date.now(),lastResumeAt=0,recentResumes=0}={}){
+ const result=(action,reason)=>({schema:NATIVE_DIRECTOR_RESUME_PROTOCOL,action,reason,replayPreviousRequest:false});
+ if(!enabled)return result('hold','supervision_disabled');
+ if(!observerAlive)return result('stop','observer_closed');
+ if(n?.manualDetachRequested===true||n?.phase==='paused'||s?.stopRequested===true
+   ||['director_stopped','manual_or_native_detach','connection_changed_manual_resume','paused_native_paused','native_paused_requires_review','native_offer_refused_manual_override'].includes(s?.phase))return result('hold','manual_stop_retained');
+ if(selectorAlive)return result('keep','selector_running');
+ const at=Date.parse(n?.recordedAt);
+ if(!Number.isFinite(at)||at>now||now-at>3000||n?.connected!==true||n.authenticated!==true||n.spectator!==true)return result('hold','await_fresh_authenticated_connection');
+ if(!expectedServer||!expectedObserverUuid||n.server!==expectedServer||n.observerUuid!==expectedObserverUuid)return result('hold','observer_scope_changed');
+ const epoch=n.connectionEpoch;
+ if(typeof previousEpoch!=='string'||!previousEpoch||typeof epoch!=='string'||!epoch||epoch.length>128)return result('hold','connection_provenance_missing');
+ if(epoch===previousEpoch){
+  if(n.transition?.active===true)return result('hold','same_connection_outcome_retained');
+  const reconciliation=lateNonAdmission(n,s,now)??lateNativeAttachment(n,s,now)??stoppedTargetDeath(n,s,now);
+  if(!reconciliation)return result('hold','same_connection_outcome_retained');
+  if(recentResumes>=4||lastResumeAt&&now-lastResumeAt<10000)return result('hold','resume_rate_limited');
+  return{...result('start',reconciliation.kind==='target_death'?'native_target_death_confirmed':reconciliation.kind==='late_native_attachment'?'late_native_attachment_confirmed':'late_offer_non_admission_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true,reconciliation};
+ }
+ if(n.transition?.active===true)return result('hold','new_camera_transition_pending');
+ const self=n.phase==='idle'&&n.cameraUuid===n.observerUuid&&n.requestId==null&&n.activeLease==null;
+ const fresh=t=>Number.isFinite(t)&&t<=now&&now-t<=3000,life=n.cameraLife;
+ const attached=n.phase==='attached'&&n.targetUuid&&n.targetUuid!==n.observerUuid&&n.cameraUuid===n.targetUuid
+   &&fresh(n.renderedAt)&&life?.requestId===n.requestId&&life.uuid===n.targetUuid&&life.nativeWorldEpoch===n.nativeWorldEpoch&&life.dead===false&&fresh(life.observedAttachedAt)
+   &&Array.isArray(n.targets)&&n.targets.some(t=>t.name===n.target&&t.uuid===n.targetUuid&&t.spectator===false);
+ if(!self&&!attached&&!nativeBoundIdleCamera(n,now))return result('hold','new_camera_state_unconfirmed');
+ if(recentResumes>=4||lastResumeAt&&now-lastResumeAt<10000)return result('hold','resume_rate_limited');
+ return{...result('start','new_native_connection_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true};
+}
 
 /** One current image plus real all-actor activity/airtime. Other cameras are explicitly unobserved. */
 export function buildNativeSubjectDecision(native,rows,{forceReview=false,eligibleNames,now=Date.now()}={}){
- if(!native||!Array.isArray(rows)||rows.length>16||!Array.isArray(native.targets)||native.targets.length>16)return null;
+ if(!native||!Array.isArray(rows)||rows.length>256||!Array.isArray(native.targets)||native.targets.length>256)return null;
  const targets=new Map((native.targets??[]).filter(t=>t.uuid&&t.alive!==false).map(t=>[t.name,t]));
  const allowed=Array.isArray(eligibleNames)?new Set(eligibleNames):null;
- const eligible=rows.filter(r=>targets.has(r.name)&&r.name!==native.target&&(!allowed||allowed.has(r.name))).slice(0,15);
- if(!eligible.length||!native.availableViews?.includes('first_person'))return null;
- const options=[...(!forceReview?[{id:'keep',name:native.target,uuid:native.targetUuid}]:[]),
-  ...eligible.map((r,i)=>({...r,id:'subject'+i,uuid:targets.get(r.name).uuid,view:'first_person'}))];
  const current=rows.find(r=>r.name===native.target);
+ // A host may already have filtered the rows to the highest activity tier.
+ // Do not silently reinsert an idle/lower-priority KEEP into that model menu.
+ const priority=r=>{const age=now-r?.at,horizon=r?.kind==='combat'?12000:r?.kind==='interaction'?15000:r?.kind==='conversation'?45000:20000;
+  return Number.isInteger(r?.priority)&&r.priority>=0&&r.priority<=3&&Number.isFinite(age)&&age>=0&&age<=horizon?r.priority:0;};
+ const highest=Math.max(0,...rows.filter(r=>targets.has(r.name)&&(!allowed||allowed.has(r.name))).map(priority));
+ const priorityReview=highest>priority(current);
+ const reviewRequired=forceReview||priorityReview;
+ const eligible=rows.filter(r=>targets.has(r.name)&&r.name!==native.target&&(!allowed||allowed.has(r.name))
+   &&(!priorityReview||priority(r)===highest)).slice(0,15);
+ if(!eligible.length||!native.availableViews?.includes('first_person'))return null;
+ const options=[...(!reviewRequired?[{id:'keep',name:native.target,uuid:native.targetUuid}]:[]),
+  ...eligible.map((r,i)=>({...r,id:'subject'+i,uuid:targets.get(r.name).uuid,view:'first_person'}))];
  const state={schema:SUBJECT_CHOICE_PROTOCOL,current:native.target,currentDwellMs:current?.dwellMs??0,
-  reason:forceReview?'ordinary_scene_coverage_deadline':'compare_live_activity',
+  reason:priorityReview?'fresh_activity_priority':forceReview?'ordinary_scene_coverage_deadline':'compare_live_activity',
   imageEvidence:'Only the CURRENT subject is pictured. Other subjects have no preview. Judge their real activity and coverage facts, not an invented picture.',
   subjects:options.map(o=>({id:o.id,name:o.name,activity:o.kind??current?.kind??'unknown',
    activityAgeMs:Number.isFinite(o.at)?Math.max(0,now-o.at):null,motion:o.motionState??current?.motionState??'unknown',
    waitingMs:o.waitingMs??0,airtimeMs:o.airtimeMs??0,visits:o.visits??0,loaded:targets.get(o.name)?.loaded===true}))};
- return{schema:SUBJECT_CHOICE_PROTOCOL,forceReview,options,request:{state,questions:{subject:{type:'choice',
+ return{schema:SUBJECT_CHOICE_PROTOCOL,forceReview:reviewRequired,options,request:{state,questions:{subject:{type:'choice',
   instructions:'选择下一段直播应观察的人。优先真实战斗、成功操作和新进展；普通发言不能永久占镜。结合等待时间、累计出镜和当前主体驻留。没有其他人的截图不等于对方没有价值。当前有关键战斗时可保持；ordinary_scene_coverage_deadline 表示普通镜头已到覆盖期限，候选只含其他可观战角色，选最值得了解近况的一位。切换先用真实第一人称确认现场，再安排构图。只选给定 ID。',
   criteria:Object.fromEntries(options.map(o=>[o.id,o.id==='keep'?'继续当前主体':'观察 '+o.name+' 的真实近况']))}}}};
 }
@@ -41,14 +145,32 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
  if(!choice||!n.availableViews?.includes(choice.view))return[];
  const candidate=n.targets?.find(t=>t.name===choice.name);if(!candidate?.loaded||candidate.alive!==true)return[];
  const out=[],seen=new Set(),same=candidate.uuid===n.targetUuid;
+ const actualView=n.projection==='orthographic'&&n.orthographic?.active===true?n.projectionProfile:n.effectiveView;
  const script=n.cameraScript?.schema===CAMERA_SCRIPT_PROTOCOL;
+ if(same&&Array.isArray(choice.sequence?.alternatives)){
+  if(choice.sequence.alternatives.length>8||!nativeScheduledCamera(choice,n,{now}))return[];
+  const result=[],views=new Set();for(const a of choice.sequence.alternatives){
+   if(typeof a?.view!=='string'||a.view===actualView||views.has(a.view)||choice.sequence.unavailableViews?.includes(a.view))continue;
+   const c={...choice,view:a.view,sequence:{...choice.sequence,pathPreflightRequired:a.pathPreflightRequired}};
+   delete c.motion;if(a.motion)c.motion=validateCameraScript(a.motion,a.view);
+   if(!nativeScheduledCamera(c,n,{now}))continue;
+   result.push({...c,id:result.length?'view'+result.length:'proposal'});views.add(a.view);
+  }
+  return result;
+ }
  function add(id,view,profile){
+  if((choice.sequence?.reviewRequired===true||choice.sequence?.cadence)&&same&&view===actualView)return;
+  if(same&&choice.sequence?.unavailableViews?.includes(view))return;
   if(view.startsWith('ortho_')&&nativeSafeOrthographic(n)!==true)return;
-  if(!n.availableViews.includes(view)||view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view))return;
+  const finite=view.startsWith('drone_orbit_')||['drone_push_in','drone_pull_out'].includes(view);
+  if(same&&!finite&&n.shotExecution?.requestId===n.requestId&&n.shotExecution.view===view&&n.shotExecution.fallback===true)return;
+  if(!n.availableViews.includes(view))return;
+  if(finite&&(!same||view!==choice.view||profile||choice.sequence?.schema!=='mcvisual.shot-sequence/v1'
+    ||choice.sequence.pathPreflightRequired!==true||!script||n.cameraScript.preflightRequiredForFinite!==true||n.rigCancelSupported!==true))return;
   const key=view+':'+(profile??'');if(seen.has(key))return;seen.add(key);
-  const motion=script&&view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:profile==='slow'?.7:1,
+  const motion=finite||!profile&&view===choice.view&&choice.motion?validateCameraScript(choice.motion,view):script&&view.startsWith('drone_')?{schema:CAMERA_SCRIPT_PROTOCOL,speed:profile==='slow'?.7:1,
     ...(['drone_follow','drone_front_left','drone_front'].includes(view)?{height:profile==='slow'?1.8:1,distance:profile==='slow'?6.5:5.5}:{})}:undefined;
-  out.push({...choice,id,view,...(motion?{motion}:{})});
+  const entry={...choice,id,view};if(motion)entry.motion=motion;else delete entry.motion;out.push(entry);
  }
  add('proposal',choice.view);
  if(script&&choice.view.startsWith('drone_'))add('proposal_slow',choice.view,'slow');
@@ -56,20 +178,22 @@ export function nativeCameraCandidates(choice,n,{now=Date.now()}={}){
   if(['interaction','combat'].includes(choice.kind)||['tunnel','layered'].includes(n.spatial?.layout))add('eye_action','first_person');
   add('stable_eye','drone_eye');
   if(choice.kind==='movement')add('lead','drone_front_left');
+  if(choice.sequence?.cadence){add('rear_tracking','drone_follow');add('side_tracking','drone_side_right');add('high_context','drone_overview');}
   if(choice.kind==='conversation')add('front','drone_front');
   const c=n.spatial;
   if(n.orthographic?.ready&&c?.known===true&&c.targetUuid===candidate.uuid&&c.nativeWorldEpoch===n.nativeWorldEpoch
-    &&c.floorSafe===true&&['open','room'].includes(c.layout)&&c.orthographicVisibility>=.8&&c.at<=now&&now-c.at<2000){
+    &&['open','room'].includes(c.layout)&&c.orthographicVisibility>=.8&&c.at<=now&&now-c.at<2000&&!n.orthographic.roomClip){
    add('ortho_context',choice.kind==='interaction'?'ortho_close':'ortho_isometric');
   }
  }
- return out.slice(0,6);
+ return (choice.sequence?.preference==='orthographic_travel'?out.filter(c=>c.view.startsWith('ortho_')):out).slice(0,6);
 }
 const nativeSafeOrthographic=n=>n.orthographic?.ready===true&&n.orthographic?.worldCutawaySupported===false;
 
 /** Real probability distributions stay distinct from hard-vote fractions. */
 export function selectCameraBallot(options,votes,previous){
  const criteria=Object.fromEntries(options.map(o=>[o.id,true])),weights={action:1.3,space:1.2,continuity:1.1};
+ const canKeep=Object.hasOwn(criteria,'keep');
  const valid=votes?.filter(v=>Object.hasOwn(criteria,v.choice)&&Object.hasOwn(weights,v.role))??[];
  if(valid.length<2)return{kind:'keep',reason:'insufficient_votes'};
  const distributions=valid.map(v=>validateChoiceProbabilities(v.probabilities,criteria));
@@ -82,25 +206,32 @@ export function selectCameraBallot(options,votes,previous){
   const families=new Map();for(const o of options){const key=o.id==='keep'?'keep':o.name+'|'+o.view;const group=families.get(key)??{key,mass:0,options:[]};group.mass+=scores[o.id];group.options.push(o);families.set(key,group);}
   const ranked=[...families.values()].sort((a,b)=>b.mass-a.mass),family=ranked[0],p=family.mass,
    winner=family.options.slice().sort((a,b)=>scores[b.id]-scores[a.id])[0].id,margin=p-(ranked[1]?.mass??0);
-  const entropy=-Object.values(scores).reduce((s,p)=>s+(p>0?p*Math.log(p):0),0)/Math.log(options.length);
-  if(winner==='keep'||p<.5||margin<.12)return{kind:'keep',reason:'probability_hysteresis',scores,entropy,margin};
+  const entropy=options.length>1?-Object.values(scores).reduce((s,p)=>s+(p>0?p*Math.log(p):0),0)/Math.log(options.length):0;
+  if(winner==='keep'||canKeep&&(p<.5||margin<.12))return{kind:'keep',reason:'probability_hysteresis',scores,entropy,margin};
   const option=options.find(o=>o.id===winner),motion=blendCameraScripts(options,scores,winner);
   return{kind:'use',choice:{...option,...(motion?{motion}:{})},scores,entropy,margin,source:'probabilities'};
  }
- const totals=Object.fromEntries(options.map(o=>[o.id,valid.filter(v=>v.choice===o.id).length])),[winner,count]=Object.entries(totals).sort((a,b)=>b[1]-a[1])[0];
- return winner==='keep'||count<2?{kind:'keep',reason:'hard_vote_hold'}:{kind:'use',choice:options.find(o=>o.id===winner),source:'hard_choices'};
+ const totals=Object.fromEntries(options.map(o=>[o.id,valid.filter(v=>v.choice===o.id).length])),weight=id=>valid.filter(v=>v.choice===id).reduce((s,v)=>s+weights[v.role],0),
+  [winner,count]=Object.entries(totals).sort((a,b)=>b[1]-a[1]||(!canKeep?weight(b[0])-weight(a[0]):0))[0];
+ return winner==='keep'||canKeep&&count<2?{kind:'keep',reason:'hard_vote_hold'}:{kind:'use',choice:options.find(o=>o.id===winner),source:'hard_choices'};
 }
 
 /** One pacing gate, advanced ONLY by actual rendered native observations, never by accepted advice. */
 export class NativeCameraPacing{
- constructor({now=Date.now,currentView}={}){if(typeof currentView!=='function')throw Error('EXPLICIT_NATIVE_VIEW_REQUIRED');this.view=currentView;this.now=now;this.binding=null;this.current=null;this.history=[];this.left=new Map();this.stopped=false;}
+ constructor({now=Date.now,currentView,cadenceProfile='steady'}={}){if(typeof currentView!=='function')throw Error('EXPLICIT_NATIVE_VIEW_REQUIRED');if(!['steady','lively'].includes(cadenceProfile))throw Error('INVALID_CAMERA_CADENCE_PROFILE');this.cadenceProfile=cadenceProfile;this.view=currentView;this.now=now;this.binding=null;this.current=null;this.history=[];this.left=new Map();this.stopped=false;}
  observe(n){
   if(this.stopped||n?.phase!=='attached'||!n.targetUuid||n.cameraUuid!==n.targetUuid||n.transition?.active||n.manualDetachRequested
     ||!Number.isFinite(n.renderedAt)||n.renderedAt>this.now()+1000||this.now()-n.renderedAt>3000)return;
   const binding=n.connectionEpoch+':'+n.nativeWorldEpoch;
-  if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();}
+  if(this.binding!==binding){this.binding=binding;this.current=null;this.history=[];this.left.clear();this.endpoint=null;}
   const signature=[n.requestId,n.targetUuid,this.view(n)].join(':'),at=this.now();
+  if(n.shotExecution?.requestId===n.requestId&&n.shotExecution.phase==='completed'&&n.shotExecution.fallback!==true
+    &&n.shotExecution.view===this.view(n)&&this.endpoint?.requestId!==n.requestId)this.endpoint={requestId:n.requestId,at};
   if(this.current?.signature===signature)return;
+  if(this.cadenceProfile==='lively'&&this.current?.uuid===n.targetUuid&&this.current.view===this.view(n)
+   &&n.shotExecution?.requestId===n.requestId&&n.shotExecution.fallback===true){
+   this.current.signature=signature;this.current.requestId=n.requestId;return;
+  }
   if(this.current?.requestId===n.requestId&&this.current.uuid===n.targetUuid){
    // Collision/close-view recovery is the same camera operation, not another editorial cut.
    const projection=n.projection??'perspective';if(this.current.projection!==projection)this.current.projectionAt=at;
@@ -125,12 +256,20 @@ export class NativeCameraPacing{
   // recovery is supplied only after the host's canonical death/position-loss verifier succeeds.
   if(recovery===true&&n.phase==='stopped'&&['target_identity_lost','target_died','target_position_unconfirmed'].includes(n.reason)
     &&n.connected===true&&n.authenticated===true&&n.spectator===true&&n.cameraUuid===n.observerUuid&&!n.manualDetachRequested)return{allow:true,reason:'verified_target_loss_recovery'};
+  if(recovery===true&&choice.name===n.target&&nativeTargetDeathRecovery({native:n,expectedTarget:n.target,
+    expectedUuid:subject,now})?.action==='reselect')return{allow:true,reason:'verified_respawn_camera_recovery'};
   if(!c||!subject)return{allow:false,reason:'awaiting_render_binding'};
   const projection=choice.view.startsWith('ortho_')?'orthographic':'perspective',cross=subject!==c.uuid;
   this.history=this.history.filter(h=>now-h.at<60000);
-  if(now-c.shotAt<12000)return{allow:false,reason:'minimum_shot_12s'};
-  if(this.history.length>=4)return{allow:false,reason:'cut_budget_4_per_minute'};
-  if(!cross&&projection!==c.projection&&now-c.projectionAt<45000)return{allow:false,reason:'projection_hold_45s'};
+  const scheduled=this.cadenceProfile==='lively'&&!cross&&nativeScheduledCamera(choice,n,{now});
+  if(scheduled&&this.endpoint?.requestId===n.requestId&&now-this.endpoint.at<1200)
+   return{allow:false,reason:'hold_rendered_motion_endpoint'};
+  const current=activity.find(a=>a.name===n.target),fresh=t=>Number.isFinite(t)&&t<=now&&now-t<8000;
+  if(scheduled&&(fresh(current?.lastCombatAt)||Number.isFinite(current?.lastInteractionAt)&&now-current.lastInteractionAt>=0&&now-current.lastInteractionAt<12000))return{allow:false,reason:'protect_live_action'};
+  const minimum=scheduled?(choice.sequence.cadence.cause==='stationary_motion'?3000:5000):12000;
+  if(now-c.shotAt<minimum)return{allow:false,reason:scheduled?'minimum_scheduled_shot':'minimum_shot_12s'};
+  if(this.history.length>=(this.cadenceProfile==='lively'?12:4))return{allow:false,reason:this.cadenceProfile==='lively'?'cut_budget_12_per_minute':'cut_budget_4_per_minute'};
+  if(!cross&&projection!==c.projection&&now-c.projectionAt<(scheduled?5000:45000))return{allow:false,reason:scheduled?'projection_hold_5s':'projection_hold_45s'};
   if(cross){
    const current=activity.find(a=>a.name===n.target),engaged=Number.isFinite(current?.lastCombatAt)&&now-current.lastCombatAt<8000;
    if(engaged)return{allow:false,reason:'protect_live_combat'};

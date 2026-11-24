@@ -198,7 +198,8 @@ test('source failure and reset during texture decoding create no URL, dispose la
 test('complete SNBT handles quoted empty patches but visual components and mismatched identity cannot borrow generic block icons', () => {
   for(const snbt of ['{id:"minecraft:dirt",count:1,"components":{}}','{id:"minecraft:dirt",count:1,\'components\':{}}'])
     assert.equal(nativeItemIconEligible({...stack('minecraft:dirt'),snbt}),true)
-  for (const snbt of ['{id:"minecraft:dirt",count:1,"components":{"minecraft:custom_model_data":1}}',
+  assert.equal(nativeItemIconEligible({...stack('minecraft:dirt'),snbt:'{id:"minecraft:dirt",count:1,components:{"minecraft:custom_model_data":1}}'}),true)
+  for (const snbt of ['{id:"minecraft:dirt",count:1,"components":{"minecraft:custom_model_data":{}}}',
     '{id:"minecraft:dirt",count:1,"\\u0063omponents":{}}', '{id:"minecraft:cobblestone",count:1}', '{id:"minecraft:dirt",count:2}'])
     assert.equal(nativeItemIconEligible({ ...stack('minecraft:dirt'), snbt }), false)
   assert.equal(nativeItemIconEligible({ ...stack('minecraft:dirt'), snbt: '{"count":1,"id":"minecraft:dirt"}' }), true)

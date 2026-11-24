@@ -19,6 +19,8 @@ export async function loadNativeAudioPack(assetRoot,{nativeRegistrySha256=null,e
       hash('sha1',indexBytes)!==manifest.assetIndexSha1||hash('sha1',soundBytes)!==manifest.soundsJsonSha1||
       index['minecraft/sounds.json']?.hash!==manifest.soundsJsonSha1)throw Error('NATIVE_AUDIO_ORIGINAL_SOURCE_MISMATCH')
     const registry=validateViewerSoundRegistry(JSON.parse(registryBytes),'1.21.1'),files=Object.create(null)
+    if (manifest.audioProfile !== undefined && !['complete','effects-only'].includes(manifest.audioProfile)) throw Error('NATIVE_AUDIO_PROFILE_INVALID')
+    const musicIncluded = manifest.audioProfile !== 'effects-only'
     if(!manifest.files||!manifest.fileMetadata||Object.keys(manifest.files).length>8192)throw Error('NATIVE_AUDIO_FILE_TABLE_INVALID')
     const originalFiles=new Set()
     for(const event of Object.values(definitions))for(const sound of event.sounds??[]){
@@ -26,6 +28,7 @@ export async function loadNativeAudioPack(assetRoot,{nativeRegistrySha256=null,e
       if(entry.type==='event')continue
       originalFiles.add(entry.name.replace(/^minecraft:/,'')+'.ogg')
     }
+    if (!musicIncluded) for (const file of originalFiles) if (file.startsWith('music/') || file.startsWith('records/')) originalFiles.delete(file)
     if(originalFiles.size!==Object.keys(manifest.files).length||[...originalFiles].some(file=>!Object.hasOwn(manifest.files,file)))throw Error('NATIVE_AUDIO_FILE_TABLE_INCOMPLETE')
     for(const [name,sha1]of Object.entries(manifest.files)){
       const row=manifest.fileMetadata[name]
@@ -42,7 +45,7 @@ export async function loadNativeAudioPack(assetRoot,{nativeRegistrySha256=null,e
       if(hash('sha256',raw)!=='d43dc9e7862aac8acdf4d0723379dbb387b1e457a9ce4ca954a9100d7e0a2b80')throw Error('NATIVE_AUDIO_BLOCK_TYPES_INTEGRITY_MISMATCH')
       blocks=JSON.parse(raw).blocks
     }catch(e){blockSoundsReason=e.code==='ENOENT'?'NATIVE_AUDIO_BLOCK_TYPES_MISSING':e.message}
-    const metadata={available:true,...NATIVE_AUDIO_PROVENANCE,definitions,files,numericRegistryAvailable,blocks,blockSoundsReason,
+    const metadata={available:true,...NATIVE_AUDIO_PROVENANCE,definitions,files,musicIncluded,numericRegistryAvailable,blocks,blockSoundsReason,
       source:'verified_original_launcher_assets',randomSource:'Minecraft_1.21.1_LegacyRandomSource',completeAudioParityVerified:false}
     return {available:true,registry:numericRegistryAvailable?registry:{sounds:{}},metadata,async read(name){
       if(!Object.hasOwn(files,name))throw Error('NATIVE_AUDIO_FILE_NOT_EXPORTED')

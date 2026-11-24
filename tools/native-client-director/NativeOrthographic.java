@@ -13,14 +13,15 @@ public final class NativeOrthographic {
         stop("new_connection");ready=false;config=null;manual=false;problem="disabled";sample=null;sampledAt=0;lastNear=-32;
         if(!enabled)return;
         try{
+            boolean nativeBackend=FabricLoader.getInstance().isModLoaded("mcvisual-native-orthographic");
             var mod=FabricLoader.getInstance().getModContainer("orthocamera");
-            if(mod.isEmpty()||!mod.get().getMetadata().getVersion().getFriendlyString().equals("0.1.9+1.21")){problem="matching_orthocamera_unavailable";return;}
+            if(!nativeBackend&&(mod.isEmpty()||!mod.get().getMetadata().getVersion().getFriendlyString().equals("0.1.9+1.21"))){problem="matching_orthocamera_unavailable";return;}
             Path sodium=FabricLoader.getInstance().getConfigDir().resolve("sodium-options.json");
             if(FabricLoader.getInstance().isModLoaded("sodium")&&(!Files.isRegularFile(sodium)
                 ||!JsonParser.parseString(Files.readString(sodium)).getAsJsonObject().getAsJsonObject("performance").has("use_block_face_culling")
                 ||JsonParser.parseString(Files.readString(sodium)).getAsJsonObject().getAsJsonObject("performance").get("use_block_face_culling").getAsBoolean())){
                 problem="sodium_block_face_culling_must_be_disabled";return;}
-            config=Class.forName("com.dimaskama.orthocamera.client.OrthoCamera").getField("CONFIG").get(null);
+            config=Class.forName(nativeBackend?"org.mcvisual.neoforge.OrthographicProjection":"com.dimaskama.orthocamera.client.OrthoCamera").getField("CONFIG").get(null);
             for(String name:new String[]{"enabled","fixed","fixed_yaw","fixed_pitch","scale_x","scale_y","min_distance","max_distance"})config.getClass().getField(name);
             ready=true;problem=null;
         }catch(Exception e){ready=false;problem=e.getClass().getSimpleName();}

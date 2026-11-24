@@ -14,7 +14,16 @@ const DEFAULT_SEED_BLOCKS = Object.freeze({
   'minecraft:sand': Object.freeze(['net.minecraft.world.level.block.ColoredFallingBlock', 'net.minecraft.world.level.block.FallingBlock', BLOCK, BLOCK_BEHAVIOUR]),
   'minecraft:dirt': Object.freeze([BLOCK, BLOCK_BEHAVIOUR]),
   'minecraft:grass_block': Object.freeze(['net.minecraft.world.level.block.GrassBlock', 'net.minecraft.world.level.block.SpreadingSnowyDirtBlock', 'net.minecraft.world.level.block.SnowyDirtBlock', BLOCK, BLOCK_BEHAVIOUR]),
-  'minecraft:dirt_path': Object.freeze(['net.minecraft.world.level.block.DirtPathBlock', BLOCK, BLOCK_BEHAVIOUR])
+  'minecraft:dirt_path': Object.freeze(['net.minecraft.world.level.block.DirtPathBlock', BLOCK, BLOCK_BEHAVIOUR]),
+  'minecraft:rooted_dirt': Object.freeze(['net.minecraft.world.level.block.RootedDirtBlock', BLOCK, BLOCK_BEHAVIOUR]),
+  'minecraft:coarse_dirt': Object.freeze([BLOCK, BLOCK_BEHAVIOUR]),
+  'minecraft:gravel': Object.freeze(['net.minecraft.world.level.block.ColoredFallingBlock','net.minecraft.world.level.block.FallingBlock',BLOCK,BLOCK_BEHAVIOUR]),
+  'minecraft:red_sand': Object.freeze(['net.minecraft.world.level.block.ColoredFallingBlock','net.minecraft.world.level.block.FallingBlock',BLOCK,BLOCK_BEHAVIOUR]),
+  'minecraft:netherrack': Object.freeze(['net.minecraft.world.level.block.NetherrackBlock',BLOCK,BLOCK_BEHAVIOUR]),
+  'minecraft:end_stone': Object.freeze([BLOCK,BLOCK_BEHAVIOUR]),
+  'minecraft:soul_sand': Object.freeze(['net.minecraft.world.level.block.SoulSandBlock',BLOCK,BLOCK_BEHAVIOUR]),
+  'minecraft:podzol': Object.freeze(['net.minecraft.world.level.block.SnowyDirtBlock',BLOCK,BLOCK_BEHAVIOUR]),
+  'minecraft:mycelium': Object.freeze(['net.minecraft.world.level.block.MyceliumBlock','net.minecraft.world.level.block.SpreadingSnowyDirtBlock','net.minecraft.world.level.block.SnowyDirtBlock',BLOCK,BLOCK_BEHAVIOUR])
 })
 
 export function defaultBlockSeedEvidence (state) {
@@ -25,7 +34,7 @@ export function defaultBlockSeedEvidence (state) {
   const properties = state.properties
   if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return null
   const keys = Object.keys(properties)
-  if (state.name === 'minecraft:grass_block') {
+  if (['minecraft:grass_block','minecraft:podzol','minecraft:mycelium'].includes(state.name)) {
     if (keys.length !== 1 || keys[0] !== 'snowy' || !['true', 'false'].includes(properties.snowy)) return null
   } else if (keys.length !== 0) return null
   return { minecraftVersion: '1.21.1', clientSha1: CLIENT_SHA1, algorithm: 'block_behaviour_position_seed', getSeedOwner: BLOCK_BEHAVIOUR, inheritance }

@@ -71,7 +71,7 @@ const receiveDisplay=()=>{
   if(previous!==selfDisplay.resetVersion){director?.reset();cameraDistance=null;lastCollision=null}
 }
 const visualListeners = new Map()
-let lastInventoryOperation = null, frameEntitiesData = null, frameEntitiesCount = -1, frameEntities = []
+let lastInventoryOperation = null, frameEntitiesData = null, frameEntitiesCount = -1, frameEntitiesFailures = -1, frameEntities = []
 const visualPort = { on(event, callback) { if (!visualListeners.has(event)) visualListeners.set(event, new Set()); visualListeners.get(event).add(callback) },
   off(event, callback) { visualListeners.get(event)?.delete(callback) },
   emit(event, value) { for (const callback of visualListeners.get(event) || []) callback(value) } }
@@ -197,7 +197,10 @@ async function start () {
         const roomStarted=timingFrame?performance.now():0
         roomStatus=roomVisibility.update({camera,pose:observerPose??current.pose,height:observerTarget?.height??1.8,mode:viewMode,enabled:sceneOptions.occlusion,raycast:terrainRaycast,now})
         roomMs=timingFrame?performance.now()-roomStarted:0
-        if(selfActor)selfActor.root.visible=viewMode!=='first'&&(cameraDistance===null||cameraDistance>.9||selectedEntity!==null)
+        // Wall/foliage collision shortens a third-person camera, not the
+        // observed player's existence. Only the explicit first-person view
+        // hides the whole body; the camera near plane handles close geometry.
+        if(selfActor)selfActor.root.visible=viewMode!=='first'
         // Create's AnimationTickHolder uses a CLIENT clock. Native server time
         // is a freshness guard, never substituted for its absolute phase.
         const timeStatus = nativeKineticTimeStatus(current.time, Date.now(), { paused: document.hidden })
@@ -237,7 +240,7 @@ async function start () {
       }
       const beforeMap=performance.now()
       const mapDrawn=miniMap.render({position:displayPose,playerUuid,entityId:current?.selfPlayer?.entityId,epoch,
-        bounds:current?.bounds,visual:agentVisual.snapshot(),now})
+        bounds:current?.bounds,visual:agentVisual.snapshot(),terrainRevision:terrainQueue.stats.committed,now})
       const afterMap=performance.now()
       publishFrame(now)
       const afterUi=timingFrame?performance.now():afterMap
@@ -256,7 +259,9 @@ async function start () {
         uiMs:afterUi-afterMap,diagnosticsMs:performance.now()-afterUi})
     } catch (error) { fail(error) }
   })
-  events = createNativeEventStream({url:nativeViewerUrl('events'),statusUrl:nativeViewerUrl('status.json'),onMessage:message => {
+  events = createNativeEventStream({url:nativeViewerUrl('events'),statusUrl:nativeViewerUrl('status.json'),
+    rtcUrl:document.querySelector('meta[name="native-viewer-transport"]')?.content==='webrtc-v1'?nativeViewerUrl('webrtc'):null,
+    onTransport:value=>{renderer.domElement.dataset.eventTransport=JSON.stringify(value)},onMessage:message => {
     try {
       const received=JSON.parse(message.data)
       // A resource/registry deployment can invalidate the old session reader.
@@ -432,9 +437,9 @@ function publishFrame(now) {
     label = { visible: labelPoint.z >= -1 && labelPoint.z <= 1 && Math.abs(labelPoint.x) <= 1 && Math.abs(labelPoint.y) <= 1,
       x: (labelPoint.x + 1) * viewport.clientWidth / 2, y: (1 - labelPoint.y) * viewport.clientHeight / 2, name: label.name }
   }
-  if(frameEntitiesData!==entityLayer?.data||frameEntitiesCount!==entityLayer?.actors.size){
-    frameEntitiesData=entityLayer?.data;frameEntitiesCount=entityLayer?.actors.size
-    frameEntities=[...(entityLayer?.data.values()??[])].slice(0,64).map(e=>({id:e.entityId,uuid:e.uuid,name:e.name,rendered:entityLayer.actors.has(e.entityId)}))
+  if(frameEntitiesData!==entityLayer?.data||frameEntitiesCount!==entityLayer?.actors.size||frameEntitiesFailures!==entityLayer?.failures.size){
+    frameEntitiesData=entityLayer?.data;frameEntitiesCount=entityLayer?.actors.size;frameEntitiesFailures=entityLayer?.failures.size
+    frameEntities=[...(entityLayer?.data.values()??[])].slice(0,64).map(e=>({id:e.entityId,uuid:e.uuid,name:e.name,rendered:entityLayer.actors.has(e.entityId),loading:!entityLayer.actors.has(e.entityId)&&!entityLayer.failures.has(e.entityId)}))
   }
   onFrame({ now, pose: p, selfPlayer: current?.selfPlayer, label,camera:cameraFrame,room:roomStatus,selectedEntity,entities:frameEntities })
 }
@@ -445,6 +450,7 @@ function publishDiagnostics() {
       ...[...actors.values()].flatMap(actor => [actor.root.userData.nativeClockReason, actor.root.userData.nativeBearing?.reason]).filter(Boolean), ...(entityLayer?.diagnostics().issues??[]),...(particles?.diagnostics().issues??[])], entities: entityLayer?.diagnostics()??null,
     appearance: selfController?.appearance(),particles:particles?.diagnostics(),
     audio:audio?.state(),
+    selfVisibility:{loaded:!!selfActor,visible:selfActor?.root.visible===true,viewMode,cameraDistance},
     selfModel: selfActor?.assetInfo?.kind === 'ysm' ? { kind: 'ysm', modelId: selfActor.assetInfo.modelId, texture: selfActor.assetInfo.texture, selectionSource: selfActor.assetInfo.selectionSource,
       support: selfActor.assetInfo.support ?? null, notice: selfActor.assetInfo.notice, motion: selfMotionState ?? selfActor.root.userData.motion ?? null } : null,
     heldItems: selfActor?.heldItemsState?.()??null, firstPersonItems:selfActor?.firstPersonItemsState?.()??null, missingColumns: current?.missingColumns?.length || 0,

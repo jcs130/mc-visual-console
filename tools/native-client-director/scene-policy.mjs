@@ -31,16 +31,28 @@ export function classifyEvent(event,now=Date.now()){
   const text=String(event.text??'').slice(0,1800);
   if(/\.combat$/.test(event.type??'')||(/\.reflex$/.test(event.type??'')||/^\[反射\]/.test(text))&&/攻击|战斗|受击|格挡|撤退|击杀|敌人/.test(text))
     return {at,score:/death|死亡|只剩/.test(text)?10:8,kind:'combat'};
+  // The owned body publishes this live combat heartbeat every six seconds.
+  // It is not the terminal report (which may arrive after the whole fight).
+  // Keep the legacy grammar narrow: speech, intentions and nearby foes alone
+  // never become combat evidence, even when they quote the same words.
+  if(/\.event$/.test(event.type??'')&&/^\[Minecraft\] 还在打:[1-9]\d* 只在附近\(最近的是[^\r\n)]{1,100}\),刀 \d+ 次命中 \d+ 次,箭 \d+ 支命中 \d+ 次,手里是[^\r\n]{1,100},生命 \d+(?:\.\d+)?\/\d+(?:\.\d+)?。?$/.test(text))
+    return {at,score:8,kind:'combat',source:'owned-body-combat-progress'};
   const execution=event.execution;
   if(execution?.terminal===true){
-    const steps=execution.evidence?.steps??[];
+    const steps=(Array.isArray(execution.evidence?.steps)?execution.evidence.steps:[]).filter(s=>s?.outcome==='ok'
+      &&!['unchanged','unknown','unavailable'].includes(s.observedEffect?.status));
     if(steps.some(s=>s.outcome==='ok'&&s.observedEffect?.skill==='attack'))return {at,score:8,kind:'combat'};
+    // Measured effects cover equip/eat/use/harvest/etc. without coupling this
+    // display adapter to a growing list of game skills. No-op/admission isn't activity.
+    if(steps.some(s=>['target','inventory','window'].some(k=>s.observedEffect?.changed?.[k]===true)))
+      return {at,score:5,kind:'interaction',source:'executed-observed-effect'};
     if(steps.some(s=>s.outcome==='ok'&&['craft','smelt','build','take','stow','give'].includes(s.observedEffect?.skill)))
       return {at,score:5,kind:'interaction'};
-    if(steps.some(s=>s.outcome==='ok'&&['goto','goto_player','tunnel'].includes(s.observedEffect?.skill))){
-      const moved=steps.some(s=>s.observedEffect?.changed?.position===true);
-      if(moved)return {at,score:3,kind:'movement'};
-    }
+    if(steps.some(s=>s.observedEffect?.changed?.position===true))
+      return {at,score:3,kind:'movement',source:'executed-position-change'};
+    // Structured evidence is authoritative. Do not reinterpret an explicit
+    // unchanged/unknown result as success via its human-readable task summary.
+    if(Array.isArray(execution.evidence?.steps))return null;
   }
   // Original Cortico has text receipts. A chat/plan/preview is not a body event.
   if(/\.task$/.test(event.type??'')){
@@ -63,6 +75,15 @@ export class SceneSelector{
     this.available=null;this.coverage=new Map();this.program=null;this.firstOpportunityAt=null;
   }
   setAvailable(names){this.available=names===null?null:new Set(names.filter(n=>this.names.includes(n)));}
+  /** Trusted native online roster; preserves coverage for the same identity, never inherits it after rename/reuse. */
+  setRoster(rows){
+    if(!Array.isArray(rows)||rows.length>256)return false;
+    const next=new Map(),ids=new Set(),labels=new Set();
+    for(const row of rows){if(!row||!/^[_A-Za-z0-9]{1,16}$/.test(row.name??'')||typeof row.uuid!=='string'||!row.uuid||labels.has(row.name.toLowerCase())||ids.has(row.uuid.toLowerCase()))return false;next.set(row.name,row.uuid);ids.add(row.uuid.toLowerCase());labels.add(row.name.toLowerCase());}
+    const old=this.rosterIdentities??new Map();
+    for(const name of this.names)if(!next.has(name)||old.has(name)&&old.get(name)!==next.get(name)){this.activities.delete(name);this.presence.delete(name);this.coverage.delete(name);}
+    this.rosterIdentities=next;this.names=[...next.keys()];if(this.available!==null)this.available=new Set([...this.available].filter(n=>next.has(n)));return true;
+  }
   remember(name,value){
     const activities=this.activities.get(name)??new Map(),previous=activities.get(value.kind);
     if(!previous||value.at>=previous.at)activities.set(value.kind,value);
@@ -99,7 +120,7 @@ export class SceneSelector{
         const age=now-e.at,horizon=e.kind==='combat'?12000:e.kind==='interaction'?15000:e.kind==='conversation'?45000:20000;
         return{...e,score:e.kind==='movement'&&this.stationary(name,now)||age<0||age>horizon?0:e.score*Math.exp(-age/(e.kind==='conversation'?30000:12000))};
       }).filter(e=>e.score>=.15);
-      const physical=scored.filter(e=>e.kind!=='conversation').sort((a,b)=>b.score-a.score),speech=scored.filter(e=>e.kind==='conversation').sort((a,b)=>b.at-a.at);
+      const physical=scored.filter(e=>e.kind!=='conversation').sort((a,b)=>Number(b.kind==='combat')-Number(a.kind==='combat')||b.score-a.score),speech=scored.filter(e=>e.kind==='conversation').sort((a,b)=>b.at-a.at);
       const best=physical[0]??speech[0],c=this.coverage.get(name),p=this.presence.get(name),waitingMs=Math.max(0,now-(c?.lastShownAt??this.firstOpportunityAt));
       const priority=best?.kind==='combat'?3:physical.length?2:speech.length?1:0;
       return{name,score:best?.score??0,kind:best?.kind??'coverage',at:best?.at??p?.at??now,priority,
@@ -134,7 +155,9 @@ export class SceneSelector{
     // Re-evaluate ordinary scenes at the real subject deadline, even when the same actor keeps talking.
     // A fight remains protected by fresh action evidence; this is not unconditional round-robin.
     if(current&&this.available!==null&&!active?.protected){
-      const others=subjects.filter(s=>s.name!==current),waitLimit=this.maxDwellMs*Math.max(2,subjects.length-1),
+      // Airtime is a tie-breaker between actual scenes, never evidence that an
+      // idle/unknown online player deserves a cut away from the current scene.
+      const others=subjects.filter(s=>s.name!==current&&s.priority>0&&s.priority>=(active?.priority??0)),waitLimit=this.maxDwellMs*Math.max(2,subjects.length-1),
         urgent=others.filter(s=>s.protected),starved=others.filter(s=>s.waitingMs>=waitLimit).sort((a,b)=>b.waitingMs-a.waitingMs||b.priority-a.priority);
       const overdue=starved.length>0&&!urgent.length&&now-currentSince>=this.minDwellMs;
       if(overdue||now-currentSince>=this.maxDwellMs){
@@ -152,7 +175,7 @@ export class SceneSelector{
         return {name,score:!staleMovement&&age>=0&&age<=horizon?e.score*Math.exp(-age/(e.kind==='conversation'?30000:12000)):0,kind:e.kind,at:e.at};
       });
     }).filter(s=>s.score>=0.15);
-    const physical=scored.filter(s=>s.kind!=='conversation').sort((a,b)=>b.score-a.score);
+    const physical=scored.filter(s=>s.kind!=='conversation').sort((a,b)=>Number(b.kind==='combat')-Number(a.kind==='combat')||b.score-a.score);
     // Recency, not message volume, selects the speaker when no real action is fresh.
     const speakers=scored.filter(s=>s.kind==='conversation').sort((a,b)=>b.at-a.at);
     const best=physical[0]??speakers[0];
@@ -182,6 +205,10 @@ export class SceneSelector{
       if(!this.cinematicFraming||!currentView||view===currentView||now-currentSince<10000)return null;
       return {...best,view,reframe:true};
     }
+    const priority=subjects.find(s=>s.name===best.name)?.priority??0;
+    if(current&&best.name!==current&&priority>(active?.priority??0))
+      return {...best,view,reason:'fresh_activity_priority',forceSubjectReview:true,
+        subjectPool:subjects.filter(s=>s.priority===priority&&s.name!==current).map(s=>s.name)};
     return {...best,view,reason:best.kind==='conversation'?'recent_speaker':'fresh_physical_activity'};
   }
 }

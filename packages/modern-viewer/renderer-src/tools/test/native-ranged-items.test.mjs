@@ -34,7 +34,9 @@ test('missing/active use evidence, malformed projectiles and unrelated visual co
   for(const value of [null,{}, {...observed,source:'guessed'}, {...observed,usingItem:undefined}])await assert.rejects(prepareNativeRangedItem(reader,stack('bow'),value),/USE_STATE_UNAVAILABLE/)
   await assert.rejects(prepareNativeRangedItem(reader,stack('crossbow'),{...observed,usingItem:true}),/ACTIVE_USE_UNAVAILABLE/)
   await assert.rejects(prepareNativeRangedItem(reader,stack('crossbow','"minecraft:charged_projectiles":[{id:"invalid",count:1}]'),observed),/PROJECTILES_INVALID/)
-  await assert.rejects(prepareNativeRangedItem(reader,stack('bow','"minecraft:custom_model_data":7'),observed),/VISUAL_COMPONENT_UNSUPPORTED/)
+  const custom=await prepareNativeRangedItem(reader,stack('bow','"minecraft:custom_model_data":731001'),observed)
+  assert.equal(custom.properties.custom_model_data,731001);assert.equal(custom.model.textures.layer0,'item/bow')
+  await assert.rejects(prepareNativeRangedItem(reader,stack('bow','"minecraft:custom_model_data":{}'),observed),/CUSTOM_MODEL_DATA_INVALID/)
   await assert.rejects(resolveNativeItemAppearance(reader,stack('bow'),{kind:'gui'}),/STATIC_PROVIDER_UNVERIFIED/)
 })
 

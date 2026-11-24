@@ -1,8 +1,76 @@
 # Native spectator director companion
 
+## Fresh activity outside the current camera
+
+An actor being outside the observer's loaded chunks is unknown visibility, not
+inactivity. The owned event adapter recognizes the core's six-second live combat
+heartbeat and measured successful inventory/target/window/position changes,
+including equipment, food and container operations. It does not promote task
+admission, failed/unchanged effects, plans, chat quotations or old receipts.
+Structured effect evidence takes precedence over the task's text summary.
+
+After normal native/subject pacing permits a switch, a strictly higher fresh
+activity tier requires subject review. The model menu cannot reinsert a lower-tier
+KEEP; one eligible subject is a labelled rule choice, multiple equal-tier subjects
+can still be compared by the model. Unknown offscreen geometry is entered through
+first person and then verified natively. Manual pinning, combat protection,
+render receipts, cancellation and minimum switch/cut budgets remain independent.
+This is display selection only and contains no gameplay or model loop.
+
+## Stopped rig after a world replacement; selector supervision
+
+When a world replacement positively restores the same actor, an inactive stopped
+trajectory is a rejected shot, not an indefinitely pending one. This requires the
+fresh exact request, lease, world, current camera life, accepted offer and explicit
+world-reset reason. Manual/unknown/cancelled native states remain terminal. The
+host may select a new request, never restart the old finite path or claim it ended.
+
+`planNativeDirectorResume` is a pure public policy with
+`mcvisual.native-director-resume/v1` output. An explicitly enabled process adapter
+can resume a dead selector only after a fresh authenticated NEW native connection
+of the same server/account, with confirmed self-camera or roster-bound attachment.
+Old unknown status must be archived; a new lease is required. Same-connection
+unknowns, manual stop, stale scope and closed owner never revive the selector.
+Recovery is limited to four attempts per ten minutes, ten seconds apart. This
+policy has no process, network, account, host-persona or model side effects.
+
 This optional Fabric 1.21.1 module controls one existing, explicitly configured
 observer. It does not create a player, connect a Minecraft client, run a model,
 choose an agent's game goal, or expose arbitrary command execution.
+
+## Render lifecycle fix: Fabric 0.1.22 / NeoForge 0.1.31
+
+A real dimension change exposed a stopped-recipe crash: resetting the trajectory
+left its outer active flag set. World replacement now stops the rig, close-view
+state and world binding together. The render hook independently refuses a stale
+world or a stopped recipe, including replacement before the next client tick.
+Passive policy reattachment does not restart an old finite path; a new explicit
+camera request is required. The same source is built for both loaders. Lifecycle
+checks exercise five tracking/finite recipes through reset, repeated render
+frames and a fresh request. Build checks and actual live pixels are separate.
+NeoForge 0.1.30's first actual launch exposed a CRLF-sensitive build substitution;
+0.1.31 normalizes metadata and verifies all declarations and mixin classes from
+the finished JAR before reporting a successful build.
+
+Lively scene planning also distinguishes a vertically open shaft from usable
+camera space: a measured close-view fallback with both horizontal spans at most
+3.5 blocks holds first person until fresh geometry permits a boom. Host ordinary
+reframes must respect `holding_constrained_first_person`; elapsed idle time alone
+must not cause repeated collision probes. This does not lock the subject roster.
+
+Fabric 0.1.23 / NeoForge 0.1.32 distinguishes composition cuts from continuous
+trajectories. Different tracking presets capture the previous image and begin at
+the newly collision-checked preset, under the existing frame dissolve. A side-to-
+front cut need not fly through an obstructing roof to reach a clear endpoint.
+Only same-preset parameter changes and finite orbit/dolly scripts preserve the
+actual rig position. A fallback/stopped rig cannot provide that continuity.
+
+Lively perspective cuts remain available for a known, loaded water/airborne scene:
+the camera has no player-footing requirement, and its native collision/visibility
+checks still run. Finite trajectories and the current orthographic backend retain
+their verified-ground requirement. Unknown/stale geometry and manual/GUI gates
+are unchanged. The three-second stationary cue admits finite motion only; static
+composition still waits for its five-second cadence.
 
 ## 0.1.14: original OrthoCamera integration
 
@@ -351,3 +419,150 @@ retag a past corpse as the current request's camera.
 An existing paused/unknown lease cannot be recovered by this mechanism; its
 original cause and manual controls remain intact. This is distinct from network
 reconnection and must not be reported as successful disconnect recovery.
+
+## Online-player discovery (Fabric 0.1.20 / NeoForge 0.1.27)
+
+The native profile may explicitly set `discoverOnlinePlayers: true` and optional
+`excludedTargets: ["ExcludedName"]`. The same authenticated connection supplies
+the online names/UUIDs; the observer is excluded by both UUID and login name.
+No new bot or player-list HTTP connection is created. Configured-only profiles
+remain unchanged. Diagnostics publish `targetDiscovery.mode = all_online` and
+a bounded (256) roster. Tab presence does not imply a loaded entity, coordinates,
+health, activity or a preview. Native requests verify the selected name and UUID;
+roster refresh never resets a pending request, manual stop or unknown outcome.
+
+The host can refresh `SceneSelector.setRoster(rows)`, preserving observed airtime
+for unchanged identities and discarding offline/reused identities. Ordinary
+players need no Agent event file. Actual native movement and bounded coverage
+reviews complement explicitly configured Agent sources; model menus remain at
+most 16 choices. Missing discovery support must stay explicitly unavailable.
+
+## Observer access (Fabric 0.1.21 / NeoForge 0.1.28)
+
+Observer scope is explicit and versioned. It narrows local requests and does
+not grant permissions; the server remains authoritative. Account names never
+imply a scope. Existing configured-only profiles retain their previous behavior.
+
+Server-wide director (the local deployment uses this for live):
+
+```json
+{
+  "discoverOnlinePlayers": true,
+  "observerAccess": { "schema": "mcvisual.observer-access/v1", "mode": "server" }
+}
+```
+
+Candidates must have a received game mode that is explicitly non-SPECTATOR.
+Unknown modes wait for native synchronization. Other observer accounts are
+excluded by game mode, not an eye-name heuristic. This is a migration requirement
+for earlier all-online profiles: add the explicit access object when upgrading.
+
+A dedicated eye can only follow its configured owner's UUID:
+
+```json
+{
+  "discoverOnlinePlayers": false,
+  "targets": ["OwnerName"],
+  "observerAccess": {
+    "schema": "mcvisual.observer-access/v1",
+    "mode": "bound-player",
+    "boundTargetUuid": "22222222-2222-2222-2222-222222222222"
+  }
+}
+```
+
+Bound-player scope cannot enable all-online discovery. The actual connection
+resolves the bound UUID's current name, so owner renames and reused names do not
+redirect the eye. A roster refresh cannot change the binding or reset cancellation.
+Diagnostics carry the same access object, target gameMode/spectator fields and
+all_online/bound_player/configured discovery mode. The thin host must select
+matching all-online/bound-player/configured mode. SDK and MCP reject unrelated
+UUIDs or ineligible server-wide targets before writing a native request.
+# Opt-in native shot progression
+
+Lively coverage uses an executed-view repertoire rather than toggling projection.
+Rear, front, side, low, high, orthographic, orbit, push and pull families compete only
+when advertised and currently eligible. Two recent rendered families are avoided where
+other legal families exist; underused families keep model bias from starving the rest.
+Up to eight different proposals enter the same model menu and scheduled-rule fallback.
+No accepted proposal advances this coverage; only bound rendered native outcomes do.
+
+Recipe heights are relative to the actor's eye. Ceiling clearance constrains ordinary
+views, and low-angle keeps negative height. A low room cannot claim a high-angle view;
+it can still offer front/side/low and bounded finite motion from an actual safe rig.
+Room trajectories must pass the existing full native path/collision preflight; this
+does not remove roof blocks, change world clipping, or disable close-view protection.
+`NativeCameraSequence.stats()` reports actual rendered coverage, eligible proposals and
+exclusion reasons independently. The number of installed recipes is not visual acceptance.
+
+Hosts may explicitly choose `cadenceProfile:'lively'` on both `NativeCameraSequence`
+and `NativeCameraPacing`. The steady default below is unchanged. The lively sequence
+prepares a new same-subject composition after five seconds and supplies a scoped
+`mcvisual.native-camera-cadence/v1` deadline at seven seconds, leaving time for native
+transition and settling within a 5–10 second shot. A host can honour that explicit
+schedule with native-checked rules when a model is slow or keeps voting KEEP; it must
+record rule execution separately from model advice and cancel abandoned inference.
+This does not speed up subject switching, bypass GUI/combat/manual/unknown states,
+finish a running finite path, or establish unseen geometry as clear.
+
+The lively sequence retains ordinary failed sides for20 seconds across requests,
+clears that evidence on actor/world changes, and can use verified orthographic fallback.
+Hosts should use a short bounded pause after a known scoped camera rejection (the live
+consumer uses2 seconds), rather than the old30-second error delay. Unknown or manual
+outcomes remain stopped; old camera requests are never replayed.
+
+After three observed stationary seconds, a native-preflight finite motion may start.
+Measured narrow/medium/broad space selects 30/45/60-degree arcs over 5/5.5/6 seconds.
+Dollies run for five seconds along the existing viewing line, with at least one block
+of radial travel. Native rendered endpoints hold for 1.2 seconds before the next shot.
+A future-path rejection keeps its still-safe starting composition, while current-frame
+collision still falls back. A blocked broad arc may propose the next smaller tier after
+12 seconds; a blocked 30-degree arc keeps the full one-minute backoff. Each new ID still
+requires fresh complete native preflight. Lively same-subject operations
+have a 12/minute ceiling and separate five-second projection hold; subject dwell and
+two-subject/minute limits remain. Tracking alternates rear, side, lead and context views;
+ordinary script speed/height/distance survive model candidate construction. The public
+`nativeScheduledCamera` helper validates account-camera binding, operation, world, clocks,
+actual geometry and finite-motion capability before a scheduled rule fallback.
+
+The shared `NativeCameraSequence` export supplements subject selection with display-only
+shot progression. Enable it explicitly in the host; default cadence is 22 seconds with
+the existing cut budget and 45-second projection dwell still authoritative. It uses
+fresh same-target/world geometry and observed movement. Quiet open scenes can propose
+35-degree arcs, an endpoint-limited push/pull, or front views; movement uses tracking,
+tight passages keep readable eye/POV views, and fresh combat, interaction and real GUI
+protect the current shot. Orthographic progression preserves the full floor and uses
+the original native renderer; no global cutaway or synthetic scene is introduced.
+
+Finite proposals require advertised native path preflight and cancellation support.
+Model menus may include that exact scoped proposal, with unchanged bounded script
+parameters. Native collision preflight can still reject it; advice or an accepted
+request does not finish a shot. Completed native endpoint frames advance progression,
+blocked arcs back off, and stopped instances cannot revive. No model loop or network
+client is hidden in the shared sequence.
+
+`directorExpiredOffer` distinguishes a fresh explicit rejection before admission from
+an unknown outcome. It requires matching account, connection, world, offer ID/lease,
+and unchanged pre-submission native camera/request. A host may then reselect from
+fresh state with a new ID and bounded backoff. It must retain the rejected ID and
+must not replay it, infer completion, resume a manual pause, or retry an unknown result.
+
+`mcvisual.native-path-preflight/v1` distinguishes a currently clear path from a
+conditional same-subject motion proposal. A fresh, scoped native capability must
+match the current rendered operation; the full plan retains `pathPreflightRequired`.
+It never treats a known blocked path as admissible. Model prompts explicitly state
+that conditional advice is not path evidence; the native executor still validates
+the entire actual trajectory before starting and may reject it. Ordinary unverified
+motion proposals remain excluded. The shared atomic JSON transport uses unique
+prepared files, per-destination ordering and a bounded retry under Windows readers;
+it never truncates or deletes the destination to make a write succeed.
+
+The optional `mcvisual.camera-review/v1` request prevents an ordinary quiet shot
+from being held indefinitely by repeated model KEEP votes. It becomes eligible only
+after 45 seconds of the actually applied shot, with fresh native floor/layout evidence,
+matching actor/operation and no current critical action or manual lock. The canonical
+packet retains KEEP for compatibility; the bounded model review menu contains only
+legal reframes of that same actor and preserves the model's original probabilities.
+Unknown space, action, GUI and manual/unknown lifecycle guards remain authoritative.
+The host prioritizes a due sequence over a routine same-actor framing suggestion;
+subject changes and actual action are separate higher-priority decisions.

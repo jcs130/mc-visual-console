@@ -1,5 +1,8 @@
 # mc-visual-console
 
+可单独安装的 [客户端信息卡与后台窗口模组](docs/client-modules.md) 已提供 Fabric／NeoForge
+1.21.1 两套构建；不依赖 Agent 框架、游戏核心或服务器插件，也可与导播组合使用。
+
 静态摄影的 [viewerPhotoPage](packages/modern-viewer/renderer-src/host/viewer-photo-page.mjs) 支持显式第一／第三人称模式。
 就绪判断要求实际地形网格、皮肤、头部材质和 YSM 加载任务完成；隐藏的第一人称本人及视野外人物不会被误算成模型加载失败。
 宿主应先选择当前连接已完整接收的区块范围，并处理传输背压错误；不能用放行缺失区块或延长超时来假装成片成功。
@@ -8,6 +11,12 @@
 只控制一个已认证、显式配置的现有观察者，接受有时限的选人／视角请求，以实际
 相机 UUID 确认切换，手动脱离即暂停。目标数据仍由原生 observer HUD 提供，
 模型使用匹配版本的 YSM；不将已发送镜头命令当成显示成功或完整插件兼容。
+
+另有独立的 [NeoForge 1.21.1 观战候选](tools/native-client-neoforge/README.md)，
+使用官方 NeoForge/TLM/YSM 和原生显示接口；不加载 Fabric Loader 或 Connector。
+该可选原生观战成品采用 GPL-3.0-only 并保留共享代码的 MIT 声明，
+参见其 [来源与许可证](tools/native-client-neoforge/NOTICE.md)。核心 SDK 与网页渲染器的许可证保持各自声明。
+源码构建、离线启动与正式服画面分别验收；各版本的实际验收范围见原生观战说明，其他消费端仍需独立加载与验证。
 
 2026-10-26 公网观战候选：地形重叠增量、多人材质请求合并、缓存限额与可测计数，另修正YSM转向倾斜及怪物持械方向。消费者须同时更新匹配页面和观战源；[改动、实测及未支持范围](packages/modern-viewer/renderer-src/docs/native-public-cache-and-direction.md)。
 

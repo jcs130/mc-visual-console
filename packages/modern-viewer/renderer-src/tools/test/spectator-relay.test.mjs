@@ -30,6 +30,7 @@ async function fixture(t, options = {}) {
       headers('text/event-stream'); streams.add(res);
       res.write('data: ' + JSON.stringify({ type: 'identity', playerUuid: status.identity.playerUuid }) + '\n\n');
       if(options.nativeStream)res.write('data: '+JSON.stringify({type:'snapshot',epoch:1,terrainSequence:1,groups:[],registrySha256:'e'.repeat(64),mode:'paper_server_observation'})+'\n\n');
+      for (const event of options.extraEvents ?? []) res.write('data: ' + JSON.stringify(event) + '\n\n');
       const timer = setInterval(() => res.write('data: {"type":"frame","epoch":1,"mana":23}\n\n'), 30);
       res.on('close', () => { clearInterval(timer); streams.delete(res); });
     } else if(options.asset&&(req.url==='/assets/minecraft/textures/test.png'||options.assetBurst&&/^\/assets\/minecraft\/textures\/burst-\d+\.png$/.test(req.url))) {
@@ -51,6 +52,103 @@ async function fixture(t, options = {}) {
   const get = (route, init = {}) => fetch(new URL('watch/channel-a/' + route, portalUrl), { headers: { cookie: 'owner=A' }, ...init });
   return { sourceUrl, portalUrl, relay, status, data, reads, streams, start, get, revoke: () => { allowed = false; }, revokeViewer: () => { viewAllowed = false; } };
 }
+
+const rtcProtocol = 'mcvisual.sse.v1';
+const rtcSdp = 'v=0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n';
+function fakeRtcBackend() {
+  const peers = [];
+  return { peers, createPeerConnection() {
+    const peer = { closed: false, connectionState: 'new', async setRemoteDescription() {},
+      async createAnswer() { return { type: 'answer', sdp: rtcSdp }; },
+      async setLocalDescription(value) { this.localDescription = value; },
+      close() { this.closed = true; this.connectionState = 'closed'; },
+      open(overrides = {}) {
+        const chunks = [];
+        const channel = { label: 'mcvisual.events.v1', protocol: rtcProtocol, ordered: true,
+          maxRetransmits: null, maxPacketLifeTime: null, readyState: 'open', bufferedAmount: 0,
+          chunks, send(bytes) { chunks.push(Buffer.from(bytes)); }, close() { this.readyState = 'closed'; }, ...overrides };
+        this.channel = channel; this.ondatachannel({ channel }); return channel;
+      } };
+    peers.push(peer); return peer;
+  } };
+}
+const rtcPost = (f, overrides = {}) => f.get('webrtc', { method: 'POST',
+  headers: { cookie: 'owner=A', 'content-type': 'application/json', 'x-mcvisual-transport': rtcProtocol },
+  body: JSON.stringify({ protocol: rtcProtocol, type: 'offer', sdp: rtcSdp }), ...overrides });
+async function rtcUntil(check) {
+  const deadline = Date.now() + 3000;
+  while (!check() && Date.now() < deadline) await pause(20);
+  assert.ok(check(), 'expected RTC condition within three seconds');
+}
+
+test('RTC is opt-in; its authorized GET/POST cannot become an arbitrary mutation bridge', async t => {
+  const disabled = await fixture(t); await disabled.start();
+  assert.equal((await disabled.get('webrtc')).status, 404);
+  const backend = fakeRtcBackend(), f = await fixture(t, { nativeStream: true, relay: { sharedStreams: true, webRtc: backend } });
+  await f.start();
+  const denied = await f.get('webrtc', { headers: {} }); assert.equal(denied.status, 403); assert.equal(backend.peers.length, 0);
+  const advertised = await f.get('webrtc').then(r => r.json()); assert.equal(advertised.readOnly, true); assert.equal(advertised.protocol, rtcProtocol);
+  const invalid = await rtcPost(f, { headers: { cookie: 'owner=A', 'content-type': 'text/plain' } });
+  assert.equal(invalid.status, 400); assert.equal(backend.peers.length, 0);
+  const crossSite = await rtcPost(f, { headers: { cookie: 'owner=A', 'content-type': 'application/json',
+    'x-mcvisual-transport': rtcProtocol, 'sec-fetch-site': 'cross-site' } });
+  assert.equal(crossSite.status, 400); assert.equal(backend.peers.length, 0);
+  assert.ok(f.reads.every(row => row.method === 'GET'));
+});
+
+test('RTC shares the actual authorized source, preserves owner bytes, and revocation closes it', async t => {
+  const backend = fakeRtcBackend(), extra = { type: 'agent_visual', epoch: 1, value: { private: 'OWNER_PRIVATE_ORIGINAL' } };
+  const f = await fixture(t, { nativeStream: true, extraEvents: [extra], relay: { sharedStreams: true, webRtc: backend } });
+  await f.start(); const answer = await rtcPost(f); assert.equal(answer.status, 200); assert.equal((await answer.json()).type, 'answer');
+  const channel = backend.peers[0].open(); await rtcUntil(() => Buffer.concat(channel.chunks).includes('OWNER_PRIVATE_ORIGINAL'));
+  const text = Buffer.concat(channel.chunks).toString(); assert.match(text, /"type":"identity"/); assert.match(text, /"terrainSequence":1/);
+  assert.match(text, /OWNER_PRIVATE_ORIGINAL/); assert.equal(f.reads.filter(row => row.url === '/events').length, 1);
+  assert.equal(f.relay.state('channel-a').webRtc.connected, 1);
+  f.revokeViewer(); await rtcUntil(() => backend.peers[0].closed); assert.equal(f.relay.state('channel-a').webRtc.peers, 0);
+  assert.equal(f.relay.state('channel-a').available, true);
+});
+
+test('public RTC uses the same projection and cannot see owner-only events', async t => {
+  const backend = fakeRtcBackend();
+  const f = await fixture(t, { nativeStream: true, extraEvents: [{ type: 'agent_visual', epoch: 1, value: { private: 'NEVER_PUBLIC_RTC' } }],
+    relay: { sharedStreams: true, webRtc: backend, authorizeViewer: () => ({ scope: 'scene' }) } });
+  await f.start(); assert.equal((await rtcPost(f)).status, 200);
+  const channel = backend.peers[0].open(); await rtcUntil(() => Buffer.concat(channel.chunks).includes('snapshot'));
+  const text = Buffer.concat(channel.chunks).toString(); assert.match(text, /snapshot/); assert.ok(!text.includes('NEVER_PUBLIC_RTC'));
+  f.relay.invalidate('channel-a'); assert.equal(backend.peers[0].closed, true);
+});
+
+test('RTC rejects media SDP, excessive request bodies, wrong channels and client commands', async t => {
+  const backend = fakeRtcBackend(), f = await fixture(t, { nativeStream: true, relay: { sharedStreams: true, webRtc: backend } });
+  await f.start();
+  assert.equal((await rtcPost(f, { body: JSON.stringify({ protocol: rtcProtocol, type: 'offer', sdp: rtcSdp + 'm=audio 9 RTP/AVP 111\r\n' }) })).status, 400);
+  assert.equal(backend.peers.length, 0);
+  const oversized = await rtcPost(f, { body: ' '.repeat(80000) }).catch(() => null);
+  assert.ok(oversized === null || oversized.status === 413); assert.equal(backend.peers.length, 0);
+  assert.equal((await rtcPost(f)).status, 200); backend.peers[0].open({ ordered: false }); assert.equal(backend.peers[0].closed, true);
+  assert.equal((await rtcPost(f)).status, 200); const channel = backend.peers[1].open(); await pause(40);
+  channel.onmessage({ data: Buffer.from('/give @s diamond') }); assert.equal(backend.peers[1].closed, true);
+  assert.ok(f.reads.every(row => row.method === 'GET' && !row.url.includes('command')));
+});
+
+test('RTC bounds pending negotiations and expires peers that never connect', async t => {
+  const backend = fakeRtcBackend(), f = await fixture(t, { relay: { sharedStreams: true, maxViewers: 1,
+    webRtc: { ...backend, handshakeTimeoutMs: 100 } } });
+  await f.start(); assert.equal((await rtcPost(f)).status, 200);
+  assert.equal((await rtcPost(f)).status, 429); assert.equal(backend.peers.length, 1);
+  await pause(140); assert.equal(backend.peers[0].closed, true); assert.equal(f.relay.state('channel-a').webRtc.peers, 0);
+});
+
+test('RTC backpressure bounds chunk size and closes a stuck receiver without retiring the source', async t => {
+  const backend = fakeRtcBackend(), f = await fixture(t, { nativeStream: true,
+    extraEvents: [{ type: 'frame', epoch: 1, original: 'x'.repeat(700000) }],
+    relay: { sharedStreams: true, webRtc: { ...backend, stallTimeoutMs: 80 } } });
+  await f.start(); assert.equal((await rtcPost(f)).status, 200);
+  const channel = backend.peers[0].open({ send(bytes) { this.chunks.push(Buffer.from(bytes)); this.bufferedAmount += bytes.length; } });
+  await rtcUntil(() => backend.peers[0].closed); assert.ok(channel.chunks.length > 5); assert.ok(channel.chunks.every(bytes => bytes.length <= 16384));
+  assert.ok(channel.bufferedAmount <= 256 * 1024 + 16384); assert.equal(backend.peers[0].closed, true);
+  assert.equal(f.relay.state('channel-a').available, true);
+});
 
 test('guest status and SSE share the owner source but cannot receive authentication or Agent internals',async t=>{
  const f=await fixture(t,{nativeStream:true,relay:{sharedStreams:true,authorizeViewer:req=>({scope:req.headers.cookie==='owner=A'?'owner':'scene'})}});

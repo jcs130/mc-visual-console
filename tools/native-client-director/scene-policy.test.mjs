@@ -2,6 +2,53 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {classifyEvent,SceneSelector,belongsToActor,eventActor} from './scene-policy.mjs';
 const now=100_000,combat=t=>({ts:new Date(t).toISOString(),type:'minecraft.combat',text:'native combat clear'});
+
+test('offscreen live combat heartbeats stay visible between terminal reports',()=>{
+ const p=new SceneSelector(['Idle','Fighter']);p.setAvailable(['Idle','Fighter']);
+ const text='[Minecraft] 还在打:2 只在附近(最近的是流浪者),刀 3 次命中 3 次,箭 0 支命中 0 次,手里是钻石剑,生命 51/20。';
+ for(let t=now;t<=now+30000;t+=6000){
+  const event={type:'mymc.event',ts:new Date(t).toISOString(),text};p.observe('Fighter',event,t);
+  const c=p.choose('Idle',now-40000,t);assert.equal(c.name,'Fighter');assert.equal(c.kind,'combat');
+  assert.equal(c.forceSubjectReview,true);assert.deepEqual(c.subjectPool,['Fighter']);
+  assert.equal(p.subjectCandidates('Fighter',now,t+5000)[0].protected,true);
+ }
+ assert.equal(p.choose('Idle',0,now+50000),null,'old fight cannot pin the program forever');
+ for(const e of [{type:'mymc.chat',text},{type:'mymc.event',text:'[MC] Idle: '+text},
+   {type:'mymc.event',text:'[Minecraft] 打算去打:2 只在附近'},
+   {type:'mymc.event',text:text.replace('还在打:2','还在打:0')},
+   {type:'qq.event',text}])assert.equal(classifyEvent({...e,ts:new Date(now).toISOString()},now),null);
+});
+
+test('measured equip, food and container effects are activity; failed and no-op receipts are not',()=>{
+ const make=(skill,changed,status='changed',outcome='ok')=>({type:'mymc.task',ts:new Date(now).toISOString(),
+  execution:{terminal:true,goalCompleted:false,evidence:{steps:[{outcome,observedEffect:{skill,status,changed}}]}}});
+ for(const skill of ['equip','eat','use','harvest','custom_mod_action'])
+  assert.equal(classifyEvent(make(skill,{inventory:true}),now).kind,'interaction');
+ assert.equal(classifyEvent(make('use',{position:true}),now).kind,'movement');
+ assert.equal(classifyEvent(make('use',{window:true}),now).kind,'interaction');
+ for(const status of ['unchanged','unknown','unavailable']){
+  const e=make('craft',{inventory:false},status);e.text='第 1 步 {"skill":"craft"} 用时 1s: 合成了';
+  assert.equal(classifyEvent(e,now),null,'structured result wins over summary');
+ }
+ assert.equal(classifyEvent(make('eat',{inventory:true},'changed','fail'),now),null);
+ const admitted=make('equip',{inventory:true});admitted.execution.terminal=false;assert.equal(classifyEvent(admitted,now),null);
+ const p=new SceneSelector(['Idle','Worker']);p.setAvailable(['Idle','Worker']);p.observe('Worker',make('equip',{inventory:true}),now);
+ const choice=p.choose('Idle',now-40000,now);assert.equal(choice.name,'Worker');assert.equal(choice.forceSubjectReview,true);
+});
+test('native online roster admits ordinary players and removes stale identities without inheriting airtime',()=>{
+  const p=new SceneSelector(['Agent']);
+  assert.equal(p.setRoster([{name:'Bob',uuid:'bob-old'},{name:'Alice',uuid:'alice'}]),true);
+  p.setAvailable(['Bob','Alice']);
+  assert.equal(p.choose(null,0,now).name,'Alice');
+  p.observeProgram('Bob',{at:now,scope:'live'},now);
+  p.observePosition('Bob',{at:now,position:[1,2,3],scope:'live'},now);
+  p.setRoster([{name:'Bob',uuid:'bob-new'}]);
+  assert.equal(p.coverage.has('Bob'),false);assert.equal(p.presence.has('Bob'),false);
+  assert.equal(p.names.includes('Alice'),false);
+  assert.equal(p.setRoster([{name:'Bob',uuid:'x'},{name:'BOB',uuid:'y'}]),false);
+  assert.deepEqual(p.names,['Bob'],'invalid replacement cannot corrupt the accepted roster');
+  assert.equal(p.setRoster(Array.from({length:257},(_,i)=>({name:'p'+i,uuid:'id'+i}))),false);
+});
 const position=(at,x,run='one')=>({ts:new Date(at).toISOString(),run,type:'minecraft.world.snapshot',
   text:`[Minecraft] 我在fixture，脚下是石头，站在格 (${x}, 70, 0)，世界 fixture:one。我站着没动。`});
 test('observed movement switches off a stationary actor while a long task is still running',()=>{
@@ -157,10 +204,12 @@ test('a late completed movement receipt cannot overrule continuous confirmed idl
   p.observe('Bob',speech('Bob',now),now);
   assert.equal(p.choose('Alice',now-14000,now).name,'Bob');
 });
-test('ordinary maximum dwell re-evaluates everyone even when the same actor keeps speaking',()=>{
+test('ordinary maximum dwell only reviews other genuinely active scenes',()=>{
  const p=new SceneSelector(['Alice','Bob','Carol'],{maxDwellMs:90000});p.setAvailable(['Alice','Bob','Carol']);
  p.subjectCandidates('Alice',now-95000,now-95000);p.observe('Alice',speech('Alice',now),now);
- const c=p.choose('Alice',now-95000,now,'drone_follow');assert.notEqual(c.name,'Alice');assert.equal(c.forceSubjectReview,true);assert.equal(c.reason,'coverage_review_after_max_dwell');
+ assert.equal(p.choose('Alice',now-95000,now,'drone_follow'),null,'online idle players are not forced into the program');
+ p.observe('Bob',speech('Bob',now),now);
+ const c=p.choose('Alice',now-95000,now,'drone_follow');assert.equal(c.name,'Bob');assert.equal(c.forceSubjectReview,true);assert.equal(c.reason,'coverage_review_after_max_dwell');
  p.observe('Alice',combat(now),now);assert.equal(p.choose('Alice',now-95000,now,'drone_follow'),null,'fresh combat protects its current subject');
 });
 test('coverage comes from rendered frames and ignores duplicates and unobserved gaps',()=>{
@@ -169,12 +218,21 @@ test('coverage comes from rendered frames and ignores duplicates and unobserved 
  p.observeProgram('Alice',{at:2000,scope:'world'},2000);p.observeProgram('Alice',{at:12000,scope:'world'},12000);
  const a=p.subjectCandidates('Alice',1000,12000).find(r=>r.name==='Alice');assert.equal(a.airtimeMs,1000);assert.equal(a.visits,1);
  p.observeProgram('Carol',{at:12000,scope:'world'},12000);p.observeProgram('Alice',{at:13000,scope:'world'},13000);
- assert.equal(p.choose('Alice',1000,100000,'drone_follow').name,'Bob','least-covered eligible idle actor can be inspected');
+ assert.equal(p.choose('Alice',1000,100000,'drone_follow'),null,'missing airtime alone is not scene activity');
  p.setAvailable(['Alice']);assert.equal(p.choose('Alice',1000,100000,'drone_follow'),null,'offline or unidentifiable actors are not invented');
 });
-test('two chatty actors cannot starve a third actor by swapping before the maximum dwell',()=>{
+test('two chatty actors cannot promote an idle third actor merely for airtime',()=>{
  const p=new SceneSelector(['Alice','Bob','Carol'],{maxDwellMs:90000,minDwellMs:30000});p.setAvailable(['Alice','Bob','Carol']);p.subjectCandidates('Alice',0,0);
  p.observeProgram('Alice',{at:180000,scope:'world'},180000);p.observeProgram('Bob',{at:190000,scope:'world'},190000);
  p.observeProgram('Alice',{at:200000,scope:'world'},200000);p.observe('Alice',speech('Alice',210000),210000);p.observe('Bob',speech('Bob',209000),210000);
+ assert.equal(p.choose('Alice',170000,210000,'drone_follow'),null);
+ p.observe('Carol',speech('Carol',210000),210000);
  const c=p.choose('Alice',170000,210000,'drone_follow');assert.equal(c.name,'Carol');assert.equal(c.reason,'coverage_starvation_review');assert.deepEqual(c.subjectPool,['Carol']);
+});
+test('replays the reported combat gap past max dwell without cutting to an inactive test player',()=>{
+ const p=new SceneSelector(['Alice','TestPlayer'],{maxDwellMs:90000});p.setAvailable(['Alice','TestPlayer']);
+ p.subjectCandidates('Alice',0,0);p.observe('Alice',combat(now-10000),now);
+ for(const at of [now,now+20000,now+1000000])assert.equal(p.choose('Alice',0,at,'first_person'),null);
+ p.observe('TestPlayer',combat(now+1000000),now+1000000);
+ assert.equal(p.choose('Alice',0,now+1000000).name,'TestPlayer','real new combat still allows a cut');
 });

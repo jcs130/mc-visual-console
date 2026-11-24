@@ -9,6 +9,23 @@ import {loadNativeAudioPack,VANILLA_AUDIO_NATIVE_REGISTRIES} from '../../host/na
 
 const pack=fileURLToPath(new URL('../../../asset-packs/java-1.21.1-sounds/',import.meta.url))
 const registries={nativeRegistrySha256:VANILLA_AUDIO_NATIVE_REGISTRIES.blocks,entityRegistrySha256:VANILLA_AUDIO_NATIVE_REGISTRIES.entities}
+
+test('effects-only projection may omit music but still rejects a missing effect',async t=>{
+  const root=await fs.mkdtemp(path.join(tmpdir(),'native-audio-profile-'))
+  t.after(async()=>{assert.ok(path.basename(root).startsWith('native-audio-profile-'));await fs.rm(root,{recursive:true,force:true})})
+  const sounds=path.join(root,'public/sounds');await fs.mkdir(sounds,{recursive:true})
+  for(const file of ['source-index.json','source-sounds.json','registry.json'])await fs.copyFile(path.join(pack,'public/sounds',file),path.join(sounds,file))
+  const manifest=JSON.parse(await fs.readFile(path.join(pack,'public/sounds/manifest.json'),'utf8'))
+  manifest.audioProfile='effects-only'
+  for(const name of Object.keys(manifest.files))if(name.startsWith('music/')||name.startsWith('records/')){delete manifest.files[name];delete manifest.fileMetadata[name]}
+  await fs.writeFile(path.join(sounds,'manifest.json'),JSON.stringify(manifest))
+  const audio=await loadNativeAudioPack(root,registries)
+  assert.equal(audio.available,true,audio.metadata.reason);assert.equal(audio.metadata.musicIncluded,false)
+  assert.equal(Object.keys(audio.metadata.files).length,3628)
+  await assert.rejects(audio.read('music/game/calm1.ogg'),/FILE_NOT_EXPORTED/)
+  delete manifest.files['random/click.ogg'];await fs.writeFile(path.join(sounds,'manifest.json'),JSON.stringify(manifest))
+  assert.equal((await loadNativeAudioPack(root,registries)).metadata.reason,'NATIVE_AUDIO_FILE_TABLE_INCOMPLETE')
+})
 test('original 1.21.1 source chain and numeric IDs are usable only for the matched native registries',async()=>{
   const audio=await loadNativeAudioPack(pack,registries)
   assert.equal(audio.available,true,audio.metadata.reason);assert.equal(audio.metadata.numericRegistryAvailable,true)

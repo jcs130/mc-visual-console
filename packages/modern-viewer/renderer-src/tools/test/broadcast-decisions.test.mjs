@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCameraDecision, createCameraJudgePanel, CameraChoiceArbiter, CAMERA_JUDGES } from '../../host/broadcast-decisions.mjs';
+import { buildCameraDecision, createCameraJudgePanel, CameraChoiceArbiter, CAMERA_JUDGES, CAMERA_PATH_PREFLIGHT_PROTOCOL, CAMERA_REVIEW_PROTOCOL } from '../../host/broadcast-decisions.mjs';
 
 const q = (n, changes = {}) => ({ visibility: n, action: n, interest: n, composition: n, stability: n, ...changes });
 const plan = subjectUuid => ({ subjectUuid, sourceId: 'java', shotId: 'rear', motion: 'follow' });
@@ -24,6 +24,48 @@ function fixture() {
 }
 const ballots = (p, choice, roleList = ['story', 'action', 'continuity']) => ({ kind: 'votes', schema: p.schema, scope: p.scope,
   generation: p.generation, revision: p.revision, at: p.observedAt, votes: roleList.map(role => ({ role, choice })) });
+
+function conditionalArc(f){return{...f.observation.shots[0],id:'arc',shotId:'drone_orbit_left',motion:'orbit_arc',
+ script:{schema:'mcvisual.camera-script/v1',speed:.75,durationMs:7500,arcDegrees:35},pathPreflightRequired:true,
+ pathPreflight:{schema:CAMERA_PATH_PREFLIGHT_PROTOCOL,requiredAtExecution:true,provenance:'native',scope:'world',subjectUuid:'A',currentRequestId:'initial',at:0,evidenceId:'capabilityA'}};}
+function reviewed(){const f=fixture();f.tick(50000);f.observation.shots[0].shotId='front';
+ f.observation.subjects[0].viewContext={layout:'open',floorSafe:true,at:f.now(),provenance:'native',evidenceId:'spaceA'};
+ f.observation.cameraReview={schema:CAMERA_REVIEW_PROTOCOL,required:true,at:f.now(),subjectUuid:'A',currentRequestId:'initial'};return f;}
+test('quiet shot deadline asks the real model to reframe the current actor without manufacturing probabilities',async()=>{
+ const f=reviewed(),p=f.packet();assert.equal(p.options[0].id,'keep','generic packet retains the canonical KEEP option');assert.equal(p.cameraReview.required,true);
+ let input;const panel=createCameraJudgePanel({request:async r=>{input=r;return{answers:Object.fromEntries(Object.keys(r.questions).map(k=>[k,{choice:'followA',probabilities:{followA:1}}]))};}},{now:f.now,compactState:true,countTokens:()=>500});
+ const votes=await panel.judge(p,{roles:['action','space','continuity']});assert.equal(votes.kind,'votes');
+ assert.deepEqual(Object.keys(input.questions.action.criteria),['followA']);assert.equal(input.state.cameraReview.required,true);
+ assert.deepEqual(votes.votes[0].probabilities,{followA:1});assert.ok(!('keep'in votes.votes[0].probabilities));panel.stop();
+});
+
+test('explicit five-second scheduling reaches model questions only with matching actual operation and cadence proof',async()=>{
+ const f=fixture();f.tick(5000);f.observation.shots[0].shotId='front';
+ f.observation.subjects[0].viewContext={layout:'open',floorSafe:true,at:f.now(),provenance:'native',evidenceId:'spaceA'};
+ f.observation.cameraReview={schema:CAMERA_REVIEW_PROTOCOL,required:true,at:f.now(),subjectUuid:'A',currentRequestId:'initial',cadence:{schema:'mcvisual.native-camera-cadence/v1',scope:'world',subjectUuid:'A',requestId:'initial',since:0,cause:'composition',dueAt:5000,deadlineAt:7000}};
+ f.program.appliedAt=4000;assert.equal(f.packet().cameraReview,undefined,'an old cadence cannot shorten a newly applied shot');
+ f.program.appliedAt=0;const p=f.packet();assert.equal(p.cameraReview.reason,'operator_camera_cadence');
+ f.observation.cameraReview.cadence.scope='foreign';assert.equal(f.packet().cameraReview,undefined);
+});
+test('review cannot bypass recent action, manual lock, unknown geometry, identity or actual shot dwell',()=>{
+ for(const change of[f=>f.program.appliedAt=40000,f=>f.observation.manualLocked=true,f=>f.observation.cameraReview.currentRequestId='foreign',
+  f=>f.observation.cameraReview.subjectUuid='B',f=>f.observation.cameraReview.at=0,
+  f=>f.observation.subjects[0].viewContext.layout='tunnel',f=>f.observation.subjects[0].viewContext.floorSafe=false,
+  f=>f.observation.subjects[0].activity={kind:'combat',at:f.now(),since:49000,lastProgressAt:f.now(),provenance:'game',evidenceId:'hitA'}]){
+  const f=reviewed();change(f);assert.equal(f.packet().cameraReview,undefined);
+ }
+});
+test('conditional native motion preserves required execution preflight through the public packet',()=>{
+ const f=fixture();f.observation.shots=[conditionalArc(f)];const p=f.packet();assert.deepEqual(p.options.map(o=>o.id),['keep','arc']);
+ const decoded=JSON.parse(JSON.stringify(p));assert.equal(decoded.options[1].plan.pathPreflightRequired,true);assert.equal(decoded.options[1].plan.script.arcDegrees,35);
+ assert.equal(decoded.options[1].pathClear,undefined,'conditional selection does not invent a clear-path observation');
+});
+test('known blocked paths, other subjects and stale or foreign preflight declarations remain excluded',()=>{
+ for(const patch of[{pathClear:false},{subjectUuid:'B'},{pathPreflight:undefined}]){const f=fixture();f.observation.shots=[{...conditionalArc(f),...patch}];assert.equal(f.packet().options.length,1);}
+ for(const patch of[{schema:'foreign'},{requiredAtExecution:false},{provenance:'web'},{scope:'other'},{subjectUuid:'B'},{currentRequestId:'other'},{at:-10000}]){
+  const f=fixture(),shot=conditionalArc(f);Object.assign(shot.pathPreflight,patch);f.observation.shots=[shot];assert.equal(f.packet().options.length,1,JSON.stringify(patch));
+ }
+});
 
 test('multimodal judges share top-level images, budget encoded vision separately, and accept zero-output classification',async()=>{
  const f=fixture();let sent,calls=0;

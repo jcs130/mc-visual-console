@@ -113,9 +113,18 @@ test('automatic model retries are bounded and never repeat an invalid original-a
     const controller=new NativeSelfPlayerController({manifest:{assets:{}}},{now:()=>clock,paperAppearanceFactory:async()=>{calls++;throw Error(message)}})
     const self={uuid,entityId:12,paperAppearance:row}
     for(let i=0;i<12;i++){clock+=10000;await controller.update(self,uuid)}
-    assert.equal(calls,message.includes('HASH')?1:3)
-    controller.dispose();clock+=10000;await controller.update(self,uuid);assert.equal(calls,message.includes('HASH')?1:3)
+    assert.equal(calls,message.includes('HASH')?1:5)
+    const before=calls;controller.dispose();clock+=10000;await controller.update(self,uuid);assert.equal(calls,before)
   }
+})
+
+test('a model transport outage longer than the first three attempts recovers without changing identity or substituting assets',async()=>{
+ let clock=0,calls=0;const actor={assetInfo:{source:'paper_server_appearance'},dispose(){}}
+ const controller=new NativeSelfPlayerController({manifest:{assets:{}}},{now:()=>clock,paperAppearanceFactory:async()=>{if(++calls<=3)throw Error('PAPER_APPEARANCE_DOWNLOAD_FAILED');return actor}})
+ const self={uuid,entityId:12,paperAppearance:row}
+ for(const at of [0,2000,7000]){clock=at;assert.equal(await controller.update(self,uuid),null)}
+ for(let i=0;i<100;i++){clock=8000+i;await controller.update(self,uuid)}assert.equal(calls,3)
+ clock=22000;assert.equal(await controller.update(self,uuid),actor);assert.equal(calls,4);controller.dispose()
 })
 test('original bundles render complete source geometry, scales, first-person arms and received walk motion',{skip:!directory||!assets},async()=>{
   const manifest=JSON.parse(await fs.readFile(path.join(assets,'native-assets.json'),'utf8')),reader=new NativeAssetReader(manifest,p=>fs.readFile(path.join(assets,p)))

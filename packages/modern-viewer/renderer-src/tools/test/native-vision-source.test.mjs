@@ -26,3 +26,13 @@ test('waiting capture cancels promptly and stop cannot revive a pending image',a
  const wait=s.capture({signal:controller.signal});await new Promise(r=>setImmediate(r));controller.abort();assert.equal((await wait).reason,'stopped_or_aborted');
  s.stop();assert.equal((await s.capture()).reason,'stopped_or_aborted');
 });
+test('physical render size survives the bounded thumbnail transport; old receipts remain compatible',async()=>{
+ const f=fixture();f.ports.readReceipt=async()=>({...f.receipt(),sourceWidth:2560,sourceHeight:1440});
+ const r=await createNativeVisionSource(f.ports).capture();assert.equal(r.kind,'frame');assert.equal(r.sourceWidth,2560);assert.equal(r.sourceHeight,1440);assert.equal(r.width,512);
+ const old=await createNativeVisionSource(fixture().ports).capture();assert.equal(Object.hasOwn(old,'sourceWidth'),false);
+});
+test('partial, noninteger or smaller-than-thumbnail source dimensions cannot claim render quality',async()=>{
+ for(const patch of[{sourceWidth:1920},{sourceWidth:1920,sourceHeight:100},{sourceWidth:1.5,sourceHeight:1080},{sourceWidth:Infinity,sourceHeight:1080}]){
+  const f=fixture();f.ports.readReceipt=async()=>({...f.receipt(),...patch});assert.equal((await createNativeVisionSource(f.ports).capture()).reason,'capture_binding_changed');
+ }
+});

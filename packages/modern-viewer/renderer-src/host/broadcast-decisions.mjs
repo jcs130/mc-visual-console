@@ -4,6 +4,8 @@ import { validateCameraScript } from './camera-script.mjs';
 
 /** Camera-specific policy. Game state and the optional DecisionPort belong to the host. */
 export const CAMERA_CHOICE_PROTOCOL = 'mcvisual.director-choice/v1';
+export const CAMERA_PATH_PREFLIGHT_PROTOCOL = 'mcvisual.native-path-preflight/v1';
+export const CAMERA_REVIEW_PROTOCOL = 'mcvisual.camera-review/v1';
 export const CAMERA_JUDGES = Object.freeze([
   { id: 'story', weight: 1, instructions: '选择最有真实事件价值的完整镜头方案。优先事件因果和正在发生的交流，不编造剧情，不为轮流露脸而切换。' },
   { id: 'action', weight: 1.3, instructions: '选择最能看清当前操作、威胁、协作或结果的完整方案。关键动作期间保持空间连续，不用花哨镜头遮住动作。' },
@@ -24,13 +26,21 @@ const hash = x => createHash('sha256').update(JSON.stringify(x)).digest('hex').s
 const failure = code => { throw Object.assign(new Error(code), { code }); };
 const metrics = q => q && ['visibility', 'action', 'interest', 'composition', 'stability'].every(k => unit(q[k]));
 const score = q => .3 * q.visibility + .3 * q.action + .2 * q.interest + .1 * q.composition + .1 * q.stability;
-const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide', 'projection', 'projectionProfile', 'transition', 'script'];
+const planFields = ['subjectUuid', 'sourceId', 'shotId', 'motion', 'axisKey', 'axisSide', 'projection', 'projectionProfile', 'transition', 'script', 'pathPreflightRequired'];
 const projection = plan => plan?.projection ?? 'perspective';
 const planKey = plan => planFields.map(k => k === 'projection' ? projection(plan) : plan?.[k] ?? null);
 const samePlan = (a, b) => !!a && !!b && planFields.filter(k => k !== 'transition')
   .every(k => k === 'projection' ? projection(a) === projection(b) : k==='script'?JSON.stringify(a[k])===JSON.stringify(b[k]):a[k] === b[k]);
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const activityKinds = new Set(['idle', 'combat', 'dungeon', 'fishing', 'crafting', 'interaction', 'conversation', 'travel', 'gathering', 'building', 'unknown']);
+function executionPreflight(shot,program,scope,now,maxAgeMs){
+ const p=shot.pathPreflight;
+ return shot.pathClear===undefined&&shot.pathPreflightRequired===true&&shot.script!==undefined
+  &&(shot.motion==='orbit_arc'&&shot.shotId.startsWith('drone_orbit_')||shot.motion==='push_in'&&shot.shotId==='drone_push_in'||shot.motion==='pull_out'&&shot.shotId==='drone_pull_out')
+  &&p?.schema===CAMERA_PATH_PREFLIGHT_PROTOCOL&&p.requiredAtExecution===true&&p.provenance==='native'
+  &&p.scope===scope&&p.subjectUuid===shot.subjectUuid&&p.currentRequestId===program.operationId
+  &&program.phase==='applied'&&program.plan?.subjectUuid===shot.subjectUuid&&fresh(p.at,now,maxAgeMs)&&ident(p.evidenceId);
+}
 function verifiedActivity(subject, scope, now, maxAgeMs) {
   const a = subject.activity;
   if (subject.scope !== scope || !fresh(subject.at, now, maxAgeMs) || !a || !fresh(a.at, now, maxAgeMs)
@@ -88,7 +98,7 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
     else if (!ident(shot.sourceId) || !ident(shot.shotId) || !motions.has(shot.motion)
       || !metrics(shot.quality) || !Array.isArray(shot.evidenceIds) || !shot.evidenceIds.length
       || shot.evidenceIds.length > 8 || shot.evidenceIds.some(x => !ident(x))) reason = 'invalid_plan';
-    else if (creative.has(shot.motion) && shot.pathClear !== true) reason = 'unverified_motion_path';
+    else if (creative.has(shot.motion) && shot.pathClear !== true && !executionPreflight(shot,program,observed.scope,now,maxAgeMs)) reason = 'unverified_motion_path';
     else if (shot.motion === 'follow' && shot.collisionReady !== true) reason = 'missing_follow_collision';
     else if (shot.requiresFloorMask === true && shot.floorSafe !== true) reason = 'unverified_floor';
     else if (!['perspective', 'orthographic'].includes(projection(shot))) reason = 'invalid_projection';
@@ -130,13 +140,27 @@ export function buildCameraDecision(observed, { now = Date.now(), maxAgeMs = 250
   const currentView = verifiedViewContext(current, observed.scope, now, maxAgeMs);
   const projectionUnsuitable = projection(program.plan) === 'orthographic' && currentView
     && (currentView.layout === 'tunnel' || currentView.layout === 'layered' && !currentView.floorSafe);
+  const review=observed.cameraReview,currentActivity=current?verifiedActivity(current,observed.scope,now,maxAgeMs):null;
+  const cadence=review?.cadence,early=cadence?.cause==='stationary_motion';
+  const scheduled=cadence?.schema==='mcvisual.native-camera-cadence/v1'&&cadence.scope===observed.scope
+    &&cadence.subjectUuid===program.plan?.subjectUuid&&cadence.requestId===program.operationId
+    &&cadence.since===program.appliedAt&&['stationary_motion','composition'].includes(cadence.cause)
+    &&cadence.dueAt===cadence.since+(early?3000:5000)&&cadence.deadlineAt===cadence.since+(early?4000:7000)
+    &&now>=cadence.dueAt&&(!early||finite(cadence.stationarySince)&&now-cadence.stationarySince>=3000);
+  const reviewRequired=review?.schema===CAMERA_REVIEW_PROTOCOL&&review.required===true&&fresh(review.at,now,maxAgeMs)
+    &&review.currentRequestId===program.operationId&&review.subjectUuid===program.plan?.subjectUuid&&program.phase==='applied'
+    &&(scheduled||now-program.appliedAt>=45000)&&observed.manualLocked!==true&&currentView?.floorSafe===true
+    &&['open','enclosed'].includes(currentView.layout)&&current?.loaded===true&&current.alive===true
+    &&!['combat','dungeon','interaction','crafting'].includes(currentActivity?.kind)
+    &&selected.some(o=>o.id!=='keep'&&o.plan.subjectUuid===program.plan.subjectUuid&&o.plan.shotId!==program.plan.shotId);
+  const cameraReview=reviewRequired?{schema:CAMERA_REVIEW_PROTOCOL,required:true,reason:scheduled?'operator_camera_cadence':'quiet_shot_deadline',heldMs:now-program.appliedAt}:null;
   const binding = { scope: observed.scope, generation: observed.generation };
   // Clocks and raw continuous position samples are excluded. Producers supply semantic sceneKey and keyed facts.
-  const revision = hash([binding, observed.sceneKey, program.operationId ?? null, targetLost, occluded,
+  const revision = hash([binding, observed.sceneKey, program.operationId ?? null, targetLost, occluded,!!cameraReview,
     selected.map(o => [o.id, o.plan, ['visibility', 'action', 'interest', 'composition', 'stability'].map(k => Math.round(o.quality[k] * 10) / 10), o.evidenceIds]), compactFacts,
     activities.map(({at: _sampleTime, ...meaningful}) => meaningful), viewContexts]);
   return { schema: CAMERA_CHOICE_PROTOCOL, ...binding, revision, observedAt: observed.at,
-    manualLocked: observed.manualLocked === true, program, options: selected, facts: compactFacts, activities, viewContexts, excluded,
+    manualLocked: observed.manualLocked === true, program, options: selected, facts: compactFacts, activities, viewContexts, excluded,...(cameraReview?{cameraReview}:{}),
     emergency: targetLost ? 'target_lost' : occluded ? 'persistent_occlusion' : projectionUnsuitable ? 'projection_unsuitable' : null };
 }
 
@@ -170,18 +194,19 @@ export function createCameraJudgePanel(decisions, {
       const started = now();
       while (calls.length && calls[0] <= started - 60000) calls.shift();
       if (started - lastStarted < minIntervalMs || calls.length >= maxCallsPerMinute) return { kind: 'skipped', reason: 'rate_limited' };
-      const questions = Object.fromEntries(requested.map(id => [id, { type: 'choice', instructions: roles.get(id).instructions,
-        criteria: Object.fromEntries(packet.options.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
+      const offered=packet.cameraReview?.required?packet.options.filter(o=>o.id!=='keep'&&o.plan?.subjectUuid===packet.program.plan?.subjectUuid&&o.plan.shotId!==packet.program.plan?.shotId):packet.options;
+      const questions = Object.fromEntries(requested.map(id => [id, { type: 'choice', instructions: roles.get(id).instructions+' 当 state.cameraReview.required 为真，操作者明确设定的镜头节奏或安静镜头期限已到，从给定合法方案选择下一段构图；运镜仍须通过原生路径检查。',
+        criteria: Object.fromEntries(offered.map(o => [o.id, o.id === 'keep' ? '保持当前节目镜头' : '采用 state.options 中同 ID 的完整方案，不组合或更改其中字段'])) }]));
       const request = { questions, ...(images.length?{images:[...images]}:{}), state: { schema: packet.schema, scope: packet.scope, generation: packet.generation,
-        revision: packet.revision, options: packet.options, facts: packet.facts, activities: packet.activities ?? [], viewContexts: packet.viewContexts ?? [] } };
+        revision: packet.revision, options: offered, facts: packet.facts, activities: packet.activities ?? [], viewContexts: packet.viewContexts ?? [],...(packet.cameraReview?{cameraReview:packet.cameraReview}:{}) } };
       if(compactState){
         const subjects=[...new Set(packet.options.flatMap(o=>o.plan?[o.plan.subjectUuid]:[]))],alias=id=>'actor'+subjects.indexOf(id);
         request.state={schema:packet.schema,revision:packet.revision,
-          imageEvidence:'The image shows only the current keep camera. Other options have NO preview; do not assume unseen geometry is clear.',
-          options:packet.options.map(o=>({id:o.id,...(o.plan?{actor:alias(o.plan.subjectUuid),view:o.plan.shotId,motion:o.plan.motion,
-            projection:projection(o.plan),...(o.plan.script?{script:o.plan.script}:{})}:{}),ruleScore:Math.round(o.ruleScore*100)/100})),
+          imageEvidence:'The image shows only the current keep camera. Other options have NO preview; do not assume unseen geometry is clear. pathPreflightRequired means conditional advice: the native executor MUST verify the entire path before motion, and can reject it. It is NOT evidence that the path is already clear.',
+          options:offered.map(o=>({id:o.id,...(o.plan?{actor:alias(o.plan.subjectUuid),view:o.plan.shotId,motion:o.plan.motion,
+            projection:projection(o.plan),...(o.plan.script?{script:o.plan.script}:{}),...(o.plan.pathPreflightRequired?{pathPreflightRequired:true}:{})}:{}),ruleScore:Math.round(o.ruleScore*100)/100})),
           activities:(packet.activities??[]).map(a=>({actor:alias(a.subjectUuid),kind:a.kind,critical:a.critical})),
-          space:(packet.viewContexts??[]).map(a=>({actor:alias(a.subjectUuid),layout:a.layout,floorSafe:a.floorSafe}))};
+          space:(packet.viewContexts??[]).map(a=>({actor:alias(a.subjectUuid),layout:a.layout,floorSafe:a.floorSafe})),...(packet.cameraReview?{cameraReview:packet.cameraReview}:{})};
       }
       const inputTokens = countTokens(JSON.stringify({questions:request.questions,state:request.state})) + imageTokens + prefixTokens + toolDescriptionTokens;
       if (!finite(inputTokens) || inputTokens < 0 || inputTokens + reserveOutputTokens > contextTokens) return { kind: 'skipped', reason: 'input_budget' };
@@ -200,10 +225,10 @@ export function createCameraJudgePanel(decisions, {
       }).then(answer => {
         audit({ kind: 'response', revision: packet.revision, at: now(), inferenceStats:systemOneInferenceStats(answer?.inference_stats) });
         if (stopped || controller.signal.aborted || !fresh(packet.observedAt, now(), maxAgeMs)) return { kind: 'skipped', reason: 'expired' };
-        const criteria=Object.fromEntries(packet.options.map(o=>[o.id,true]));
+        const criteria=Object.fromEntries(offered.map(o=>[o.id,true]));
         const votes = requested.map(role => {const a=answer?.answers?.[role],probabilities=validateChoiceProbabilities(a?.probabilities,criteria);
           return{role,choice:a?.choice,...(probabilities?{probabilities}:{})};});
-        if (votes.some(v => !packet.options.some(o => o.id === v.choice))) { stats.invalid++; return { kind: 'skipped', reason: 'invalid_choice' }; }
+        if (votes.some(v => !offered.some(o => o.id === v.choice))) { stats.invalid++; return { kind: 'skipped', reason: 'invalid_choice' }; }
         const usage = answer?.usage;
         if (finite(usage?.input_tokens) && usage.input_tokens >= 0) stats.inputTokens += usage.input_tokens;
         if (finite(usage?.output_tokens) && usage.output_tokens >= 0) stats.outputTokens += usage.output_tokens;

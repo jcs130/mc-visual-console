@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {"type": "minecraft:single", "resource": "minecraft:block/copper_door_bottom", "sprite": "minecraft:block/cmodels/copper_door_bottom"},
+    {"type": "minecraft:single", "resource": "minecraft:block/copper_door_top", "sprite": "minecraft:block/cmodels/copper_door_top"},
+    {"type": "minecraft:single", "resource": "minecraft:block/exposed_copper_door_bottom", "sprite": "minecraft:block/cmodels/exposed_copper_door_bottom"},
+    {"type": "minecraft:single", "resource": "minecraft:block/exposed_copper_door_top", "sprite": "minecraft:block/cmodels/exposed_copper_door_top"},
+    {"type": "minecraft:single", "resource": "minecraft:block/weathered_copper_door_bottom", "sprite": "minecraft:block/cmodels/weathered_copper_door_bottom"},
+    {"type": "minecraft:single", "resource": "minecraft:block/weathered_copper_door_top", "sprite": "minecraft:block/cmodels/weathered_copper_door_top"},
+    {"type": "minecraft:single", "resource": "minecraft:block/oxidized_copper_door_bottom", "sprite": "minecraft:block/cmodels/oxidized_copper_door_bottom"},
+    {"type": "minecraft:single", "resource": "minecraft:block/oxidized_copper_door_top", "sprite": "minecraft:block/cmodels/oxidized_copper_door_top"}
+  ]
+}

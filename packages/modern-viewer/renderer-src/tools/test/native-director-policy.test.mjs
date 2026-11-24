@@ -4,6 +4,31 @@ import {CAMERA_SCRIPT_PROTOCOL as schema,validateCameraScript,blendCameraScripts
 import {nativeCameraCandidates,selectCameraBallot,NativeCameraPacing,buildNativeSubjectDecision,selectNativeSubject} from '../../host/native-director-policy.mjs';
 const menu=[{id:'keep'},{id:'normal',name:'A',view:'drone_follow',motion:{schema,speed:1,height:1,distance:5.5}},{id:'slow',name:'A',view:'drone_follow',motion:{schema,speed:.7,height:1.8,distance:6.5}}];
 const votes=p=>['action','space','continuity'].map(role=>({role,choice:'normal',probabilities:p}));
+
+test('model cannot keep an idle subject over fresh offscreen action, even before a coverage deadline',()=>{
+ const n={target:'Idle',targetUuid:'idle',availableViews:['first_person'],targets:[
+  {name:'Idle',uuid:'idle',loaded:true},{name:'Worker',uuid:'worker',loaded:false},{name:'Fighter',uuid:'fighter',loaded:false}]};
+ const rows=[{name:'Idle',kind:'coverage',priority:0,at:100000},{name:'Worker',kind:'interaction',priority:2,at:100000},
+  {name:'Fighter',kind:'combat',priority:3,at:100000}];
+ for(const input of [rows,rows.slice(2)]){
+  const m=buildNativeSubjectDecision(n,input,{now:101000});assert.equal(m.forceReview,true);
+  assert.deepEqual(m.options.map(o=>o.name),['Fighter']);assert.equal(m.request.state.reason,'fresh_activity_priority');
+  assert.equal(selectNativeSubject(m,{answers:{subject:{choice:'keep'}}}).kind,'rules');
+ }
+ const expired=buildNativeSubjectDecision(n,rows,{now:121000});assert.equal(expired.forceReview,false,'stale priority is not authority');
+ const same=buildNativeSubjectDecision(n,[{...rows[0],priority:3,kind:'combat'},rows[2]],{now:101000});
+ assert.ok(same.options.some(o=>o.id==='keep'),'equal genuine combat still allows editorial continuity');
+});
+test('a large actual online roster keeps each model menu bounded and does not invent previews',()=>{
+ const targets=Array.from({length:100},(_,i)=>({name:'Player'+i,uuid:'uuid'+i,loaded:false}));
+ const n={target:'Player0',targetUuid:'uuid0',targets,availableViews:['first_person']};
+ const rows=targets.map(t=>({name:t.name,kind:'coverage',at:1000}));
+ const menu=buildNativeSubjectDecision(n,rows,{now:1000});
+ assert.equal(menu.options.length,16);assert.equal(menu.options[0].id,'keep');
+ assert.equal(menu.request.state.subjects.filter(s=>s.loaded).length,0);
+ assert.match(menu.request.state.imageEvidence,/CURRENT/);
+ assert.equal(buildNativeSubjectDecision({...n,targets:Array.from({length:257},()=>targets[0])},rows),null);
+});
 test('complete distributions survive transport; malformed, extra and unnormalised values are rejected',async()=>{
  const criteria={keep:'hold',normal:'follow',slow:'slow'};assert.deepEqual(validateChoiceProbabilities({keep:.1,normal:.6,slow:.3},criteria),{keep:.1,normal:.6,slow:.3});
  for(const p of[{keep:1},{keep:.1,normal:.6,slow:.3,command:0},{keep:NaN,normal:1,slow:0},{keep:0,normal:4,slow:0},{keep:.1,normal:.1,slow:.1}])assert.equal(validateChoiceProbabilities(p,criteria),null);
@@ -17,6 +42,15 @@ test('probability ambiguity holds; supported same-family parameters interpolate,
  const hard=selectCameraBallot(menu,votes(undefined));assert.equal(hard.source,'hard_choices');assert.equal(hard.scores,undefined);
  const mixed=[...menu,{id:'foreign',name:'B',view:'drone_front',motion:{schema,speed:1.5,height:12,distance:10}}];
  assert.deepEqual(blendCameraScripts(mixed,{normal:1,foreign:100},'normal'),menu[1].motion);
+});
+
+test('an explicit legal review menu cannot invent KEEP or offer its current view again',()=>{
+ const options=[{id:'front',name:'A',view:'drone_front'},{id:'side',name:'A',view:'drone_side_left'}];
+ const distributions=['action','space','continuity'].map(role=>({role,choice:'front',probabilities:{front:.51,side:.49}}));
+ const r=selectCameraBallot(options,distributions);assert.equal(r.kind,'use');assert.equal(r.choice.id,'front');assert.equal(r.source,'probabilities');
+ const one=selectCameraBallot([options[0]],distributions.map(v=>({...v,probabilities:{front:1}})));assert.equal(one.entropy,0);
+ const f=fixture();const offered=nativeCameraCandidates({name:'A',view:'drone_front_left',kind:'overview',sequence:{reviewRequired:true}},f.n,{now:f.now()});
+ assert.ok(offered.every(o=>o.view!==f.n.effectiveView));
 });
 test('camera scripts reject commands, arbitrary coordinates, nonfinite values and conflicting semantics',()=>{
  for(const value of[{schema,x:12},{schema,speed:Infinity},{schema,height:20},{schema,speed:.1},{schema,durationMs:4001.5}])assert.throws(()=>validateCameraScript(value,'drone_follow'));

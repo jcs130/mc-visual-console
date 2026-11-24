@@ -25,10 +25,17 @@ public final class TargetInventory<T> {
         return true;
     }
     public View<T> view(ObserverState.Snapshot snapshot,long now) {
-        if(snapshot==null)return null;
+        return view(snapshot,now,false);
+    }
+    /** Hotbar is a connection-scoped delta stream; no change means no packet.
+     * Full inventory stays durable only while its actual mirrored window is owned.
+     * A current authoritative target frame is still required in both cases.
+     */
+    public View<T> view(ObserverState.Snapshot snapshot,long now,boolean fullStreamActive) {
+        if(snapshot==null||now<snapshot.receivedNs()||now-snapshot.receivedNs()>ObserverState.STALE_NS)return null;
         reconcile(snapshot.camera(),snapshot.epoch());
-        if(camera==null||!camera.observer()||hotbarAt<0||now<hotbarAt||now-hotbarAt>ObserverState.STALE_NS)return null;
-        boolean full=fullAt>=0&&now>=fullAt&&now-fullAt<=ObserverState.STALE_NS;
+        if(camera==null||!camera.observer()||hotbarAt<0||now<hotbarAt)return null;
+        boolean full=fullAt>=0&&now>=fullAt&&(fullStreamActive||now-fullAt<=ObserverState.STALE_NS);
         List<Slot<T>> slots=new ArrayList<>();
         for(int i=0;i<(full?36:9);i++)slots.add(new Slot<>(i,items.get(i),items.get(i)!=null));
         return new View<>(List.copyOf(slots),full,(now-hotbarAt)/1_000_000,

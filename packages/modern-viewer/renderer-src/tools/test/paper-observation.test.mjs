@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { PaperObservedPlayer, PAPER_OBSERVATION_MODE } from '../../host/paper-observation.mjs';
 import { createNativeSession } from '../../src/native-viewer/native-session.js';
 import { nativePresentationView } from '../../src/native-viewer/native-ui-adapter.js';
@@ -12,6 +13,43 @@ function receipt(){return{available:true,uuid,generation:world,configurationPack
  gameTime:100,dayTime:6000,selectedHotbarSlot:0,mainArm:'right',health:20,maxHealth:20,usingItem:false,attackAnim:0,
  inventory:Array.from({length:46},(_,slot)=>({slot,item:slot===36?{name:'minecraft:diamond_sword',count:1,snbt:'{id:"minecraft:diamond_sword",count:1}'}:slot===9?{name:'minecraft:paper',count:1,snbt:'{private:"bag_only_secret"}'}:null}))}};}
 function observer(scope='owner'){return new PaperObservedPlayer({playerUuid:uuid,name:'ObservedAgent',registry:{},registrySha256:hash,decodePacket:bytes=>JSON.parse(bytes),scope});}
+
+test('Paper dropped stacks preserve the same verified vanilla registry contract as native clients',()=>{
+ const registry=createRequire(import.meta.url)('minecraft-data')('1.21.1');
+ const o=new PaperObservedPlayer({playerUuid:uuid,name:'ObservedAgent',registry,registrySha256:hash,decodePacket:bytes=>JSON.parse(bytes)});
+ const wire={itemId:registry.itemsByName.diamond_sword.id,itemCount:1,components:[{type:'custom_model_data',data:731001}],removeComponents:[]};
+ const resolved=o.resolveItemStack(wire);
+ assert.equal(resolved.available,true);assert.equal(resolved.source,'same_player_vanilla_item_registry');
+ assert.equal(resolved.minecraftVersion,'1.21.1');assert.equal(resolved.registryId,wire.itemId);
+ assert.equal(resolved.item.name,'minecraft:diamond_sword');assert.match(resolved.item.snbt,/731001/);
+ assert.equal(o.resolveItemStack({itemCount:0}).available,false);
+ assert.equal(o.resolveItemStack({...wire,itemId:999999}).available,false);o.close();
+});
+test('personal stash opens, synchronizes a changed slot, and closes without changing the world',()=>{
+ const o=observer(),guest=observer('scene'),r=receipt();let sent=0;o.events.on('presentation',()=>sent++);
+ o.ingest(r);guest.ingest(r);const count=sent;
+ const item={name:'minecraft:diamond',count:2,snbt:'{id:"minecraft:diamond",count:2}'};
+ r.player.personalStash={windowId:4,stateId:1,page:2,slots:[{slot:10,item}]};o.ingest(r);guest.ingest(r);
+ const menu=o.presentation().nativeMenu;
+ assert.equal(menu.title,'个人试炼箱 · 2/10');assert.equal(menu.slots.length,90);
+ assert.deepEqual(menu.slots[10].item,item);assert.equal(menu.slots[81].item.name,'minecraft:diamond_sword');
+ assert.equal(guest.presentation().nativeMenu.contentsHidden,true);
+ assert.ok(guest.presentation().nativeMenu.slots.every(row=>row.item===null));
+ r.player.personalStash.slots[0].item={...item,count:1};o.ingest(r);
+ assert.equal(o.presentation().nativeMenu.slots[10].item.count,1);
+ delete r.player.personalStash;o.ingest(r);assert.equal(o.presentation().nativeMenu,null);assert.equal(sent,count+3);
+ o.close();guest.close();
+});
+test('a CLI operation changes the Paper presentation with no movement or inventory change',()=>{
+ const o=observer('scene'),r=receipt();let sent=0;o.events.on('presentation',()=>sent++);
+ o.ingest(r);const count=sent;
+ r.player.gameOperations=[{kind:'stash_deposit_request',at:1000,slot:33},{kind:'login',at:1001}];
+ o.ingest(r);assert.equal(sent,count+1);
+ assert.deepEqual(o.presentation().gameOperations,[{kind:'stash_deposit_request',at:1000}]);
+ assert.equal(o.presentation().nativeMenu,null);
+ o.ingest(r);assert.equal(sent,count+1);
+ r.player.gameOperations=[];o.ingest(r);assert.equal(sent,count+2);assert.deepEqual(o.presentation().gameOperations,[]);o.close();
+});
 test('RPG snapshots follow the observed identity, push class-only changes and clear missing data',()=>{
  const o=observer(),r=receipt();let sent=0;o.events.on('presentation',()=>sent++);
  r.player.experienceLevel=91;r.player.viewerState={schemaVersion:1,playerUuid:uuid,mana:{current:4,max:20},skills:[],abilities:[],rpg:{available:true,backend:'vortex',combat:'ranger',className:'游侠',level:4,xp:100,nextLevelXp:300,skillPoints:2}};

@@ -110,6 +110,23 @@ test('audio waits for a browser gesture and preserves vanilla high pitch and zer
   assert.equal(view.api.state().unlocked, true);
   view.close();
 });
+
+test('effects-only distribution keeps effects and reports optional music as not installed', async () => {
+  const manifest = sampleManifest(); manifest.audioProfile = 'effects-only';
+  for (const name of Object.keys(manifest.events)) if (name.startsWith('music.') || name.startsWith('music_disc.')) delete manifest.events[name];
+  const view = fixture({ manifest }); await view.ready(); await view.unlock(); musicWorld(view);
+  assert.equal(view.api.state().available, true);
+  assert.equal(view.api.state().musicIncluded, false);
+  assert.equal(view.api.state().musicGate, 'not-installed');
+  assert.equal(view.musicButton.textContent, '音乐 未安装');
+  assert.equal(await view.api.play({ name: 'music.game', category: 'music' }), false);
+  assert.equal(await view.api.play({ name: 'music_disc.cat', category: 'records' }), false);
+  assert.equal(view.api.state().evidence.missing, 0);
+  assert.equal(await view.api.play({ name: 'entity.zombie.hurt', category: 'hostile' }), true);
+  assert.equal(view.starts.length, 1);
+  assert.equal(view.media.length, 0);
+  view.close();
+});
 test('an initial sound-button pointer gesture enables audio instead of instantly toggling it off', async () => {
   const view = fixture(); await view.ready();
   view.document.emit('pointerdown', { target: view.button }); await flush();

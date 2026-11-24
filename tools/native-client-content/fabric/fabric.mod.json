@@ -1,0 +1,7 @@
+{
+ "schemaVersion":1,"id":"mcvisual_content","version":"0.2.0",
+ "name":"MC Visual Content Stream","environment":"client","license":"MIT",
+ "description":"Explicit WebSocket custom panels, scoped to the actual client camera. No Agent framework or server mod required.",
+ "entrypoints":{"client":["org.mcvisual.content.fabric.FabricContentMod"]},
+ "depends":{"minecraft":"1.21.1","java":">=21","fabricloader":">=0.16.13","fabric-api":"*"}
+}

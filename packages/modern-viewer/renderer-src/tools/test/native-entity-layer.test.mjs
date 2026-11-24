@@ -7,6 +7,31 @@ const entity=(id=2)=>({entityId:id,uuid:`entity-${id}`,name:'minecraft:pig',meta
 const state=entities=>({available:true,entities})
 const finish=async layer=>{while(layer.running)await new Promise(resolve=>setImmediate(resolve))}
 
+test('nearby actors load four at a time without unbounded requests or waiting behind one resource',async()=>{
+ let active=0,peak=0,created=0,disposed=0;const pending=new Map()
+ const layer=new NativeEntityLayer(null,{createActor:async(_,e)=>{
+  active++;created++;peak=Math.max(peak,active)
+  return new Promise(resolve=>pending.set(e.entityId,()=>{active--;pending.delete(e.entityId);resolve({root:new THREE.Group(),update(){},dispose(){disposed++;this.root.removeFromParent()}})}))
+ }})
+ layer.stage(state(Array.from({length:9},(_,i)=>entity(i+2))))
+ assert.equal(created,4);assert.equal(active,4);assert.equal(layer.failures.size,0)
+ while(layer.running){const release=pending.values().next().value;if(release)release();await new Promise(resolve=>setImmediate(resolve))}
+ assert.equal(created,9);assert.equal(peak,4);assert.equal(layer.actors.size,9)
+ layer.reset();assert.equal(disposed,9)
+})
+
+test('a late asset cannot briefly resurrect an older UUID reusing the same entity ID in one epoch',async()=>{
+ const pending=new Map(),added=[];let disposed=0
+ const layer=new NativeEntityLayer(null,{createActor:async(_,e)=>new Promise(resolve=>pending.set(e.uuid,()=>{
+  const root=new THREE.Group();root.addEventListener('added',()=>added.push(e.uuid))
+  resolve({root,update(){},dispose(){disposed++;root.removeFromParent()}})
+ }))})
+ layer.stage({...state([{...entity(),uuid:'old'}]),epoch:1,revision:1})
+ layer.stage({...state([{...entity(),uuid:'new'}]),epoch:1,revision:2})
+ pending.get('old')();await new Promise(resolve=>setImmediate(resolve));assert.equal(disposed,1);assert.deepEqual(added,[])
+ pending.get('new')();await finish(layer);assert.deepEqual(added,['new']);assert.equal(layer.actors.size,1);layer.dispose()
+})
+
 test('received item pickup is deduplicated and follows three actual connection ticks, reset retires async geometry',async()=>{
   let disposed=0,created=0
   const layer=new NativeEntityLayer(null,{createActor:async()=>{created++;return {root:new THREE.Group(),update(){},dispose(){disposed++;this.root.removeFromParent()}}}})

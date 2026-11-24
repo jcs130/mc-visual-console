@@ -84,7 +84,7 @@ test('raw protocol removal objects survive the item resolver and unknown patches
   stream.close()
 })
 
-test('visual overrides, conflicting patches and invalid data never borrow a generic icon', () => {
+test('CMD survives original-model selection while conflicting patches and invalid data remain unavailable', () => {
   const stacks = [
     { components: [{ type: 'custom_model_data', data: 7 }], removedComponents: [] },
     { components: [{ type: 'damage', data: 1 }], removedComponents: ['damage'] },
@@ -92,8 +92,9 @@ test('visual overrides, conflicting patches and invalid data never borrow a gene
     { components: [], removedComponents: [], nbt: { type: 'compound', value: {} } },
   ].map(patch => ({ name: 'wooden_pickaxe', count: 1, ...patch }));
   const state = vanillaPlayerPresentation({ version: '1.21.1', _client: { uuid: 'player-a' }, inventory: { slots: stacks } });
-  for (const { item } of state.inventory.slots) assert.equal(nativeItemIconEligible(item), false);
-  assert.equal(state.nativeState.componentFailures.length, 3); // custom_model_data is preserved, renderer rejects it.
+  assert.equal(nativeItemIconEligible(state.inventory.slots[0].item),true);
+  for (const { item } of state.inventory.slots.slice(1)) assert.equal(nativeItemIconEligible(item), false);
+  assert.equal(state.nativeState.componentFailures.length, 3); // CMD is preserved; only the other three malformed stacks fail conversion.
   assert.match(state.inventory.slots[0].item.snbt, /"minecraft:custom_model_data":7/);
 });
 

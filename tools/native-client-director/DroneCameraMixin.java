@@ -35,7 +35,7 @@ public abstract class DroneCameraMixin {
                 if(method_19318(length)<length-.08f){clear=false;break;}previous=position;
             }
             NativeDirectorClient.dronePathResult(clear);
-            if(!clear){NativeDirectorClient.dronePathBlocked();verifiedPath=false;}
+            if(!clear)verifiedPath=false;
         }
         method_19327(anchor.field_1352,anchor.field_1351,anchor.field_1350);
         method_19325(pose.yaw(),pose.pitch());
@@ -47,7 +47,8 @@ public abstract class DroneCameraMixin {
         boolean known=mcvisual$known(world,anchor,desired);
         boolean swept=mcvisual$lastEntity!=entity||mcvisual$lastWorld!=world||pose.snapped()||mcvisual$lastPosition==null
             ||mcvisual$sweep(world,entity,mcvisual$lastPosition,desired);
-        if(!known||!swept||!verifiedPath||NativeDirectorClient.finiteShotActive()&&clipped<requested-.08f){NativeDirectorClient.dronePathBlocked();known=false;}
+        // A rejected future path can keep its safe starting frame. Actual collision/unknown space still falls back.
+        if(!known||!swept||(!verifiedPath||NativeDirectorClient.finiteShotActive())&&clipped<requested-.08f){NativeDirectorClient.dronePathBlocked();known=false;}
         boolean first=NativeDirectorClient.closeView(clipped,known);
         if(first||!known){
             method_19327(anchor.field_1352,anchor.field_1351,anchor.field_1350);method_19325(entity.method_36454(),entity.method_36455());field_18719=false;

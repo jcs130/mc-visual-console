@@ -54,3 +54,31 @@ test('late guest receives changed inventory before a thin movement frame, withou
  assert.equal(late.values.at(-2).presentation.inventory.selectedHotbarSlot,5);
  assert.equal(late.values.at(-1).type,'frame');assert.ok(!('presentation' in late.values.at(-1)));
 });
+
+test('public live and replay keep only recent operation types and timestamps',t=>{
+ let upstream;const hub=new SpectatorFanout({playerUuid:uuid,projectPublic:publicSpectatorEvent,open:s=>{upstream=s;}});t.after(()=>hub.close());
+ const guest=response();hub.subscribe({},guest,{scope:'scene'});
+ const send=value=>upstream.write(Buffer.from('data: '+JSON.stringify(value)+'\n\n'));
+ send({type:'identity',playerUuid:uuid});send(snapshot);
+ const gameOperations=[{kind:'stash_deposit_request',at:1200,command:secret,slot:33},
+  {kind:'login',at:1201,password:secret},{kind:'constructor',at:1202},{kind:'attack',at:secret}];
+ send({type:'presentation',epoch:1,presentation:{...presentation,gameOperations}});
+ const late=response();hub.subscribe({},late,{scope:'scene'});
+ for(const client of [guest,late]){
+  assert.deepEqual(client.values.at(-1).presentation.gameOperations,[{kind:'stash_deposit_request',at:1200}]);
+  assert.doesNotMatch(JSON.stringify(client.values),new RegExp(secret));
+ }
+ send({type:'presentation',epoch:1,presentation:{...presentation,gameOperations:[]}});
+ assert.deepEqual(guest.values.at(-1).presentation.gameOperations,[]);
+});
+
+test('public stash preserves the real window shape while excluding all inventory, cursor and arbitrary metadata',()=>{
+ const nativeMenu={source:'paper_personal_stash',playerUuid:uuid,menuType:'minecraft:generic_9x6',windowId:7,stateId:3,stashPage:2,
+  title:secret,carried:item,slots:[{slot:0,item}],secret};
+ const out=publicSpectatorEvent({type:'presentation',presentation:{...presentation,nativeMenu}}).presentation.nativeMenu;
+ assert.equal(out.windowId,7);assert.equal(out.stashPage,2);assert.equal(out.title,'个人试炼箱 · 2/10');assert.equal(out.contentsHidden,true);
+ assert.deepEqual(out.slots,Array.from({length:90},(_,slot)=>({slot,item:null})));assert.ok(!JSON.stringify(out).includes(secret));
+ for(const bad of [{playerUuid:'other'},{stashPage:11},{source:'native'},{menuType:'minecraft:generic_9x3'}]){
+  assert.equal(publicSpectatorEvent({type:'presentation',presentation:{...presentation,nativeMenu:{...nativeMenu,...bad}}}).presentation.nativeMenu,null);
+ }
+});

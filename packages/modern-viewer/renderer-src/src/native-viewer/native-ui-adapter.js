@@ -575,6 +575,7 @@ export function createNativeInterface ({ document = globalThis.document,
   const actorUnavailableReason = () => typeof actorReason === 'string' && /^(NATIVE_|PLAYER_)/.test(actorReason)
     ? `本人模型暂不可用（${actorReason.slice(0, 160)}）` : null
   const actualContainer = () => Number.isInteger(presentation.nativeMenu?.windowId) && presentation.nativeMenu.windowId > 0 ? presentation.nativeMenu : null
+  const containerKey = window => `${window.windowId}:${window.source==='paper_personal_stash'?'stash':(window.stateId??'')}`
   const renderInventory = (body, inventory) => {
     const map = new Map(inventory.slots.map(row => [row.slot, row]))
     const classic = inventory.windowId === 0 && inventory.inventoryStart === 9 && inventory.hotbarStart === 36 && inventory.offhandSlot === 45
@@ -619,7 +620,7 @@ export function createNativeInterface ({ document = globalThis.document,
     const menu = el('corti-menu'), body = q('[data-menu-body]')
     if (!menu || !body) return
     const actual = actualContainer(), window = actual || recentWindow, replay = Boolean(!actual && recentWindow)
-    const windowKey = window ? `${window.windowId ?? ''}:${window.stateId ?? ''}` : null
+    const windowKey = window ? containerKey(window) : null
     const showWindow = window && dismissedMenu !== windowKey
     const visible = Boolean(showWindow || manualOpen || idleOpen)
     menuVisible = visible
@@ -637,7 +638,7 @@ export function createNativeInterface ({ document = globalThis.document,
     if (showWindow) {
       menu.dataset.inventorySource = replay ? 'replay' : 'container'
       if (heading) heading.textContent = language.menu(window)
-      if (source) source.textContent = replay ? '刚关闭的窗口 · 操作回放 · 只读' : '真实游戏窗口 · 只读'
+      if (source) source.textContent = window.contentsHidden === true ? '真实游戏窗口 · 游客视图，物品已隐藏' : replay ? '刚关闭的窗口 · 操作回放 · 只读' : '真实游戏窗口 · 只读'
       let layout = null, kind = null, reason = null
       try {
         if (window.menuType === 'minecraft:crafting') {
@@ -756,7 +757,7 @@ export function createNativeInterface ({ document = globalThis.document,
           }
           for(const button of layout.buttons)blit(background,256,256,{x:button.x,y:button.y,sourceX:button.u,sourceY:button.v,width:14,height:9},'native-uncrafting-cycle-button')
         }
-        for (const { row, x, y, role } of layout.slots) {
+        for (const { row, x, y, role } of window.contentsHidden === true ? [] : layout.slots) {
           // Original Slot coords address the 16px item; existing CSS draws its
           // 32px image 2px inside this 36px div, so place the div one GUI pixel back.
           const itemSlot = slot(panel, row, x - 1 + (layout.offsetX ?? 0), y - 1 + (layout.offsetY ?? 0), `原生${slotRoleName(role)}槽 ${row.slot}`)
@@ -807,7 +808,7 @@ export function createNativeInterface ({ document = globalThis.document,
           : kind === 'domum' ? `${layout.previewReason ? '分组/款式预览未同步' : '已显示原始分组/款式预览第一页'}；其他滚动页与原生标题未接入`
             : kind === 'crafter' ? `禁用槽位与红石状态${crafter.available ? `来自本人窗口数据（${crafter.powered ? '已供电' : '未供电'}）` : `未知（${crafter.reason}）`}；产物槽是配方预览；切换槽位请在游戏中完成`
             : kind === 'standard' ? '按钮与专用预览尚未接入；窗口操作请在游戏中完成'
-            : kind === 'chest' ? '原生标题未接入' : '配方书与原生标题未接入'
+            : kind === 'chest' ? window.contentsHidden === true ? '已隐藏物品' : window.contentsTruncated === true ? '部分物品超出同步大小' : window.title ? '随游戏打开和关闭' : '原生标题未接入' : '配方书与原生标题未接入'
         const progressText = progress ? `；${progress.available ? '火焰与烧炼进度来自本人原生 dataValues'
           : `火焰与烧炼进度未知（${progress.reason}）`}` : cookingPot ? `；热源${cookingPot.heat.available ? (cookingPot.heat.isHeated ? '已加热' : '未加热') : `未知（${cookingPot.heat.reason}）`}；烹饪进度${cookingPot.progress.available ? '来自本人原生 dataValues' : `未知（${cookingPot.progress.reason}）`}` : ''
         const placeholderText = kind === 'cooking-pot' && assets.cookingPotPlaceholderReason ? `；空槽图标未支持（${assets.cookingPotPlaceholderReason}）` : ''
@@ -908,7 +909,7 @@ export function createNativeInterface ({ document = globalThis.document,
   const closeMenu = () => {
     cancelIdle(); clearRecent(); manualOpen = false
     const window = actualContainer()
-    if (window) dismissedMenu = `${window.windowId ?? ''}:${window.stateId ?? ''}`
+    if (window) dismissedMenu = containerKey(window)
     renderMenu('click')
   }
   listen(el('corti-inventory-toggle'), 'click', () => { cancelIdle(); clearRecent(); manualOpen = !manualOpen; dismissedMenu = null; renderMenu('click') })
@@ -973,10 +974,11 @@ export function createNativeInterface ({ document = globalThis.document,
       current = state
       const previousWindow=actualContainer()
       presentation = nativePresentationView(state?.presentation, expectedUuid)
+      if (previousWindow?.source==='paper_personal_stash' && (!actualContainer() || containerKey(actualContainer())!==containerKey(previousWindow))) dismissedMenu=null
       if(itemIcons?.setContext(presentation)){iconRevision++;hudSignature=null;lastMenuSignature=null}
       itemIcons?.serverIcons.setPack(presentation.available?presentation.serverItemPackId:null)
       if(actualContainer()||!presentation.available||now()<combatUntil||presentation.self?.health===0)clearRecent()
-      else if(previousWindow){
+      else if(previousWindow&&previousWindow.source!=='paper_personal_stash'){
         clearRecent();recentWindow=previousWindow
         recentTimer=later(()=>{recentWindow=null;recentTimer=null;renderMenu()},3200)
       }

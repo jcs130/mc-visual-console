@@ -188,14 +188,14 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
   const updateAudio=value=>{
     for(const button of [soundButton,musicButton,soundTest,musicPlay])if(button)button.disabled=!value?.available
     if(soundButton){soundButton.textContent=!value?.unlocked?'音效 点击开启':value?.soundEnabled?'音效 开':'音效 关';soundButton.setAttribute('aria-pressed',String(value?.soundEnabled===true));soundButton.dataset.audioStarted=String(value?.started??0)}
-    if(musicButton){musicButton.textContent=!value?.unlocked?'音乐 点击开启':!value?.musicEnabled?'音乐 关':value?.musicPlaying?'音乐 播放中':'音乐 待续播';musicButton.setAttribute('aria-pressed',String(value?.musicEnabled===true))}
+    if(musicButton){musicButton.disabled=!value?.available||value?.musicIncluded===false;musicButton.textContent=value?.musicIncluded===false?'音乐 未安装':!value?.unlocked?'音乐 点击开启':!value?.musicEnabled?'音乐 关':value?.musicPlaying?'音乐 播放中':'音乐 待续播';musicButton.setAttribute('aria-pressed',String(value?.musicEnabled===true))}
     if(value?.volumes)for(const input of document.querySelectorAll('[data-corti-audio-volume]')){
       const volume=value.volumes[input.dataset.cortiAudioVolume];if(Number.isFinite(volume))input.value=String(volume)
     }
     if(soundTest){soundTest.textContent='试听原版音效';soundTest.title='只在本浏览器试听，不向游戏发送操作或消息'}
-    if(musicPlay){musicPlay.textContent='切换下一首配乐';musicPlay.title='观战配乐自动续播，仅在本浏览器播放，不向游戏发出操作'}
+    if(musicPlay){musicPlay.disabled=!value?.available||value?.musicIncluded===false;musicPlay.textContent='切换下一首配乐';musicPlay.title=value?.musicIncluded===false?'精简音效版未安装背景音乐，可另选完整音画资源':'观战配乐自动续播，仅在本浏览器播放，不向游戏发出操作'}
     if(soundStatus)soundStatus.textContent=!value?.available?(value?.reason??'等待原版声音资源'):
-      `原版声音已就绪 · ${value.soundEnabled?'游戏音效开启':'游戏音效关闭'} · ${value.unlocked?'浏览器声音已启用':'点击开启浏览器声音'} · 音效 ${Object.entries(value.byCategory??{}).filter(([key])=>!['music','records'].includes(key)).reduce((sum,[,n])=>sum+n,0)} 次 · 配乐 ${value.musicPlaying?'播放中':value.musicEnabled?'等待续播':'关闭'}${value.lastFailure?' · 最近播放失败：'+value.lastFailure.name+'（'+value.lastFailure.reason+'）':''}`
+      `原版声音已就绪 · ${value.soundEnabled?'游戏音效开启':'游戏音效关闭'} · ${value.unlocked?'浏览器声音已启用':'点击开启浏览器声音'} · 音效 ${Object.entries(value.byCategory??{}).filter(([key])=>!['music','records'].includes(key)).reduce((sum,[,n])=>sum+n,0)} 次 · 配乐 ${value.musicIncluded===false?'未安装（可选组件）':value.musicPlaying?'播放中':value.musicEnabled?'等待续播':'关闭'}${value.lastFailure?' · 最近播放失败：'+value.lastFailure.name+'（'+value.lastFailure.reason+'）':''}`
   }
   updateAudio(null)
   listen(soundButton,'click',()=>{void sceneHost?.audio?.toggle('effects')})
@@ -293,7 +293,7 @@ export async function bootNativeConsole ({ document = globalThis.document, windo
         if(signature!==targetSignature){
           targetSignature=signature;const value=targetSelect.value;targetSelect.replaceChildren()
           const own=append(document,targetSelect,'option','','Agent 本人');own.value=''
-          for(const row of options){const option=append(document,targetSelect,'option','',`${row.name} · #${row.id}${row.rendered?'':'（模型未适配）'}`);option.value=String(row.id);option.disabled=!row.rendered}
+          for(const row of options){const option=append(document,targetSelect,'option','',`${row.name} · #${row.id}${row.rendered?'':row.loading?'（模型载入中）':'（模型未适配）'}`);option.value=String(row.id);option.disabled=!row.rendered}
           targetSelect.value=value
         }
         if(frame.camera){const text=`${({manual:'手动环绕',region:'自由视角 · 已载入区域',follow:'居中跟随',shoulder:'越肩跟随',front:'正面跟随',orbit:'自动环绕',overhead:'高位俯视',first:'第一人称','3dview':'3D观战'})[frame.camera.mode]??frame.camera.mode}${Number.isFinite(frame.camera.distance)?' · '+frame.camera.distance.toFixed(1)+' 格':''}${frame.camera.occluded?' · 避障中':''}`;if(text!==lastCameraText){lastCameraText=text;cameraUi.status(text)}}

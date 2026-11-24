@@ -1,3 +1,5 @@
+import { gameOperationLabel, projectGameOperations } from './native-game-operations.js'
+
 const PHASES = {queued:'排队',accepted:'已受理',running:'执行中',acting:'执行中',completed:'已返回',returned:'已返回',blocked:'阻塞',
   failed:'失败',cancelled:'已取消',rejected:'参数被拒绝',pending:'等待',unknown:'结果未知'}
 const LABELS = {health:'生命变化',food:'饥饿变化',dig_started:'开始挖掘',dig_cancel_sent:'发送取消挖掘',dig_finish_sent:'提交挖掘',
@@ -22,13 +24,14 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
   const root=add(document.body,'details','native-live-inspector')
   root.id='native-live-inspector'
   root.setAttribute('aria-label','游戏操作与任务进程')
-  add(root,'summary','native-inspector-heading','游戏过程')
+  const heading=add(root,'summary','native-inspector-heading','游戏过程')
   const status=add(root,'div','native-inspector-status','等待本人操作数据')
-  const panes=new Map()
+  const panes=new Map(), detailPanes=[]
   for(const [key,title]of [['events','操作过程'],['items','物品收支'],['recipes','合成与材料'],['merchant','交易报价'],
     ['survival','生存变化'],['queue','Agent 任务时间线'],['server','服务器信息'],['entities','附近实体']]) {
     const details=add(root,'details','native-inspector-pane');details.dataset.category=key
     if(key==='events')details.setAttribute('open','')
+    else detailPanes.push(details)
     add(details,'summary','',title);panes.set(key,add(details,'div','native-inspector-body'))
   }
   const style=add(document.head,'style','')
@@ -65,6 +68,7 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
   }
   function reset() {
     signature=null;lastIconRevision=null;iconRows.clear()
+    heading.textContent='游戏过程'
     status.textContent='等待本人操作数据'
     for(const panel of panes.values())empty(panel,'尚无记录')
   }
@@ -81,19 +85,32 @@ export function createNativeActivityUi({document, itemName=item=>item?.displayNa
     },
     update(state,{iconRevision=0}={}) {
       if(disposed)return
-      const presentation=state?.presentation,a=presentation?.activity
-      if(!identity||!presentation?.available||presentation.playerUuid!==identity.uuid||a?.schemaVersion!==1||a.playerUuid!==identity.uuid||a.entityId!==identity.entityId){reset();return}
+      const presentation=state?.presentation
+      if(!identity||!presentation?.available||presentation.playerUuid!==identity.uuid){reset();return}
+      const activity=presentation.activity
+      const a=activity?.schemaVersion===1&&activity.playerUuid===identity.uuid&&activity.entityId===identity.entityId?activity:null
+      const operations=projectGameOperations(presentation.gameOperations)
       if(epoch!==state.epoch){reset();epoch=state.epoch}
       const playback=presentation.agentPlayback
-      const next=JSON.stringify([a.revision,a.dig?.elapsedMs,playback,presentation.nativeMenu?.windowId])
+      const next=JSON.stringify([a?.revision,a?.dig?.elapsedMs,playback,presentation.nativeMenu?.windowId,operations])
       if(signature===next){
         if(lastIconRevision!==iconRevision)for(const [slot,{item,renderer,options}]of iconRows)if(slot.isConnected)renderer(slot,item,{...options,refreshOnly:true})
         lastIconRevision=iconRevision;return
       }
       iconRows.clear();lastIconRevision=iconRevision
-      signature=next;status.textContent=`本人实时操作 · ${clock(a.sampledAt)}${a.truncated?' · 历史已按预算截短':''}`
+      signature=next
+      for(const pane of detailPanes)pane.hidden=!a
+      const last=operations.at(-1)
+      heading.textContent=last?`游戏过程 · ${gameOperationLabel(last.kind)}`:'游戏过程'
+      status.textContent=a?`本人实时操作 · ${clock(a.sampledAt)}${a.truncated?' · 历史已按预算截短':''}`:'服务器最近 30 秒的操作'
       const eventPanel=panes.get('events');empty(eventPanel,'当前没有新操作')
-      if(a.events?.length){eventPanel.replaceChildren();for(const event of a.events.slice(-8).reverse())row(eventPanel,eventText(event),`${clock(event.at)} · ${event.source==='sent_packet'?'已发送，效果待核对':event.source?.startsWith('server')?'服务端观测':'Mineflayer 事件'}`)}
+      if(operations.length){
+        eventPanel.replaceChildren()
+        for(const entry of operations.slice().reverse())row(eventPanel,gameOperationLabel(entry.kind),
+          `${clock(entry.at)} · ${entry.kind.endsWith('_request')||entry.kind.endsWith('_query')?'命令请求，结果未核实':'服务端观测'}`)
+      }
+      if(!a)return
+      if(a.events?.length){if(!operations.length)eventPanel.replaceChildren();for(const event of a.events.slice(-8).reverse())row(eventPanel,eventText(event),`${clock(event.at)} · ${event.source==='sent_packet'?'已发送，效果待核对':event.source?.startsWith('server')?'服务端观测':'Mineflayer 事件'}`)}
       if(a.dig){const section=row(eventPanel,`正在挖掘 ${text(a.dig.name)} ${position(a.dig.position)}`,'进度按实际开始时间与当前工具预计耗时显示，结果看方块更新')
         if(finite(a.dig.durationMs)&&a.dig.durationMs>0){const bar=add(section,'progress','');bar.max=1;bar.value=Math.min(1,a.dig.elapsedMs/a.dig.durationMs);bar.setAttribute('aria-label','当前挖掘进度')}}
       const itemPanel=panes.get('items');empty(itemPanel,a.inventoryReady?'当前没有服务端确认的背包增减':'等待完整服务端背包基线')

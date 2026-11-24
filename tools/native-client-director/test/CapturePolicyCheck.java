@@ -16,6 +16,16 @@ public final class CapturePolicyCheck{
   size=CapturePolicy.fit(1080,1920,384,384);check(size[0]==216&&size[1]==384,"portrait resize");
   size=CapturePolicy.fit(100,100,512,512);check(size[0]==100&&size[1]==100,"no upscaling");
   check(CapturePolicy.refusal(new CapturePolicy.Request("capture","server","observer","connection",1,"actor","camera-op",1000,3000,513,512),s,1500)!=null,"size budget");
+  var gui=new CapturePolicy.Request("gui","server","observer","connection",1,"actor","camera-op",1000,3000,512,512,"composited");
+  check(CapturePolicy.refusal(gui,s,1500)==null,"explicit final game framebuffer capture");
+  var menu=new CapturePolicy.Scope("server","observer","connection",1,"actor","actor","camera-op",true,true,true,true,false);
+  check(CapturePolicy.refusal(gui,menu,1500)==null,"scoped menu can be captured without keyboard input");
+  check(CapturePolicy.refusal(r,menu,1500)!=null,"legacy world-only requests still refuse menus");
+  check(CapturePolicy.refusal(new CapturePolicy.Request("gui","server","observer","connection",1,"actor","camera-op",1000,3000,512,512,"desktop"),s,1500)!=null,"no OS capture or arbitrary stage");
+  check(CapturePolicy.refusal(gui,new CapturePolicy.Scope("server","observer","other",1,"actor","actor","camera-op",true,true,true,true,false),1500)!=null,"menu cannot cross a reconnect");
+  check(CapturePolicy.refusal(gui,new CapturePolicy.Scope("server","observer","connection",1,"actor","other","camera-op",true,true,true,true,false),1500)!=null,"menu cannot borrow a different camera");
+  check(CapturePolicy.refusal(gui,new CapturePolicy.Scope("server","observer","connection",1,"actor","actor","camera-op",true,true,true,true,true),1500)!=null,"no transition frame disguised as final capture");
+  check(CapturePolicy.refusal(gui,menu,3000)!=null,"expired final capture does not execute");
   System.out.println("Capture policy checks: "+checks);
  }
 }

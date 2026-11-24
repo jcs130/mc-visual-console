@@ -32,6 +32,17 @@ async function fixture(t) {
 test('compression negotiation honors quality, explicit refusal, wildcards and legacy identity', () => {
   for (const [header, wanted] of [[undefined, 'identity'], ['gzip, br', 'br'], ['gzip;q=1, br;q=.5', 'gzip'], ['br;q=0, gzip', 'gzip'], ['*;q=0', null], ['br;q=bad, gzip;q=0, identity;q=0', null], ['*;q=0.8, identity;q=0', 'br']]) assert.equal(spectatorContentEncoding(header), wanted)
 })
+
+test('only an explicitly enabled relay advertises WebRTC; legacy pages keep their SSE contract', async t => {
+  const { site } = await fixture(t), build = 'a'.repeat(64) + ':' + 'b'.repeat(64)
+  const flag = '<meta name="native-viewer-transport" content="webrtc-v1">'
+  for (const mode of ['first', 'third', '3dview']) {
+    assert.ok(!site.page('/watch/role-a/', build, mode).toString().includes(flag))
+    assert.ok(!site.page('/watch/role-a/', build, mode, { webRtc: 'true' }).toString().includes(flag))
+    const rtc = site.page('/watch/role-a/', build, mode, { webRtc: true }).toString()
+    assert.ok(rtc.includes(flag)); assert.ok(rtc.includes(build))
+  }
+})
 test('trusted immutable scripts share one hash URL across roles; role pages, CSS and game resources stay scoped', async t => {
   const f = await fixture(t), build = 'a'.repeat(64) + ':' + 'b'.repeat(64)
   const a = f.site.page('/watch/role-a/', build, 'third').toString(), b = f.site.page('/watch/role-b/', build, 'third').toString()

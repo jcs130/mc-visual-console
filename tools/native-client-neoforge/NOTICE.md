@@ -1,0 +1,31 @@
+# Native spectator integration provenance
+
+The optional NeoForge native display artifact combines this repository's MIT
+camera/HUD policies with the spectator integration in this directory. This
+artifact is distributed under GPL-3.0-only, with the shared MIT notices retained.
+The independent `agent-mc-world` client platform and its SDK stay MIT.
+
+Protocol and native GUI hook references were checked against hpfxd/SpectatorPlus,
+tag `v1.2.1+1.21`, commit `ddc5aec185a59bfa8ecb6c12793a3262da6ee0d5`:
+https://github.com/hpfxd/SpectatorPlus/tree/ddc5aec185a59bfa8ecb6c12793a3262da6ee0d5
+Its upstream license is GPL-3.0, included as LICENSE-SPECTATORPLUS. The original
+Fabric mod JAR and its loader are not bundled or loaded here. The native adapter
+retains the UUID-bearing packet framing and original compressed item NBT, with
+additional connection/world/epoch and read-only controls.
+
+The 0.1.22 native display adds the upstream GameRenderer and ItemInHandRenderer
+first-person hooks, including original bow/crossbow selection, target arm/map
+identity, equip interpolation and view bobbing. Their original GPL rendering
+logic is retained with native UUID/entity/connection/world and fresh-state gates.
+Only renderer-owned cached item references are updated; no player inventory,
+server selection, gameplay input or network packet is written by these hooks.
+
+The optional 0.1.23 Iris integration targets the original HandRenderer display
+gate/material classification and delegates drawing to the original renderer in
+Iris's own active pass. The exact official 1.8.12 NeoForge artifact was inspected
+alongside the upstream 1.21.1 source:
+https://github.com/IrisShaders/Iris/blob/1.21.1/common/src/main/java/net/irisshaders/iris/pathways/HandRenderer.java
+No Iris code, binaries or shader-pack assets are redistributed by this adapter.
+
+Minecraft, NeoForge, Sodium, TLM and YSM are separate original installations with
+their own licenses; this artifact does not distribute their code or model assets.

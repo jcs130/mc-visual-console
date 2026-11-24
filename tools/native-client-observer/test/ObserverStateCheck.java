@@ -115,7 +115,11 @@ public final class ObserverStateCheck {
         check(bag.accept(camera,epoch,A,full,true,t+3),"full native inventory accepted");
         check(bag.view(s.current(t),t+4).full()&&bag.view(s.current(t),t+4).slots().get(9).item().equals("original-ore-17"),"native slot indexes retained");
         var frame=s.current(t);
-        check(bag.view(frame,t+ObserverState.STALE_NS+4)==null,"old item receipt not presented as fresh");
+        check(bag.view(frame,t+ObserverState.STALE_NS+4)==null,"stale target frame hides inventory even if its delta stream is active");
+        s.accept(bytes(d),t+ObserverState.STALE_NS+4);frame=s.current(t+ObserverState.STALE_NS+4);
+        check(bag.view(frame,t+ObserverState.STALE_NS+4).slots().get(0).item().equals("original-bow"),"unchanged hotbar survives with actual same-target heartbeat; protocol sends only changes");
+        check(!bag.view(frame,t+ObserverState.STALE_NS+4).full(),"closed or unknown full stream still expires independently of hotbar");
+        check(bag.view(frame,t+ObserverState.STALE_NS+4,true).full(),"actual owned full-inventory stream retains unchanged original items");
         bag.accept(camera,epoch,A,delta,false,t+ObserverState.STALE_NS+5);
         check(!bag.view(frame,t+ObserverState.STALE_NS+5).full(),"hotbar delta cannot refresh old bag");
         s.camera(new ObserverState.Camera(VIEWER,B,9,WORLD,true));s.accept(bytes(data(B,9)),t+10);

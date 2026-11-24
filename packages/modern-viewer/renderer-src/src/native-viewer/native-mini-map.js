@@ -19,8 +19,8 @@ export function createNativeMiniMap({document,renderer,scene,size=192,span=32}={
   const bytes=new Uint8Array(size*size*4),image=ctx?.createImageData(size,size)
   const camera=new THREE.OrthographicCamera(-span/2,span/2,span/2,-span/2,.1,1024)
   camera.up.set(0,0,-1)
-  let binding=null,last=-Infinity,disposed=false,generation=0,pending=null
-  const reset=()=>{generation++;binding=null;last=-Infinity;ctx?.clearRect(0,0,size,size);root.dataset.state='unavailable';note.textContent='等待本人世界数据'}
+  let binding=null,last=-Infinity,disposed=false,generation=0,pending=null,frame=null,latest=null
+  const reset=()=>{generation++;binding=null;last=-Infinity;frame=null;latest=null;ctx?.clearRect(0,0,size,size);root.dataset.state='unavailable';note.textContent='等待本人世界数据'}
   reset()
   function drawLine(points,color,position) {
     if(!points?.length)return
@@ -33,26 +33,37 @@ export function createNativeMiniMap({document,renderer,scene,size=192,span=32}={
     }
     ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke()
   }
+  function paintLatest() {
+    if(!frame||!latest)return
+    const {position,visual,playerUuid,entityId}=latest,at=frame.position
+    ctx.putImageData(image,0,0)
+    if(sameVisualSubject({playerUuid,entityId},visual?.subject)){drawLine(visual.trail,'#63b8ff',at);drawLine(visual.route?.points,'#4ee6b1',at)}
+    ctx.beginPath();ctx.arc(size/2+(position.x-at.x)*size/span,size/2+(position.z-at.z)*size/span,3,0,Math.PI*2);ctx.fillStyle='#ffffff';ctx.fill()
+    note.textContent=`${Math.round(position.x)}, ${Math.round(position.y)}, ${Math.round(position.z)} · ${span}×${span} 格 · 地形缓存，坐标实时`
+  }
   return {root,reset,
-    render({position,playerUuid,entityId,epoch,bounds,visual,now=performance.now()}={}) {
+    render({position,playerUuid,entityId,epoch,bounds,visual,terrainRevision,now=performance.now()}={}) {
       if(disposed || document.hidden || !ctx || !image || !visualPoint(position) || typeof playerUuid!=='string' || !Number.isSafeInteger(entityId)) {if(!disposed)reset();return false}
       const key=`${playerUuid.toLowerCase()}:${entityId}:${epoch}`
       if(key!==binding){reset();binding=key}
-      if(root.open===false || pending || now-last<250)return false
+      latest={position,playerUuid,entityId,visual}
+      if(root.open===false)return false
+      // Repaint real position/route over immutable pixels, rather than forcing
+      // four GPU readbacks per second even when the terrain has not changed.
+      paintLatest()
+      if(pending||now-last<750)return false
+      const moved=frame&&Math.hypot(position.x-frame.position.x,position.z-frame.position.z)>=span/16
+      if(frame&&!moved&&Math.abs(position.y-frame.position.y)<8&&terrainRevision===frame.terrainRevision&&now-last<5000)return false
       last=now
-      const revision=generation,at={...position},subject={playerUuid,entityId},savedVisual=visual&&{subject:visual.subject,
-        trail:visual.trail?.slice(-24),route:visual.route&&{points:visual.route.points?.slice(-128)}}
+      const revision=generation,at={...position}
       const valid=()=>!disposed&&generation===revision&&binding===key&&!document.hidden&&root.open!==false
       const paint=()=>{
         if(!valid())return
         for(let y=0;y<size;y++)image.data.set(bytes.subarray((size-1-y)*size*4,(size-y)*size*4),y*size*4)
-        ctx.putImageData(image,0,0)
-        if(sameVisualSubject(subject,savedVisual?.subject)){drawLine(savedVisual.trail,'#63b8ff',at);drawLine(savedVisual.route?.points,'#4ee6b1',at)}
-        ctx.beginPath();ctx.arc(size/2,size/2,3,0,Math.PI*2);ctx.fillStyle='#ffffff';ctx.fill()
-        note.textContent=`${Math.round(at.x)}, ${Math.round(at.y)}, ${Math.round(at.z)} · ${span}×${span} 格 · 已接收区域`
+        frame={position:at,terrainRevision};paintLatest()
         root.dataset.state='available';delete root.dataset.reason
       }
-      const failed=error=>{if(!valid())return;ctx.clearRect(0,0,size,size);root.dataset.state='unavailable';root.dataset.reason=String(error.message).slice(0,160);note.textContent='局部地形暂不可用'}
+      const failed=error=>{if(!valid())return;frame=null;ctx.clearRect(0,0,size,size);root.dataset.state='unavailable';root.dataset.reason=String(error.message).slice(0,160);note.textContent='局部地形暂不可用'}
       const previousTarget=renderer.getRenderTarget(),viewport=renderer.getViewport(new THREE.Vector4()),scissor=renderer.getScissor(new THREE.Vector4())
       const scissorTest=renderer.getScissorTest(),autoClear=renderer.autoClear
       try {

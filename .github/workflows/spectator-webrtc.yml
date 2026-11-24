@@ -1,0 +1,40 @@
+name: Spectator WebRTC
+on:
+  pull_request:
+    paths:
+      - 'packages/modern-viewer/renderer-src/host/spectator-*.mjs'
+      - 'packages/modern-viewer/renderer-src/src/native-viewer/native-rtc-*.js'
+      - 'packages/modern-viewer/renderer-src/src/native-viewer/native-event-stream.js'
+      - 'packages/modern-viewer/renderer-src/tools/test/spectator-*.mjs'
+      - 'packages/modern-viewer/renderer-src/tools/test/native-rtc-*.mjs'
+      - 'packages/modern-viewer/renderer-src/tools/test/helpers/spectator-webrtc-fixture.mjs'
+      - '.github/workflows/spectator-webrtc.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated wire-test dependencies
+        run: |
+          mkdir -p "$RUNNER_TEMP/rtc-backend"
+          echo '{"private":true}' > "$RUNNER_TEMP/rtc-backend/package.json"
+          npm install --prefix "$RUNNER_TEMP/rtc-backend" --ignore-scripts --no-audit --no-fund ws@8.21.3 werift@0.26.0
+          ln -s "$RUNNER_TEMP/rtc-backend/node_modules" node_modules
+      - name: Codec, authorization, fallback and real ICE/DTLS/SCTP
+        env:
+          MCVISUAL_RTC_TEST_BACKEND: ${{ runner.temp }}/rtc-backend/package.json
+        run: >-
+          node --test
+          packages/modern-viewer/renderer-src/tools/test/native-event-stream.test.mjs
+          packages/modern-viewer/renderer-src/tools/test/native-rtc-stream.test.mjs
+          packages/modern-viewer/renderer-src/tools/test/spectator-relay.test.mjs
+          packages/modern-viewer/renderer-src/tools/test/spectator-fanout.test.mjs
+          packages/modern-viewer/renderer-src/tools/test/spectator-static.test.mjs
+          packages/modern-viewer/renderer-src/tools/test/spectator-webrtc-wire.test.mjs

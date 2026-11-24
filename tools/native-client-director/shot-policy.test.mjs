@@ -96,3 +96,17 @@ test('orthographic receipt requires actual projection/profile and bound native f
  n.orthographic.targetUuid='other';assert.equal(nativeShotReceipt(n,r,200).kind,'waiting');n.orthographic.targetUuid='actor';
  n.orthographic.phase='blocked';n.projection='perspective';assert.equal(nativeShotReceipt(n,r,200).kind,'rejected');
 });
+
+test('a positively rebound actor with a world-stopped rig rejects that shot without completing or replaying it',()=>{
+ const{native:n,request:r}=fixture();Object.assign(n,{connected:true,authenticated:true,spectator:true,recordedAt:new Date(200).toISOString(),renderedAt:200,
+  offer:{id:r.id,lease:r.lease,accepted:true},cameraLife:{requestId:r.id,uuid:r.targetUuid,nativeWorldEpoch:1,dead:false,observedAttachedAt:200},drone:{active:false,reason:'native_world_replacement'}});
+ n.shotExecution.phase='stopped';const expected={kind:'rejected',reason:'native_rig_stopped_after_world_replacement'};
+ assert.deepEqual(nativeShotReceipt(n,r,200),expected);
+ for(const patch of[{manualDetachRequested:true},{connected:false},{authenticated:false},{spectator:false},{recordedAt:new Date(0).toISOString()},
+  {offer:{id:'foreign',lease:r.lease,accepted:true}},{cameraLife:{...n.cameraLife,requestId:'old'}},{cameraLife:{...n.cameraLife,nativeWorldEpoch:2}},
+  {drone:{active:false,reason:'manual_perspective'}},{drone:{active:true,reason:'native_world_replacement'}}]){
+  assert.notEqual(nativeShotReceipt({...n,...patch},r,200).reason,expected.reason,JSON.stringify(patch));
+ }
+ for(const phase of['paused','unknown','cancelled'])assert.notEqual(nativeShotReceipt({...n,phase},r,200).kind,'rejected');
+ assert.equal(n.shotExecution.phase,'stopped');assert.equal(r.id,'op');
+});

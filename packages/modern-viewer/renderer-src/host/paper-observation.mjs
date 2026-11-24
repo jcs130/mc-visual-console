@@ -3,6 +3,8 @@ import { prepareNativeWorldPreviewHost } from '../tools/native-world-preview-hos
 import { vanillaWireItem } from './vanilla-activity.mjs';
 import { paperObservedLocomotion } from './paper-observed-motion.mjs';
 import { projectNativeRpgSkills } from '../src/native-viewer/native-rpg-state.js';
+import { projectGameOperations } from '../src/native-viewer/native-game-operations.js';
+import { publicPersonalStashMenu } from './spectator-public.mjs';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const PAPER_OBSERVATION_MODE = 'paper_server_observation';
@@ -12,6 +14,22 @@ const PLAY = new Set(['map_chunk', 'unload_chunk', 'block_change', 'multi_block_
   'animation', 'hurt_animation', 'collect', 'entity_effect', 'remove_entity_effect', 'world_particles',
   'sound_effect', 'named_sound_effect', 'entity_sound_effect', 'stop_sound']);
 const point = value => value && ['x', 'y', 'z'].every(k => Number.isFinite(value[k]));
+
+function personalStashMenu(stash, uuid, scope, inventory) {
+  if(!stash||!Number.isInteger(stash.stateId)||stash.stateId<0||stash.stateId>32767)return null;
+  const menu=publicPersonalStashMenu({playerUuid:uuid,source:'paper_personal_stash',menuType:'minecraft:generic_9x6',
+    stashPage:stash.page,windowId:stash.windowId},uuid);
+  if(!menu||scope!=='owner'||!Array.isArray(stash.slots)||stash.slots.length>54)return menu;
+  for(const row of stash.slots){
+    const {slot,item}=row??{};
+    if(Number.isInteger(slot)&&slot>=0&&slot<54&&/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(item?.name??'')&&
+      Number.isSafeInteger(item.count)&&item.count>0&&typeof item.snbt==='string'&&item.snbt.length<=16384){
+      menu.slots[slot].item={name:item.name,count:item.count,snbt:item.snbt};
+    }
+  }
+  for(const row of inventory??[])if(row.slot>=9&&row.slot<=44)menu.slots[row.slot+45].item=row.item;
+  return {...menu,stateId:stash.stateId,contentsHidden:false,contentsTruncated:stash.truncated===true};
+}
 
 /** An observation facade, NOT a Mineflayer client. All pose and packet input
  * comes from the authenticated Paper source. It has no socket/login/actions.
@@ -29,7 +47,11 @@ export class PaperObservedPlayer extends EventEmitter {
     this.events = new EventEmitter(); this.generation = null; this.wireSequence = 0; this.sequence = 0; this.closed = false;
     this.inventorySignature=null;this.inventoryRows=null;this.lastPresentationAt=-Infinity;
     this.swingSequence=0;this.attackProgress=0;this.swing=null;
-    this.resolveItemStack = wire => { const item = vanillaWireItem(wire, registry); return item?.snbt ? { available: true, item } : { available: false, reason: 'PAPER_ITEM_COMPONENTS_UNAVAILABLE' }; };
+    this.resolveItemStack = wire => {
+      const item = vanillaWireItem(wire, registry);
+      return item?.snbt ? { available: true, source: 'same_player_vanilla_item_registry', minecraftVersion: '1.21.1', registryId: wire.itemId, item }
+        : { available: false, reason: 'PAPER_ITEM_COMPONENTS_UNAVAILABLE' };
+    };
     this.resolveEffect = id => { const name = registry.effects?.[id]?.name; return name ? 'minecraft:' + name.replace(/[A-Z]/g,(c,i)=>(i?'_':'')+c.toLowerCase()) : null; };
   }
   feed(name, params) { this.events.emit('packet', { name, params, sequence: ++this.sequence, registrySha256: this.registrySha256 }); }
@@ -98,7 +120,9 @@ export class PaperObservedPlayer extends EventEmitter {
     // Keep the existing low-frequency HUD/inventory path; only actual changes
     // bypass it. Faster pose delivery must not resend 46 SNBT slots at 20Hz.
     const rpgChanged=JSON.stringify(p.viewerState??null)!==JSON.stringify(previous?.viewerState??null);
-    const urgent=changed||inventoryChanged||rpgChanged||['selectedHotbarSlot','health','maxHealth','armor','food','airSupply','maxAirSupply','experienceLevel','experienceProgress']
+    const operationsChanged=JSON.stringify(p.gameOperations??[])!==JSON.stringify(previous?.gameOperations??[]);
+    const stashChanged=JSON.stringify(p.personalStash??null)!==JSON.stringify(previous?.personalStash??null);
+    const urgent=changed||inventoryChanged||rpgChanged||operationsChanged||stashChanged||['selectedHotbarSlot','health','maxHealth','armor','food','airSupply','maxAirSupply','experienceLevel','experienceProgress']
       .some(key=>p[key]!==previous?.[key]);
     // Motion/hand state already has its own 20 Hz lane. Repeating 46 SNBT slots
     // for every movement tick wastes bandwidth for every spectator.
@@ -136,7 +160,9 @@ export class PaperObservedPlayer extends EventEmitter {
     return { schemaVersion: 1, playerUuid: this.uuid, profile: 'vanilla_1.21.1', self,
       inventory: this.scope === 'owner' && rows ? { playerUuid: this.uuid, windowId: 0, selectedHotbarSlot: p.selectedHotbarSlot,
         inventoryStart: 9, hotbarStart: 36, offhandSlot: 45, slots: rows, carried: null } : null,
-      nativeMenu: null, skills: projectNativeRpgSkills(p.viewerState, this.uuid),
+      nativeMenu: personalStashMenu(p.personalStash,this.uuid,this.scope,rows), skills: projectNativeRpgSkills(p.viewerState, this.uuid),
+      gameOperations: projectGameOperations(p.gameOperations),
+      nativeMaids: p.nativeMaids ?? null,
       renderRegistries: p.renderRegistries?.source === 'server_builtin_registries' ? p.renderRegistries : null,
       nativeState: { available: true, source: PAPER_OBSERVATION_MODE } };
   }
