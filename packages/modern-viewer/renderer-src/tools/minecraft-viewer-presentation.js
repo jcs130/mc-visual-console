@@ -134,7 +134,29 @@ function cortiPresentationScoreboard(event, source = 'scoreboardState') {
     cortiScoreboardRoot.append(row);
   }
 }
+// Tab-list header/footer (serverDisplayState.tabHeader/tabFooter) as a small read-only panel.
+let cortiTabRoot = null, cortiTabSignature = '';
+function cortiPresentationTab(state) {
+  const header = typeof state?.tabHeader === 'string' ? state.tabHeader : '';
+  const footer = typeof state?.tabFooter === 'string' ? state.tabFooter : '';
+  const signature = header + '\u0000' + footer;
+  if (signature === cortiTabSignature) return;
+  cortiTabSignature = signature;
+  if (!cortiTabRoot) {
+    cortiTabRoot = document.createElement('aside');
+    cortiTabRoot.id = 'corti-tab-list';
+    cortiTabRoot.setAttribute('aria-label', '玩家列表页眉页脚');
+    cortiTabRoot.style.cssText = 'position:fixed;z-index:6;top:64px;left:50%;transform:translateX(-50%);max-width:min(360px,34vw);padding:4px 9px;opacity:.86;border:1px solid var(--mc-viewer-ui-border,#b0ccb5a8);border-radius:7px;background:var(--mc-viewer-ui-bg,#11242cde);color:var(--mc-viewer-ui-text,#f3f5f6);font:11px/1.4 system-ui;white-space:pre-line;text-align:center;pointer-events:none;overflow:hidden;max-height:22vh';
+    document.body.append(cortiTabRoot);
+  }
+  const show = text => globalThis.cortiHudText ? globalThis.cortiHudText(text, { limit: 240, keepNewlines: true }) : String(text).slice(0, 240);
+  const lines = [header, footer].filter(Boolean).map(show).filter(Boolean);
+  cortiTabRoot.textContent = lines.join('\n────\n');
+  cortiTabRoot.hidden = !lines.length;
+  cortiTabRoot.style.display = lines.length ? '' : 'none';
+}
 function cortiPresentationDisplayState(state) {
+  try { cortiPresentationTab(state); } catch { /* HUD panel is best-effort */ }
   const sidebar = Array.isArray(state?.scoreboards) ? state.scoreboards.find(board => board?.slot === 'sidebar') : null;
   if (!sidebar || !Array.isArray(sidebar.rows)) return;
   cortiSidebarFromDisplayAt = Date.now();
