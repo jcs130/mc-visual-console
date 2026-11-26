@@ -17,9 +17,6 @@ importers:
       minecraft-data:
         specifier: ^3.116.0
         version: 3.116.0
-      mineflayer:
-        specifier: '>=4.37.0'
-        version: 4.39.0
       prismarine-block:
         specifier: 1.23.0
         version: 1.23.0(prismarine-registry@1.12.0)
@@ -51,6 +48,9 @@ importers:
       esbuild:
         specifier: ^0.24.0
         version: 0.24.0
+      mineflayer:
+        specifier: 4.39.0
+        version: 4.39.0
       prismarine-item:
         specifier: 1.18.0
         version: 1.18.0
@@ -1619,10 +1619,12 @@ packages:
 
   uuid@10.0.0:
     resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@8.3.0:
     resolution: {integrity: sha512-fX6Z5o4m6XsXBdli9g7DtWgAx+osMsRRZFKma1mIUsLCz6vRvv+pz5VNbyu9UEDzpMWulZfvpgb/cmDXVulYFQ==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   vary@1.1.2:
@@ -2723,7 +2725,7 @@ snapshots:
       minecraft-protocol: 1.68.0
       mojangson: 2.1.0
       prismarine-biome: 1.4.0(prismarine-registry@1.12.0)
-      prismarine-block: 1.23.0
+      prismarine-block: 1.23.0(prismarine-registry@1.12.0)
       prismarine-chat: 1.13.0
       prismarine-chunk: 1.41.0
       prismarine-entity: 2.6.0
@@ -2849,17 +2851,6 @@ snapshots:
   prismarine-biome@1.4.0(prismarine-registry@1.12.0):
     dependencies:
       prismarine-registry: 1.12.0
-
-  prismarine-block@1.23.0:
-    dependencies:
-      minecraft-data: 3.116.0
-      prismarine-biome: 1.4.0(prismarine-registry@1.12.0)
-      prismarine-chat: 1.13.0
-      prismarine-item: 1.18.0
-      prismarine-nbt: 2.8.0
-      prismarine-registry: 1.12.0
-    transitivePeerDependencies:
-      - supports-color
 
   prismarine-block@1.23.0(prismarine-registry@1.12.0):
     dependencies:

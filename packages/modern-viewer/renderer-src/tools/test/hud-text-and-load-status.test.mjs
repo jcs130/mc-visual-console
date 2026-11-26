@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { readFile as diskReadFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+const readFile = async (...args) => (await diskReadFile(...args)).replace(/\r\n/g, '\n');
 const src = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
 const ctx = {}; ctx.globalThis = ctx;
 vm.runInNewContext(await readFile(`${src}/tools/minecraft-viewer-hud-text.js`, 'utf8'), ctx);
 const { cortiHudText, cortiHudTextInfo } = ctx;
-const { chunkDiagnosticsEnabled, viewerLoadStatus, setChunkDiagnosticsPreference, CHUNK_DEBUG_STORAGE_KEY } = await import(`${src}/src/modern-viewer/load-status.js`);
+const { chunkDiagnosticsEnabled, viewerLoadStatus, setChunkDiagnosticsPreference, CHUNK_DEBUG_STORAGE_KEY } = await import(pathToFileURL(`${src}/src/modern-viewer/load-status.js`).href);
 const memory = () => { const m = new Map(); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
 
 // Shape of the live CustomNameplates-style boss bar (codepoint shape sampled from a live server on 2026-11-24; text replaced).
@@ -76,7 +77,7 @@ test('default status line is one short Chinese line with a stable grid denominat
 });
 
 test('nametag text handed to the renderer is cleaned; cache identity untouched; empty hides the tag', async () => {
-  const { rendererNameTagEntity } = await import(`${src}/src/modern-viewer/nametag-text.js`);
+  const { rendererNameTagEntity } = await import(pathToFileURL(`${src}/src/modern-viewer/nametag-text.js`).href);
   const real = { id: 1, username: 'nearby_player42' };
   assert.equal(rendererNameTagEntity(real, cortiHudText), real);
   const glyph = { id: 2, username: '\uE001§a玩家\uF801' };
@@ -101,7 +102,7 @@ test('debug panel keeps a margin, wraps long paths and summarises animation prog
 test('client wiring: diagnostics gated, status installed, HUD handlers sanitize', async () => {
   const client = await readFile(`${src}/src/modern-viewer/client.js`, 'utf8');
   assert.match(client, /let showChunkDiagnostics = chunkDiagnosticsEnabled\(location\.search, sceneStorage\);/);
-  assert.match(client, /function installChunkDiagnostics\(\) \{\n  if \(!showChunkDiagnostics \|\| chunkDiagnosticsElement\) return;/);
+  assert.match(client, /function installChunkDiagnostics\(\) \{\r?\n  if \(!showChunkDiagnostics \|\| chunkDiagnosticsElement\) return;/);
   assert.doesNotMatch(client, /queryValue\("debugChunks"\)/);
   assert.match(client, /installLoadStatus\(\);/);
   const events = await readFile(`${src}/tools/minecraft-viewer-events.js`, 'utf8');

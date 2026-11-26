@@ -21,6 +21,7 @@
     "vec3": "0.1.10"
   },
   "devDependencies": {
+    "canvas": "3.2.3",
     "esbuild": "0.28.2",
     "esbuild-plugin-polyfill-node": "0.3.0",
     "prismarine-block": "1.23.0"
