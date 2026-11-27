@@ -70,6 +70,11 @@ const outputRoot = path.resolve(outputArg)
 const renderAssets = path.join(outputRoot, 'render-assets')
 const sourceManifest = JSON.parse(await readFile(path.join(outputRoot, 'public', 'asset-source.json'), 'utf8'))
 const version = sourceManifest.minecraftVersion
+const animationManifest = await readFile(path.join(outputRoot, 'public', 'atlas-animations.json'), 'utf8')
+  .then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return null; throw error })
+if (animationManifest && (animationManifest.minecraftVersion !== version || animationManifest.schemaVersion !== 1)) {
+  throw Error('VIEWER_ATLAS_ANIMATION_VERSION_MISMATCH')
+}
 const armorTextures = await originalArmorTextures(outputRoot,version)
 assertViewerVersion(version)
 await verifyOriginalWorldBannerTextures(outputRoot,version)
@@ -267,6 +272,7 @@ await mkdir(path.join(outputRoot, 'public'), { recursive: true })
 const buildResult = await build({
   entryPoints: [clientFile], bundle: true, define: {
     'process.env.NODE_ENV': '"production"',
+    'globalThis.bundledAtlasAnimationManifest': JSON.stringify(animationManifest),
     'globalThis.itemAppearancePackAvailable': JSON.stringify(itemAppearances !== null),
   },
   format: 'esm', legalComments: 'none', loader: { '.png': 'dataurl' }, minify: true,
@@ -305,7 +311,17 @@ const buildResult = await build({
           loader: 'js', resolveDir: path.dirname(file) }
       })
       context.onLoad({ filter: /[\\/]minecraft-renderer[\\/]dist[\\/]minecraft-renderer\.js$/ }, async ({ path: file }) => {
-        const original = patchViewerQueueGate(await readFile(file, 'utf8'))
+        let original = patchViewerQueueGate(await readFile(file, 'utf8'))
+        // These are the legacy geometry's default texture keys. Leave explicit server overrides intact.
+        if (version === '1.21.11') {
+          for (const animal of ['pig', 'cow']) {
+            const file = `entity/${animal}/temperate_${animal}.png`
+            await stat(path.join(outputRoot, 'public', 'textures', version, file))
+            const old = `default:"textures/entity/${animal}/${animal}"`
+            if (!original.includes(old)) throw Error('VIEWER_DEFAULT_ANIMAL_TEXTURE_ANCHOR:' + animal)
+            original = original.replace(old, `default:"/textures/${version}/${file}"`)
+          }
+        }
         const anchor = 'for(let _ of t.bones)_.parent&&c[_.parent]?c[_.parent].add(c[_.name]):p.push(c[_.name]);'
         const glintAnchor = 'this.lastUpdate&&s-this.lastUpdate>50&&this.replaceItemModel(this.lastHeldItem)'
         const equipmentAnchor = 'this.applyEntityRenderHints(i,e),this.updateEntityEquipment(i,e);'

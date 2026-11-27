@@ -7,7 +7,7 @@ test('Mineflayer arrows use original Java quads and matching version texture, no
   const paths = [], textureLoader = { load(path, done) {
     paths.push(path); const texture = new THREE.Texture({ width: 32, height: 32 }); done(texture); return texture;
   } };
-  for (const version of ['1.20.6', '1.21.1']) for (const name of ['arrow', 'spectral_arrow', 'tipped_arrow']) {
+  for (const version of ['1.20.6', '1.21.1', '1.21.11']) for (const name of ['arrow', 'spectral_arrow', 'tipped_arrow']) {
     const root = createObservedArrowVisual(name, {}, { version, textureLoader });
     assert.equal(root.visible, true);
     const meshes = []; root.traverse(o => { if (o.isMesh) meshes.push(o); });
@@ -20,7 +20,7 @@ test('Mineflayer arrows use original Java quads and matching version texture, no
     assert.equal(meshes[0].material.map.flipY, true);
     for (const mesh of meshes) mesh.geometry.dispose(); meshes[0].material.dispose();
   }
-  assert.deepEqual(paths, ['1.20.6', '1.21.1'].flatMap(v => ['arrow', 'spectral_arrow', 'tipped_arrow'].map(n => `/textures/${v}/entity/projectiles/${n}.png`)));
+  assert.deepEqual(paths, ['1.20.6', '1.21.1', '1.21.11'].flatMap(v => ['arrow', 'spectral_arrow', 'tipped_arrow'].map(n => `/textures/${v}/entity/projectiles/${n}.png`)));
   const late = createObservedArrowVisual('arrow', {}, { version: '1.21.1', textureLoader });
   const before = late.userData.arrowTexture;
   refreshObservedArrowVisual(late, 'arrow', { metadata: { 10: 0x123456 } }, '1.21.1');

@@ -14,7 +14,7 @@ export function observedArrowVariant(name, entity) {
 }
 
 function textureEntry(version, variant, loader = new THREE.TextureLoader()) {
-  if (!['1.20.6', '1.21.1'].includes(version)) return null;
+  if (!['1.20.6', '1.21.1', '1.21.11'].includes(version)) return null;
   const key = `${version}/${variant}`;
   if (!textures.has(key)) {
     const entry = { ready: false, failed: false, texture: null };

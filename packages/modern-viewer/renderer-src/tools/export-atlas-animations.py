@@ -10,6 +10,8 @@ with zipfile.ZipFile(jar)as z:
   if 'animation'not in metadata:continue
   image=z.read(name[:-7]);w,h=Image.open(io.BytesIO(image)).size;rel=name[len('assets/minecraft/textures/'):-11];targets=[]
   for kind,atlas in atlases.items():
+   # The item atlas is built only from item/*. A matching block basename is a different sprite.
+   if kind == 'items' and not rel.startswith('item/'): continue
    key=rel.split('/',1)[1]if rel.startswith('block/')or(kind=='items'and rel.startswith('item/'))else rel
    rect=atlas['textures'].get(key)
    if rect:targets.append({'atlas':kind,'x':round(rect['u']*atlas['width']),'y':round(rect['v']*atlas['height']),'width':round(rect['su']*atlas['width']),'height':round(rect['sv']*atlas['height'])})
