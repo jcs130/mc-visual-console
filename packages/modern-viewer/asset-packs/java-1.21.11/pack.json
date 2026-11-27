@@ -13,12 +13,16 @@
       "exporter": "packages/modern-viewer/renderer-src/tools/export-text-display-font.py"
     }
   },
-  "fileCount": 6176,
-  "bytes": 26317506,
+  "fileCount": 6177,
+  "bytes": 26337993,
   "files": {
     "public/asset-source.json": {
       "sha256": "2538abc08ee77089b93edb7581d5c45b7a040bae2f2007a793cfe5af75a6edde",
       "bytes": 647421
+    },
+    "public/atlas-animations.json": {
+      "sha256": "d1633dad85e0dc6327f05f3f75b4f704256b7447d9ee2119e63031cb9e0c6608",
+      "bytes": 20487
     },
     "public/blocksStates/1.21.11.json": {
       "sha256": "dccb08851f40ccd6008f3c0d46215f0606860c3f5bfb1f91c945288183364b44",

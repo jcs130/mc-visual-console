@@ -1,6 +1,9 @@
 /** Read-only projectile and hostile-mob motion layered over the 1.20.6 scene. */
 import { createObservedArrowVisual, isObservedArrow, observedArrowDirection, preloadObservedArrowTextures, refreshObservedArrowVisual } from './observed-arrows.js';
 import {ObservedProjectileLayer,isObservedProjectile,preloadObservedProjectileTextures} from './observed-projectiles.js';
+import { updateBatVisual } from './bat-motion.js';
+import { TorchEffects } from './torch-effects.js';
+let cortiTorches;
 let cortiObservedProjectiles=null;
 const cortiProjectileModels = new Map();
 let cortiArrowTexturesRequested = false;
@@ -12,8 +15,7 @@ const cortiHostiles = new Set(['zombie', 'husk', 'drowned', 'skeleton', 'stray',
   'zombie_villager', 'breeze', 'shulker', 'warden', 'hoglin', 'zoglin', 'piglin',
   'vex', 'endermite']);
 const cortiProjectileNames = new Set(['arrow','spectral_arrow','tipped_arrow']);
-const cortiArcherWeapons = { skeleton: 'bow', stray: 'bow', bogged: 'bow', pillager: 'crossbow' };
-const cortiRangedMobNames = new Set([...Object.keys(cortiArcherWeapons), 'piglin']);
+const cortiRangedMobNames = new Set(['skeleton', 'stray', 'bogged', 'pillager', 'piglin']);
 const cortiBabyBipeds = new Set(['zombie', 'husk', 'drowned', 'zombie_villager', 'zombified_piglin', 'piglin']);
 const cortiBowTextures = new Map();
 let cortiOwnEquipmentSignature = null;
@@ -64,10 +66,9 @@ function cortiMobMetadata(entity, index) {
   return Array.isArray(metadata) ? metadata[index] : metadata?.[index];
 }
 
-function cortiMobWeapon(entity, name) {
+function cortiMobWeapon(entity) {
   const equipped = String(entity?.equipment?.[0]?.name || '').replace(/^minecraft:/, '');
-  if (equipped) return equipped;
-  return cortiArcherWeapons[name] || (name === 'vindicator' ? 'iron_axe' : '');
+  return equipped === 'air' ? '' : equipped;
 }
 
 let cortiFireMaterial = null;
@@ -79,7 +80,7 @@ function cortiSyncEntityFire(scene, entity, now) {
   const three = globalThis.THREE;
   if (!fire) {
     if (!cortiFireMaterial) {
-      const texture = new three.TextureLoader().load('/textures/1.20.6/block/fire_0.png');
+      const texture = new three.TextureLoader().load(`/textures/${cortiContentMinecraftVersion}/block/fire_0.png`);
       texture.magFilter = three.NearestFilter;
       texture.minFilter = three.NearestFilter;
       texture.repeat.set(1, 1 / 32);
@@ -171,7 +172,7 @@ function cortiBowTexture(name) {
   if (cortiBowTextures.has(name)) return cortiBowTextures.get(name);
   const three = globalThis.THREE;
   const file = name === 'crossbow' ? 'crossbow_standby' : name;
-  const texture = new three.TextureLoader().load(`/textures/1.20.6/item/${file}.png`);
+  const texture = new three.TextureLoader().load(`/textures/${cortiContentMinecraftVersion}/item/${file}.png`);
   texture.magFilter = three.NearestFilter;
   texture.minFilter = three.NearestFilter;
   texture.colorSpace = three.SRGBColorSpace;
@@ -191,8 +192,8 @@ function cortiItemUnits(parent) {
 // the shoulder. Keep its actual 1.20.6 item model, but move the group to the
 // wrist of the arm that owns the equipment slot. The model's parent may be
 // recreated whenever an equipment packet arrives, so this runs each frame.
-function cortiAttachMobNativeItem(model, motion, slot, side, gripScale = 1) {
-  const item = model.getObjectByName(slot === 0 ? 'custom_item_left' : 'custom_item_right');
+function cortiAttachMobNativeItem(model, motion, side, gripScale = 1) {
+  const item = model.getObjectByName('custom_item_' + side);
   const arm = motion.parts.get(`${side}arm`)?.[0]?.object;
   if (!item || !arm) return item;
   if (item.parent !== arm) arm.add(item);
@@ -202,16 +203,16 @@ function cortiAttachMobNativeItem(model, motion, slot, side, gripScale = 1) {
   return item;
 }
 
-function cortiRangedVisual(model, motion, weapon) {
+function cortiRangedVisual(model, motion, weapon, side) {
   const three = globalThis.THREE;
-  if (motion.ranged?.weapon === weapon) {
+  if (motion.ranged?.weapon === weapon && motion.ranged.side === side) {
     motion.ranged.group.visible = true;
     return motion.ranged;
   }
   if (motion.ranged) {
     motion.ranged.group.removeFromParent();
     motion.ranged.item.geometry.dispose();
-    motion.ranged.arrow.traverse(child => {
+    motion.ranged.arrow?.traverse(child => {
       child.geometry?.dispose?.();
       child.material?.dispose?.();
     });
@@ -232,10 +233,12 @@ function cortiRangedVisual(model, motion, weapon) {
   group.add(item);
   group.add(reverse);
   const arrow = cortiProjectileModel('arrow');
-  arrow.rotation.x = -Math.PI / 2;
-  arrow.position.set(0, -.04, -.18);
-  group.add(arrow);
-  const arm = motion.parts.get('rightarm')?.[0]?.object ?? motion.parts.get('leftarm')?.[0]?.object;
+  if (arrow) {
+    arrow.rotation.x = -Math.PI / 2;
+    arrow.position.set(0, -.04, -.18);
+    group.add(arrow);
+  }
+  const arm = motion.parts.get(side + 'arm')?.[0]?.object;
   const parent = arm ?? model;
   const units = cortiItemUnits(parent);
   parent.add(group);
@@ -243,7 +246,7 @@ function cortiRangedVisual(model, motion, weapon) {
   group.position.set((arm ? -.02 : -.40) * units, (arm ? -.59 : 1.20) * units,
     (arm ? -.10 : -.34) * units);
   group.rotation.set(.07, Math.PI, -.20);
-  motion.ranged = { weapon, group, item, reverse, material, arrow, textureName: weapon,
+  motion.ranged = { weapon, side, group, item, reverse, material, arrow, textureName: weapon,
     armAttached: Boolean(arm), units };
   return motion.ranged;
 }
@@ -266,10 +269,9 @@ function cortiMeleeVisual(model, motion, weapon, gripScale = 1) {
   const three = globalThis.THREE;
   const group = new three.Group();
   group.name = 'corti-mob-held-weapon';
-  const material = weapon === 'trident' ? null : new three.MeshBasicMaterial({ map: cortiBowTexture(weapon),
+  const material = new three.MeshBasicMaterial({ map: cortiBowTexture(weapon),
     transparent: true, alphaTest: .08, side: three.DoubleSide, depthWrite: true });
-  const item = weapon === 'trident' ? cortiProjectileModel('trident')
-    : new three.Mesh(new three.PlaneGeometry(.52, .72), material);
+  const item = new three.Mesh(new three.PlaneGeometry(.52, .72), material);
   if (!item) return;
   if (weapon === 'trident') item.name = 'corti-held-trident';
   group.add(item);
@@ -294,7 +296,7 @@ function cortiMobProjectileLaunch(projectile, now) {
     const name = String(entity.name || '').replace(/^minecraft:/, '');
     if (isFireball ? !['blaze', 'ghast'].includes(name) : isPotion ? name !== 'witch' :
         !cortiRangedMobNames.has(name) ||
-        !['bow', 'crossbow'].includes(cortiMobWeapon(entity, name))) continue;
+        !['bow', 'crossbow'].includes(cortiMobWeapon(entity))) continue;
     const spot = entity.pos || entity.position;
     if (!spot) continue;
     const distance = Math.hypot(pos.x - spot.x, pos.y - spot.y - 1.3, pos.z - spot.z);
@@ -314,6 +316,10 @@ function cortiAnimateWorldEntities(now) {
   const three = globalThis.THREE;
   const sceneEntities = globalThis.world?.entities?.entities;
   if (three && sceneEntities) {
+    if (perceptionGrid && globalThis.world.camera) {
+      cortiTorches ??= new TorchEffects(cortiContentMinecraftVersion);
+      cortiTorches.update(globalThis.world, perceptionGrid, globalThis.mcData, now, sceneSettings, activeScenePolicy);
+    }
     cortiSyncObservedProjectiles();
     if (!cortiArrowTexturesRequested) {
       preloadObservedArrowTextures(cortiContentMinecraftVersion);
@@ -325,7 +331,7 @@ function cortiAnimateWorldEntities(now) {
       const scene = sceneEntities[id];
       if (!scene) continue;
       if(isObservedProjectile(name)&&!isObservedArrow(name)){
-        const native=scene.children.find(child=>child.name==='mesh');if(native)native.visible=false;continue;
+        const native=scene.children.find(child=>child.name==='mesh');if(native)native.visible=!cortiObservedProjectiles?.records.get(String(id))?.actor?.root.visible && !(Number(cortiMobMetadata(entity, 0)) & 32);continue;
       }
       cortiSyncEntityFire(scene, entity, now);
       if (name === 'player') cortiSyncAvatarShield(entity, entity.equipment?.[1]);
@@ -341,7 +347,7 @@ function cortiAnimateWorldEntities(now) {
           cortiProjectileModels.set(id, record);
           if (name !== 'trident') cortiMobProjectileLaunch(entity, now);
         }
-        if (record.native) record.native.visible = false;
+
         const pos = entity.pos || entity.position;
         const dir = observedArrowDirection(entity, record.lastPos, record.lastDir);
         if (pos) record.lastPos = { x: pos.x, y: pos.y, z: pos.z };
@@ -350,11 +356,16 @@ function cortiAnimateWorldEntities(now) {
           refreshObservedArrowVisual(record.model, name, entity, cortiContentMinecraftVersion);
           record.model.visible &&= Boolean(record.lastDir);
         }
+        if (record.native) record.native.visible = !record.model.visible && !(Number(cortiMobMetadata(entity, 0)) & 32);
         if (record.lastDir) {
           const parentQ = scene.getWorldQuaternion(new three.Quaternion());
           const aim = new three.Quaternion().setFromUnitVectors(new three.Vector3(0, 1, 0), record.lastDir);
           record.model.quaternion.copy(parentQ.invert().multiply(aim));
         }
+        continue;
+      }
+      if (name === 'bat') {
+        updateBatVisual(scene, entity, now, cortiContentMinecraftVersion, globalThis.mcData);
         continue;
       }
       if (!cortiHostiles.has(name)) continue;
@@ -499,13 +510,14 @@ function cortiAnimateWorldEntities(now) {
         cortiPoseMobPart(motion.parts, 'leftarm', .80 - .12 * Math.sin(now * .012));
         model.rotation.x -= .06;
       }
-      const weapon = cortiMobWeapon(entity, name);
+      const weapon = cortiMobWeapon(entity);
       const gripScale = cortiMobGripScale(entity, name);
-      const nativeMain = cortiAttachMobNativeItem(model, motion, 0, 'right', gripScale);
-      const nativeOff = cortiAttachMobNativeItem(model, motion, 1, 'left', gripScale);
+      const side = entity.mainArm === 'left' || (entity.mainArm !== 'right' && (Number(cortiMobMetadata(entity, 15)) & 2)) ? 'left' : 'right';
+      const offSide = side === 'right' ? 'left' : 'right';
+      const nativeMain = cortiAttachMobNativeItem(model, motion, side, gripScale);
+      const nativeOff = cortiAttachMobNativeItem(model, motion, offSide, gripScale);
       if (cortiRangedMobNames.has(name) && (weapon === 'bow' || weapon === 'crossbow')) {
-        const ranged = cortiRangedVisual(model, motion, weapon);
-        if (nativeMain) nativeMain.visible = false;
+        const ranged = cortiRangedVisual(model, motion, weapon, side);
         if (nativeOff) nativeOff.visible = true;
         const flags = Number(cortiMobMetadata(entity, 15)) || 0;
         const aiming = weapon === 'crossbow'
@@ -524,23 +536,25 @@ function cortiAnimateWorldEntities(now) {
           ranged.material.needsUpdate = true;
           ranged.textureName = textureName;
         }
+        ranged.group.visible = Boolean(ranged.material.map?.image);
+        if (nativeMain) nativeMain.visible = !ranged.group.visible;
         ranged.group.position.set((ranged.armAttached ? -.02 + .05 * charge : -.40 + .17 * charge) * ranged.units,
           (ranged.armAttached ? -.59 + .07 * charge : 1.20 + .20 * charge) * ranged.units,
           (ranged.armAttached ? -.10 - .11 * charge : -.34 - .23 * charge) * ranged.units);
         ranged.group.rotation.set(.07, Math.PI, -.20 - .20 * charge);
-        ranged.arrow.visible = aiming && charge > .20 && releaseAge >= 320;
-        cortiPoseMobPart(motion.parts, 'rightarm', .38 + .75 * charge,
+        if (ranged.arrow) ranged.arrow.visible = ranged.arrow.userData.arrowTexture?.ready && aiming && charge > .20 && releaseAge >= 320;
+        cortiPoseMobPart(motion.parts, side + 'arm', .38 + .75 * charge,
           -.12 - .24 * charge, -.12);
-        cortiPoseMobPart(motion.parts, 'leftarm', .18 + 1.00 * charge,
+        cortiPoseMobPart(motion.parts, offSide + 'arm', .18 + 1.00 * charge,
           .10 + .28 * charge, .13);
       } else if (motion.ranged) {
         motion.ranged.group.visible = false;
       }
       if (nativeMain && !['bow', 'crossbow', 'trident'].includes(weapon)) nativeMain.visible = name !== 'vindicator';
-      if (nativeMain && weapon === 'trident') nativeMain.visible = false;
+      if (nativeMain && weapon === 'trident') nativeMain.visible = true;
       if (nativeOff && !['bow', 'crossbow'].includes(weapon)) nativeOff.visible = true;
       if (weapon && !['bow', 'crossbow'].includes(weapon) &&
-          (!nativeMain || weapon === 'trident' || name === 'vindicator')) {
+          (!nativeMain || name === 'vindicator')) {
         cortiMeleeVisual(model, motion, weapon, gripScale);
       } else if (motion.held) {
         motion.held.group.visible = false;

@@ -13,6 +13,7 @@ import os
 import re
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import time
 import zipfile
@@ -249,6 +250,8 @@ def extract_inputs(jar_path: str, cache: str):
     with open(os.path.join(render_dir, 'itemDefinitions.json'), 'w', encoding='utf-8') as out:
         json.dump({'latest': item_definitions}, out, separators=(',', ':'))
     derived_count = make_render_atlases(jar_path, render_dir)
+    subprocess.run([sys.executable, str(Path(__file__).with_name('export-atlas-animations.py')),
+                    jar_path, str(Path(PUBLIC).parent)], check=True)
     icon_count = export_icons(jar_path, PUBLIC)
     print(f'客户端资源：{len(states)} 个方块状态 / {len(models)} 个模型 / {texture_count} 张纹理 / {icon_count} 个物品图标')
     return texture_count, derived_count, icon_count
