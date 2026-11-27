@@ -1,7 +1,7 @@
 export interface SceneSubjectCandidate {name:string;kind:string;at:number;score?:number;priority?:number;waitingMs?:number;lastShownAt?:number|null;airtimeMs?:number;visits?:number;motionState?:'unknown'|'stationary'|'recent_sample';positionAt?:number|null;protected?:boolean;current?:boolean;dwellMs?:number}
 export interface SceneChoice extends SceneSubjectCandidate {view:string;reason?:string;reframe?:boolean;forceSubjectReview?:boolean;subjectPool?:string[]}
 export class SceneSelector {
- constructor(names:string[],options?:{minDwellMs?:number;maxDwellMs?:number;cinematicFraming?:boolean});
+ constructor(names:string[],options?:{minDwellMs?:number;maxDwellMs?:number;cinematicFraming?:boolean;idleSubjectRotation?:boolean});
  readonly minDwellMs:number;readonly maxDwellMs:number;
  setAvailable(names:string[]|null):void;
  setRoster(rows:Array<{name:string;uuid:string}>):boolean;

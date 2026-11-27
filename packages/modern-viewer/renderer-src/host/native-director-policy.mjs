@@ -67,6 +67,27 @@ function stoppedTargetDeath(n,s,now){
   receiptAt:Date.parse(n.recordedAt),previousRequestId:n.requestId,previousTarget:loss.target,
   previousTargetUuid:loss.uuid,previousTargetDied:true,completionVerified:false};
 }
+function stoppedTargetReturn(n,s,now){
+ const loss=s?.knownTargetLoss,o=n.offer,life=n.cameraLife,stoppedAt=Date.parse(s?.at);
+ if(s?.running!==false||s.phase!=='native_offer_refused_invalid_request'||s.pending!=null
+  ||!Number.isFinite(stoppedAt)||stoppedAt>now||loss?.reason!=='target_identity_lost'
+  ||n.phase!=='stopped'||n.reason!=='target_identity_lost'||n.connectionBoundRequests!==true
+  ||n.cameraUuid!==n.observerUuid||n.target!==loss.target||n.targetUuid!==loss.uuid||loss.uuid===n.observerUuid
+  ||loss.requestId!==n.requestId||loss.connectionEpoch!==n.connectionEpoch||s.lease!==n.activeLease
+  ||o?.accepted!==false||o.neverAdmitted!==true||o.reason!=='invalid_request'||o.id===n.requestId||o.lease!==s.lease
+  ||!Number.isFinite(o.at)||o.at>stoppedAt||!s.results?.some(r=>r.id===o.id&&r.target===loss.target
+   &&r.phase==='native_offer_refused'&&r.reason===o.reason)
+  ||life?.requestId!==n.requestId||life.uuid!==loss.uuid||life.dead!==false||life.nativeWorldEpoch!==n.nativeWorldEpoch
+  ||!Number.isSafeInteger(life.entityId)||life.entityId<0||!Number.isFinite(life.observedAttachedAt)||life.observedAttachedAt>o.at)return null;
+ const target=n.targets?.find(t=>t.name===loss.target&&t.uuid===loss.uuid&&t.loaded===true&&t.alive===true&&t.spectator===false
+  &&Number.isSafeInteger(t.entityId)&&t.entityId>=0&&t.entityId!==life.entityId&&Number.isFinite(t.sampledAt)
+  &&t.sampledAt>stoppedAt&&t.sampledAt<=now&&now-t.sampledAt<=3000
+  &&typeof t.scope==='string'&&t.scope.startsWith(n.connectionEpoch+':'));
+ if(!target)return null;
+ return{kind:'target_identity_return',requestId:o.id,lease:o.lease,outcome:'target_return_confirmed',receiptAt:target.sampledAt,
+  previousRequestId:n.requestId,previousTarget:loss.target,previousTargetUuid:loss.uuid,
+  previousEntityId:life.entityId,currentEntityId:target.entityId,completionVerified:false};
+}
 /** Camera-only supervision after a new connection or positively reconciled native receipt. No replay. */
 export function planNativeDirectorResume({enabled=false,observerAlive=false,selectorAlive=false,expectedServer,expectedObserverUuid,previousEpoch,native:n,selector:s,now=Date.now(),lastResumeAt=0,recentResumes=0}={}){
  const result=(action,reason)=>({schema:NATIVE_DIRECTOR_RESUME_PROTOCOL,action,reason,replayPreviousRequest:false});
@@ -82,10 +103,10 @@ export function planNativeDirectorResume({enabled=false,observerAlive=false,sele
  if(typeof previousEpoch!=='string'||!previousEpoch||typeof epoch!=='string'||!epoch||epoch.length>128)return result('hold','connection_provenance_missing');
  if(epoch===previousEpoch){
   if(n.transition?.active===true)return result('hold','same_connection_outcome_retained');
-  const reconciliation=lateNonAdmission(n,s,now)??lateNativeAttachment(n,s,now)??stoppedTargetDeath(n,s,now);
+  const reconciliation=lateNonAdmission(n,s,now)??lateNativeAttachment(n,s,now)??stoppedTargetDeath(n,s,now)??stoppedTargetReturn(n,s,now);
   if(!reconciliation)return result('hold','same_connection_outcome_retained');
   if(recentResumes>=4||lastResumeAt&&now-lastResumeAt<10000)return result('hold','resume_rate_limited');
-  return{...result('start',reconciliation.kind==='target_death'?'native_target_death_confirmed':reconciliation.kind==='late_native_attachment'?'late_native_attachment_confirmed':'late_offer_non_admission_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true,reconciliation};
+  return{...result('start',reconciliation.kind==='target_identity_return'?'native_target_return_confirmed':reconciliation.kind==='target_death'?'native_target_death_confirmed':reconciliation.kind==='late_native_attachment'?'late_native_attachment_confirmed':'late_offer_non_admission_confirmed'),connectionEpoch:epoch,newLeaseRequired:true,archivePreviousStatus:true,reconciliation};
  }
  if(n.transition?.active===true)return result('hold','new_camera_transition_pending');
  const self=n.phase==='idle'&&n.cameraUuid===n.observerUuid&&n.requestId==null&&n.activeLease==null;

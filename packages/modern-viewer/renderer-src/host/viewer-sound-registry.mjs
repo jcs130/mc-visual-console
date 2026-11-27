@@ -16,6 +16,10 @@ export const VIEWER_SOUND_REGISTRY_LAYOUTS = Object.freeze({
     count: 1611,
     clientJarSha256: '499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99',
   }),
+  '1.21.11': Object.freeze({
+    count: 1838,
+    clientJarSha256: '1473c9489ac50fda3c435049a76a70d61a10b8610db27f5ba9d8756b686cd3bd',
+  }),
 });
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -49,14 +53,14 @@ export function validateViewerSoundRegistry(value, minecraftVersion) {
  * Direct/inline resource names remain usable with an unavailable numeric table.
  */
 export async function loadViewerSoundRegistry(assetsDir, minecraftVersion, fallbackRegistry) {
-  if (minecraftVersion === '26.1') {
+  if (minecraftVersion === '26.1' || minecraftVersion === '1.21.11') {
     try { const value=JSON.parse(await readFile(path.join(assetsDir,'public/sounds/registry.json'),'utf8'));return {registry:validateViewerSoundRegistry(value,minecraftVersion),source:'exact-assets',diagnostic:null}; } catch {}
-    // The current 26.1 data table is 1-based; registryEntryHolder decodes n-1.
+    // These data tables are one-based; registryEntryHolder decodes n-1.
     const sounds=Object.create(null),names=new Set();
-    for(let id=0;id<1902;id++) {
+    for(let id=0;id<VIEWER_SOUND_REGISTRY_LAYOUTS[minecraftVersion].count;id++) {
       const name=fallbackRegistry?.sounds?.[id+1]?.name;
       if(typeof name!=='string'||!/^[a-z0-9_.]+$/.test(name)||names.has(name))
-        return {registry:emptyRegistry(),source:'unavailable',diagnostic:'Invalid 26.1 sound holder table'};
+        return {registry:emptyRegistry(),source:'unavailable',diagnostic:`Invalid ${minecraftVersion} sound holder table`};
       names.add(name);sounds[id]=Object.freeze({name});
     }
     return {registry:Object.freeze({sounds:Object.freeze(sounds)}),source:'minecraft-data',diagnostic:null};

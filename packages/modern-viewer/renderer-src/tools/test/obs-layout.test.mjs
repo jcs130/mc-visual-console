@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { OBS_COMPONENTS, normalizeObsLayout, readObsLayout, obsLayoutUrl, moveObsComponent } from '../../src/modern-viewer/obs-layout.js';
+import { normalizeViewerLayout } from '../../src/modern-viewer/viewer-layout.js';
+
+test('server information is hidden in both layouts independently of the scoreboard and survival HUD', () => {
+  const preferences = { version: 1, components: { scoreboard: true } };
+  assert.equal(normalizeViewerLayout(preferences).components.serverInfo, false);
+  assert.equal(normalizeViewerLayout(preferences).components.survival, true);
+  const overlay = normalizeObsLayout({ version: 1, components: { scoreboard: { visible: true } } });
+  assert.equal(overlay.components.serverInfo.visible, false);
+  assert.equal(overlay.components.scoreboard.visible, true);
+  overlay.components.serverInfo.visible = true;
+  const url = new URL(obsLayoutUrl('http://viewer.test/', overlay));
+  assert.equal(readObsLayout({ query: url.searchParams }).components.serverInfo.visible, true);
+  assert.equal(normalizeViewerLayout({ version: 1, components: { serverInfo: true } }).components.serverInfo, true);
+});
 
 test('default overlay includes hands and minimap; malformed storage cannot hide everything or inject CSS', () => {
   const layout = normalizeObsLayout(null);

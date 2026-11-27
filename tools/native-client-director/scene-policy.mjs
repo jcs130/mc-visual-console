@@ -69,10 +69,11 @@ export function classifyEvent(event,now=Date.now()){
   return null;
 }
 export class SceneSelector{
-  constructor(names,{minDwellMs=30_000,maxDwellMs=120_000,cinematicFraming=false}={}){
+  constructor(names,{minDwellMs=30_000,maxDwellMs=120_000,cinematicFraming=false,idleSubjectRotation=false}={}){
     this.names=[...names];this.minDwellMs=Math.max(10_000,minDwellMs);
     this.maxDwellMs=Math.max(this.minDwellMs,maxDwellMs);this.activities=new Map();this.presence=new Map();this.cinematicFraming=cinematicFraming===true;
     this.available=null;this.coverage=new Map();this.program=null;this.firstOpportunityAt=null;
+    this.idleSubjectRotation=idleSubjectRotation===true;
   }
   setAvailable(names){this.available=names===null?null:new Set(names.filter(n=>this.names.includes(n)));}
   /** Trusted native online roster; preserves coverage for the same identity, never inherits it after rename/reuse. */
@@ -164,6 +165,20 @@ export class SceneSelector{
         const pool=urgent.length?urgent:overdue?starved:others,other=pool[0];
         if(other)return{...other,kind:other.priority?other.kind:'coverage',view:'first_person',subjectPool:pool.map(s=>s.name),
           reason:overdue?'coverage_starvation_review':'coverage_review_after_max_dwell',forceSubjectReview:true};
+      }
+    }
+    // A quiet programme can check in on a verified player outside the current
+    // camera's chunks. Let a recent line finish and prefer an actual scene on
+    // any other player to this coverage choice.
+    const inQuietInterval=active?.priority===0||active?.priority===1&&now-active.at>=8000;
+    if(this.idleSubjectRotation&&this.available!==null&&inQuietInterval&&now-currentSince>=this.maxDwellMs
+      &&this.rosterIdentities?.has(current)){
+      const others=subjects.filter(s=>s.name!==current);
+      if(others.every(s=>s.priority===0)){
+        const next=others.filter(s=>this.rosterIdentities.has(s.name))
+          .sort((a,b)=>(a.lastShownAt??0)-(b.lastShownAt??0)||b.waitingMs-a.waitingMs
+            ||a.airtimeMs-b.airtimeMs||a.name.localeCompare(b.name))[0];
+        if(next)return{...next,view:'first_person',reason:'idle_online_subject_rotation'};
       }
     }
     const stationary=name=>this.stationary(name,now);

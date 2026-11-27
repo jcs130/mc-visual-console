@@ -143,6 +143,21 @@ to{background-position:128px -128px,-120% 0}
 .corti-inventory-toggle kbd{font:11px monospace;opacity:.8}
 .corti-menu{top:50%;left:50%;z-index:40;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);transform:translate(-50%,-50%);overflow:auto;padding:8px;background:#14242cec;border:1px solid #b8c8bb;border-radius:8px;box-shadow:0 10px 45px #000b;pointer-events:auto}
 .corti-menu[hidden]{display:none}
+.corti-interaction{position:fixed;z-index:36;left:50%;top:46%;transform:translate(-50%,-50%);width:min(340px,82vw);max-height:52vh;box-sizing:border-box;overflow:hidden;padding:12px 15px;border:1px solid #acbcaf;border-radius:6px;background:#15222bf0;color:#f9f5e5;box-shadow:0 9px 35px #0009;font:14px/1.45 system-ui;pointer-events:none}
+.corti-interaction[hidden],body[data-interaction-view=true] .corti-server-screen[data-kind=book]{display:none}
+.corti-interaction[data-kind^=book-]{background:#efe1bde8;color:#392818;border-color:#866848}
+.corti-interaction[data-with-container=true]{top:auto;bottom:19%;left:auto;right:12px;transform:none;width:min(230px,28vw)}
+.corti-interaction header{display:flex;align-items:baseline;gap:9px;font-size:14px;margin-bottom:8px}
+.corti-interaction header span,.corti-interaction footer,.corti-interaction small{font-size:11px;opacity:.83}
+.corti-interaction header strong{overflow-wrap:anywhere}
+.corti-interaction footer{margin-top:8px}
+.corti-interaction p{margin:0;overflow-wrap:anywhere}
+.corti-interaction-page{white-space:pre-wrap;max-height:34vh;overflow:hidden;line-height:1.55}
+.corti-interaction-sign{background:#b58a59;color:#281d12;text-align:center;padding:10px;box-shadow:inset 0 0 0 2px #856439;overflow-wrap:anywhere}
+.corti-interaction-grid{display:grid;width:min(220px,100%);gap:3px;margin-bottom:4px}
+.corti-interaction-grid span{display:grid;place-items:center;min-height:32px;padding:3px;font-size:12px;background:#0e171e;border:1px solid #74828b8c;overflow-wrap:anywhere}
+.corti-interaction-name{border:1px solid #7c8991;padding:5px 7px;background:#0e171e}
+.corti-menu-anvil-name{position:absolute;box-sizing:border-box;width:224px;height:31px;margin:0;padding:5px 6px;background:#393939;border:2px solid #aaa;color:#faf4e4;font:14px/17px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .corti-menu header{display:flex;align-items:center;gap:10px;min-height:25px;margin-bottom:5px;color:#f8f8ed}
 .corti-menu header strong{flex:1}
 .corti-menu header span{font:11px/1.2 sans-serif;color:#a9bfc1}

@@ -37,6 +37,9 @@ export function broadcastChoice(selection,choice,current,currentUuid,now){
 export function broadcastAllows(selection,choice,subjects,current){
   if(!choice)return false;
   if(selection.mode!=='auto')return selection.mode==='follow'&&selection.state==='ready'&&choice.name===selection.target.name;
+  if(choice.reason==='idle_online_subject_rotation')
+    return current!==choice.name&&subjects.every(s=>(s.priority??0)<=(s.name===current?1:0))
+      &&subjects.some(s=>s.name===choice.name)&&subjects.some(s=>s.name===current);
   const rows=broadcastSubjects(selection,subjects);
   // Same-subject camera composition remains possible when all scenes are quiet.
   return rows.some(s=>s.name===choice.name)&&(choice.name===current||rows.some(s=>s.name===choice.name&&s.priority>0)||!current);

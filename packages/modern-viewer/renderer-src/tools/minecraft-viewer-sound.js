@@ -2,6 +2,12 @@
 // Replaced by the matched-version build; the standalone source retains its legacy version.
 const cortiAudioMinecraftVersion = '1.20.6';
 const cortiAudioCategories = ['music', 'records', 'weather', 'blocks', 'hostile', 'neutral', 'players', 'ambient', 'voice'];
+// Vanilla LevelEvent IDs. These arrive separately from sound_effect packets.
+const cortiWorkstationLevelSounds = Object.freeze({
+  1029: 'block.anvil.destroy', 1030: 'block.anvil.use', 1031: 'block.anvil.land',
+  1035: 'block.brewing_stand.brew', 1042: 'block.grindstone.use', 1043: 'item.book.page_turn',
+  1044: 'block.smithing_table.use', 1049: 'block.crafter.craft', 1050: 'block.crafter.fail',
+});
 function cortiAudioName(value) {
   const name = typeof value === 'string' ? value.replace(/^minecraft:/, '') : '';
   return name.length<=160 && /^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+$/.test(name) ? name : null;
@@ -523,7 +529,10 @@ function cortiInstallWorldSound(socket) {
   const localPickup = event => {
     if (event?.kind === 'world_event') {
       const effectId = Number.isInteger(event.effectId) ? event.effectId : event.id;
-      if (effectId === 2001 && validPosition(event.position)) {
+      const stationSound = cortiWorkstationLevelSounds[effectId];
+      if (stationSound && validPosition(event.position)) {
+        playLocal({ name: stationSound, category: 'blocks', position: event.position, volume: 0.8, pitch: 1 });
+      } else if (effectId === 2001 && validPosition(event.position)) {
         const sound = cortiBlockSound(event.blockName, 'break', blockSounds, manifest?.events);
         if (sound) playLocal({ name: sound.name, category: 'blocks', position: event.position,
           volume: (sound.volume + 1) / 2, pitch: sound.pitch * 0.8 });
@@ -598,6 +607,30 @@ function cortiInstallWorldSound(socket) {
     }
   };
   const on = (name, handler) => { socket.on(name, handler); bindings.push([name, handler]); };
+  let observedWindow = null;
+  let lastSlotSound = -Infinity;
+  let lastInteractionId = null;
+  const interactionClick = () => playLocal({ name: 'ui.button.click', category: 'master', position: null, volume: 0.23, pitch: 1 });
+  const resetInteractionAudio = () => { observedWindow = null; lastSlotSound = -Infinity; lastInteractionId = null; };
+  on('containerState', packet => {
+    if (!packet || !Number.isSafeInteger(packet.id) || !Array.isArray(packet.slots)) { observedWindow = null; return; }
+    const count = Number.isInteger(packet.inventoryStart) ? Math.max(0, Math.min(54, packet.inventoryStart)) : 0;
+    const contents = JSON.stringify(packet.slots.slice(0, count).map(slot =>
+      slot ? [slot.name, slot.count, slot.customName] : null));
+    if (observedWindow?.id === packet.id && observedWindow.contents !== contents && now() - lastSlotSound >= 180) {
+      lastSlotSound = now();
+      interactionClick();
+    }
+    observedWindow = { id: packet.id, contents };
+  });
+  on('viewerInteraction', event => {
+    if (event?.phase !== 'active' || !Number.isSafeInteger(event.id) || event.id === lastInteractionId) return;
+    lastInteractionId = event.id;
+    if (event.kind === 'book-read' && event.page != null) playLocal({ name: 'item.book.page_turn', category: 'master',
+      position: null, volume: 0.38, pitch: 1 });
+    else if (['book-write', 'sign-write', 'rename'].includes(event.kind) || (event.kind === 'craft' && event.gridSize === 2)) interactionClick();
+  });
+  for (const name of ['viewerReset', 'disconnect']) on(name, resetInteractionAudio);
   const position = packet => {
     if (!validPosition(packet?.pos)) return;
     origin = { ...packet.pos }; yaw = Number.isFinite(packet.yaw) ? packet.yaw : yaw;
