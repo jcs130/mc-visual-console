@@ -37,6 +37,18 @@ test('explicit manual selection may watch an idle player; returning to auto rest
  assert.equal(broadcastAllows(s,{name:'Bob'},subjects,'Alice'),true);
  assert.equal(resolveBroadcastSelection({...pin,mode:'auto'},native).mode,'auto');
 });
+test('an explicit quiet coverage decision permits current speech but no other activity in auto mode',()=>{
+ const s=resolveBroadcastSelection(null,native);
+ const choice={name:'Bob',reason:'idle_online_subject_rotation'};
+ const quiet=subjects.map(row=>({...row,priority:0}));
+ assert.equal(broadcastAllows(s,choice,quiet,'Alice'),true);
+ assert.equal(broadcastAllows(s,choice,[{name:'Alice',priority:1},quiet[1]],'Alice'),true);
+ assert.equal(broadcastAllows(s,choice,[quiet[0],{name:'Bob',priority:1}],'Alice'),false);
+ assert.equal(broadcastAllows(s,choice,subjects,'Alice'),false);
+ assert.equal(broadcastAllows(s,choice,[{name:'Alice',priority:0}],'Alice'),false);
+ assert.equal(broadcastAllows(s,choice,quiet,'Bob'),false);
+ assert.equal(broadcastAllows(resolveBroadcastSelection(pin,native),choice,quiet,'Alice'),false);
+});
 test('operator can override automatic editorial holds but not render, screen or cut safety',()=>{
  const s=resolveBroadcastSelection(pin,native),c=broadcastChoice(s,null,'Bob',bob,100);
  for(const reason of ['protect_live_combat','minimum_subject_hold','subject_return_cooldown_60s','subject_budget_2_per_minute'])assert.equal(broadcastPacing(s,c,{allow:false,reason}).allow,true);

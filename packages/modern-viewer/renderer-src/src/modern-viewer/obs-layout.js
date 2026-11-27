@@ -20,6 +20,7 @@ export const OBS_COMPONENTS = Object.freeze([
   ['effects', '状态效果', '#corti-effects'],
   ['boss', 'Boss 血条', '#corti-boss-bars'],
   ['scoreboard', '计分板', '#corti-scoreboard'],
+  ['serverInfo', '服务器信息', '#corti-tab-list'],
   ['messages', '游戏消息', '#corti-event-feed'],
   ['actionbar', '行动提示', '#corti-actionbar'],
   ['loadStatus', '画面加载状态', '#viewer-load-status'],
@@ -40,7 +41,7 @@ export function normalizeObsLayout(value) {
     aspect: Number.isFinite(camera?.aspect) ? bounded(camera.aspect, .25, 4, 16 / 9) : null, followAgent: camera?.followAgent !== false },
     components: Object.fromEntries(OBS_COMPONENTS.map(({ id }) => {
     const row = source[id];
-    return [id, { visible: typeof row?.visible === 'boolean' ? row.visible : id !== 'crosshair',
+    return [id, { visible: typeof row?.visible === 'boolean' ? row.visible : !['crosshair', 'serverInfo'].includes(id),
       x: bounded(row?.x, -100, 100, 0), y: bounded(row?.y, -100, 100, 0), scale: bounded(row?.scale, .3, 3, 1) }];
   })) };
 }

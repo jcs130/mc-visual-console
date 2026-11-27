@@ -35,6 +35,26 @@ test('photo and OBS keep independent layouts; loading saved preferences survives
   assert.equal(ui.visible('minimap'),false);assert.equal(ui.snapshot().clean,true);ui.dispose();
 });
 
+test('server information can be restored and hidden again without toggling other panels', () => {
+  const h = browser({version:1, components:{scoreboard:true}});
+  const ui = installViewerLayout(h);
+  h.add('corti-tab-list');
+  h.mutate();
+  const check = h.document.querySelectorAll('input').find(input => input.dataset.viewerComponent === 'serverInfo');
+  const style = h.document.querySelector('style');
+  assert.match(style.textContent, /#corti-tab-list\{display:none!important\}/);
+  assert.doesNotMatch(style.textContent, /#corti-scoreboard\{display:none!important\}/);
+  check.checked = true;
+  check.dispatch('change');
+  assert.doesNotMatch(style.textContent, /#corti-tab-list\{/);
+  assert.equal(ui.visible('survival'), true);
+  assert.equal(JSON.parse(h.storage.get('minecraft.viewer.layout.v1')).components.serverInfo, true);
+  check.checked = false;
+  check.dispatch('change');
+  assert.match(style.textContent, /#corti-tab-list\{display:none!important\}/);
+  ui.dispose();
+});
+
 for (const mapId of ['native-terrain-map','corti-minimap']) {
   test(`late ${mapId} stays above decisions and repeated adoption does not reflow panels`,()=>{
     const h=browser(),decisions=h.add('agent-decisions'),ui=installViewerLayout(h);

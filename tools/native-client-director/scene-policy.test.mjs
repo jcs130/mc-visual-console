@@ -221,6 +221,38 @@ test('coverage comes from rendered frames and ignores duplicates and unobserved 
  assert.equal(p.choose('Alice',1000,100000,'drone_follow'),null,'missing airtime alone is not scene activity');
  p.setAvailable(['Alice']);assert.equal(p.choose('Alice',1000,100000,'drone_follow'),null,'offline or unidentifiable actors are not invented');
 });
+test('quiet all-online coverage checks the least recently shown player only after dwell',()=>{
+ const identities=[{name:'Alice',uuid:'alice'},{name:'Bob',uuid:'bob'},{name:'Carol',uuid:'carol'}];
+ const p=new SceneSelector(identities.map(row=>row.name),{maxDwellMs:90000,idleSubjectRotation:true});
+ p.setAvailable(['Alice','Bob','Carol']);
+ assert.equal(p.choose('Alice',now-90000,now,'first_person'),null,'configured names alone must not establish an online roster');
+ assert.equal(p.setRoster(identities),true);
+ p.observeProgram('Carol',{at:now-91000,scope:'world'},now-91000);
+ p.observeProgram('Alice',{at:now,scope:'world'},now);
+ assert.equal(p.choose('Alice',now-89999,now,'first_person'),null);
+ const first=p.choose('Alice',now-90000,now,'first_person');
+ assert.equal(first.name,'Bob');
+ assert.equal(first.reason,'idle_online_subject_rotation');
+ assert.equal(first.motionState,'unknown');
+ assert.equal(p.inspect(now).find(s=>s.name==='Bob').lastShownAt,null,'proposals do not count as rendered coverage');
+ p.observeProgram('Bob',{at:now+1000,scope:'world'},now+1000);
+ assert.equal(p.choose('Bob',now+1000,now+2000,'first_person'),null);
+ assert.equal(p.choose('Bob',now+1000,now+91000,'first_person').name,'Carol');
+});
+test('quiet rotation respects the filtered online roster and gives way to actual scenes',()=>{
+ const p=new SceneSelector(['Alice','Bob'],{maxDwellMs:90000,idleSubjectRotation:true});
+ p.setRoster([{name:'Alice',uuid:'alice'},{name:'Bob',uuid:'bob'}]);
+ p.setAvailable(['Alice','Bob']);
+ p.observe('Alice',speech('Alice',now),now);
+ assert.equal(p.choose('Alice',now-100000,now,'first_person'),null);
+ assert.equal(p.choose('Alice',now-100000,now+9000,'first_person').reason,'idle_online_subject_rotation');
+ p.observe('Bob',speech('Bob',now+9000),now+9000);
+ assert.equal(p.choose('Alice',now-100000,now+9000,'first_person').reason,'coverage_review_after_max_dwell');
+ p.observe('Alice',combat(now),now);
+ assert.notEqual(p.choose('Alice',now-100000,now)?.name,'Bob');
+ p.setAvailable(['Alice']);
+ assert.equal(p.choose('Alice',now-100000,now+60000,'first_person'),null);
+});
 test('two chatty actors cannot promote an idle third actor merely for airtime',()=>{
  const p=new SceneSelector(['Alice','Bob','Carol'],{maxDwellMs:90000,minDwellMs:30000});p.setAvailable(['Alice','Bob','Carol']);p.subjectCandidates('Alice',0,0);
  p.observeProgram('Alice',{at:180000,scope:'world'},180000);p.observeProgram('Bob',{at:190000,scope:'world'},190000);

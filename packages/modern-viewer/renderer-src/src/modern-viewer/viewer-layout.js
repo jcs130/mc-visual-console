@@ -4,7 +4,7 @@ import { chunkDiagnosticsEnabled, setChunkDiagnosticsPreference } from './load-s
 
 const KEY = 'minecraft.viewer.layout.v1';
 const COMPONENTS = OBS_COMPONENTS.filter(row => !['hands', 'inventoryButton'].includes(row.id));
-const DEFAULT_HIDDEN = new Set(['agentRoute', 'scoreboard']);
+const DEFAULT_HIDDEN = new Set(['agentRoute', 'scoreboard', 'serverInfo']);
 export function normalizeViewerLayout(value) {
   const source = value?.version === 1 ? value : {};
   return { version: 1, clean: source.clean === true, components: Object.fromEntries(COMPONENTS.map(({id}) =>

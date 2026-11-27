@@ -1,4 +1,4 @@
-/** Exact sound IDs and optional surface sounds; requires Java 21 and an installed 1.20.6 client. */
+/** Exact sound IDs and optional surface sounds; requires the matching original client. */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -10,7 +10,7 @@ import { validateViewerSoundRegistry,VIEWER_SOUND_REGISTRY_LAYOUTS } from '../ho
 
 const [versionArg, librariesArg, outputArg, javaArg = 'java',clientArg] = process.argv.slice(2);
 if (!versionArg || !librariesArg || !outputArg) {
-  console.error('用法：node tools/export-minecraft-viewer-block-sounds.mjs <1.20.6.json> <启动器 libraries 目录> <输出包目录> [Java 21 可执行文件]');
+  console.error('用法：node tools/export-minecraft-viewer-block-sounds.mjs <版本.json> <启动器 libraries 目录> <输出包目录> [Java 可执行文件] [客户端 Jar]');
   process.exit(2);
 }
 const versionPath = path.resolve(versionArg);
@@ -48,7 +48,8 @@ try {
     throw Error('Native block sound export failed; check Java 21 and the installed client libraries');
   }
   const result = JSON.parse(await readFile(resultFile, 'utf8'));
-  if (result.minecraftVersion !== version.id || Object.keys(result.blocks ?? {}).length !== (version.id==='26.1'?1168:1060)) {
+  const blockCount = { '1.20.6': 1060, '1.21.1': 1060, '1.21.11': 1166, '26.1': 1168 }[version.id];
+  if (result.minecraftVersion !== version.id || Object.keys(result.blocks ?? {}).length !== blockCount) {
     throw Error('Unexpected native block registry; no surface sound mapping was published');
   }
   result.clientJarSha256 = clientJarSha256;

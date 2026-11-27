@@ -38,6 +38,38 @@ test('manual stop, missing owner, stale authentication and foreign observer can 
  assert.equal(plan({...fixture(),observerAlive:false}).action,'stop');assert.equal(plan({...fixture(),selector:{stopRequested:true}}).reason,'manual_stop_retained');
  assert.equal(plan({...fixture(),enabled:false}).action,'hold');assert.equal(plan({...fixture(),previousEpoch:null}).action,'hold');
 });
+function returnedTargetFixture(){
+ const f=fixture();f.previousEpoch='new';
+ Object.assign(f.native,{phase:'stopped',reason:'target_identity_lost',connectionBoundRequests:true,requestId:'previous',activeLease:'lease',
+  target:'Alice',targetUuid:'alice',nativeWorldEpoch:1,renderedAt:100000,
+  cameraLife:{requestId:'previous',uuid:'alice',entityId:31,nativeWorldEpoch:1,dead:false,observedAttachedAt:39000},
+  offer:{id:'refused',lease:'lease',accepted:false,reason:'invalid_request',neverAdmitted:true,at:40000},
+  targets:[{name:'Alice',uuid:'alice',entityId:32,loaded:true,alive:true,spectator:false,sampledAt:100000,scope:'new:overworld'}]});
+ f.selector={running:false,phase:'native_offer_refused_invalid_request',at:new Date(41000).toISOString(),lease:'lease',pending:null,
+  knownTargetLoss:{requestId:'previous',connectionEpoch:'new',target:'Alice',uuid:'alice',reason:'target_identity_lost'},
+  results:[{id:'refused',target:'Alice',phase:'native_offer_refused',reason:'invalid_request'}]};return f;
+}
+test('a returned target reconciles its lost camera and refused reframe without replay',()=>{
+ const f=returnedTargetFixture(),before=structuredClone(f),p=plan(f);
+ assert.equal(p.action,'start');assert.equal(p.reconciliation.kind,'target_identity_return');
+ assert.equal(p.reconciliation.previousRequestId,'previous');assert.equal(p.reconciliation.requestId,'refused');
+ assert.equal(p.reconciliation.previousTargetUuid,'alice');assert.equal(p.reconciliation.completionVerified,false);
+ assert.equal(p.newLeaseRequired,true);assert.equal(p.archivePreviousStatus,true);assert.equal(p.replayPreviousRequest,false);assert.deepEqual(f,before);
+ assert.equal(plan({...f,recentResumes:4}).action,'hold');assert.equal(plan({...f,lastResumeAt:95000}).action,'hold');
+});
+test('target return does not relax unknown, manual, offer, entity or world guards',()=>{
+ for(const patch of[{accepted:true},{neverAdmitted:false},{reason:'already_seen'},{id:'previous'},{lease:'other'},{at:100001}]){
+  const f=returnedTargetFixture();Object.assign(f.native.offer,patch);assert.equal(plan(f).action,'hold',JSON.stringify(patch));}
+ for(const patch of[{uuid:'other'},{entityId:31},{loaded:false},{alive:false},{spectator:true},{sampledAt:90000},{scope:'foreign:overworld'}]){
+  const f=returnedTargetFixture();Object.assign(f.native.targets[0],patch);assert.equal(plan(f).action,'hold',JSON.stringify(patch));}
+ for(const patch of[{requestId:'other'},{activeLease:'other'},{nativeWorldEpoch:2},{cameraUuid:'other'},{phase:'unknown'},{phase:'cancelled'},
+  {manualDetachRequested:true},{recordedAt:new Date(90000).toISOString()},{server:'other'},{transition:{active:true}},{connectionBoundRequests:false}]){
+  const f=returnedTargetFixture();Object.assign(f.native,patch);assert.equal(plan(f).action,'hold',JSON.stringify(patch));}
+ for(const patch of[{uuid:'other'},{requestId:'other'},{dead:true},{nativeWorldEpoch:2},{observedAttachedAt:42000}]){
+  const f=returnedTargetFixture();Object.assign(f.native.cameraLife,patch);assert.equal(plan(f).action,'hold',JSON.stringify(patch));}
+ for(const patch of[{running:true},{stopRequested:true},{phase:'director_stopped'},{results:[]},{pending:{id:'unknown'}}]){
+  const f=returnedTargetFixture();Object.assign(f.selector,patch);assert.equal(plan(f).action,'hold',JSON.stringify(patch));}
+});
 test('an attached new connection requires the actual current roster and recovery is rate limited',()=>{
  const f=fixture();Object.assign(f.native,{phase:'attached',target:'Alice',targetUuid:'alice',cameraUuid:'alice',requestId:'new-camera',activeLease:'new-lease',nativeWorldEpoch:2,renderedAt:100000,
   cameraLife:{requestId:'new-camera',uuid:'alice',nativeWorldEpoch:2,dead:false,observedAttachedAt:100000},targets:[{name:'Alice',uuid:'alice',spectator:false}]});

@@ -13,6 +13,7 @@ class ExportMinecraftBlockSounds {
     String[] names = switch(version) {
       case "1.20.6" -> new String[]{"aa","alh","lp","jv","dfb","dsd$a","dmo","avz"};
       case "1.21.1" -> new String[]{"ab","akt","lt","jz","dfy","dtb$a","dnm","avo"};
+      case "1.21.11" -> new String[]{"w","amv","mi","jq","dzq","eog$a","ehs","bcz"};
       case "26.1" -> new String[]{"net.minecraft.SharedConstants","net.minecraft.server.Bootstrap","net.minecraft.core.registries.BuiltInRegistries","net.minecraft.core.Registry","net.minecraft.world.level.block.Block","net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase","net.minecraft.world.level.block.SoundType","net.minecraft.sounds.SoundEvent"};
       default -> throw new IllegalArgumentException("Unverified original reflection layout");
     };
@@ -20,8 +21,16 @@ class ExportMinecraftBlockSounds {
     Class.forName(names[1]).getMethod(version.equals("26.1")?"bootStrap":"a").invoke(null); // Bootstrap.bootStrap
     Object blocks = Class.forName(names[2]).getField(version.equals("26.1")?"BLOCK":"e").get(null); // BuiltInRegistries.BLOCK
     Method key = Class.forName(names[3]).getMethod(version.equals("26.1")?"getKey":"b", Object.class); // Registry.getKey
-    Method state = Class.forName(names[4]).getMethod(version.equals("26.1")?"defaultBlockState":"o"); // Block.defaultBlockState
-    Method sound = Class.forName(names[5]).getMethod(version.equals("26.1")?"getSoundType":"w"); // BlockStateBase.getSoundType
+    Method state = Class.forName(names[4]).getMethod(switch(version) {
+      case "26.1" -> "defaultBlockState";
+      case "1.21.11" -> "m";
+      default -> "o";
+    });
+    Method sound = Class.forName(names[5]).getMethod(switch(version) {
+      case "26.1" -> "getSoundType";
+      case "1.21.11" -> "A";
+      default -> "w";
+    });
     Class<?> sounds = Class.forName(names[6]); // SoundType
     Method location = Class.forName(names[7]).getMethod(version.equals("26.1")?"location":"a"); // SoundEvent.getLocation
     StringBuilder result = new StringBuilder("{\"schemaVersion\":1,\"minecraftVersion\":"+quote(version)+",\"blocks\":{");
