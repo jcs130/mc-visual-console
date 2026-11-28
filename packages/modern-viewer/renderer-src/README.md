@@ -484,3 +484,6 @@ pnpm test
 pnpm test:cortico
 pnpm run typecheck
 ```
+### 原版皮肤全身参考图
+
+`python tools/render-skin-views.py skin.png views.png --model slim` 用项目锁定的 skinview3d 人模在本地渲染正面、穿戴者左侧、背面和右侧。宽臂用 `--model classic`。工具保留外层贴图，只读取传入的本地 PNG，适合为 Agent 的视觉记忆生成参考图。运行环境需要本目录的渲染依赖、Python Playwright 和 Chromium。可以用 `--bundle` 指定同版本的已安装依赖。
